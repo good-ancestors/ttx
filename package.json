@@ -1,0 +1,32 @@
+{
+  "name": "ai-2027-ttx",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@tremor/react": "^3.17.4",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.469.0",
+    "next": "15.1.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "swr": "^2.2.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^18",
+    "@types/react-dom": "^18",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9",
+    "eslint-config-next": "15.1.5",
+    "postcss": "^8",
+    "tailwindcss": "^3.4.1",
+    "typescript": "^5"
+  }
+}

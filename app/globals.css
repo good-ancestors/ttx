@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Fix input text color for better contrast */
+input[type="text"],
+input[type="number"],
+textarea,
+select {
+  color: #111827 !important; /* gray-900 */
+}
+
+input[type="text"]::placeholder,
+input[type="number"]::placeholder,
+textarea::placeholder {
+  color: #9ca3af !important; /* gray-400 */
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Fix Tremor LineChart stroke colors */
+path.recharts-line-curve {
+  stroke-width: 2.5 !important;
+}
+
+/* Apply colors to chart lines by targeting Tremor's generated classes */
+.stroke-blue-500 path.recharts-line-curve {
+  stroke: #3b82f6 !important; /* blue - OpenBrain */
+}
+
+.stroke-cyan-500 path.recharts-line-curve {
+  stroke: #ef4444 !important; /* red - DeepCent */
+}
+
+.stroke-sky-500 path.recharts-line-curve {
+  stroke: #a855f7 !important; /* purple - Conscienta */
+}
+
+.stroke-indigo-500 path.recharts-line-curve {
+  stroke: #10b981 !important; /* emerald - Other US Labs */
+}
+
+.stroke-violet-500 path.recharts-line-curve {
+  stroke: #f59e0b !important; /* amber - Rest of World */
+}
+
+/* Print styles for export */
+@media print {
+  @page {
+    size: A4;
+    margin: 1cm;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white;
+    color: black;
+  }
+}
