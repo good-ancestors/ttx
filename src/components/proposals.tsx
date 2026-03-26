@@ -13,7 +13,7 @@ export function usePendingProposalCount(
   roundNumber: number,
   roleId: string
 ) {
-  const proposals = useQuery(api.proposals.getByGameAndRound, {
+  const proposals = useQuery(api.requests.getByGameAndRound, {
     gameId,
     roundNumber,
   });
@@ -33,12 +33,12 @@ export function ProposalPanel({
   roleId: string;
   roleName: string;
 }) {
-  const proposals = useQuery(api.proposals.getByGameAndRound, {
+  const proposals = useQuery(api.requests.getByGameAndRound, {
     gameId,
     roundNumber,
   });
-  const sendProposal = useMutation(api.proposals.send);
-  const respondToProposal = useMutation(api.proposals.respond);
+  const sendProposal = useMutation(api.requests.send);
+  const respondToProposal = useMutation(api.requests.respond);
 
   // null = user hasn't toggled, so auto-expand based on pending proposals
   const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
@@ -88,7 +88,7 @@ export function ProposalPanel({
         <div className="flex items-center gap-2">
           <Handshake className="w-4 h-4 text-text-muted" />
           <span className="text-sm font-bold text-text">
-            Proposals
+            Support Requests
           </span>
           {pendingCount > 0 && (
             <span className="text-[10px] bg-viz-warning text-white px-1.5 py-0.5 rounded-full font-bold">
@@ -216,7 +216,7 @@ export function ProposalPanel({
           {/* Send new proposal */}
           <div className="border-t border-border pt-3">
             <span className="text-[11px] font-semibold text-text-muted uppercase tracking-wider block mb-2">
-              Send Proposal
+              Send Request
             </span>
             <select
               value={targetRole}
@@ -243,7 +243,7 @@ export function ProposalPanel({
             <textarea
               value={proposalText}
               onChange={(e) => setProposalText(e.target.value)}
-              placeholder="Propose a joint action... e.g. 'We propose merging our labs to pool compute resources'"
+              placeholder="Request support for an action... e.g. 'Endorse DPA consolidation of AI labs under federal oversight'"
               rows={2}
               className="w-full p-2 bg-warm-gray border border-border rounded-lg text-sm text-text
                          resize-none outline-none mb-2"
@@ -254,7 +254,7 @@ export function ProposalPanel({
               className="w-full py-2 bg-navy text-white rounded-lg text-xs font-bold
                          disabled:opacity-30 flex items-center justify-center gap-1"
             >
-              <Send className="w-3.5 h-3.5" /> Send Proposal
+              <Send className="w-3.5 h-3.5" /> Send Request
             </button>
           </div>
         </div>

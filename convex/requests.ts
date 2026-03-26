@@ -6,7 +6,7 @@ export const getByGameAndRound = query({
   args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
     return await ctx.db
-      .query("proposals")
+      .query("requests")
       .withIndex("by_game_and_round", (q) =>
         q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
       )
@@ -18,7 +18,7 @@ export const getForRole = query({
   args: { gameId: v.id("games"), roundNumber: v.number(), roleId: v.string() },
   handler: async (ctx, args) => {
     return await ctx.db
-      .query("proposals")
+      .query("requests")
       .withIndex("by_to_role", (q) =>
         q
           .eq("gameId", args.gameId)
@@ -50,7 +50,7 @@ export const send = mutation({
     if (args.computeAmount !== undefined && args.computeAmount <= 0) {
       throw new Error("Compute amount must be positive");
     }
-    const id = await ctx.db.insert("proposals", {
+    const id = await ctx.db.insert("requests", {
       ...args,
       status: "pending",
     });
@@ -66,7 +66,7 @@ export const send = mutation({
 
 export const respond = mutation({
   args: {
-    proposalId: v.id("proposals"),
+    proposalId: v.id("requests"),
     status: v.union(v.literal("accepted"), v.literal("declined")),
   },
   handler: async (ctx, args) => {

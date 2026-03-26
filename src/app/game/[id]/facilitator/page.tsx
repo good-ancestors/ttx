@@ -44,7 +44,7 @@ export default function FacilitatorPage({
     gameId,
     roundNumber: game?.currentRound ?? 1,
   });
-  const proposals = useQuery(api.proposals.getByGameAndRound, {
+  const proposals = useQuery(api.requests.getByGameAndRound, {
     gameId,
     roundNumber: game?.currentRound ?? 1,
   });
@@ -170,11 +170,11 @@ export default function FacilitatorPage({
     setResolving(true);
 
     // Two-pass proposals: first pass sends, second pass responds
-    setResolveStep("AI sending proposals...");
+    setResolveStep("AI sending support requests...");
     triggerAIProposals();
     await new Promise((r) => setTimeout(r, 4000));
 
-    setResolveStep("AI responding to proposals...");
+    setResolveStep("AI responding to requests...");
     triggerAIProposals(); // second pass picks up proposals from first pass
     await new Promise((r) => setTimeout(r, 4000));
 
@@ -430,7 +430,7 @@ export default function FacilitatorPage({
                 {(proposals ?? []).filter((p) => p.status === "accepted").length > 0 && (
                   <div className="bg-navy-dark rounded-xl border border-navy-light p-4 mt-3">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-viz-safety mb-2 block">
-                      Accepted Agreements
+                      Accepted Requests
                     </span>
                     {(proposals ?? []).filter((p) => p.status === "accepted").map((p) => (
                       <div key={p._id} className="flex items-center gap-2 py-1.5 text-[13px]">

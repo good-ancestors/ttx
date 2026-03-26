@@ -432,7 +432,7 @@ describe("Proposals", () => {
   });
 
   it("should send a proposal", async () => {
-    const proposalId = await convex.mutation(api.proposals.send, {
+    const proposalId = await convex.mutation(api.requests.send, {
       gameId,
       roundNumber: 1,
       fromRoleId: "openbrain-ceo",
@@ -446,7 +446,7 @@ describe("Proposals", () => {
   });
 
   it("should list proposals for a round", async () => {
-    const proposals = await convex.query(api.proposals.getByGameAndRound, {
+    const proposals = await convex.query(api.requests.getByGameAndRound, {
       gameId,
       roundNumber: 1,
     });
@@ -455,7 +455,7 @@ describe("Proposals", () => {
   });
 
   it("should list proposals for a specific role", async () => {
-    const proposals = await convex.query(api.proposals.getForRole, {
+    const proposals = await convex.query(api.requests.getForRole, {
       gameId,
       roundNumber: 1,
       roleId: "us-president",
@@ -464,16 +464,16 @@ describe("Proposals", () => {
   });
 
   it("should accept a proposal", async () => {
-    const proposals = await convex.query(api.proposals.getByGameAndRound, {
+    const proposals = await convex.query(api.requests.getByGameAndRound, {
       gameId,
       roundNumber: 1,
     });
-    await convex.mutation(api.proposals.respond, {
+    await convex.mutation(api.requests.respond, {
       proposalId: proposals[0]._id,
       status: "accepted",
     });
 
-    const updated = await convex.query(api.proposals.getByGameAndRound, {
+    const updated = await convex.query(api.requests.getByGameAndRound, {
       gameId,
       roundNumber: 1,
     });
@@ -481,7 +481,7 @@ describe("Proposals", () => {
   });
 
   it("should decline a proposal", async () => {
-    const proposalId = await convex.mutation(api.proposals.send, {
+    const proposalId = await convex.mutation(api.requests.send, {
       gameId,
       roundNumber: 1,
       fromRoleId: "china-president",
@@ -492,12 +492,12 @@ describe("Proposals", () => {
       requestType: "endorsement",
     });
 
-    await convex.mutation(api.proposals.respond, {
+    await convex.mutation(api.requests.respond, {
       proposalId,
       status: "declined",
     });
 
-    const proposals = await convex.query(api.proposals.getByGameAndRound, {
+    const proposals = await convex.query(api.requests.getByGameAndRound, {
       gameId,
       roundNumber: 1,
     });

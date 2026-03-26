@@ -16,18 +16,3 @@ export function redactSecretAction(
 
   return `${roleName} took a covert action (${probLabel} odds) ${outcome}`.trim();
 }
-
-/**
- * Check if an action should be visible to a given viewer.
- * Facilitator sees everything. Players see their own secrets but not others'.
- */
-export function isActionVisibleTo(
-  action: { secret?: boolean },
-  actionRoleId: string,
-  viewerRoleId: string | null,
-  isFacilitator: boolean
-): boolean {
-  if (isFacilitator) return true;
-  if (!action.secret) return true;
-  return actionRoleId === viewerRoleId;
-}

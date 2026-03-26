@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     const currentRound = rounds?.find((r) => r.number === roundNumber);
 
     // Fetch all requests involving this role (both directions)
-    const allProposals = await convex.query(api.proposals.getByGameAndRound, {
+    const allProposals = await convex.query(api.requests.getByGameAndRound, {
       gameId: gameId as Id<"games">,
       roundNumber,
     });

@@ -157,7 +157,7 @@ export default defineSchema({
   }).index("by_game", ["gameId"]),
 
   // Action support requests: endorsement or compute, attached to a specific action
-  proposals: defineTable({
+  requests: defineTable({
     gameId: v.id("games"),
     roundNumber: v.number(),
     fromRoleId: v.string(),

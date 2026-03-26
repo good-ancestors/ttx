@@ -125,7 +125,7 @@ export async function POST(request: Request) {
 
     // ── Proposals context ──
     let proposalContext = "";
-    const allProposals = await convex.query(api.proposals.getByGameAndRound, {
+    const allProposals = await convex.query(api.requests.getByGameAndRound, {
       gameId: gameId as Id<"games">,
       roundNumber,
     });

@@ -55,7 +55,7 @@ export async function POST(request: Request) {
     }
 
     // Fetch pending proposals addressed to this role
-    const pendingProposals = await convex.query(api.proposals.getForRole, {
+    const pendingProposals = await convex.query(api.requests.getForRole, {
       gameId: gameId as Id<"games">,
       roundNumber,
       roleId,
@@ -127,15 +127,15 @@ For "newRequests", use the roleId as toRoleId, write the action text, set reques
 
     // Execute accept/decline for each pending request response
     for (const resp of output.responses) {
-      await convex.mutation(api.proposals.respond, {
-        proposalId: resp.proposalId as Id<"proposals">,
+      await convex.mutation(api.requests.respond, {
+        proposalId: resp.proposalId as Id<"requests">,
         status: resp.accept ? "accepted" : "declined",
       });
     }
 
     // Send any new requests — guard against duplicates
     if (output.newRequests) {
-      const allProposals = await convex.query(api.proposals.getByGameAndRound, {
+      const allProposals = await convex.query(api.requests.getByGameAndRound, {
         gameId: gameId as Id<"games">,
         roundNumber,
       });
@@ -149,7 +149,7 @@ For "newRequests", use the roleId as toRoleId, write the action text, set reques
         if (existingPairs.has(pairKey) || existingPairs.has(reversePairKey)) continue;
 
         const targetRole = enabledRoles.find((r) => r.id === nr.toRoleId);
-        await convex.mutation(api.proposals.send, {
+        await convex.mutation(api.requests.send, {
           gameId: gameId as Id<"games">,
           roundNumber,
           fromRoleId: roleId,

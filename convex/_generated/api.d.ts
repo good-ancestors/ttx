@@ -11,7 +11,7 @@
 import type * as events from "../events.js";
 import type * as gameData from "../gameData.js";
 import type * as games from "../games.js";
-import type * as proposals from "../proposals.js";
+import type * as requests from "../requests.js";
 import type * as rounds from "../rounds.js";
 import type * as submissions from "../submissions.js";
 import type * as tables from "../tables.js";
@@ -26,7 +26,7 @@ declare const fullApi: ApiFromModules<{
   events: typeof events;
   gameData: typeof gameData;
   games: typeof games;
-  proposals: typeof proposals;
+  requests: typeof requests;
   rounds: typeof rounds;
   submissions: typeof submissions;
   tables: typeof tables;
