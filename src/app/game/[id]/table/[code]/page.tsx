@@ -122,7 +122,7 @@ function ResultActionCard({
 
       {action.rolled != null && action.probability != null && (
         <p className="text-xs font-mono mt-1" style={{ color: isSuccess ? "#22C55E" : "#EF4444" }}>
-          Rolled {action.rolled} vs {action.probability}% — {isSuccess ? "Success!" : "Failed"}
+          Needed ≤{action.probability}, rolled {action.rolled} — {isSuccess ? "Success!" : "Failed"}
         </p>
       )}
 

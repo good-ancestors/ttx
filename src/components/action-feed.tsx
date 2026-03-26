@@ -88,7 +88,7 @@ export function ActionFeed({
         </span>
       </div>
 
-      <div className="flex flex-col gap-1.5 max-h-[60vh] overflow-y-auto pr-2">
+      <div className="flex flex-col gap-1.5 max-h-[60vh] overflow-y-auto overflow-x-hidden pr-2">
         <AnimatePresence>
           {feedItems.map((item, i) => {
             const prob = getProbabilityCard(item.probability);
@@ -103,7 +103,7 @@ export function ActionFeed({
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: Math.min(i * 0.08, 2), duration: 0.3 }}
-                className={`flex items-center gap-3 py-2.5 px-3 rounded-lg ${
+                className={`flex items-center gap-3 py-2.5 px-3 rounded-lg overflow-hidden min-w-0 ${
                   isResolved ? "bg-navy" : "bg-navy-light/50"
                 }`}
               >
@@ -118,7 +118,7 @@ export function ActionFeed({
                   <Lock className="w-3.5 h-3.5 text-viz-warning shrink-0" />
                 )}
                 <span
-                  className={`text-[13px] flex-1 truncate ${
+                  className={`text-sm flex-1 min-w-0 truncate ${
                     isSecretForNonFacilitator || isSecretHidden
                       ? "text-text-light italic cursor-pointer hover:text-white transition-colors"
                       : "text-[#E2E8F0]"
