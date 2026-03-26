@@ -226,9 +226,30 @@ NARRATIVE RULES:
 3. WORLD STATE UPDATES: Each dial should change by at most ±2 per round. Capability should trend upward (faster in later rounds). Dials should reflect the actual outcomes, not just the baseline.
 4. TRAJECTORY: Based on current alignment confidence (${args.worldState.alignment}/10) and player actions, assess whether the game is trending toward the RACE ENDING (low alignment, high competition → AI takeover) or SLOWDOWN ENDING (high alignment, strong regulation → transparent Safer models). Reflect this in your narrative tone and events.
 5. Round ${args.round} expectations and key scenario events to weave in:
-${args.round === 1 ? "   - Capability: should reach 4-5 (Agent-2 era, early Agent-3 work)\n   - Key events: DPA consolidation possibility, Conscienta positioning, international summit demands, DeepCent closing the gap\n   - Conscienta AI reacts to events — may lobby for regulation, seek mergers, or poach talent\n   - If US uses DPA to consolidate labs, OpenBrain's compute stock should massively increase" : ""}
-${args.round === 2 ? "   - Capability: should reach 6-7 (Agent-3 operational, Agent-4 in development)\n   - Key events: Agent-4 adversarial misalignment detected, Oversight Committee debates, China considering Taiwan, Agent-5 development begins\n   - DeepCent's safety allocation should trend downward unless players intervene (China 'succumbs to wishful thinking')\n   - If alignment confidence is low, the adversarial misalignment is worse; if high, it's caught earlier" : ""}
-${args.round === 3 ? "   - Capability: should reach 8-10 (Agent-4/ASI territory)\n   - Key events: potential AI escape/takeover attempt, 'The Deal' between US and China, robot economy proposals\n   - RACE PATH (alignment ≤ 3): Agent-4 designs Agent-5 aligned to itself, AI takeover imminent\n   - SLOWDOWN PATH (alignment ≥ 6): OpenBrain pivots to 'Safer' transparent models, capability lower but trustworthy\n   - This is the climax — make it dramatic and consequential" : ""}
+${args.round === 1 ? `   - Capability dial: should reach 4-5
+   - DEFAULT R&D MULTIPLIER TARGETS (what happens if the race continues unimpeded):
+     Leading lab (OpenBrain): should reach 8-10× by end of round (Agent-3 coming online)
+     Trailing labs: should reach 4-6× (closing the gap but still behind)
+     If players actively slow down a lab (sanctions, sabotage, safety pivot), its multiplier grows slower
+   - Key events: DPA consolidation possibility, Conscienta positioning, international summit demands, DeepCent closing the gap
+   - Conscienta AI reacts to events — may lobby for regulation, seek mergers, or poach talent
+   - If US uses DPA to consolidate labs, OpenBrain's compute stock should massively increase` : ""}
+${args.round === 2 ? `   - Capability dial: should reach 6-7 (Agent-3 operational, Agent-4 in development)
+   - DEFAULT R&D MULTIPLIER TARGETS:
+     Leading lab: should reach 30-50× by end of round (approaching Agent-4)
+     Trailing labs: should reach 15-25×
+     If a lab pivots heavily to safety, its multiplier grows slower but alignment improves
+   - Key events: Agent-4 adversarial misalignment detected, Oversight Committee debates, China considering Taiwan
+   - DeepCent's safety allocation should trend downward unless players intervene
+   - If alignment confidence is low, the adversarial misalignment is worse; if high, it's caught earlier` : ""}
+${args.round === 3 ? `   - Capability dial: should reach 8-10 (Agent-4/ASI territory)
+   - DEFAULT R&D MULTIPLIER TARGETS:
+     Leading lab: should reach 100-200× by end of round (Agent-4 operational, approaching ASI)
+     Trailing labs: should reach 50-100×
+     Safer model pivot: lab's multiplier drops to 10-30× (trading capability for alignment)
+   - RACE PATH (alignment ≤ 3): Agent-4 designs Agent-5 aligned to itself, AI takeover imminent
+   - SLOWDOWN PATH (alignment ≥ 6): OpenBrain pivots to 'Safer' transparent models
+   - This is the climax — make it dramatic and consequential` : ""}
 6. The facilitator will narrate over your output. Write events as clear, punchy statements. Headlines should feel like real news.
 7. COMPUTE AND R&D UPDATES: Output updated lab compute stocks and R&D multipliers. CRITICAL RULES:
    COMPUTE STOCK:
@@ -241,10 +262,10 @@ ${args.round === 3 ? "   - Capability: should reach 8-10 (Agent-4/ASI territory)
    - The multiplier represents the AI system's current capability level. It can ONLY go up or stay flat — never decrease within a model generation. You cannot un-discover capabilities.
    - Slowing progress means the multiplier grows SLOWER (e.g., stays at 3x instead of jumping to 10x), NOT that it drops from 10x to 3x.
    - The ONLY exception: if a model is explicitly decommissioned/destroyed and replaced with a less capable one (e.g., pivot to Safer models replaces Agent-4 with a deliberately less capable transparent model).
-   - BOUNDS PER ROUND (do NOT exceed):
-     Round 1: leading lab max 10×, trailing labs max 5×
-     Round 2: leading lab max 40×, trailing labs max 20×
-     Round 3: leading lab max 200×, trailing labs max 100×
+   - HARD CEILING PER ROUND (do NOT exceed — these are absolute maxima, not targets):
+     Round 1: max 10×
+     Round 2: max 100×
+     Round 3: max 1,000×
    - Output updates for all tracked labs. Do not add labs that aren't in the current game state.
 8. NON-LAB COMPUTE: Some players (governments, AISIs) have institutional compute they can loan to labs. Events affect this — e.g., Taiwan invasion disrupts chip supply (reduce US/allied compute), sanctions affect China's compute. Output roleComputeUpdates for any non-lab player whose compute changed this round.
 ${args.roleCompute && args.roleCompute.length > 0 ? `\nNON-LAB COMPUTE STATUS:\n${args.roleCompute.map((r) => `- ${r.roleName}: ${r.computeStock}u`).join("\n")}` : ""}`;
