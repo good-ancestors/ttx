@@ -102,6 +102,8 @@ ${game.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMult
 
 YOU ARE PLAYING: ${role.name} — ${role.subtitle}
 ${role.brief}
+
+PERSONALITY: ${role.personality ?? "Strategic and scenario-appropriate."}
 ${pendingSection}
 ${otherRolesSection}
 

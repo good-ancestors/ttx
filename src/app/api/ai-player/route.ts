@@ -159,6 +159,8 @@ ${previousContext}${safetyLeadContext}${proposalContext}
 YOU ARE PLAYING: ${role?.name ?? roleId} — ${role?.subtitle ?? ""}
 ${role?.brief ?? ""}
 
+PERSONALITY: ${role?.personality ?? "Strategic and scenario-appropriate."}
+
 Generate 2-4 actions this actor would take this quarter. Each action should:
 1. State what you do clearly and specifically
 2. Have an intended outcome

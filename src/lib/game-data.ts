@@ -269,6 +269,8 @@ export const ROLES: Role[] = [
     required: false,
     brief:
       "You represent the messy, contradictory currents of global opinion. Public trust in AI labs is low, but desire for a better future is high. Job security is the primary concern. Your tools are social media, protests, consumer choices, and ultimately your vote. You grant or deny the social licence for this technology to exist.",
+    personality:
+      "Volatile, emotional, powerful in aggregate. Driven by fear of job loss, hope for better future, and anger at elites.",
     artifactPrompt:
       "Write the dominant public narrative or protest manifesto.",
   },
@@ -281,6 +283,8 @@ export const ROLES: Role[] = [
     required: false,
     brief:
       "AI companies scraped your content without permission, but the AGI race is the ultimate story. You decide which facts to highlight, voices to amplify, and how to frame debates. Cultivate sources from disgruntled engineers to senior officials. You can make heroes or villains, crises or opportunities.",
+    personality:
+      "Narrative-driven, source-hungry, impact-seeking. Will amplify whatever story gets the most attention. Can make or break reputations.",
     artifactPrompt:
       "Write the breaking news headline and story of the quarter.",
   },
