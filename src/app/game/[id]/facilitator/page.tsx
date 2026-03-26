@@ -17,6 +17,7 @@ import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
 import { WorldStateEditor, NarrativeEditor, FacilitatorAdjust } from "@/components/manual-controls";
 import { DebugPanel } from "@/components/debug-panel";
+import { StateOfPlay } from "@/components/state-of-play";
 import {
   Play,
   ChevronRight,
@@ -556,16 +557,30 @@ export default function FacilitatorPage({
 
             {/* ─── ROLLING ─── */}
             {phase === "rolling" && (
-              <ActionFeed
-                submissions={submissions ?? []}
-                onComplete={() => advancePhase({ gameId, phase: "narrate" })}
-                isFacilitator
-              />
+              <div>
+                <ActionFeed
+                  submissions={submissions ?? []}
+                  onComplete={() => advancePhase({ gameId, phase: "narrate" })}
+                  isFacilitator
+                />
+                {/* State of Play shows immediately — facilitator narrates while AI generates */}
+                <StateOfPlay
+                  labs={game.labs}
+                  worldState={game.worldState}
+                  roundLabel={currentRound?.label ?? ""}
+                />
+              </div>
             )}
 
             {/* ─── NARRATE ─── */}
             {phase === "narrate" && (
               <div>
+                {/* State of Play stays visible above narrative */}
+                <StateOfPlay
+                  labs={game.labs}
+                  worldState={game.worldState}
+                  roundLabel={currentRound?.label ?? ""}
+                />
                 <NarrativePanel round={currentRound} submissions={submissions ?? []} />
 
                 {/* Game timeline for mid-game overview */}

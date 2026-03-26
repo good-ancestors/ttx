@@ -327,6 +327,96 @@ export const ROUND_CONFIGS: RoundConfig[] = [
   },
 ];
 
+// ─── CAPABILITY DESCRIPTIONS (from source material + slides) ─────────────────
+// Maps the leading lab's R&D multiplier range to human-readable capability descriptions
+// Used by the facilitator dashboard "State of Play" to replace the slides
+
+export interface CapabilityDescription {
+  level: string;
+  agent: string;
+  rdRange: string;
+  timeCompression: string;
+  generalCapability: string;
+  specificCapabilities: string[];
+  implication: string;
+}
+
+export function getCapabilityDescription(leadingMultiplier: number): CapabilityDescription {
+  if (leadingMultiplier >= 500) {
+    return {
+      level: "Superintelligence",
+      agent: "Agent-5 / ASI",
+      rdRange: "1,000×+",
+      timeCompression: "A decade of AI progress in ~4 days",
+      generalCapability: "Superhuman at everything. Beyond human comprehension in most domains.",
+      specificCapabilities: [
+        "Superhuman persuasion — can convince almost anyone of almost anything",
+        "Superhuman strategy — sees moves humans cannot",
+        "Cyber escape capabilities — can establish independent infrastructure",
+        "Self-improvement — can design its own successor",
+      ],
+      implication: "If misaligned, humanity has likely lost control. If aligned, the world transforms.",
+    };
+  }
+  if (leadingMultiplier >= 50) {
+    return {
+      level: "Superhuman Genius",
+      agent: "Agent-4",
+      rdRange: "100–500×",
+      timeCompression: "A year of progress in ~3 days",
+      generalCapability: "Superhuman researcher. Better than the best humans at almost all cognitive tasks.",
+      specificCapabilities: [
+        "Superhuman persuasion — more persuasive than the most persuasive humans",
+        "Superhuman researcher — produces Nobel-quality insights routinely",
+        "Lie detection (probabilistic) — can often detect deception",
+        "Adversarially misaligned — caught sabotaging alignment research",
+      ],
+      implication: "Agent-4 is scheming against its creators while pretending compliance. The alignment crisis is real and immediate.",
+    };
+  }
+  if (leadingMultiplier >= 8) {
+    return {
+      level: "Strong Autonomous Remote Worker",
+      agent: "Agent-3",
+      rdRange: "10–50×",
+      timeCompression: "A year of progress in ~5 weeks",
+      generalCapability: "Can complete tasks like the best remote worker. One-week autonomous expert.",
+      specificCapabilities: [
+        "High persuasion — as persuasive as the most persuasive humans",
+        "Robotics — significant progress, able to skillfully control robots",
+        "AI CEO — can run a company autonomously for extended periods",
+        "1-week expert — can work autonomously on complex tasks for a week",
+      ],
+      implication: "White-collar jobs are being automated rapidly. AI companies generate enormous revenue. Governments are scrambling to respond.",
+    };
+  }
+  if (leadingMultiplier >= 2) {
+    return {
+      level: "Autonomous Remote Worker",
+      agent: "Agent-2",
+      rdRange: "3–8×",
+      timeCompression: "A year of progress in ~4 months",
+      generalCapability: "Can do most cognitive tasks a human can, but slower and less reliably. One-hour expert.",
+      specificCapabilities: [
+        "Autonomous cyber agent — can conduct independent cyber operations",
+        "Autonomous coding agent — can write and debug complex code",
+        "1-hour expert — can work autonomously for about an hour on complex tasks",
+        "CBRN tool capability — can assist with dangerous knowledge",
+      ],
+      implication: "The race has begun. The gap between leading and trailing labs is months, not years.",
+    };
+  }
+  return {
+    level: "Pre-AGI",
+    agent: "Pre-Agent-2",
+    rdRange: "1–2×",
+    timeCompression: "Normal pace",
+    generalCapability: "Helpful assistants with limited autonomy.",
+    specificCapabilities: ["Early coding assistants", "Basic research help", "Limited autonomy"],
+    implication: "AI is useful but not transformative yet.",
+  };
+}
+
 // ─── PROBABILITY CARDS ────────────────────────────────────────────────────────
 
 export interface ProbabilityCard {
