@@ -26,7 +26,6 @@ import {
   MessageSquareText,
   SkipForward,
   Bot,
-  RefreshCw,
 } from "lucide-react";
 
 export default function FacilitatorPage({
@@ -60,7 +59,6 @@ export default function FacilitatorPage({
   const toggleEnabled = useMutation(api.tables.toggleEnabled);
   const skipTimer = useMutation(api.games.skipTimer);
   const kickToAI = useMutation(api.tables.kickToAI);
-  const rerollAction = useMutation(api.submissions.rerollAction);
 
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
