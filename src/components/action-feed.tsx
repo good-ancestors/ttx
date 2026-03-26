@@ -1,9 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { ROLES, getProbabilityCard } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, XCircle, EyeOff } from "lucide-react";
+import { Check, XCircle, EyeOff, Lock } from "lucide-react";
 
 interface Submission {
   _id: string;
@@ -23,6 +24,7 @@ interface FeedItem {
   roleName: string;
   roleColor: string;
   text: string;
+  redactedText: string;
   displayText: string;
   secret: boolean;
   priority: number;
@@ -40,6 +42,17 @@ export function ActionFeed({
   onComplete: () => void;
   isFacilitator?: boolean;
 }) {
+  const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
+
+  const toggleReveal = (key: string) => {
+    setRevealedSecrets((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
   // Flatten all actions from all submissions into a single feed
   const feedItems: FeedItem[] = submissions.flatMap((sub) => {
     const role = ROLES.find((r) => r.id === sub.roleId);
@@ -51,6 +64,7 @@ export function ActionFeed({
         roleName,
         roleColor: role?.color ?? "#94A3B8",
         text: a.text,
+        redactedText: a.secret ? redactSecretAction(roleName, a) : a.text,
         displayText: a.secret && !isFacilitator
           ? redactSecretAction(roleName, a)
           : a.text,
@@ -79,10 +93,13 @@ export function ActionFeed({
           {feedItems.map((item, i) => {
             const prob = getProbabilityCard(item.probability);
             const isResolved = item.rolled != null;
+            const itemKey = `${item.roleId}-${i}`;
+            const isSecretHidden = item.secret && isFacilitator && !revealedSecrets.has(itemKey);
+            const isSecretForNonFacilitator = item.secret && !isFacilitator;
 
             return (
               <motion.div
-                key={`${item.roleId}-${i}`}
+                key={itemKey}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.08, duration: 0.3 }}
@@ -94,11 +111,22 @@ export function ActionFeed({
                   className="w-2 h-2 rounded-full shrink-0"
                   style={{ backgroundColor: item.roleColor }}
                 />
-                {item.secret && !isFacilitator && (
+                {isSecretForNonFacilitator && (
                   <EyeOff className="w-3.5 h-3.5 text-viz-warning shrink-0" />
                 )}
-                <span className={`text-[13px] flex-1 truncate ${item.secret && !isFacilitator ? "text-text-light italic" : "text-[#E2E8F0]"}`}>
-                  {item.displayText}
+                {isSecretHidden && (
+                  <Lock className="w-3.5 h-3.5 text-viz-warning shrink-0" />
+                )}
+                <span
+                  className={`text-[13px] flex-1 truncate ${
+                    isSecretForNonFacilitator || isSecretHidden
+                      ? "text-text-light italic cursor-pointer hover:text-white transition-colors"
+                      : "text-[#E2E8F0]"
+                  }`}
+                  onClick={isSecretHidden ? () => toggleReveal(itemKey) : undefined}
+                  title={isSecretHidden ? "Click to reveal secret action" : undefined}
+                >
+                  {isSecretHidden ? item.redactedText : item.displayText}
                 </span>
                 <span
                   className="text-[11px] font-bold py-0.5 px-2 rounded-full shrink-0"

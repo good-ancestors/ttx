@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLES, cycleProbability } from "@/lib/game-data";
+import { redactSecretAction } from "@/lib/secret-actions";
 import { useCountdown } from "@/lib/hooks";
 import { CapabilityTimeline } from "@/components/capability-timeline";
 import { WorldStatePanel } from "@/components/world-state-panel";
@@ -66,6 +67,16 @@ export default function FacilitatorPage({
   const [resolveStep, setResolveStep] = useState("");
   const [showSubmissionDetails, setShowSubmissionDetails] = useState(false);
   const [submitDuration, setSubmitDuration] = useState(4);
+  const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
+
+  const toggleReveal = (key: string) => {
+    setRevealedSecrets((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   if (!game || !tables || !rounds) {
     return (
@@ -451,9 +462,26 @@ export default function FacilitatorPage({
                         <div className="w-2 h-2 rounded-full" style={{ backgroundColor: role?.color }} />
                         <span className="text-sm font-bold">{role?.name ?? sub.roleId}</span>
                       </div>
-                      {sub.actions.map((action, i) => (
+                      {sub.actions.map((action, i) => {
+                        const secretKey = `${sub.roleId}-${i}`;
+                        const isHidden = action.secret && !revealedSecrets.has(secretKey);
+                        const roleName = role?.name ?? sub.roleId;
+                        return (
                         <div key={i} className="flex items-center gap-3 py-2 border-b border-navy-light last:border-0">
-                          <span className="text-[13px] text-[#E2E8F0] flex-1">{action.text}</span>
+                          {action.secret && (
+                            <Lock className="w-3.5 h-3.5 text-viz-warning shrink-0" />
+                          )}
+                          <span
+                            className={`text-[13px] flex-1 ${
+                              isHidden
+                                ? "text-text-light italic cursor-pointer hover:text-white transition-colors"
+                                : "text-[#E2E8F0]"
+                            }`}
+                            onClick={isHidden ? () => toggleReveal(secretKey) : undefined}
+                            title={isHidden ? "Click to reveal secret action" : undefined}
+                          >
+                            {isHidden ? redactSecretAction(roleName, action) : action.text}
+                          </span>
                           <span className="text-[11px] text-text-light font-mono">P{action.priority}</span>
                           {action.probability != null ? (
                             <ProbabilityBadge
@@ -468,7 +496,8 @@ export default function FacilitatorPage({
                             <span className="text-[11px] text-navy-muted">Grading...</span>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   );
                 })}
