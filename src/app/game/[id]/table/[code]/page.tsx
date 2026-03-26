@@ -100,7 +100,7 @@ function ResultActionCard({
         <span className="text-[11px] bg-warm-gray text-text-muted rounded px-1.5 py-0.5 font-mono font-semibold shrink-0">
           #{index + 1}
         </span>
-        <p className="text-[13px] text-text flex-1">{action.text}</p>
+        <p className="text-sm text-text flex-1">{action.text}</p>
         {isSuccess && (
           <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-bold text-[#059669] bg-[#ECFDF5] px-2 py-0.5 rounded-full">
             <CheckCircle2 className="w-3 h-3" /> Success
@@ -121,7 +121,7 @@ function ResultActionCard({
       </div>
 
       {action.rolled != null && action.probability != null && (
-        <p className="text-[12px] font-mono mt-1" style={{ color: isSuccess ? "#22C55E" : "#EF4444" }}>
+        <p className="text-xs font-mono mt-1" style={{ color: isSuccess ? "#22C55E" : "#EF4444" }}>
           Rolled {action.rolled} vs {action.probability}% — {isSuccess ? "Success!" : "Failed"}
         </p>
       )}
@@ -137,7 +137,7 @@ function ResultActionCard({
             {reasoningOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
           </button>
           {reasoningOpen && (
-            <p className="text-[12px] text-text-muted mt-1.5 leading-relaxed">
+            <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
               {action.reasoning}
             </p>
           )}
@@ -156,14 +156,14 @@ function HowToPlaySection({ role }: { role: Role }) {
     <div className="mt-4">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 text-[13px] font-semibold text-text-muted hover:text-text transition-colors"
+        className="flex items-center gap-1.5 text-sm font-semibold text-text-muted hover:text-text transition-colors"
       >
         <Info className="w-3.5 h-3.5" />
         How to Play
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
       {open && (
-        <ul className="mt-2 space-y-1.5 text-[13px] text-text-muted pl-5 list-disc">
+        <ul className="mt-2 space-y-1.5 text-sm text-text-muted pl-5 list-disc">
           <li>Discuss with your table what you will do this quarter</li>
           <li>When submissions open, describe your key actions</li>
           <li>The AI will grade probabilities and dice determine outcomes</li>
@@ -174,8 +174,8 @@ function HowToPlaySection({ role }: { role: Role }) {
         <div className="mt-3 bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg p-3 flex items-start gap-2">
           <Cpu className="w-4 h-4 text-[#0284C7] shrink-0 mt-0.5" />
           <div>
-            <span className="text-[12px] font-bold text-[#0284C7]">Compute Tip</span>
-            <p className="text-[12px] text-[#0369A1] mt-0.5">
+            <span className="text-xs font-bold text-[#0284C7]">Compute Tip</span>
+            <p className="text-xs text-[#0369A1] mt-0.5">
               As a lab CEO, you control a 3-way compute allocation: Users/Commercial,
               R&D/Capabilities, and Safety/Alignment. This shapes your lab&apos;s progress.
             </p>
@@ -187,8 +187,8 @@ function HowToPlaySection({ role }: { role: Role }) {
         <div className="mt-3 bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg p-3 flex items-start gap-2">
           <Cpu className="w-4 h-4 text-[#0284C7] shrink-0 mt-0.5" />
           <div>
-            <span className="text-[12px] font-bold text-[#0284C7]">Compute Tip</span>
-            <p className="text-[12px] text-[#0369A1] mt-0.5">
+            <span className="text-xs font-bold text-[#0284C7]">Compute Tip</span>
+            <p className="text-xs text-[#0369A1] mt-0.5">
               You have compute resources you can loan to labs. This gives you leverage
               and influences their capability trajectory.
             </p>
@@ -449,7 +449,7 @@ export default function TablePlayerPage({
           {draftRestored && (
             <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg p-2.5 mb-3 flex items-center gap-2">
               <Info className="w-4 h-4 text-[#0284C7] shrink-0" />
-              <span className="text-[12px] text-[#0369A1] font-medium">Draft restored from previous session</span>
+              <span className="text-xs text-[#0369A1] font-medium">Draft restored from previous session</span>
             </div>
           )}
 
@@ -457,7 +457,7 @@ export default function TablePlayerPage({
           {autoSubmitMessage && (
             <div className="bg-[#FFF7ED] border border-[#FED7AA] rounded-lg p-2.5 mb-3 flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 text-[#EA580C] shrink-0" />
-              <span className="text-[12px] text-[#C2410C] font-medium">{autoSubmitMessage}</span>
+              <span className="text-xs text-[#C2410C] font-medium">{autoSubmitMessage}</span>
             </div>
           )}
 
@@ -467,8 +467,8 @@ export default function TablePlayerPage({
             style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
           >
             <h3 className="text-lg font-bold text-text mb-1">{round.title}</h3>
-            <p className="text-[13px] text-text-muted mb-2 leading-relaxed">{round.narrative}</p>
-            <p className="text-[13px] text-text italic">&ldquo;{role.brief}&rdquo;</p>
+            <p className="text-sm text-text-muted mb-2 leading-relaxed">{round.narrative}</p>
+            <p className="text-sm text-text italic">&ldquo;{role.brief}&rdquo;</p>
           </div>
 
           {/* DISCUSS phase — improved onboarding */}
@@ -478,7 +478,7 @@ export default function TablePlayerPage({
                 <Target className="w-5 h-5 text-text" />
                 <h3 className="text-base font-bold text-text">Your Mission</h3>
               </div>
-              <p className="text-[13px] font-semibold text-text mb-1">{role.name}</p>
+              <p className="text-sm font-semibold text-text mb-1">{role.name}</p>
               <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
               <HowToPlaySection role={role} />
             </div>
@@ -537,13 +537,13 @@ export default function TablePlayerPage({
                   rows={5}
                   spellCheck={false}
                   autoComplete="off"
-                  className="w-full p-3 bg-warm-gray border border-border rounded-lg text-[13px] text-text
+                  className="w-full p-3 bg-warm-gray border border-border rounded-lg text-sm text-text
                              resize-none outline-none focus:border-navy-light"
                 />
                 <button
                   onClick={handleParse}
                   disabled={!freeText.trim()}
-                  className="mt-2 w-full py-2.5 bg-navy text-white rounded-lg font-bold text-[13px]
+                  className="mt-2 w-full py-2.5 bg-navy text-white rounded-lg font-bold text-sm
                              disabled:opacity-30 hover:bg-navy-light transition-colors"
                 >
                   Parse Actions
@@ -599,7 +599,7 @@ export default function TablePlayerPage({
                       placeholder="Write your artifact here..."
                       rows={3}
                       spellCheck={false}
-                      className="w-full p-3 bg-warm-gray border border-border rounded-lg text-[13px] text-text
+                      className="w-full p-3 bg-warm-gray border border-border rounded-lg text-sm text-text
                                  resize-none outline-none focus:border-navy-light"
                     />
                   </div>
@@ -653,7 +653,7 @@ export default function TablePlayerPage({
                   <h3 className="text-base font-bold mb-3">{round.label} — What Happened</h3>
 
                   {round.summary.headlines.map((h, i) => (
-                    <p key={i} className="text-[13px] text-[#E2E8F0] italic mb-1.5 pl-3 border-l-2 border-viz-warning">
+                    <p key={i} className="text-sm text-[#E2E8F0] italic mb-1.5 pl-3 border-l-2 border-viz-warning">
                       {h}
                     </p>
                   ))}
@@ -661,7 +661,7 @@ export default function TablePlayerPage({
                   {round.summary.geopoliticalEvents.length > 0 && (
                     <div className="mt-3">
                       {round.summary.geopoliticalEvents.map((evt, i) => (
-                        <p key={i} className="text-[13px] text-[#CBD5E1] mb-1">
+                        <p key={i} className="text-sm text-[#CBD5E1] mb-1">
                           {evt}
                         </p>
                       ))}

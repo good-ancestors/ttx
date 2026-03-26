@@ -135,7 +135,7 @@ export function ProposalPanel({
                       </span>
                     )}
                   </div>
-                  <p className="text-[13px] text-text mb-1">
+                  <p className="text-sm text-text mb-1">
                     {p.actionText}
                   </p>
                   {(p.requestType || p.computeAmount) && (
@@ -221,7 +221,7 @@ export function ProposalPanel({
             <select
               value={targetRole}
               onChange={(e) => setTargetRole(e.target.value)}
-              className="w-full p-2 bg-warm-gray border border-border rounded-lg text-[13px] text-text mb-2 outline-none"
+              className="w-full p-2 bg-warm-gray border border-border rounded-lg text-sm text-text mb-2 outline-none"
             >
               <option value="">Select recipient...</option>
               <optgroup label="Labs">
@@ -245,7 +245,7 @@ export function ProposalPanel({
               onChange={(e) => setProposalText(e.target.value)}
               placeholder="Propose a joint action... e.g. 'We propose merging our labs to pool compute resources'"
               rows={2}
-              className="w-full p-2 bg-warm-gray border border-border rounded-lg text-[13px] text-text
+              className="w-full p-2 bg-warm-gray border border-border rounded-lg text-sm text-text
                          resize-none outline-none mb-2"
             />
             <button

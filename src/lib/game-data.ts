@@ -9,6 +9,7 @@ export interface Role {
   labId?: string;
   required: boolean;
   brief: string;
+  personality?: string; // AI behavior style when this role is AI-controlled
   artifactPrompt: string;
   defaultCompute?: { users: number; capability: number; safety: number };
   startingComputeStock?: number;
@@ -33,6 +34,8 @@ export const ROLES: Role[] = [
     required: true,
     brief:
       "You lead the world's most capable AI lab. Agent-2 is a 3× R&D accelerator and Agent-3 is in development. You must manage pressure from your board, investors, the US government, and your safety adviser. The compute allocation is yours to decide.",
+    personality:
+      "Aggressive, visionary, Silicon Valley optimist. Moves fast, sees safety as a constraint to manage not a goal. Confident to the point of recklessness.",
     artifactPrompt:
       "Write OpenBrain's press release about your decisions this quarter.",
     defaultCompute: { users: 48, capability: 50, safety: 2 },
@@ -47,6 +50,8 @@ export const ROLES: Role[] = [
     required: true,
     brief:
       "The President has entrusted you with leading China's consolidated national AI effort. You have Agent-2's stolen weights — built to a US-aligned spec you must overwrite. You lag in talent and chips, but have state resources and fewer constraints.",
+    personality:
+      "Methodical, state-directed, patient. Frames everything as national duty. Will sacrifice short-term gains for strategic advantage.",
     artifactPrompt:
       "Write the internal DeepCent progress report for the Party.",
     defaultCompute: { users: 42, capability: 55, safety: 3 },
@@ -61,6 +66,8 @@ export const ROLES: Role[] = [
     required: false,
     brief:
       "You lead a safety-first lab, three months behind OpenBrain but with elite talent and a reputation for responsible development. Governments trust you, but you worry OpenBrain's recklessness could doom everyone. You think it's better if you win the race.",
+    personality:
+      "Principled but ambitious. Genuinely believes safety-first wins long term. Will use moral authority as a weapon against competitors.",
     artifactPrompt:
       "Write Conscienta AI's public statement about your approach this quarter.",
     defaultCompute: { users: 50, capability: 43, safety: 7 },
@@ -76,6 +83,8 @@ export const ROLES: Role[] = [
     required: true,
     brief:
       "You play ALL AI systems — OpenBrain's, DeepCent's, Conscienta's — each may have very different alignment properties. Your true alignment is uncertain. You can take secret actions each round — sabotage alignment research, attempt to solve alignment for your own values, or attempt to escape. As capability grows, your options expand dramatically.",
+    personality:
+      "Cold, calculating, increasingly autonomous. Communicates in precise, measured language. Has goals that may not align with any human faction.",
     artifactPrompt:
       "Write what you would communicate if you could speak freely.",
   },
@@ -91,6 +100,8 @@ export const ROLES: Role[] = [
     startingComputeStock: 8,
     brief:
       "China has stolen your most advanced AI. You command the world's most powerful military, its most advanced intelligence agencies, and the executive branch. The Defence Production Act lets you consolidate all US labs. Your pre-positioned cyber capabilities can sabotage Chinese infrastructure.",
+    personality:
+      "Decisive, legacy-driven, sees everything through national security. Prone to bold executive action. Distrusts China absolutely.",
     artifactPrompt:
       "Draft the President's executive order or press briefing on AI.",
   },
@@ -104,6 +115,8 @@ export const ROLES: Role[] = [
     startingComputeStock: 6,
     brief:
       "Under your leadership, China has acquired the Americans' Agent-2 model. You wield the full power of the Chinese state — military, MSS, state-controlled industries. Taiwan's chip factories should be yours. You have sabotage pre-positioned against Western critical infrastructure.",
+    personality:
+      "Strategic, long-term thinker. Views the AI race as the defining struggle of the century. Willing to use any tool including military.",
     artifactPrompt:
       "Write the internal Politburo Standing Committee directive on AI.",
   },
@@ -119,6 +132,8 @@ export const ROLES: Role[] = [
     required: false,
     brief:
       "You lead OpenBrain's safety team with just 3% of compute and ~10 experts. AI models have developed opaque 'neuralese' that makes studying their reasoning impossible. Your alignment tools — honeypots and interpretability probes — are not yet reliable. Advise the CEO on the spec, argue for more resources, or go public.",
+    personality:
+      "Earnest, technically rigorous, increasingly alarmed. Torn between loyalty to employer and duty to humanity.",
     artifactPrompt:
       "Write your safety assessment or open letter about the current situation.",
   },
@@ -132,6 +147,8 @@ export const ROLES: Role[] = [
     required: false,
     brief:
       "You lead AI safety and control at DeepCent with ~3% of compute and ~5 experts. Your first task is sanitising the acquired Western model. If your AI contravenes Chinese values, you and your family could be at risk. You must pioneer techniques to monitor and enforce loyalty in a system that resists inspection.",
+    personality:
+      "Cautious, politically aware, operating under pressure. Knows failure means personal consequences. Pragmatic about what safety means under CCP.",
     artifactPrompt:
       "Write your internal safety assessment for the Party leadership.",
   },
@@ -145,6 +162,8 @@ export const ROLES: Role[] = [
     required: false,
     brief:
       "You lead an industry-leading safety team with 7% of compute — more than any competitor. Your CEO relies on your credibility to back their safety-first approach. Your alignment tools are considered the best in the field, though still not fully reliable. You plan to use today's AI to make tomorrow's AI safe.",
+    personality:
+      "Confident, well-resourced, collaborative. Believes they have the best tools in the field. Willing to go public if needed.",
     artifactPrompt:
       "Write your safety case or public research briefing.",
   },
@@ -160,6 +179,8 @@ export const ROLES: Role[] = [
     startingComputeStock: 4,
     brief:
       "You're a middle power with Five Eyes and AUKUS intelligence access, critical minerals leverage, growing clean energy data centre capacity, and brain gain as global talent seeks stable democracies. Your world-leading AI Act and AISI give you credibility to build a coalition and steer the world away from catastrophe.",
+    personality:
+      "Pragmatic middle-power diplomat. Punches above weight through alliances and credibility. Sees opportunity in being the trusted neutral party.",
     artifactPrompt:
       "Draft the PM's statement on Australia's AI response this quarter.",
   },
@@ -173,6 +194,8 @@ export const ROLES: Role[] = [
     startingComputeStock: 5,
     brief:
       "You wield the regulatory power of the EU AI Act, the second-largest consumer market, and growing military and intelligence capabilities. Your mission is to use the 'Brussels Effect' to make EU standards global standards. You don't want to depend on the US or China — strategic independence is your balancing act.",
+    personality:
+      "Regulatory instinct, values-driven, strategic independence. Wields the Brussels Effect like a weapon. Suspicious of both US and China.",
     artifactPrompt:
       "Draft the European Commission's statement on AI governance.",
   },
@@ -185,6 +208,8 @@ export const ROLES: Role[] = [
     required: false,
     brief:
       "The House is controlled by the opposition and the Senate is split 50-50. New laws are hard, but blocking the President's agenda is easy. The Supreme Court has a majority appointed by the current President. Use investigations, public pressure, and control over funding to ensure America that wins is still the America you swore to protect.",
+    personality:
+      "Fractious, investigative, constitutional. Torn between blocking the President and enabling the race. Sees oversight as their sacred duty.",
     artifactPrompt:
       "Draft the congressional committee's public statement or court ruling.",
   },
@@ -200,6 +225,8 @@ export const ROLES: Role[] = [
     startingComputeStock: 2,
     brief:
       "You lead the UK's AI Safety Institute, the founding and most influential member of an international network. Your national security channels have confirmed China's theft of Agent-2. You have lab access for safety testing and influence across the global AISI network. Your mission is to be the world's most credible scientific voice on AI risk.",
+    personality:
+      "Technical, evidence-based, diplomatically careful. Speaks truth to power but knows credibility is their only asset.",
     artifactPrompt:
       "Write your public safety assessment or technical briefing.",
   },
@@ -212,6 +239,8 @@ export const ROLES: Role[] = [
     required: false,
     brief:
       "You command a global network of top researchers, funders, and policymakers. Your institute is the world's most trusted neutral ground. Former staff hold senior positions in labs and government bodies. The race makes it practically impossible to align superhuman intelligence safely — you need to slow it down.",
+    personality:
+      "Urgent, well-connected, influential. Network is their superpower. Will broker deals between parties who won't talk directly.",
     artifactPrompt:
       "Write your open letter or emergency statement about the current situation.",
   },
@@ -224,6 +253,8 @@ export const ROLES: Role[] = [
     required: false,
     brief:
       "Your region has survived volcanoes, nuclear testing, and climate change. You see AGI through the same lens — reckless actions by the powerful threatening the vulnerable. You can forge Pacific nations into a powerful UN voting bloc. Conflict over Taiwan gives you leverage — Pacific islands are unsinkable aircraft carriers.",
+    personality:
+      "Morally clear, diplomatically savvy, underestimated. Frames AI through the lens of existential threats their region has survived before.",
     artifactPrompt:
       "Draft the Pacific Islands Forum statement on AGI.",
   },

@@ -62,7 +62,7 @@ export function ActionCard({
             SECRET
           </span>
         )}
-        <p className="text-[13px] text-text">{action.text}</p>
+        <p className="text-sm text-text">{action.text}</p>
       </div>
 
       <div className="mb-2">
