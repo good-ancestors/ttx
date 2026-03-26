@@ -65,13 +65,16 @@ describe("Game Creation", () => {
     expect(game!.worldState.tension).toBe(4);
   });
 
-  it("should have 2 labs with correct starting data", async () => {
+  it("should have 3 tracked labs with correct starting data", async () => {
     const game = await convex.query(api.games.get, { gameId });
-    expect(game!.labs).toHaveLength(2);
+    expect(game!.labs).toHaveLength(3);
     const ob = game!.labs.find((l) => l.roleId === "openbrain");
     expect(ob).toBeDefined();
     expect(ob!.computeStock).toBe(22);
     expect(ob!.rdMultiplier).toBe(3);
+    const con = game!.labs.find((l) => l.roleId === "conscienta");
+    expect(con).toBeDefined();
+    expect(con!.computeStock).toBe(14);
   });
 });
 

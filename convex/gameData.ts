@@ -60,4 +60,11 @@ export const DEFAULT_LABS = [
     rdMultiplier: 2.5,
     allocation: { users: 42, capability: 55, safety: 3 },
   },
+  {
+    name: "Conscienta",
+    roleId: "conscienta",
+    computeStock: 14,
+    rdMultiplier: 2,
+    allocation: { users: 53, capability: 42, safety: 5 },
+  },
 ];

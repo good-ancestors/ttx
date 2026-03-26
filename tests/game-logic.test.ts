@@ -173,8 +173,8 @@ describe("Compute Categories", () => {
 });
 
 describe("Default Labs", () => {
-  it("should have 2 player-controlled labs", () => {
-    expect(DEFAULT_LABS).toHaveLength(2);
+  it("should have 3 tracked labs (OpenBrain, DeepCent, Conscienta)", () => {
+    expect(DEFAULT_LABS).toHaveLength(3);
   });
 
   it("allocations should sum to 100", () => {
@@ -207,8 +207,8 @@ describe("Default Labs", () => {
 });
 
 describe("Background Labs", () => {
-  it("should have 3 background labs", () => {
-    expect(BACKGROUND_LABS).toHaveLength(3);
+  it("should have 2 background labs", () => {
+    expect(BACKGROUND_LABS).toHaveLength(2);
   });
 
   it("allocations should sum to ~100", () => {
@@ -343,8 +343,10 @@ describe("Edge Cases", () => {
     expect(MAX_ACTIONS).toBe(5);
   });
 
-  it("all default lab roleIds should match a ROLES entry", () => {
-    for (const lab of DEFAULT_LABS) {
+  it("player-controlled lab roleIds should match a ROLES entry", () => {
+    // OpenBrain and DeepCent are player-controlled labs
+    // Conscienta is tracked but may not have a player role
+    for (const lab of DEFAULT_LABS.filter((l) => l.roleId !== "conscienta")) {
       const role = ROLES.find((r) => r.id === lab.roleId);
       expect(role).toBeDefined();
       expect(role!.isLab).toBe(true);

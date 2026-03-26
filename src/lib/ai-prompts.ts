@@ -22,8 +22,8 @@ ROLES:
 - AI Safety Community: Technical expertise without direct power. Influence through persuasion.
 - The AI Systems: Increasingly capable. Alignment uncertain. May have goals of their own.
 
-KEY NPC (not player-controlled):
-- Conscienta AI: Third-leading US lab, ~3 months behind OpenBrain. Safety-first reputation but commercially ambitious. Has ~14 compute units. Will react to events — may poach talent, lobby for regulation, or seek mergers. Include their likely reactions in narrative output.
+KEY LAB (tracked, may or may not be player-controlled):
+- Conscienta AI: Third-leading US lab, ~3 months behind OpenBrain. Safety-first reputation but commercially ambitious. Has won some games by being the most trusted lab when others fail on alignment. May poach talent, lobby for regulation, seek mergers, or emerge as the winner if other labs misalign. Their compute, allocation, and R&D multiplier are tracked alongside OpenBrain and DeepCent.
 
 DETAILED CAPABILITY PROGRESSION:
 - Pre-game (Oct 2027): Autonomous replicator, CBRN tool creation, 30-minute expert conversations
@@ -158,6 +158,6 @@ ${args.round === 3 ? "   - Capability: should reach 8-10 (Agent-4/ASI territory)
      Round 2: leading lab max 40×, trailing labs max 20×
      Round 3: leading lab max 200×, trailing labs max 100×
    - A lab that pivots to safety/Safer models should see its multiplier DECREASE (trading capability for alignment).
-   - Only output labs named "OpenBrain" and "DeepCent" (the two player-controlled labs). Do not add other labs.
+   - Output updates for all tracked labs (OpenBrain, DeepCent, Conscienta). Do not add labs that aren't in the current game state.
    - If DPA consolidation happened, ADD Conscienta's stock (~14u) to OpenBrain's stock.`;
 }

@@ -124,8 +124,8 @@ export async function POST(request: Request) {
 
       // Update lab compute stocks, R&D multipliers, and allocation
       if (output.labUpdates) {
-        // Clamp multiplier to reasonable bounds
-        const maxMultiplier = roundNumber === 1 ? 10 : roundNumber === 2 ? 40 : 200;
+        // Clamp multiplier — generous bounds, AI scenario allows extreme values in later rounds
+        const maxMultiplier = roundNumber === 1 ? 15 : roundNumber === 2 ? 100 : 1000;
         const updatedLabs = game.labs.map((lab) => {
           const update = output.labUpdates.find((u) => u.name === lab.name);
           if (!update) return lab;

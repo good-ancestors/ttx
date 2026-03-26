@@ -234,6 +234,9 @@ export const DEFAULT_WORLD_STATE = {
   australia: 2,
 };
 
+// All tracked labs. OpenBrain and DeepCent are player-controlled (lab roles).
+// Conscienta is a real competitor — safety-first reputation, has won some games.
+// Not a background NPC; tracked with full compute/allocation/multiplier.
 export const DEFAULT_LABS = [
   {
     name: "OpenBrain",
@@ -249,10 +252,17 @@ export const DEFAULT_LABS = [
     rdMultiplier: 2.5,
     allocation: { users: 42, capability: 55, safety: 3 },
   },
+  {
+    name: "Conscienta",
+    roleId: "conscienta",
+    computeStock: 14,
+    rdMultiplier: 2,
+    allocation: { users: 53, capability: 42, safety: 5 },
+  },
 ];
 
+// Context-only labs — not individually tracked but inform the AI narrative
 export const BACKGROUND_LABS = [
-  { name: "Conscienta", computeStock: 14, rdMultiplier: 2, allocation: { users: 53, capability: 42, safety: 5 } },
   { name: "Other US Labs", computeStock: 11, rdMultiplier: 1.8, allocation: { users: 44, capability: 52, safety: 4 } },
   { name: "Rest of World", computeStock: 16, rdMultiplier: 1.8, allocation: { users: 28, capability: 69, safety: 3 } },
 ];
