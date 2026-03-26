@@ -143,7 +143,7 @@ export async function POST(request: Request) {
 
     const enabledRoles: string[] = body.enabledRoles ?? [];
     const activeRolesNote = enabledRoles.length > 0
-      ? `\nACTIVE PLAYERS THIS GAME (only these roles are at the table — do not reference or target roles not listed here):\n${enabledRoles.map((r: string) => `- ${r}`).join("\n")}`
+      ? `\nACTIVE PLAYERS THIS GAME: ${enabledRoles.join(", ")}\nYou can reference any global actor in your actions, but support requests can only target active players.`
       : "";
 
     const prompt = `${SCENARIO_CONTEXT}

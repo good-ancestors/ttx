@@ -150,7 +150,7 @@ export function buildGradingPrompt(args: {
   }
 
   const activeRolesNote = args.enabledRoles && args.enabledRoles.length > 0
-    ? `\nACTIVE PLAYERS THIS GAME: ${args.enabledRoles.join(", ")}\nOnly these roles are at the table. Actions targeting inactive roles should get lower probability.\n`
+    ? `\nACTIVE PLAYERS THIS GAME: ${args.enabledRoles.join(", ")}\nActions can reference any global actor (EU, media, etc.) but support requests can only be sent to active players.\n`
     : "";
 
   return `${SCENARIO_CONTEXT}
