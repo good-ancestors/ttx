@@ -427,7 +427,7 @@ export default function TablePlayerPage({
   return (
     <InAppBrowserGate>
       <div
-        className="min-h-dvh bg-off-white pb-[env(safe-area-inset-bottom)]"
+        className="min-h-dvh bg-off-white pb-[env(safe-area-inset-bottom)] overflow-x-hidden"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}
       >
         {/* Header */}
@@ -475,7 +475,7 @@ export default function TablePlayerPage({
 
           {/* Round context card */}
           <div
-            className="bg-white rounded-xl p-4 border border-border mb-4"
+            className="bg-white rounded-xl p-4 border border-border mb-4 break-words"
             style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
           >
             <h3 className="text-lg font-bold text-text mb-1">{round.title}</h3>
@@ -661,7 +661,7 @@ export default function TablePlayerPage({
             <div>
               {/* Narrative summary */}
               {phase === "narrate" && round?.summary && (
-                <div className="bg-navy rounded-xl p-4 border border-navy-light mb-4 text-white">
+                <div className="bg-navy rounded-xl p-4 border border-navy-light mb-4 text-white break-words overflow-hidden">
                   <h3 className="text-base font-bold mb-3">{round.label} — What Happened</h3>
 
                   {round.summary.headlines.map((h, i) => (

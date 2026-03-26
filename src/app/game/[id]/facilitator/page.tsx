@@ -27,6 +27,7 @@ import {
   MessageSquareText,
   SkipForward,
   Bot,
+  Plus,
 } from "lucide-react";
 
 export default function FacilitatorPage({
@@ -60,6 +61,7 @@ export default function FacilitatorPage({
   const toggleEnabled = useMutation(api.tables.toggleEnabled);
   const skipTimer = useMutation(api.games.skipTimer);
   const kickToAI = useMutation(api.tables.kickToAI);
+  const addLab = useMutation(api.games.addLab);
 
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
@@ -68,6 +70,11 @@ export default function FacilitatorPage({
   const [showSubmissionDetails, setShowSubmissionDetails] = useState(false);
   const [submitDuration, setSubmitDuration] = useState(4);
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
+  const [showAddLab, setShowAddLab] = useState(false);
+  const [newLabName, setNewLabName] = useState("");
+  const [newLabRoleId, setNewLabRoleId] = useState("");
+  const [newLabCompute, setNewLabCompute] = useState(10);
+  const [newLabMultiplier, setNewLabMultiplier] = useState(1);
 
   const toggleReveal = (key: string) => {
     setRevealedSecrets((prev) => {
@@ -576,7 +583,83 @@ export default function FacilitatorPage({
                   />
                   <WorldStateEditor gameId={gameId} worldState={game.worldState} />
                   <FacilitatorAdjust gameId={gameId} currentWorldState={game.worldState} currentLabs={game.labs} />
+                  <button
+                    onClick={() => setShowAddLab(!showAddLab)}
+                    className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1"
+                  >
+                    <Plus className="w-3 h-3" /> Add Lab
+                  </button>
                 </div>
+
+                {showAddLab && (
+                  <div className="bg-navy rounded-xl border border-navy-light p-4 mb-4">
+                    <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end">
+                      <div>
+                        <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Lab Name</label>
+                        <input
+                          type="text"
+                          value={newLabName}
+                          onChange={(e) => setNewLabName(e.target.value)}
+                          placeholder="e.g. Sovereign Compute Centre"
+                          className="w-full text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white placeholder:text-navy-muted focus:outline-none focus:border-text-light"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Controlled by</label>
+                        <select
+                          value={newLabRoleId}
+                          onChange={(e) => setNewLabRoleId(e.target.value)}
+                          className="w-full text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light"
+                        >
+                          <option value="">Select role...</option>
+                          {enabledTables.map((t) => (
+                            <option key={t.roleId} value={t.roleId}>{t.roleName}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Compute</label>
+                        <input
+                          type="number"
+                          value={newLabCompute}
+                          onChange={(e) => setNewLabCompute(Number(e.target.value))}
+                          className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Multiplier</label>
+                        <input
+                          type="number"
+                          value={newLabMultiplier}
+                          onChange={(e) => setNewLabMultiplier(Number(e.target.value))}
+                          step={0.1}
+                          className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light"
+                        />
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!newLabName || !newLabRoleId) return;
+                          await addLab({
+                            gameId,
+                            name: newLabName,
+                            roleId: newLabRoleId,
+                            computeStock: newLabCompute,
+                            rdMultiplier: newLabMultiplier,
+                          });
+                          setNewLabName("");
+                          setNewLabRoleId("");
+                          setNewLabCompute(10);
+                          setNewLabMultiplier(1);
+                          setShowAddLab(false);
+                        }}
+                        disabled={!newLabName || !newLabRoleId}
+                        className="text-sm px-4 py-1.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {game.currentRound < 3 ? (
                   <button
