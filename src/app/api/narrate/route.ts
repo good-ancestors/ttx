@@ -170,9 +170,10 @@ export async function POST(request: Request) {
         const updatedLabs = game.labs.map((lab) => {
           const update = output.labUpdates.find((u) => u.name === lab.name);
           if (!update) return lab;
-          // R&D multiplier can only go up or stay flat — never decrease
-          // (you can't un-discover capabilities within a model generation)
-          const newMultiplier = Math.min(maxMultiplier, Math.max(lab.rdMultiplier, update.newRdMultiplier));
+          // Clamp to round bounds. The prompt instructs the AI that multipliers
+          // should only decrease when a model is decommissioned (e.g., Safer pivot).
+          // We trust the AI's judgment here — server only enforces the ceiling.
+          const newMultiplier = Math.min(maxMultiplier, Math.max(0, update.newRdMultiplier));
           return {
             ...lab,
             computeStock: Math.max(0, Math.round(update.newComputeStock)),
