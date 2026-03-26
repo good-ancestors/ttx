@@ -115,6 +115,10 @@ export async function POST(request: Request) {
       });
     }
 
+    if (!output) {
+      return Response.json({ error: "All AI models failed to grade", model }, { status: 502 });
+    }
+
     return Response.json({ success: true, grading: output, model, timeMs });
   } catch (error) {
     console.error("Grading error:", error);

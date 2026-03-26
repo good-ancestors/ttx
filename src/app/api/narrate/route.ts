@@ -229,6 +229,10 @@ export async function POST(request: Request) {
       });
     }
 
+    if (!output) {
+      return Response.json({ error: "All AI models failed to generate narrative", model: usedModel }, { status: 502 });
+    }
+
     return Response.json({ success: true, narrative: output, model: usedModel, timeMs });
   } catch (error) {
     console.error("Narrative error:", error);
