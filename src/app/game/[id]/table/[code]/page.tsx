@@ -7,6 +7,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { ROLES, MAX_PRIORITY, isLabCeo, isLabSafety, hasCompute, type Role } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll, parseActionsFromText } from "@/lib/hooks";
 import { ActionCard } from "@/components/action-card";
+import { ActionInput, normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { ComputeAllocation } from "@/components/compute-allocation";
 // Compute loans now handled via action request system
 import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
@@ -221,10 +222,10 @@ export default function TablePlayerPage({
   const submitActions = useMutation(api.submissions.submit);
   const setConnected = useMutation(api.tables.setConnected);
 
-  const [freeText, setFreeText] = useState("");
-  const [parsedActions, setParsedActions] = useState<
-    { text: string; priority: number; secret?: boolean }[]
-  >([]);
+  const [actionDrafts, setActionDrafts] = useState<ActionDraft[]>([emptyAction()]);
+  // Legacy compat — keep these for draft persistence and auto-submit
+  const freeText = actionDrafts.map((a) => a.text).join("\n");
+  const parsedActions = normaliseActions(actionDrafts);
   const [computeAllocation, setComputeAllocation] = useState({
     users: 50,
     capability: 25,
@@ -290,10 +291,16 @@ export default function TablePlayerPage({
 
     const draft = loadDraft(tableId, game.currentRound);
     if (draft) {
-      setFreeText(draft.freeText);
-      setParsedActions(draft.parsedActions);
+      // Restore drafts — convert old format to new ActionDraft format
+      if (draft.parsedActions?.length > 0) {
+        setActionDrafts(draft.parsedActions.map((a: { text: string; priority: number; secret?: boolean }) => ({
+          text: a.text, priority: a.priority >= 4 ? "high" as const : a.priority >= 2 ? "medium" as const : "low" as const,
+          secret: !!a.secret, endorseTargets: [],
+        })));
+      } else if (draft.freeText?.trim()) {
+        setActionDrafts([{ text: draft.freeText, priority: "medium" as const, secret: false, endorseTargets: [] }]);
+      }
       if (draft.computeAllocation) setComputeAllocation(draft.computeAllocation);
-      // computeLoans removed — handled by request system
       if (draft.artifact) setArtifact(draft.artifact);
       setDraftRestored(true);
     }
@@ -310,12 +317,12 @@ export default function TablePlayerPage({
   useEffect(() => {
     if (!game || !draftRestoredRef.current) return;
     saveDraft(tableId, game.currentRound, {
-      freeText,
-      parsedActions,
+      freeText: "",
+      parsedActions: normaliseActions(actionDrafts),
       computeAllocation,
       artifact,
     });
-  }, [freeText, parsedActions, computeAllocation, artifact, game, tableId]);
+  }, [actionDrafts, computeAllocation, artifact, game, tableId]);
 
   // ── Timer auto-submit (auto-parses unparsed text first) ─────────────────
   useEffect(() => {
@@ -326,16 +333,11 @@ export default function TablePlayerPage({
       !submitting &&
       !autoSubmittedRef.current
     ) {
-      // Auto-parse if there's text but no parsed actions
-      if (parsedActions.length === 0 && freeText.trim()) {
-        handleParse();
-        return; // useEffect will re-fire with parsedActions populated
-      }
       if (parsedActions.length > 0) {
         autoSubmittedRef.current = true;
         setAutoSubmitMessage("Time's up — submitting your actions");
         const timeout = setTimeout(() => {
-          void handleSubmitInternal();
+          void handleSubmit();
         }, 1500);
         return () => clearTimeout(timeout);
       }
@@ -346,39 +348,8 @@ export default function TablePlayerPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpired, phase, isSubmitted, parsedActions.length, submitting, freeText]);
 
-  const handleParse = useCallback(() => {
-    const texts = parseActionsFromText(freeText);
-    const actions = texts.map((text) => ({
-      text,
-      priority: Math.max(1, Math.floor(MAX_PRIORITY / Math.max(texts.length, 1))),
-    }));
-    setParsedActions(actions);
-  }, [freeText]);
-
-  const totalPriorityUsed = parsedActions.reduce((s, a) => s + a.priority, 0);
-
-  const updatePriority = (index: number, val: number) => {
-    setParsedActions((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], priority: val };
-      return next;
-    });
-  };
-
-  const toggleSecret = (index: number) => {
-    setParsedActions((prev) => {
-      const next = [...prev];
-      next[index] = { ...next[index], secret: !next[index].secret };
-      return next;
-    });
-  };
-
-  const removeAction = (index: number) => {
-    setParsedActions((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleSubmitInternal = async () => {
-    if (parsedActions.length === 0 || totalPriorityUsed > MAX_PRIORITY) return;
+  const handleSubmit = async () => {
+    if (parsedActions.length === 0) return;
     setSubmitting(true);
     setSubmitError("");
     try {
@@ -404,9 +375,7 @@ export default function TablePlayerPage({
     }
   };
 
-  const handleSubmit = async () => {
-    await handleSubmitInternal();
-  };
+  // Removed — handleSubmit is now the main submit function above
 
   if (!game || !table || !round || !role) {
     return (
@@ -544,102 +513,32 @@ export default function TablePlayerPage({
                 </div>
               )}
 
-              {/* Action input */}
-              <div className="bg-white rounded-xl border border-border p-4 mb-4">
-                <h3 className="text-sm font-bold text-text mb-1">
-                  What does {role.name} do this quarter?
-                </h3>
-                <p className="text-xs text-text-muted mb-3">
-                  Describe your key actions — one per line. For each, state what you do and the intended outcome.
-                </p>
-                <textarea
-                  value={freeText}
-                  onChange={(e) => setFreeText(e.target.value)}
-                  placeholder={`e.g.\nUse executive power to compel a merger between Conscienta and OpenBrain — gives us access to more compute\nLaunch a public safety review of Agent-2 — buys time for regulation\nOffer classified AI briefings to allied nations — builds coalition`}
-                  rows={5}
-                  spellCheck={false}
-                  autoComplete="off"
-                  className="w-full p-3 bg-warm-gray border border-border rounded-lg text-sm text-text
-                             resize-none outline-none focus:border-navy-light"
+              {/* Action input — card-based interface */}
+              <div className="mb-4">
+                <ActionInput
+                  actions={actionDrafts}
+                  onChange={setActionDrafts}
+                  roleId={role.id}
+                  roleName={role.name}
+                  isSubmitted={false}
                 />
-                <button
-                  onClick={handleParse}
-                  disabled={!freeText.trim()}
-                  className="mt-2 w-full py-2.5 bg-navy text-white rounded-lg font-bold text-sm
-                             disabled:opacity-30 hover:bg-navy-light transition-colors"
-                >
-                  Parse Actions
-                </button>
-              </div>
 
-              {/* Parsed action cards */}
-              {parsedActions.length > 0 && (
-                <div className="mb-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-sm font-bold text-text">
-                      Your Actions ({parsedActions.length})
-                    </span>
-                    <span
-                      className="text-[11px] font-mono"
-                      style={{ color: totalPriorityUsed > MAX_PRIORITY ? "#EF4444" : undefined }}
-                    >
-                      Priority: {totalPriorityUsed}/{MAX_PRIORITY}
-                    </span>
-                  </div>
-
-                  {totalPriorityUsed > MAX_PRIORITY && (
-                    <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-lg p-2 mb-2">
-                      <p className="text-xs text-viz-danger">
-                        Over budget — reduce priority on some actions or remove one.
-                      </p>
-                    </div>
-                  )}
-
-                  {parsedActions.map((action, i) => (
-                    <ActionCard
-                      key={i}
-                      action={action}
-                      index={i}
-                      onPriorityChange={updatePriority}
-                      onRemove={removeAction}
-                      onToggleSecret={toggleSecret}
-                      totalPriorityUsed={totalPriorityUsed}
-                      isSubmitted={false}
-                    />
-                  ))}
-
-                  {/* Creative artifact */}
-                  <div className="bg-white rounded-xl border border-border p-4 mb-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      <FileText className="w-4 h-4 text-text-muted" />
-                      <span className="text-xs font-bold text-text">Creative Artifact (optional)</span>
-                    </div>
-                    <p className="text-[11px] text-text-muted mb-2">{role.artifactPrompt}</p>
-                    <textarea
-                      value={artifact}
-                      onChange={(e) => setArtifact(e.target.value)}
-                      placeholder="Write your artifact here..."
-                      rows={3}
-                      spellCheck={false}
-                      className="w-full p-3 bg-warm-gray border border-border rounded-lg text-sm text-text
-                                 resize-none outline-none focus:border-navy-light"
-                    />
-                  </div>
-
-                  {/* Submit button */}
+                {/* Submit button */}
+                {parsedActions.length > 0 && (
                   <button
                     onClick={handleSubmit}
-                    disabled={submitting || parsedActions.length === 0 || totalPriorityUsed > MAX_PRIORITY}
-                    className="w-full py-3.5 bg-navy text-white rounded-lg font-bold text-base
+                    disabled={submitting || parsedActions.length === 0}
+                    className="mt-4 w-full py-3.5 bg-navy text-white rounded-lg font-bold text-base
                                disabled:opacity-30 hover:bg-navy-light transition-colors
                                flex items-center justify-center gap-2"
                   >
                     {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                     Submit Actions
                   </button>
-                  {submitError && <p className="text-xs text-viz-danger mt-2 text-center">{submitError}</p>}
-                </div>
-              )}
+                )}
+                {submitError && <p className="text-xs text-viz-danger mt-2 text-center">{submitError}</p>}
+              </div>
+
             </>
           )}
 
