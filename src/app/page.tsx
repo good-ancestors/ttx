@@ -1,65 +1,124 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
+import { useRouter } from "next/navigation";
+import { Presentation, Smartphone, Loader2 } from "lucide-react";
+
+export default function SplashPage() {
+  const router = useRouter();
+  const createGame = useMutation(api.games.create);
+  const [creating, setCreating] = useState(false);
+  const [joinCode, setJoinCode] = useState("");
+  const [joinError, setJoinError] = useState("");
+  const [mode, setMode] = useState<"splash" | "join">("splash");
+
+  const handleCreate = async () => {
+    setCreating(true);
+    try {
+      const gameId = await createGame({ tableCount: 6 });
+      router.push(`/game/${gameId}/facilitator`);
+    } catch {
+      setCreating(false);
+    }
+  };
+
+  const handleJoin = () => {
+    const code = joinCode.trim().toUpperCase();
+    if (code.length < 4) {
+      setJoinError("Enter the code from your table card.");
+      return;
+    }
+    router.push(`/game/join/${code}`);
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-dvh bg-navy flex flex-col items-center justify-center p-8 text-center">
+      <div className="max-w-md w-full">
+        {/* GA logo mark */}
+        <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center mx-auto mb-6">
+          <span className="text-2xl font-black text-navy">g</span>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+
+        <h1 className="text-3xl font-extrabold text-white mb-1 tracking-tight">
+          The Race to AGI
+        </h1>
+        <p className="text-sm text-text-light mb-1">
+          A Tabletop Scenario Exercise
+        </p>
+        <p className="text-xs text-navy-muted mb-10">
+          Small Giants Wisdom &amp; Action Forum — May 2026
+        </p>
+
+        {mode === "splash" ? (
+          <div className="flex flex-col gap-3">
+            <button
+              onClick={handleCreate}
+              disabled={creating}
+              className="w-full py-3.5 px-6 bg-white text-navy rounded-lg text-base font-bold
+                         hover:bg-off-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {creating ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <Presentation className="w-5 h-5" />
+              )}
+              Facilitator Dashboard
+            </button>
+            <button
+              onClick={() => setMode("join")}
+              className="w-full py-3.5 px-6 bg-transparent text-white border border-navy-light
+                         rounded-lg text-base font-bold hover:border-text-light transition-colors
+                         flex items-center justify-center gap-2"
+            >
+              <Smartphone className="w-5 h-5" />
+              Table Player View
+            </button>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <input
+              type="text"
+              value={joinCode}
+              onChange={(e) => {
+                setJoinCode(e.target.value.toUpperCase());
+                setJoinError("");
+              }}
+              placeholder="Enter join code"
+              maxLength={8}
+              autoFocus
+              spellCheck={false}
+              autoComplete="off"
+              className="w-full py-3.5 px-6 bg-navy-light text-white text-center text-xl font-mono
+                         font-bold rounded-lg border border-navy-light focus:border-text-light
+                         outline-none tracking-widest placeholder:text-navy-muted placeholder:tracking-normal
+                         placeholder:text-base placeholder:font-sans"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+            {joinError && (
+              <p className="text-xs text-viz-danger">{joinError}</p>
+            )}
+            <button
+              onClick={handleJoin}
+              disabled={!joinCode.trim()}
+              className="w-full py-3.5 px-6 bg-white text-navy rounded-lg text-base font-bold
+                         hover:bg-off-white transition-colors disabled:opacity-30"
+            >
+              Join Game
+            </button>
+            <button
+              onClick={() => setMode("splash")}
+              className="text-sm text-text-light hover:text-white transition-colors"
+            >
+              Back
+            </button>
+          </div>
+        )}
+
+        <p className="text-[11px] text-navy-muted mt-10">
+          Good Ancestors Policy Planning
+        </p>
+      </div>
     </div>
   );
 }

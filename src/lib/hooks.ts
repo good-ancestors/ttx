@@ -1,0 +1,98 @@
+"use client";
+
+import { useState, useEffect } from "react";
+
+/**
+ * Detects in-app browsers that may have WebSocket issues.
+ */
+export function useInAppBrowserDetection() {
+  const [isInApp] = useState(() => {
+    if (typeof navigator === "undefined") return false;
+    const ua = navigator.userAgent || "";
+    return /FBAN|FBAV|Instagram|LinkedIn|Twitter|MicroMessenger|Line\//i.test(ua);
+  });
+
+  return isInApp;
+}
+
+/**
+ * Shows a syncing indicator when the tab becomes visible after being hidden.
+ */
+export function useVisibilitySync() {
+  const [syncing, setSyncing] = useState(false);
+
+  useEffect(() => {
+    const handler = () => {
+      if (document.visibilityState === "visible") {
+        setSyncing(true);
+        const timeout = setTimeout(() => setSyncing(false), 2000);
+        return () => clearTimeout(timeout);
+      }
+    };
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, []);
+
+  return syncing;
+}
+
+/**
+ * Client-side countdown timer derived from a server-authoritative phaseEndsAt timestamp.
+ */
+export function useCountdown(phaseEndsAt: number | undefined) {
+  const computeRemaining = () => {
+    if (!phaseEndsAt) return 0;
+    return Math.max(0, Math.floor((phaseEndsAt - Date.now()) / 1000));
+  };
+  const [secondsLeft, setSecondsLeft] = useState(computeRemaining);
+
+  useEffect(() => {
+    if (!phaseEndsAt) return;
+
+    const update = () =>
+      setSecondsLeft(Math.max(0, Math.floor((phaseEndsAt - Date.now()) / 1000)));
+
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [phaseEndsAt]);
+
+  const minutes = Math.floor(secondsLeft / 60);
+  const seconds = secondsLeft % 60;
+  const display = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  const isExpired = secondsLeft <= 0 && phaseEndsAt != null;
+
+  return { secondsLeft, minutes, seconds, display, isExpired };
+}
+
+/**
+ * Scrolls the focused textarea into view when the mobile keyboard opens.
+ */
+export function useKeyboardScroll() {
+  useEffect(() => {
+    const handleFocus = (e: FocusEvent) => {
+      if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) {
+        setTimeout(() => {
+          (e.target as HTMLElement).scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }, 300);
+      }
+    };
+    document.addEventListener("focusin", handleFocus);
+    return () => document.removeEventListener("focusin", handleFocus);
+  }, []);
+}
+
+/**
+ * Parses free text into individual action items.
+ */
+export function parseActionsFromText(text: string): string[] {
+  if (!text.trim()) return [];
+  return text
+    .split(/[\n;]|(?:\d+[\.\)]\s*)/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 5)
+    .slice(0, 5);
+}

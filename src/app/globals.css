@@ -1,26 +1,126 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Good Ancestors Brand Tokens */
+  --color-navy: #1E293B;
+  --color-navy-dark: #0F172A;
+  --color-navy-light: #334155;
+  --color-navy-muted: #475569;
+  --color-off-white: #F8FAFC;
+  --color-warm-gray: #F1F5F9;
+  --color-border: #E2E8F0;
+  --color-border-dark: #CBD5E1;
+  --color-text: #1E293B;
+  --color-text-muted: #64748B;
+  --color-text-light: #94A3B8;
+
+  /* Role accent colours */
+  --color-role-openbrain: #3B82F6;
+  --color-role-us: #DC2626;
+  --color-role-china: #D97706;
+  --color-role-australia: #059669;
+  --color-role-safety: #7C3AED;
+  --color-role-ai: #DB2777;
+
+  /* Data visualization */
+  --color-viz-capability: #06B6D4;
+  --color-viz-safety: #22C55E;
+  --color-viz-danger: #EF4444;
+  --color-viz-warning: #F59E0B;
+  --color-viz-neutral: #94A3B8;
+
+  /* Probability card colours */
+  --color-prob-90: #059669;
+  --color-prob-90-bg: #ECFDF5;
+  --color-prob-70: #65A30D;
+  --color-prob-70-bg: #F7FEE7;
+  --color-prob-50: #CA8A04;
+  --color-prob-50-bg: #FEFCE8;
+  --color-prob-30: #EA580C;
+  --color-prob-30-bg: #FFF7ED;
+  --color-prob-10: #DC2626;
+  --color-prob-10-bg: #FEF2F2;
+
+  /* Fonts */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Viewport handling for mobile keyboards */
+html {
+  height: 100dvh;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom slider styling */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-warm-gray);
+  outline: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--color-navy);
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Dark variant for facilitator view */
+.dark input[type="range"] {
+  background: var(--color-navy-light);
+}
+
+.dark input[type="range"]::-webkit-slider-thumb {
+  background: white;
+  border-color: var(--color-navy);
+}
+
+/* Connection status indicator */
+.connection-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: background-color 0.3s ease;
+}
+
+.connection-dot.connected {
+  background-color: var(--color-viz-safety);
+}
+
+.connection-dot.reconnecting {
+  background-color: var(--color-viz-warning);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.connection-dot.disconnected {
+  background-color: var(--color-viz-danger);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Stacked bar segment transitions (CSS, not Framer Motion) */
+.bar-segment {
+  transition: width 80ms ease-out;
+}
+
+/* Compute dot transitions (CSS, not Framer Motion) */
+.compute-dot {
+  transition: background-color 150ms ease, transform 100ms ease;
 }
