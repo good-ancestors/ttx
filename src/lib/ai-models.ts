@@ -1,12 +1,25 @@
 // AI model configuration via Vercel AI Gateway.
 // Change the model string to swap providers instantly.
+//
+// Model comparison results (Round 2 grading, March 2026):
+// ┌──────────────────────┬───────────┬──────────────────────────────────────────┐
+// │ Model                │ Avg Speed │ Calibration vs Opus baseline             │
+// ├──────────────────────┼───────────┼──────────────────────────────────────────┤
+// │ claude-opus-4-6      │ 25.1s     │ Baseline — most rigorous, best reasoning│
+// │ claude-sonnet-4-6    │ 21.0s     │ Closest to Opus, excellent reasoning     │
+// │ claude-haiku-4-5     │ 14.5s     │ More generous, good but less strict      │
+// │ gemini-2.5-flash     │ 16.7s     │ Too generous, shallow reasoning          │
+// └──────────────────────┴───────────┴──────────────────────────────────────────┘
+//
+// Recommendation: Sonnet for both grading + narrative (best quality/speed).
+// Haiku as fallback (faster, slightly more generous).
+// Gemini as last resort (fast but under-calibrated).
 
-// Fast model for action grading (~2-4s)
-export const GRADING_MODEL = "google/gemini-2.5-flash";
+export const GRADING_MODEL = "anthropic/claude-sonnet-4-6";
+export const GRADING_FALLBACK = "anthropic/claude-haiku-4-5";
 
-// Quality model for narrative generation (~8-14s)
-export const NARRATIVE_MODEL = "google/gemini-2.5-flash";
+export const NARRATIVE_MODEL = "anthropic/claude-sonnet-4-6";
+export const NARRATIVE_FALLBACK = "anthropic/claude-haiku-4-5";
 
-// For production, swap to:
-// export const GRADING_MODEL = "anthropic/claude-haiku-4-5";
-// export const NARRATIVE_MODEL = "anthropic/claude-sonnet-4-6";
+// Last-resort fallback if Anthropic is completely down
+export const EMERGENCY_FALLBACK = "google/gemini-2.5-flash";

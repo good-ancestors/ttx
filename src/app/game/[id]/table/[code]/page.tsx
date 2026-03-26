@@ -1,17 +1,205 @@
 "use client";
 
-import { use, useState, useCallback, useEffect } from "react";
+import { use, useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../../../convex/_generated/api";
 import type { Id } from "../../../../../../convex/_generated/dataModel";
-import { ROLES, MAX_PRIORITY } from "@/lib/game-data";
+import { ROLES, MAX_PRIORITY, isLabCeo, isLabSafety, hasCompute, type Role } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll, parseActionsFromText } from "@/lib/hooks";
 import { ActionCard } from "@/components/action-card";
 import { ComputeAllocation } from "@/components/compute-allocation";
+// Compute loans now handled via action request system
+import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
 import { ConnectionIndicator } from "@/components/connection-indicator";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
-import { ProposalPanel } from "@/components/proposals";
-import { Send, Loader2, Clock, FileText } from "lucide-react";
+import { ProposalPanel, usePendingProposalCount } from "@/components/proposals";
+import {
+  Send,
+  Loader2,
+  Clock,
+  FileText,
+  Target,
+  ChevronDown,
+  ChevronUp,
+  Cpu,
+  Info,
+  CheckCircle2,
+  XCircle,
+  MessageSquare,
+  Handshake,
+  AlertTriangle,
+} from "lucide-react";
+
+// ─── Draft persistence helpers ────────────────────────────────────────────────
+
+interface DraftData {
+  freeText: string;
+  parsedActions: { text: string; priority: number }[];
+  computeAllocation: { users: number; capability: number; safety: number };
+  computeLoans?: never; // removed — kept for backward compat with old drafts
+  artifact: string;
+}
+
+function draftKey(tableId: string, roundNumber: number) {
+  return `ttx-draft-${tableId}-${roundNumber}`;
+}
+
+function saveDraft(tableId: string, roundNumber: number, data: DraftData) {
+  try {
+    localStorage.setItem(draftKey(tableId, roundNumber), JSON.stringify(data));
+  } catch {
+    // Storage full or unavailable — silently ignore
+  }
+}
+
+function loadDraft(tableId: string, roundNumber: number): DraftData | null {
+  try {
+    const raw = localStorage.getItem(draftKey(tableId, roundNumber));
+    if (!raw) return null;
+    return JSON.parse(raw) as DraftData;
+  } catch {
+    return null;
+  }
+}
+
+function clearDraft(tableId: string, roundNumber: number) {
+  try {
+    localStorage.removeItem(draftKey(tableId, roundNumber));
+  } catch {
+    // Ignore
+  }
+}
+
+// ─── Results card for rolling/narrate phase ──────────────────────────────────
+
+function ResultActionCard({
+  action,
+  index,
+}: {
+  action: {
+    text: string;
+    priority: number;
+    probability?: number;
+    rolled?: number;
+    success?: boolean;
+    reasoning?: string;
+  };
+  index: number;
+}) {
+  const [reasoningOpen, setReasoningOpen] = useState(false);
+  const isSuccess = action.success === true;
+  const isFailed = action.success === false;
+  const borderColor = isSuccess ? "#22C55E" : isFailed ? "#EF4444" : undefined;
+
+  return (
+    <div
+      className="bg-white rounded-lg p-3 border border-border relative mb-2"
+      style={borderColor ? { borderLeftWidth: "3px", borderLeftColor: borderColor } : undefined}
+    >
+      <div className="flex items-start gap-2 mb-2">
+        <span className="text-[11px] bg-warm-gray text-text-muted rounded px-1.5 py-0.5 font-mono font-semibold shrink-0">
+          #{index + 1}
+        </span>
+        <p className="text-[13px] text-text flex-1">{action.text}</p>
+        {isSuccess && (
+          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-bold text-[#059669] bg-[#ECFDF5] px-2 py-0.5 rounded-full">
+            <CheckCircle2 className="w-3 h-3" /> Success
+          </span>
+        )}
+        {isFailed && (
+          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-bold text-[#DC2626] bg-[#FEF2F2] px-2 py-0.5 rounded-full">
+            <XCircle className="w-3 h-3" /> Failed
+          </span>
+        )}
+      </div>
+
+      <div className="flex items-center gap-3 text-[11px] text-text-muted mb-1">
+        <span className="font-mono">Priority: {action.priority}/{MAX_PRIORITY}</span>
+        {action.probability != null && (
+          <span className="font-mono">Probability: {action.probability}%</span>
+        )}
+      </div>
+
+      {action.rolled != null && action.probability != null && (
+        <p className="text-[12px] font-mono mt-1" style={{ color: isSuccess ? "#22C55E" : "#EF4444" }}>
+          Rolled {action.rolled} vs {action.probability}% — {isSuccess ? "Success!" : "Failed"}
+        </p>
+      )}
+
+      {action.reasoning && (
+        <div className="mt-2 border-t border-border pt-2">
+          <button
+            onClick={() => setReasoningOpen(!reasoningOpen)}
+            className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text transition-colors"
+          >
+            <MessageSquare className="w-3 h-3" />
+            Why?
+            {reasoningOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+          {reasoningOpen && (
+            <p className="text-[12px] text-text-muted mt-1.5 leading-relaxed">
+              {action.reasoning}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Onboarding "How to Play" section ────────────────────────────────────────
+
+function HowToPlaySection({ role }: { role: Role }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mt-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 text-[13px] font-semibold text-text-muted hover:text-text transition-colors"
+      >
+        <Info className="w-3.5 h-3.5" />
+        How to Play
+        {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+      </button>
+      {open && (
+        <ul className="mt-2 space-y-1.5 text-[13px] text-text-muted pl-5 list-disc">
+          <li>Discuss with your table what you will do this quarter</li>
+          <li>When submissions open, describe your key actions</li>
+          <li>The AI will grade probabilities and dice determine outcomes</li>
+        </ul>
+      )}
+
+      {isLabCeo(role) && (
+        <div className="mt-3 bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg p-3 flex items-start gap-2">
+          <Cpu className="w-4 h-4 text-[#0284C7] shrink-0 mt-0.5" />
+          <div>
+            <span className="text-[12px] font-bold text-[#0284C7]">Compute Tip</span>
+            <p className="text-[12px] text-[#0369A1] mt-0.5">
+              As a lab CEO, you control a 3-way compute allocation: Users/Commercial,
+              R&D/Capabilities, and Safety/Alignment. This shapes your lab&apos;s progress.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {hasCompute(role) && !isLabCeo(role) && (
+        <div className="mt-3 bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg p-3 flex items-start gap-2">
+          <Cpu className="w-4 h-4 text-[#0284C7] shrink-0 mt-0.5" />
+          <div>
+            <span className="text-[12px] font-bold text-[#0284C7]">Compute Tip</span>
+            <p className="text-[12px] text-[#0369A1] mt-0.5">
+              You have compute resources you can loan to labs. This gives you leverage
+              and influences their capability trajectory.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main page component ─────────────────────────────────────────────────────
 
 export default function TablePlayerPage({
   params,
@@ -35,24 +223,39 @@ export default function TablePlayerPage({
 
   const [freeText, setFreeText] = useState("");
   const [parsedActions, setParsedActions] = useState<
-    { text: string; priority: number }[]
+    { text: string; priority: number; secret?: boolean }[]
   >([]);
   const [computeAllocation, setComputeAllocation] = useState({
     users: 50,
     capability: 25,
     safety: 25,
   });
+  // computeLoans removed — now handled by action request system
   const [artifact, setArtifact] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [draftRestored, setDraftRestored] = useState(false);
+  const [autoSubmitMessage, setAutoSubmitMessage] = useState("");
+
+  // Track whether we've already auto-submitted to avoid repeated calls
+  const autoSubmittedRef = useRef(false);
+  // Track whether draft has been restored to avoid overwriting on mount
+  const draftRestoredRef = useRef(false);
 
   useKeyboardScroll();
 
-  const { display: timerDisplay, isUrgent } = useCountdown(game?.phaseEndsAt);
+  const { display: timerDisplay, isUrgent, isExpired } = useCountdown(game?.phaseEndsAt);
 
   const role = table ? ROLES.find((r) => r.id === table.roleId) : null;
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
   const phase = game?.phase ?? "discuss";
+
+  // Proposal count for header badge
+  const pendingProposalCount = usePendingProposalCount(
+    gameId,
+    game?.currentRound ?? 1,
+    role?.id ?? ""
+  );
 
   // Set connected on mount
   useEffect(() => {
@@ -67,6 +270,66 @@ export default function TablePlayerPage({
       setComputeAllocation({ ...role.defaultCompute });
     }
   }, [role?.defaultCompute]);
+
+  // ── Draft persistence: restore on mount ──────────────────────────────────
+  useEffect(() => {
+    if (!game || draftRestoredRef.current) return;
+    draftRestoredRef.current = true;
+
+    const draft = loadDraft(tableId, game.currentRound);
+    if (draft) {
+      setFreeText(draft.freeText);
+      setParsedActions(draft.parsedActions);
+      if (draft.computeAllocation) setComputeAllocation(draft.computeAllocation);
+      // computeLoans removed — handled by request system
+      if (draft.artifact) setArtifact(draft.artifact);
+      setDraftRestored(true);
+    }
+  }, [game, tableId]);
+
+  // Auto-clear the "Draft restored" message after 3 seconds
+  useEffect(() => {
+    if (!draftRestored) return;
+    const timeout = setTimeout(() => setDraftRestored(false), 3000);
+    return () => clearTimeout(timeout);
+  }, [draftRestored]);
+
+  // ── Draft persistence: save on every change ──────────────────────────────
+  useEffect(() => {
+    if (!game || !draftRestoredRef.current) return;
+    saveDraft(tableId, game.currentRound, {
+      freeText,
+      parsedActions,
+      computeAllocation,
+      artifact,
+    });
+  }, [freeText, parsedActions, computeAllocation, artifact, game, tableId]);
+
+  // ── Timer auto-submit ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (
+      isExpired &&
+      phase === "submit" &&
+      !isSubmitted &&
+      parsedActions.length > 0 &&
+      !submitting &&
+      !autoSubmittedRef.current
+    ) {
+      autoSubmittedRef.current = true;
+      setAutoSubmitMessage("Time's up — submitting your actions");
+
+      // Brief delay so the user sees the message
+      const timeout = setTimeout(() => {
+        void handleSubmitInternal();
+      }, 1500);
+      return () => clearTimeout(timeout);
+    }
+    // Reset the auto-submit flag when round changes
+    if (!isExpired) {
+      autoSubmittedRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExpired, phase, isSubmitted, parsedActions.length, submitting]);
 
   const handleParse = useCallback(() => {
     const texts = parseActionsFromText(freeText);
@@ -87,11 +350,19 @@ export default function TablePlayerPage({
     });
   };
 
+  const toggleSecret = (index: number) => {
+    setParsedActions((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], secret: !next[index].secret };
+      return next;
+    });
+  };
+
   const removeAction = (index: number) => {
     setParsedActions((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmitInternal = async () => {
     if (parsedActions.length === 0 || totalPriorityUsed > MAX_PRIORITY) return;
     setSubmitting(true);
     setSubmitError("");
@@ -101,15 +372,25 @@ export default function TablePlayerPage({
         gameId,
         roundNumber: game?.currentRound ?? 1,
         roleId: role?.id ?? "",
-        actions: parsedActions.map((a) => ({ text: a.text, priority: a.priority })),
-        computeAllocation: role?.isLab ? computeAllocation : undefined,
+        actions: parsedActions.map((a) => ({ text: a.text, priority: a.priority, secret: a.secret || undefined })),
+        computeAllocation: role && isLabCeo(role) ? computeAllocation : undefined,
+        // computeLoans removed — now handled by action request system
         artifact: artifact.trim() || undefined,
       });
+      // Clear draft on successful submit
+      if (game) {
+        clearDraft(tableId, game.currentRound);
+      }
     } catch {
       setSubmitError("Failed to submit. Check your connection and try again.");
     } finally {
       setSubmitting(false);
+      setAutoSubmitMessage("");
     }
+  };
+
+  const handleSubmit = async () => {
+    await handleSubmitInternal();
   };
 
   if (!game || !table || !round || !role) {
@@ -119,6 +400,17 @@ export default function TablePlayerPage({
       </div>
     );
   }
+
+  // Sort actions for results: successes first, then failures, then unresolved
+  const sortedResultActions = submission?.actions
+    ? [...submission.actions].sort((a, b) => {
+        if (a.success === true && b.success !== true) return -1;
+        if (a.success !== true && b.success === true) return 1;
+        if (a.success === false && b.success == null) return -1;
+        if (a.success == null && b.success === false) return 1;
+        return 0;
+      })
+    : [];
 
   return (
     <InAppBrowserGate>
@@ -139,6 +431,11 @@ export default function TablePlayerPage({
                   <Clock className="w-3.5 h-3.5" /> {timerDisplay}
                 </span>
               )}
+              {phase === "submit" && pendingProposalCount > 0 && (
+                <span className="text-[10px] bg-viz-warning text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1">
+                  <Handshake className="w-3 h-3" /> {pendingProposalCount}
+                </span>
+              )}
               <span className="text-[11px] text-text-muted font-mono">
                 {round.label} — Turn {round.number}/3
               </span>
@@ -148,6 +445,22 @@ export default function TablePlayerPage({
         </div>
 
         <div className="px-4 pt-4">
+          {/* Draft restored toast */}
+          {draftRestored && (
+            <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg p-2.5 mb-3 flex items-center gap-2">
+              <Info className="w-4 h-4 text-[#0284C7] shrink-0" />
+              <span className="text-[12px] text-[#0369A1] font-medium">Draft restored from previous session</span>
+            </div>
+          )}
+
+          {/* Auto-submit message */}
+          {autoSubmitMessage && (
+            <div className="bg-[#FFF7ED] border border-[#FED7AA] rounded-lg p-2.5 mb-3 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-[#EA580C] shrink-0" />
+              <span className="text-[12px] text-[#C2410C] font-medium">{autoSubmitMessage}</span>
+            </div>
+          )}
+
           {/* Round context card */}
           <div
             className="bg-white rounded-xl p-4 border border-border mb-4"
@@ -158,14 +471,16 @@ export default function TablePlayerPage({
             <p className="text-[13px] text-text italic">&ldquo;{role.brief}&rdquo;</p>
           </div>
 
-          {/* DISCUSS phase */}
+          {/* DISCUSS phase — improved onboarding */}
           {phase === "discuss" && (
-            <div className="bg-white rounded-xl p-6 border border-border text-center">
-              <Clock className="w-10 h-10 text-text-light mx-auto mb-3" />
-              <h3 className="text-base font-bold text-text mb-1">Discussion Phase</h3>
-              <p className="text-sm text-text-muted">
-                Discuss with your table what {role.name} does this quarter. Submissions will open shortly.
-              </p>
+            <div className="bg-white rounded-xl p-5 border border-border">
+              <div className="flex items-center gap-2 mb-3">
+                <Target className="w-5 h-5 text-text" />
+                <h3 className="text-base font-bold text-text">Your Mission</h3>
+              </div>
+              <p className="text-[13px] font-semibold text-text mb-1">{role.name}</p>
+              <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
+              <HowToPlaySection role={role} />
             </div>
           )}
 
@@ -182,14 +497,29 @@ export default function TablePlayerPage({
           {/* SUBMIT phase — not yet submitted */}
           {phase === "submit" && !isSubmitted && (
             <>
-              {/* Compute allocation for lab roles */}
-              {role.isLab && (
+              {/* Compute allocation for lab CEO roles */}
+              {isLabCeo(role) && (
                 <ComputeAllocation
                   allocation={computeAllocation}
                   onChange={setComputeAllocation}
                   isSubmitted={false}
                   roleName={role.name}
                 />
+              )}
+
+              {/* Read-only lab allocation for safety leads */}
+              {isLabSafety(role) && role.labId && (
+                <LabAllocationReadOnly labId={role.labId} labs={game.labs} />
+              )}
+
+              {/* Compute for non-lab roles shown as info — loans handled via request system */}
+              {hasCompute(role) && !isLabCeo(role) && (table.computeStock ?? 0) > 0 && (
+                <div className="bg-white rounded-xl border border-border p-4 mb-4">
+                  <h3 className="text-sm font-bold text-text mb-1">Compute Resources</h3>
+                  <p className="text-[11px] text-text-muted">
+                    You have {table.computeStock}u of compute. Other players can request it via the support request system on their actions.
+                  </p>
+                </div>
               )}
 
               {/* Action input */}
@@ -250,6 +580,7 @@ export default function TablePlayerPage({
                       index={i}
                       onPriorityChange={updatePriority}
                       onRemove={removeAction}
+                      onToggleSecret={toggleSecret}
                       totalPriorityUsed={totalPriorityUsed}
                       isSubmitted={false}
                     />
@@ -339,20 +670,16 @@ export default function TablePlayerPage({
                 </div>
               )}
 
-              {/* Own action results */}
+              {/* Own action results — grouped by success/fail */}
               <div className="bg-white rounded-xl border border-border p-4">
                 <h3 className="text-sm font-bold text-text mb-3">
                   {phase === "rolling" ? "Resolving..." : "Your Results"}
                 </h3>
-                {submission?.actions.map((a, i) => (
-                  <ActionCard
+                {sortedResultActions.map((a, i) => (
+                  <ResultActionCard
                     key={i}
                     action={a}
                     index={i}
-                    onPriorityChange={() => {}}
-                    onRemove={() => {}}
-                    totalPriorityUsed={0}
-                    isSubmitted
                   />
                 ))}
               </div>

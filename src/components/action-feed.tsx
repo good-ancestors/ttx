@@ -1,8 +1,9 @@
 "use client";
 
 import { ROLES, getProbabilityCard } from "@/lib/game-data";
+import { redactSecretAction } from "@/lib/secret-actions";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, XCircle } from "lucide-react";
+import { Check, XCircle, EyeOff } from "lucide-react";
 
 interface Submission {
   _id: string;
@@ -10,6 +11,7 @@ interface Submission {
   actions: {
     text: string;
     priority: number;
+    secret?: boolean;
     probability?: number;
     rolled?: number;
     success?: boolean;
@@ -21,6 +23,8 @@ interface FeedItem {
   roleName: string;
   roleColor: string;
   text: string;
+  displayText: string;
+  secret: boolean;
   priority: number;
   probability: number;
   rolled?: number;
@@ -30,20 +34,27 @@ interface FeedItem {
 export function ActionFeed({
   submissions,
   onComplete,
+  isFacilitator = false,
 }: {
   submissions: Submission[];
   onComplete: () => void;
+  isFacilitator?: boolean;
 }) {
   // Flatten all actions from all submissions into a single feed
   const feedItems: FeedItem[] = submissions.flatMap((sub) => {
     const role = ROLES.find((r) => r.id === sub.roleId);
+    const roleName = role?.name ?? sub.roleId;
     return sub.actions
       .filter((a) => a.probability != null)
       .map((a) => ({
         roleId: sub.roleId,
-        roleName: role?.name ?? sub.roleId,
+        roleName,
         roleColor: role?.color ?? "#94A3B8",
         text: a.text,
+        displayText: a.secret && !isFacilitator
+          ? redactSecretAction(roleName, a)
+          : a.text,
+        secret: !!a.secret,
         priority: a.priority,
         probability: a.probability!,
         rolled: a.rolled,
@@ -83,8 +94,11 @@ export function ActionFeed({
                   className="w-2 h-2 rounded-full shrink-0"
                   style={{ backgroundColor: item.roleColor }}
                 />
-                <span className="text-[13px] text-[#E2E8F0] flex-1 truncate">
-                  {item.text}
+                {item.secret && !isFacilitator && (
+                  <EyeOff className="w-3.5 h-3.5 text-viz-warning shrink-0" />
+                )}
+                <span className={`text-[13px] flex-1 truncate ${item.secret && !isFacilitator ? "text-text-light italic" : "text-[#E2E8F0]"}`}>
+                  {item.displayText}
                 </span>
                 <span
                   className="text-[11px] font-bold py-0.5 px-2 rounded-full shrink-0"

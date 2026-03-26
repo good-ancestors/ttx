@@ -7,6 +7,21 @@ import type { Id } from "../../convex/_generated/dataModel";
 import { ROLES } from "@/lib/game-data";
 import { Handshake, Send, Check, X, ChevronDown, ChevronUp } from "lucide-react";
 
+/** Hook to get the pending incoming proposal count for a role. */
+export function usePendingProposalCount(
+  gameId: Id<"games">,
+  roundNumber: number,
+  roleId: string
+) {
+  const proposals = useQuery(api.proposals.getByGameAndRound, {
+    gameId,
+    roundNumber,
+  });
+  return (proposals ?? []).filter(
+    (p) => p.toRoleId === roleId && p.status === "pending"
+  ).length;
+}
+
 export function ProposalPanel({
   gameId,
   roundNumber,
@@ -25,7 +40,8 @@ export function ProposalPanel({
   const sendProposal = useMutation(api.proposals.send);
   const respondToProposal = useMutation(api.proposals.respond);
 
-  const [expanded, setExpanded] = useState(false);
+  // null = user hasn't toggled, so auto-expand based on pending proposals
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
   const [targetRole, setTargetRole] = useState("");
   const [proposalText, setProposalText] = useState("");
   const [sending, setSending] = useState(false);
@@ -39,6 +55,9 @@ export function ProposalPanel({
   const pendingCount = incomingProposals.filter(
     (p) => p.status === "pending"
   ).length;
+
+  // If user has explicitly toggled, respect that; otherwise auto-expand when pending
+  const expanded = userExpanded ?? pendingCount > 0;
 
   const otherRoles = ROLES.filter((r) => r.id !== roleId);
 
@@ -54,6 +73,7 @@ export function ProposalPanel({
       toRoleId: targetRole,
       toRoleName: target?.name ?? targetRole,
       actionText: proposalText.trim(),
+      requestType: "endorsement" as const,
     });
     setProposalText("");
     setSending(false);
@@ -62,7 +82,7 @@ export function ProposalPanel({
   return (
     <div className="bg-white rounded-xl border border-border p-4 mb-4">
       <button
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => setUserExpanded(!expanded)}
         className="flex items-center justify-between w-full"
       >
         <div className="flex items-center gap-2">
@@ -115,9 +135,14 @@ export function ProposalPanel({
                       </span>
                     )}
                   </div>
-                  <p className="text-[13px] text-text mb-2">
+                  <p className="text-[13px] text-text mb-1">
                     {p.actionText}
                   </p>
+                  {(p.requestType || p.computeAmount) && (
+                    <p className="text-[11px] text-text-muted mb-2">
+                      Requesting: {p.requestType === "compute" ? `${p.computeAmount ?? 0} compute` : p.requestType === "both" ? `endorsement + ${p.computeAmount ?? 0} compute` : "endorsement"}
+                    </p>
+                  )}
                   {p.status === "pending" && (
                     <div className="flex gap-2">
                       <button
@@ -136,13 +161,13 @@ export function ProposalPanel({
                         onClick={() =>
                           respondToProposal({
                             proposalId: p._id,
-                            status: "rejected",
+                            status: "declined",
                           })
                         }
                         className="flex-1 py-1.5 bg-[#FEF2F2] text-[#DC2626] rounded text-xs font-bold
                                    flex items-center justify-center gap-1 hover:bg-[#FECACA]"
                       >
-                        <X className="w-3.5 h-3.5" /> Reject
+                        <X className="w-3.5 h-3.5" /> Decline
                       </button>
                     </div>
                   )}
@@ -176,7 +201,7 @@ export function ProposalPanel({
                     className={`text-[10px] font-mono shrink-0 ${
                       p.status === "accepted"
                         ? "text-viz-safety"
-                        : p.status === "rejected"
+                        : p.status === "declined"
                           ? "text-viz-danger"
                           : "text-viz-warning"
                     }`}
@@ -199,11 +224,21 @@ export function ProposalPanel({
               className="w-full p-2 bg-warm-gray border border-border rounded-lg text-[13px] text-text mb-2 outline-none"
             >
               <option value="">Select recipient...</option>
-              {otherRoles.map((r) => (
-                <option key={r.id} value={r.id}>
-                  {r.name}
-                </option>
-              ))}
+              <optgroup label="Labs">
+                {otherRoles.filter((r) => r.tags.includes("lab-ceo") || r.tags.includes("lab-safety")).map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Governments">
+                {otherRoles.filter((r) => r.tags.includes("government")).map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Civil Society & Special">
+                {otherRoles.filter((r) => !r.tags.includes("lab-ceo") && !r.tags.includes("lab-safety") && !r.tags.includes("government")).map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </optgroup>
             </select>
             <textarea
               value={proposalText}

@@ -26,7 +26,7 @@ describe("Game Creation", () => {
 
   it("should create correct number of tables", async () => {
     const tables = await convex.query(api.tables.getByGame, { gameId });
-    expect(tables).toHaveLength(6);
+    expect(tables).toHaveLength(17);
   });
 
   it("all tables should start as AI-controlled", async () => {
@@ -38,7 +38,7 @@ describe("Game Creation", () => {
 
   it("required roles should be enabled", async () => {
     const tables = await convex.query(api.tables.getByGame, { gameId });
-    const requiredIds = ["openbrain", "china", "ai"];
+    const requiredIds = ["openbrain-ceo", "deepcent-ceo", "ai-systems"];
     for (const id of requiredIds) {
       const table = tables.find((t) => t.roleId === id);
       expect(table).toBeDefined();
@@ -68,11 +68,11 @@ describe("Game Creation", () => {
   it("should have 3 tracked labs with correct starting data", async () => {
     const game = await convex.query(api.games.get, { gameId });
     expect(game!.labs).toHaveLength(3);
-    const ob = game!.labs.find((l) => l.roleId === "openbrain");
+    const ob = game!.labs.find((l) => l.roleId === "openbrain-ceo");
     expect(ob).toBeDefined();
     expect(ob!.computeStock).toBe(22);
     expect(ob!.rdMultiplier).toBe(3);
-    const con = game!.labs.find((l) => l.roleId === "conscienta");
+    const con = game!.labs.find((l) => l.roleId === "conscienta-ceo");
     expect(con).toBeDefined();
     expect(con!.computeStock).toBe(14);
   });
@@ -82,11 +82,11 @@ describe("Game with fewer tables", () => {
   it("should handle tableCount of 3", async () => {
     const gameId = await convex.mutation(api.games.create, { tableCount: 3 });
     const tables = await convex.query(api.tables.getByGame, { gameId });
-    // Still creates all 6 roles, but only enables up to tableCount + required
-    expect(tables).toHaveLength(6);
+    // Creates all 17 roles, but only enables up to tableCount + required
+    expect(tables).toHaveLength(17);
     const enabled = tables.filter((t) => t.enabled);
-    // Required (openbrain, china, ai) are always enabled = 3
-    // Plus first 3 in order that aren't already required
+    // Required (openbrain-ceo, deepcent-ceo, ai-systems) are always enabled
+    // Plus first N in order that aren't already required up to tableCount
     expect(enabled.length).toBeGreaterThanOrEqual(3);
   });
 
@@ -107,7 +107,7 @@ describe("Table Join Flow", () => {
   beforeAll(async () => {
     gameId = await convex.mutation(api.games.create, {});
     const tables = await convex.query(api.tables.getByGame, { gameId });
-    const openbrainTable = tables.find((t) => t.roleId === "openbrain")!;
+    const openbrainTable = tables.find((t) => t.roleId === "openbrain-ceo")!;
     tableId = openbrainTable._id;
     joinCode = openbrainTable.joinCode;
   });
@@ -235,7 +235,7 @@ describe("Submission Flow", () => {
       phase: "submit",
     });
     const tables = await convex.query(api.tables.getByGame, { gameId });
-    tableId = tables.find((t) => t.roleId === "openbrain")!._id;
+    tableId = tables.find((t) => t.roleId === "openbrain-ceo")!._id;
   });
 
   it("should submit actions", async () => {
@@ -243,7 +243,7 @@ describe("Submission Flow", () => {
       tableId,
       gameId,
       roundNumber: 1,
-      roleId: "openbrain",
+      roleId: "openbrain-ceo",
       actions: [
         { text: "Invest in alignment research", priority: 5 },
         { text: "Deploy Agent-2 commercially", priority: 3 },
@@ -269,7 +269,7 @@ describe("Submission Flow", () => {
       tableId,
       gameId,
       roundNumber: 1,
-      roleId: "openbrain",
+      roleId: "openbrain-ceo",
       actions: [{ text: "Changed action", priority: 10 }],
     });
 
@@ -283,13 +283,13 @@ describe("Submission Flow", () => {
 
   it("should submit without compute allocation for non-lab roles", async () => {
     const tables = await convex.query(api.tables.getByGame, { gameId });
-    const usTable = tables.find((t) => t.roleId === "us_gov")!;
+    const usTable = tables.find((t) => t.roleId === "us-president")!;
 
     await convex.mutation(api.submissions.submit, {
       tableId: usTable._id,
       gameId,
       roundNumber: 1,
-      roleId: "us_gov",
+      roleId: "us-president",
       actions: [{ text: "Issue executive order on AI", priority: 8 }],
     });
 
@@ -321,13 +321,13 @@ describe("Dice Rolling", () => {
     });
 
     const tables = await convex.query(api.tables.getByGame, { gameId });
-    const obTable = tables.find((t) => t.roleId === "openbrain")!;
+    const obTable = tables.find((t) => t.roleId === "openbrain-ceo")!;
 
     await convex.mutation(api.submissions.submit, {
       tableId: obTable._id,
       gameId,
       roundNumber: 1,
-      roleId: "openbrain",
+      roleId: "openbrain-ceo",
       actions: [
         { text: "Action one", priority: 5 },
         { text: "Action two", priority: 5 },
@@ -388,13 +388,13 @@ describe("Probability Override", () => {
     });
 
     const tables = await convex.query(api.tables.getByGame, { gameId });
-    const table = tables.find((t) => t.roleId === "openbrain")!;
+    const table = tables.find((t) => t.roleId === "openbrain-ceo")!;
 
     subId = await convex.mutation(api.submissions.submit, {
       tableId: table._id,
       gameId,
       roundNumber: 1,
-      roleId: "openbrain",
+      roleId: "openbrain-ceo",
       actions: [{ text: "Test action", priority: 5 }],
     });
   });
@@ -435,11 +435,12 @@ describe("Proposals", () => {
     const proposalId = await convex.mutation(api.proposals.send, {
       gameId,
       roundNumber: 1,
-      fromRoleId: "openbrain",
-      fromRoleName: "OpenBrain",
-      toRoleId: "us_gov",
+      fromRoleId: "openbrain-ceo",
+      fromRoleName: "OpenBrain CEO",
+      toRoleId: "us-president",
       toRoleName: "United States",
       actionText: "We propose sharing Agent-2 access with the government",
+      requestType: "endorsement",
     });
     expect(proposalId).toBeTruthy();
   });
@@ -457,7 +458,7 @@ describe("Proposals", () => {
     const proposals = await convex.query(api.proposals.getForRole, {
       gameId,
       roundNumber: 1,
-      roleId: "us_gov",
+      roleId: "us-president",
     });
     expect(proposals.length).toBeGreaterThanOrEqual(1);
   });
@@ -479,28 +480,29 @@ describe("Proposals", () => {
     expect(updated[0].status).toBe("accepted");
   });
 
-  it("should reject a proposal", async () => {
+  it("should decline a proposal", async () => {
     const proposalId = await convex.mutation(api.proposals.send, {
       gameId,
       roundNumber: 1,
-      fromRoleId: "china",
+      fromRoleId: "china-president",
       fromRoleName: "China",
-      toRoleId: "openbrain",
-      toRoleName: "OpenBrain",
+      toRoleId: "openbrain-ceo",
+      toRoleName: "OpenBrain CEO",
       actionText: "Propose joint safety research",
+      requestType: "endorsement",
     });
 
     await convex.mutation(api.proposals.respond, {
       proposalId,
-      status: "rejected",
+      status: "declined",
     });
 
     const proposals = await convex.query(api.proposals.getByGameAndRound, {
       gameId,
       roundNumber: 1,
     });
-    const rejected = proposals.find((p) => p._id === proposalId);
-    expect(rejected!.status).toBe("rejected");
+    const declined = proposals.find((p) => p._id === proposalId);
+    expect(declined!.status).toBe("declined");
   });
 });
 
@@ -543,14 +545,14 @@ describe("Lab Updates", () => {
       labs: [
         {
           name: "OpenBrain",
-          roleId: "openbrain",
+          roleId: "openbrain-ceo",
           computeStock: 33,
           rdMultiplier: 10,
           allocation: { users: 30, capability: 65, safety: 5 },
         },
         {
           name: "DeepCent",
-          roleId: "china",
+          roleId: "deepcent-ceo",
           computeStock: 23,
           rdMultiplier: 5,
           allocation: { users: 35, capability: 63, safety: 2 },
@@ -559,7 +561,7 @@ describe("Lab Updates", () => {
     });
 
     const game = await convex.query(api.games.get, { gameId });
-    const ob = game!.labs.find((l) => l.roleId === "openbrain")!;
+    const ob = game!.labs.find((l) => l.roleId === "openbrain-ceo")!;
     expect(ob.computeStock).toBe(33);
     expect(ob.rdMultiplier).toBe(10);
   });

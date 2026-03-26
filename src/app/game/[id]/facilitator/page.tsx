@@ -12,8 +12,10 @@ import { LabTracker } from "@/components/lab-tracker";
 import { ProbabilityBadge } from "@/components/action-card";
 import { ActionFeed } from "@/components/action-feed";
 import { NarrativePanel } from "@/components/narrative-panel";
+import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
 import { WorldStateEditor, NarrativeEditor } from "@/components/manual-controls";
+import { DebugPanel } from "@/components/debug-panel";
 import {
   Play,
   ChevronRight,
@@ -22,6 +24,9 @@ import {
   Loader2,
   Dices,
   MessageSquareText,
+  SkipForward,
+  Bot,
+  RefreshCw,
 } from "lucide-react";
 
 export default function FacilitatorPage({
@@ -53,6 +58,9 @@ export default function FacilitatorPage({
   const overrideProbability = useMutation(api.submissions.overrideProbability);
   const toggleAI = useMutation(api.tables.toggleAI);
   const toggleEnabled = useMutation(api.tables.toggleEnabled);
+  const skipTimer = useMutation(api.games.skipTimer);
+  const kickToAI = useMutation(api.tables.kickToAI);
+  const rerollAction = useMutation(api.submissions.rerollAction);
 
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
@@ -119,9 +127,28 @@ export default function FacilitatorPage({
             gameId,
             roundNumber: game.currentRound,
             roleId: table.roleId,
+            computeStock: table.computeStock ?? 0,
           }),
         }).catch(console.error);
       }
+    }
+  };
+
+  // Trigger AI proposals for all AI-controlled enabled tables
+  const triggerAIProposals = () => {
+    const aiTables = (tables ?? []).filter((t) => t.isAI && t.enabled);
+    const enabledRoleList = (tables ?? []).filter((t) => t.enabled).map((t) => ({ id: t.roleId, name: t.roleName }));
+    for (const table of aiTables) {
+      fetch("/api/ai-proposals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gameId,
+          roundNumber: game.currentRound,
+          roleId: table.roleId,
+          enabledRoles: enabledRoleList.filter((r) => r.id !== table.roleId),
+        }),
+      }).catch(console.error);
     }
   };
 
@@ -129,13 +156,22 @@ export default function FacilitatorPage({
   const handleResolveRound = async () => {
     setResolving(true);
 
+    // Two-pass proposals: first pass sends, second pass responds
+    setResolveStep("AI sending proposals...");
+    triggerAIProposals();
+    await new Promise((r) => setTimeout(r, 4000));
+
+    setResolveStep("AI responding to proposals...");
+    triggerAIProposals(); // second pass picks up proposals from first pass
+    await new Promise((r) => setTimeout(r, 4000));
+
     setResolveStep("AI players submitting...");
     triggerAIPlayers();
-    await new Promise((r) => setTimeout(r, 5000));
+    await new Promise((r) => setTimeout(r, 8000));
 
     setResolveStep("Grading actions...");
     gradeAllUngraded();
-    await new Promise((r) => setTimeout(r, 3000));
+    await new Promise((r) => setTimeout(r, 5000));
 
     setResolveStep("Rolling dice...");
     await rollAll({ gameId, roundNumber: game.currentRound });
@@ -166,7 +202,7 @@ export default function FacilitatorPage({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
             {tables.map((table) => {
               const role = ROLES.find((r) => r.id === table.roleId);
               const isRequired = role?.required ?? false;
@@ -213,6 +249,14 @@ export default function FacilitatorPage({
                         className="text-[10px] px-2 py-1 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors"
                       >
                         {table.isAI ? "Set Human" : "Set AI"}
+                      </button>
+                    )}
+                    {table.enabled && table.connected && !table.isAI && (
+                      <button
+                        onClick={() => kickToAI({ tableId: table._id })}
+                        className="text-[10px] px-2 py-1 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-0.5"
+                      >
+                        <Bot className="w-3 h-3" /> Kick to AI
                       </button>
                     )}
                   </div>
@@ -263,11 +307,19 @@ export default function FacilitatorPage({
   // ─── FINISHED ───────────────────────────────────────────────────────────────
   if (game.status === "finished") {
     return (
-      <div className="min-h-screen bg-navy-dark text-white flex items-center justify-center">
-        <div className="text-center">
-          <Dices className="w-12 h-12 text-text-light mx-auto mb-4" />
-          <h2 className="text-2xl font-extrabold mb-2">Scenario Complete</h2>
-          <p className="text-text-light">Time for debrief and reflection.</p>
+      <div className="min-h-screen bg-navy-dark text-white">
+        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} />
+        <div className="p-6 max-w-[1400px] mx-auto">
+          <div className="text-center mb-8">
+            <Dices className="w-12 h-12 text-text-light mx-auto mb-4" />
+            <h2 className="text-2xl font-extrabold mb-2">Scenario Complete</h2>
+            <p className="text-text-light">Debrief and reflection</p>
+          </div>
+          <GameTimeline
+            rounds={rounds}
+            initialWorldState={game.worldState}
+            initialLabs={game.labs}
+          />
         </div>
       </div>
     );
@@ -325,6 +377,14 @@ export default function FacilitatorPage({
                 >
                   Demo: Skip to AI Submissions
                 </button>
+                {game.phaseEndsAt && (
+                  <button
+                    onClick={() => skipTimer({ gameId })}
+                    className="py-2 px-6 bg-navy-light text-text-light rounded-lg font-bold text-sm hover:bg-navy-muted transition-colors mt-3 ml-2"
+                  >
+                    <SkipForward className="w-4 h-4 inline mr-1" />Skip Timer
+                  </button>
+                )}
               </div>
             )}
 
@@ -399,6 +459,18 @@ export default function FacilitatorPage({
                   );
                 })}
 
+                {/* Quick actions */}
+                <div className="flex gap-2 mt-3">
+                  {game.phaseEndsAt && (
+                    <button
+                      onClick={() => skipTimer({ gameId })}
+                      className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1"
+                    >
+                      <SkipForward className="w-3 h-3" /> Skip Timer
+                    </button>
+                  )}
+                </div>
+
                 {/* Resolve button */}
                 {submissionCount > 0 && (
                   <button
@@ -431,6 +503,7 @@ export default function FacilitatorPage({
               <ActionFeed
                 submissions={submissions ?? []}
                 onComplete={() => advancePhase({ gameId, phase: "narrate" })}
+                isFacilitator
               />
             )}
 
@@ -438,6 +511,15 @@ export default function FacilitatorPage({
             {phase === "narrate" && (
               <div>
                 <NarrativePanel round={currentRound} submissions={submissions ?? []} />
+
+                {/* Game timeline for mid-game overview */}
+                <div className="mt-4">
+                  <GameTimeline
+                    rounds={rounds}
+                    initialWorldState={game.worldState}
+                    initialLabs={game.labs}
+                  />
+                </div>
 
                 {/* Manual override controls */}
                 <div className="flex gap-3 mt-2 mb-4">
@@ -468,10 +550,20 @@ export default function FacilitatorPage({
             )}
           </div>
         </div>
+
+        {/* Debug panel */}
+        <DebugPanel
+          gameId={gameId}
+          roundNumber={game.currentRound}
+          submissions={submissions as Props["submissions"]}
+          round={currentRound as Props["round"]}
+        />
       </div>
     </div>
   );
 }
+
+type Props = React.ComponentProps<typeof DebugPanel>;
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 

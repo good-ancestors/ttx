@@ -1,11 +1,11 @@
-import { generateText, Output, createGateway } from "ai";
 import { z } from "zod";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { ROLES } from "@/lib/game-data";
-import { NARRATIVE_MODEL } from "@/lib/ai-models";
+import { NARRATIVE_MODEL, NARRATIVE_FALLBACK } from "@/lib/ai-models";
 import { buildNarrativePrompt } from "@/lib/ai-prompts";
+import { generateWithFallback } from "@/lib/ai-fallback";
 
 const NarrativeOutput = z.object({
   geopoliticalEvents: z.array(z.string()),
@@ -32,9 +32,15 @@ const NarrativeOutput = z.object({
       }),
     })
   ),
+  roleComputeUpdates: z.optional(
+    z.array(
+      z.object({
+        roleId: z.string(),
+        newComputeStock: z.number(),
+      })
+    )
+  ),
 });
-
-const gw = createGateway();
 
 const convex = new ConvexHttpClient(
   process.env.NEXT_PUBLIC_CONVEX_URL ?? ""
@@ -76,14 +82,26 @@ export async function POST(request: Request) {
           probability: a.probability ?? 50,
           rolled: a.rolled!,
           success: a.success ?? false,
+          secret: a.secret,
         }));
     });
 
-    const { output } = await generateText({
-      model: gw(NARRATIVE_MODEL),
-      output: Output.object({
-        schema: NarrativeOutput,
-      }),
+    // Fetch non-lab players with compute for the prompt
+    const allTables = await convex.query(api.tables.getByGame, {
+      gameId: gameId as Id<"games">,
+    });
+    const roleCompute = (allTables ?? [])
+      .filter((t) => t.enabled && (t.computeStock ?? 0) > 0)
+      .map((t) => ({
+        roleId: t.roleId,
+        roleName: t.roleName,
+        computeStock: t.computeStock ?? 0,
+      }));
+
+    const { output, model: usedModel, timeMs, tokens } = await generateWithFallback({
+      primary: NARRATIVE_MODEL,
+      fallback: NARRATIVE_FALLBACK,
+      schema: NarrativeOutput,
       prompt: buildNarrativePrompt({
         round: roundNumber,
         roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
@@ -92,8 +110,8 @@ export async function POST(request: Request) {
         capabilityLevel: currentRound?.capabilityLevel ?? "Unknown",
         resolvedActions,
         labs: game.labs,
+        roleCompute,
       }),
-      maxRetries: 3,
     });
 
     if (output) {
@@ -108,19 +126,36 @@ export async function POST(request: Request) {
         },
       });
 
-      // Clamp world state values to 0-10
-      const clamp = (v: number) => Math.max(0, Math.min(10, Math.round(v)));
+      // Clamp world state values to 0-10, defaulting NaN/undefined to current value
+      const clamp = (v: number, fallback = 0) =>
+        Number.isFinite(v) ? Math.max(0, Math.min(10, Math.round(v))) : fallback;
       await convex.mutation(api.games.updateWorldState, {
         gameId: gameId as Id<"games">,
         worldState: {
-          capability: clamp(output.worldState.capability),
-          alignment: clamp(output.worldState.alignment),
-          tension: clamp(output.worldState.tension),
-          awareness: clamp(output.worldState.awareness),
-          regulation: clamp(output.worldState.regulation),
-          australia: clamp(output.worldState.australia),
+          capability: clamp(output.worldState.capability, game.worldState.capability),
+          alignment: clamp(output.worldState.alignment, game.worldState.alignment),
+          tension: clamp(output.worldState.tension, game.worldState.tension),
+          awareness: clamp(output.worldState.awareness, game.worldState.awareness),
+          regulation: clamp(output.worldState.regulation, game.worldState.regulation),
+          australia: clamp(output.worldState.australia, game.worldState.australia),
         },
       });
+
+      // Update role compute stocks (non-lab players with compute)
+      if (output.roleComputeUpdates) {
+        const tables = await convex.query(api.tables.getByGame, {
+          gameId: gameId as Id<"games">,
+        });
+        for (const update of output.roleComputeUpdates) {
+          const table = tables?.find((t) => t.roleId === update.roleId);
+          if (table) {
+            await convex.mutation(api.games.updateTableCompute, {
+              tableId: table._id,
+              computeStock: Math.max(0, Math.round(update.newComputeStock)),
+            });
+          }
+        }
+      }
 
       // Update lab compute stocks, R&D multipliers, and allocation
       if (output.labUpdates) {
@@ -147,9 +182,47 @@ export async function POST(request: Request) {
           labs: updatedLabs,
         });
       }
+
+      // Snapshot final state for post-game review
+      const finalGame = await convex.query(api.games.get, {
+        gameId: gameId as Id<"games">,
+      });
+      const finalTables = await convex.query(api.tables.getByGame, {
+        gameId: gameId as Id<"games">,
+      });
+      if (finalGame) {
+        const roleComputeAfter = (finalTables ?? [])
+          .filter((t) => t.enabled && (t.computeStock ?? 0) > 0)
+          .map((t) => ({
+            roleId: t.roleId,
+            roleName: t.roleName,
+            computeStock: t.computeStock ?? 0,
+          }));
+
+        await convex.mutation(api.rounds.snapshotState, {
+          gameId: gameId as Id<"games">,
+          roundNumber,
+          worldStateAfter: finalGame.worldState,
+          labsAfter: finalGame.labs,
+          roleComputeAfter,
+        });
+      }
     }
 
-    return Response.json({ success: true, narrative: output });
+    // Track narrative AI metadata
+    if (output) {
+      await convex.mutation(api.rounds.setAiMeta, {
+        gameId: gameId as Id<"games">,
+        roundNumber,
+        aiMeta: {
+          narrativeModel: usedModel,
+          narrativeTimeMs: timeMs,
+          narrativeTokens: tokens,
+        },
+      });
+    }
+
+    return Response.json({ success: true, narrative: output, model: usedModel, timeMs });
   } catch (error) {
     console.error("Narrative error:", error);
     return Response.json(

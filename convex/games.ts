@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS } from "./gameData";
+import { logEvent } from "./events";
 
 function generateJoinCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -16,7 +17,7 @@ export const create = mutation({
     tableCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const tableCount = Math.min(12, Math.max(1, args.tableCount ?? 6));
+    const tableCount = Math.min(17, Math.max(1, args.tableCount ?? 6));
 
     const gameId = await ctx.db.insert("games", {
       status: "lobby",
@@ -29,19 +30,26 @@ export const create = mutation({
 
     // Create tables for all roles — required roles are always enabled,
     // optional roles enabled up to tableCount. All start as AI-controlled
-    // until a human joins.
+    // until a human joins. Roles are ordered by priority in the ROLES array.
+    const requiredIds = new Set(["openbrain-ceo", "deepcent-ceo", "ai-systems"]);
+    let enabledCount = 0;
+
     for (let i = 0; i < ROLES.length; i++) {
       const role = ROLES[i];
-      const isRequired = role.id === "openbrain" || role.id === "china" || role.id === "ai";
-      const enabled = isRequired || i < tableCount;
+      const isRequired = requiredIds.has(role.id);
+      const enabled = isRequired || enabledCount < tableCount;
+      if (enabled && !isRequired) enabledCount++;
+      if (isRequired) enabledCount++; // required count toward total
+
       await ctx.db.insert("tables", {
         gameId,
         roleId: role.id,
         roleName: role.name,
         joinCode: generateJoinCode(),
         connected: false,
-        isAI: true, // Default to AI until human joins
+        isAI: true,
         enabled,
+        computeStock: ("startingComputeStock" in role ? role.startingComputeStock : undefined) as number | undefined,
       });
     }
 
@@ -88,6 +96,7 @@ export const advancePhase = mutation({
       phase: args.phase,
       phaseEndsAt,
     });
+    await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: args.phase, durationSeconds: args.durationSeconds });
   },
 });
 
@@ -130,6 +139,16 @@ export const updateLabs = mutation({
   },
 });
 
+export const updateTableCompute = mutation({
+  args: {
+    tableId: v.id("tables"),
+    computeStock: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.tableId, { computeStock: args.computeStock });
+  },
+});
+
 export const lock = mutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
@@ -145,6 +164,7 @@ export const startGame = mutation({
       phase: "discuss",
       phaseEndsAt: Date.now() + 8 * 60 * 1000, // 8 minutes
     });
+    await logEvent(ctx, args.gameId, "game_start");
   },
 });
 
@@ -154,11 +174,44 @@ export const advanceRound = mutation({
     const game = await ctx.db.get(args.gameId);
     if (!game || game.currentRound >= 3) return;
 
+    const nextRound = game.currentRound + 1;
     await ctx.db.patch(args.gameId, {
-      currentRound: game.currentRound + 1,
+      currentRound: nextRound,
       phase: "discuss",
       phaseEndsAt: Date.now() + 8 * 60 * 1000,
     });
+    await logEvent(ctx, args.gameId, "round_advance", undefined, { round: nextRound });
+  },
+});
+
+export const skipTimer = mutation({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.gameId, { phaseEndsAt: undefined });
+    await logEvent(ctx, args.gameId, "timer_skipped");
+  },
+});
+
+export const addLab = mutation({
+  args: {
+    gameId: v.id("games"),
+    name: v.string(),
+    roleId: v.string(),
+    computeStock: v.number(),
+    rdMultiplier: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) return;
+    const newLab = {
+      name: args.name,
+      roleId: args.roleId,
+      computeStock: args.computeStock,
+      rdMultiplier: args.rdMultiplier,
+      allocation: { users: 34, capability: 33, safety: 33 },
+    };
+    await ctx.db.patch(args.gameId, { labs: [...game.labs, newLab] });
+    await logEvent(ctx, args.gameId, "lab_added", args.roleId, { name: args.name, computeStock: args.computeStock });
   },
 });
 
@@ -166,5 +219,6 @@ export const finishGame = mutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, { status: "finished" });
+    await logEvent(ctx, args.gameId, "game_finish");
   },
 });

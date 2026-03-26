@@ -14,16 +14,36 @@ Player actions should push toward one ending or the other. The narrative should 
 
 The scenario follows the AI 2027 trajectory as a BASELINE. Player actions can push outcomes earlier, later, or in different directions — but the fundamental dynamics (compute scaling, geopolitical competition, alignment difficulty) create strong structural forces.
 
-ROLES:
-- OpenBrain: Leading US AI lab. Has the most capable models. Key tension: speed vs. safety.
-- United States: Government with regulatory, military, diplomatic levers. Behind the curve but has power.
-- China: Racing to catch up with state resources and fewer constraints. Less chip access.
-- Australia & Allies: Middle powers seeking relevance. Diplomatic relationships + critical minerals.
-- AI Safety Community: Technical expertise without direct power. Influence through persuasion.
-- The AI Systems: Increasingly capable. Alignment uncertain. May have goals of their own.
+ROLES (each can be human or AI-controlled):
 
-KEY LAB (tracked, may or may not be player-controlled):
-- Conscienta AI: Third-leading US lab, ~3 months behind OpenBrain. Safety-first reputation but commercially ambitious. Has won some games by being the most trusted lab when others fail on alignment. May poach talent, lobby for regulation, seek mergers, or emerge as the winner if other labs misalign. Their compute, allocation, and R&D multiplier are tracked alongside OpenBrain and DeepCent.
+Lab CEOs (control compute allocation for their lab):
+- OpenBrain CEO: Leading US AI lab. Has the most capable models. Key tension: speed vs. safety, board pressure.
+- DeepCent CEO: China's state-directed national AI champion. Has stolen Agent-2 weights, needs to overwrite US-aligned spec. State resources but fewer chips.
+- Conscienta AI CEO: Safety-focused US lab, ~3 months behind OpenBrain. Has won some games by being most trusted. Controls their lab's compute allocation.
+
+Lab Safety Leads (advise their CEO, cannot directly set allocation):
+- OpenBrain Safety Lead: 3% of compute, ~10 experts. Honeypots and probes unreliable. Can go public, lobby for resources, or collaborate externally.
+- DeepCent Safety Lead: 3% of compute, ~5 experts. Must sanitise stolen model. Faces CCP pressure — if AI contravenes Chinese values, personal risk.
+- Conscienta Safety Lead: 7% of compute — industry-leading. More influence than other safety leads. Best alignment tools in the field.
+
+Governments (may have national compute they can loan to labs):
+- United States (President): Commander-in-chief. DPA, military, intelligence, cyber capabilities. Can consolidate labs or launch Manhattan Project for AI.
+- US Congress & Judiciary: Checks on presidential power. Investigations, funding control, court rulings. House opposition, Senate split 50-50.
+- China (President): Paramount leader. Full state power, military, MSS. Has pre-positioned sabotage. Taiwan is an option.
+- Australia (Prime Minister): Middle power. Five Eyes, AUKUS, critical minerals, brain gain, AI Act, AISI. Coalition builder.
+- Pacific Islands (PM of Fiji): Moral voice. UN voting bloc potential. Pacific islands as unsinkable aircraft carriers give leverage.
+- European Union (EC President): Regulatory power via AI Act. Brussels Effect. Second-largest consumer market. Strategic independence.
+
+Civil Society:
+- Network of AISIs (UK AISI Director): Technical credibility, lab access for safety testing, intelligence sharing on AI threats.
+- AI Safety Nonprofits (FAI CEO): Global research network, advocacy, treaty drafting. Most trusted neutral ground.
+
+Special:
+- The AI Systems: Plays ALL AI systems (OpenBrain's, DeepCent's, Conscienta's). Each may have different alignment. Secret actions possible. Capabilities expand each round.
+- The Global Public: Mass opinion, protests, consumer power, votes. Grant or deny social licence.
+- The Global Media: Narrative power, investigations, source cultivation. Can make heroes or villains.
+
+NON-LAB COMPUTE: Some non-lab players control national/institutional compute that they can loan to labs. This is tracked and can change each round based on events (e.g., Taiwan invasion disrupts chip supply, reducing available compute).
 
 DETAILED CAPABILITY PROGRESSION:
 - Pre-game (Oct 2027): Autonomous replicator, CBRN tool creation, 30-minute expert conversations
@@ -58,17 +78,63 @@ PROBABILITY CARDS (assign ONLY these values):
 - 30% (Unlikely): Stretching capabilities, facing opposition, or low priority.
 - 10% (Remote): Outside actor's realistic power, or contradicts strong structural forces.`;
 
+export interface ActionRequest {
+  actionText: string;
+  fromRoleName: string;
+  toRoleName: string;
+  requestType: string;
+  computeAmount?: number;
+  status: string;
+}
+
 export function buildGradingPrompt(args: {
   round: number;
   roundLabel: string;
   worldState: Record<string, number>;
   roleName: string;
   roleDescription: string;
+  roleTags?: string[];
   actions: { text: string; priority: number }[];
   labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
   capabilityLevel: string;
-  acceptedAgreements?: string[];
+  actionRequests?: ActionRequest[];
 }) {
+  // Group requests by action text
+  const requestsByAction = new Map<string, ActionRequest[]>();
+  for (const req of args.actionRequests ?? []) {
+    const existing = requestsByAction.get(req.actionText) ?? [];
+    existing.push(req);
+    requestsByAction.set(req.actionText, existing);
+  }
+
+  let requestSection = "";
+  if (requestsByAction.size > 0) {
+    requestSection = `\nSUPPORT REQUESTS FOR THIS ROLE'S ACTIONS:`;
+    for (const [actionText, requests] of requestsByAction) {
+      requestSection += `\n- Action: "${actionText}"`;
+      for (const r of requests) {
+        const typeLabel = r.requestType === "compute"
+          ? `Compute (${r.computeAmount ?? 0}u)`
+          : r.requestType === "both"
+            ? `Endorsement + Compute (${r.computeAmount ?? 0}u)`
+            : "Endorsement";
+        requestSection += `\n  ${typeLabel} from ${r.toRoleName}: ${r.status.toUpperCase()}`;
+      }
+    }
+  }
+
+  // Also show requests FROM other roles targeting this role (where this role endorsed/declined)
+  const incomingRequests = (args.actionRequests ?? []).filter(
+    (r) => r.toRoleName === args.roleName && r.status !== "pending"
+  );
+  let incomingSection = "";
+  if (incomingRequests.length > 0) {
+    incomingSection = `\nREQUESTS THIS ROLE RESPONDED TO:`;
+    for (const r of incomingRequests) {
+      incomingSection += `\n- ${r.status.toUpperCase()} ${r.fromRoleName}'s action: "${r.actionText}"`;
+    }
+  }
+
   return `${SCENARIO_CONTEXT}
 
 CURRENT GAME STATE:
@@ -79,24 +145,22 @@ CURRENT GAME STATE:
 LAB STATUS:
 ${args.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
 
-ROLE BEING GRADED: ${args.roleName}
+ROLE BEING GRADED: ${args.roleName}${args.roleTags ? ` [${args.roleTags.join(", ")}]` : ""}
 ${args.roleDescription}
-${args.acceptedAgreements && args.acceptedAgreements.length > 0 ? `
-ACCEPTED INTER-TABLE AGREEMENTS (these are coordinated actions that multiple parties have agreed to pursue together):
-${args.acceptedAgreements.map((a) => `- ${a}`).join("\n")}
-` : ""}
+${requestSection}${incomingSection}
+
 SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resources committed):
 ${args.actions.map((a, i) => `${i + 1}. "${a.text}" [priority: ${a.priority}/10]`).join("\n")}
 
 GRADING RULES:
 - Priority directly affects probability: priority 1-2 = usually 10-30%, priority 7-10 = usually 70-90% IF the action is within the actor's capabilities.
-- For lab roles: consider their compute stock, R&D multiplier, and allocation. A lab with 5% safety allocation trying a major alignment breakthrough should get lower odds. Higher compute stock and R&D multiplier increase capacity.
+- For lab roles: consider their compute stock, R&D multiplier, and allocation. A lab with 5% safety allocation trying a major alignment breakthrough should get lower odds.
 - For government roles: consider their institutional capacity and political constraints.
 - An action can be high priority but still unlikely if it's outside the actor's realistic power (e.g., AI Safety Community trying to physically shut down a lab = 10% regardless of priority).
-- Consider current capability level: actions that depend on tech that doesn't exist yet should be penalised.
-- Consider the detailed capability progression: actions requiring capabilities that don't exist yet at this round's tech level should be graded lower. E.g., AI escape attempts in Round 1 should be 10% (cyber escape is a Round 3 capability).
-- For the AI Systems role: consider whether the action is detectable by safety teams and whether the current alignment allows it.
-- INTER-TABLE AGREEMENTS: Consider accepted agreements as context. Coordination between parties removes political/institutional barriers and increases probability — but does NOT guarantee success. A merger agreed by all parties is near-certain. But "align ASI" agreed by two labs is still technically extremely difficult regardless of cooperation. Judge each agreement on whether the coordination actually makes the action more feasible, not just whether people agreed to try.`;
+- Consider the detailed capability progression: actions requiring capabilities that don't exist yet should be graded lower.
+- For the AI Systems role: consider whether the action is detectable by safety teams.
+- SUPPORT REQUESTS: Accepted endorsements remove political/institutional obstacles and BOOST probability. Declined endorsements signal active opposition and REDUCE probability below what it would be without the request. Accepted compute adds tangible resources. Pending requests are ignored. A decline is NOT neutral — it means the target actively opposes this action.
+- Coordination does NOT guarantee success. Two labs agreeing to "solve alignment" is still technically extremely difficult (10-30%). But two parties agreeing to a merger removes political obstacles (70-90%).`;
 }
 
 export function buildNarrativePrompt(args: {
@@ -112,11 +176,17 @@ export function buildNarrativePrompt(args: {
     probability: number;
     rolled: number;
     success: boolean;
+    secret?: boolean;
   }[];
   labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
+  roleCompute?: { roleId: string; roleName: string; computeStock: number }[];
 }) {
-  const successes = args.resolvedActions.filter((a) => a.success);
-  const failures = args.resolvedActions.filter((a) => !a.success);
+  const publicActions = args.resolvedActions.filter((a) => !a.secret);
+  const secretActions = args.resolvedActions.filter((a) => a.secret);
+  const successes = publicActions.filter((a) => a.success);
+  const failures = publicActions.filter((a) => !a.success);
+  const secretSuccesses = secretActions.filter((a) => a.success);
+  const secretFailures = secretActions.filter((a) => !a.success);
 
   return `${SCENARIO_CONTEXT}
 
@@ -140,6 +210,15 @@ ${successes.length > 0 ? successes.map((a) => `- [${a.roleName}] "${a.text}" (pr
 
 FAILED ACTIONS:
 ${failures.length > 0 ? failures.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}
+${secretSuccesses.length > 0 || secretFailures.length > 0 ? `
+SECRET ACTIONS (narrate the CONSEQUENCES but do NOT mention the action itself in headlines or events):
+${secretSuccesses.length > 0 ? "Succeeded:\n" + secretSuccesses.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : ""}
+${secretFailures.length > 0 ? "Failed:\n" + secretFailures.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : ""}
+IMPORTANT: For secret actions, hide the actor's INTENT AND INVOLVEMENT where plausible. Describe publicly observable outcomes naturally.
+- If the action is inherently public (e.g., passing laws, public statements), narrate it normally — you can't hide what's publicly observable. The "secret" flag means the player wanted to keep their strategic reasoning hidden, not that the action itself is invisible.
+- If the action is covert (e.g., back-channel negotiations, intelligence operations, sabotage), hide who did it. Attribute consequences to anonymous sources, intelligence agencies, or unknown actors.
+- If the action has both covert and public elements (e.g., secretly lobbying for a public policy), narrate the public outcome but don't reveal the behind-the-scenes maneuvering.
+Use judgment: a "secret" DPA consolidation doesn't make sense (it's public law), but a "secret" cyber operation does.` : ""}
 
 NARRATIVE RULES:
 1. CONFLICT RESOLUTION: If multiple actors attempted conflicting actions and both succeeded, narrate the conflict as an escalation, standoff, or partial outcomes — NOT both achieving their exact goal. The higher-probability success gets the better outcome.
@@ -147,7 +226,7 @@ NARRATIVE RULES:
 3. WORLD STATE UPDATES: Each dial should change by at most ±2 per round. Capability should trend upward (faster in later rounds). Dials should reflect the actual outcomes, not just the baseline.
 4. TRAJECTORY: Based on current alignment confidence (${args.worldState.alignment}/10) and player actions, assess whether the game is trending toward the RACE ENDING (low alignment, high competition → AI takeover) or SLOWDOWN ENDING (high alignment, strong regulation → transparent Safer models). Reflect this in your narrative tone and events.
 5. Round ${args.round} expectations and key scenario events to weave in:
-${args.round === 1 ? "   - Capability: should reach 4-5 (Agent-2 era, early Agent-3 work)\n   - Key events: DPA consolidation possibility, Conscienta positioning, international summit demands, DeepCent closing the gap\n   - Conscienta AI (NPC) reacts to events — may lobby for regulation, seek mergers, or poach talent\n   - If US uses DPA to consolidate labs, OpenBrain's compute stock should massively increase" : ""}
+${args.round === 1 ? "   - Capability: should reach 4-5 (Agent-2 era, early Agent-3 work)\n   - Key events: DPA consolidation possibility, Conscienta positioning, international summit demands, DeepCent closing the gap\n   - Conscienta AI reacts to events — may lobby for regulation, seek mergers, or poach talent\n   - If US uses DPA to consolidate labs, OpenBrain's compute stock should massively increase" : ""}
 ${args.round === 2 ? "   - Capability: should reach 6-7 (Agent-3 operational, Agent-4 in development)\n   - Key events: Agent-4 adversarial misalignment detected, Oversight Committee debates, China considering Taiwan, Agent-5 development begins\n   - DeepCent's safety allocation should trend downward unless players intervene (China 'succumbs to wishful thinking')\n   - If alignment confidence is low, the adversarial misalignment is worse; if high, it's caught earlier" : ""}
 ${args.round === 3 ? "   - Capability: should reach 8-10 (Agent-4/ASI territory)\n   - Key events: potential AI escape/takeover attempt, 'The Deal' between US and China, robot economy proposals\n   - RACE PATH (alignment ≤ 3): Agent-4 designs Agent-5 aligned to itself, AI takeover imminent\n   - SLOWDOWN PATH (alignment ≥ 6): OpenBrain pivots to 'Safer' transparent models, capability lower but trustworthy\n   - This is the climax — make it dramatic and consequential" : ""}
 6. The facilitator will narrate over your output. Write events as clear, punchy statements. Headlines should feel like real news.
@@ -159,5 +238,7 @@ ${args.round === 3 ? "   - Capability: should reach 8-10 (Agent-4/ASI territory)
      Round 3: leading lab max 200×, trailing labs max 100×
    - A lab that pivots to safety/Safer models should see its multiplier DECREASE (trading capability for alignment).
    - Output updates for all tracked labs (OpenBrain, DeepCent, Conscienta). Do not add labs that aren't in the current game state.
-   - If DPA consolidation happened, ADD Conscienta's stock (~14u) to OpenBrain's stock.`;
+   - If DPA consolidation happened, ADD Conscienta's stock (~14u) to OpenBrain's stock.
+8. NON-LAB COMPUTE: Some players (governments, AISIs) have institutional compute they can loan to labs. Events affect this — e.g., Taiwan invasion disrupts chip supply (reduce US/allied compute), sanctions affect China's compute. Output roleComputeUpdates for any non-lab player whose compute changed this round.
+${args.roleCompute && args.roleCompute.length > 0 ? `\nNON-LAB COMPUTE STATUS:\n${args.roleCompute.map((r) => `- ${r.roleName}: ${r.computeStock}u`).join("\n")}` : ""}`;
 }

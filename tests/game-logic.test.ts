@@ -15,14 +15,18 @@ import {
   MAX_ACTIONS,
   getProbabilityCard,
   cycleProbability,
+  isLabCeo,
+  isLabSafety,
+  hasCompute,
+  hasTag,
 } from "@/lib/game-data";
 import { parseActionsFromText } from "@/lib/hooks";
 
 // ─── ROLES ────────────────────────────────────────────────────────────────────
 
 describe("Roles", () => {
-  it("should have exactly 6 roles", () => {
-    expect(ROLES).toHaveLength(6);
+  it("should have exactly 17 roles", () => {
+    expect(ROLES).toHaveLength(17);
   });
 
   it("should have unique IDs", () => {
@@ -35,11 +39,19 @@ describe("Roles", () => {
     expect(new Set(colors).size).toBe(colors.length);
   });
 
-  it("should have exactly 2 lab roles", () => {
-    const labs = ROLES.filter((r) => r.isLab);
-    expect(labs).toHaveLength(2);
-    expect(labs.map((l) => l.id)).toEqual(
-      expect.arrayContaining(["openbrain", "china"])
+  it("should have exactly 3 lab-ceo roles", () => {
+    const labCeos = ROLES.filter(isLabCeo);
+    expect(labCeos).toHaveLength(3);
+    expect(labCeos.map((l) => l.id)).toEqual(
+      expect.arrayContaining(["openbrain-ceo", "deepcent-ceo", "conscienta-ceo"])
+    );
+  });
+
+  it("should have exactly 3 lab-safety roles", () => {
+    const labSafety = ROLES.filter(isLabSafety);
+    expect(labSafety).toHaveLength(3);
+    expect(labSafety.map((l) => l.id)).toEqual(
+      expect.arrayContaining(["openbrain-safety", "deepcent-safety", "conscienta-safety"])
     );
   });
 
@@ -47,12 +59,12 @@ describe("Roles", () => {
     const required = ROLES.filter((r) => r.required);
     expect(required).toHaveLength(3);
     expect(required.map((r) => r.id)).toEqual(
-      expect.arrayContaining(["openbrain", "china", "ai"])
+      expect.arrayContaining(["openbrain-ceo", "deepcent-ceo", "ai-systems"])
     );
   });
 
-  it("lab roles should have defaultCompute", () => {
-    for (const role of ROLES.filter((r) => r.isLab)) {
+  it("lab-ceo roles should have defaultCompute summing to 100", () => {
+    for (const role of ROLES.filter(isLabCeo)) {
       expect(role.defaultCompute).toBeDefined();
       const compute = role.defaultCompute!;
       const total = compute.users + compute.capability + compute.safety;
@@ -60,8 +72,8 @@ describe("Roles", () => {
     }
   });
 
-  it("non-lab roles should not have defaultCompute", () => {
-    for (const role of ROLES.filter((r) => !r.isLab)) {
+  it("non lab-ceo roles should not have defaultCompute", () => {
+    for (const role of ROLES.filter((r) => !isLabCeo(r))) {
       expect(role.defaultCompute).toBeUndefined();
     }
   });
@@ -72,16 +84,79 @@ describe("Roles", () => {
     }
   });
 
-  it("China brief should not confirm weight theft to players", () => {
-    const china = ROLES.find((r) => r.id === "china")!;
-    expect(china.brief).not.toContain("You have the stolen");
-    expect(china.brief).toContain("may have obtained");
+  it("all roles should have at least one tag", () => {
+    for (const role of ROLES) {
+      expect(role.tags.length).toBeGreaterThan(0);
+    }
+  });
+
+  it("lab roles should have a labId", () => {
+    for (const role of ROLES.filter((r) => isLabCeo(r) || isLabSafety(r))) {
+      expect(role.labId).toBeDefined();
+      expect(["openbrain", "deepcent", "conscienta"]).toContain(role.labId);
+    }
+  });
+
+  it("non-lab roles should not have a labId", () => {
+    for (const role of ROLES.filter((r) => !isLabCeo(r) && !isLabSafety(r))) {
+      expect(role.labId).toBeUndefined();
+    }
+  });
+
+  it("DeepCent CEO brief should not confirm weight theft to players", () => {
+    const deepcent = ROLES.find((r) => r.id === "deepcent-ceo")!;
+    expect(deepcent.brief).not.toContain("You have the stolen");
+    expect(deepcent.brief).toContain("stolen weights");
   });
 
   it("AI Systems brief should mention secret actions", () => {
-    const ai = ROLES.find((r) => r.id === "ai")!;
+    const ai = ROLES.find((r) => r.id === "ai-systems")!;
     expect(ai.brief).toContain("secret actions");
     expect(ai.brief).toContain("ALL AI systems");
+  });
+
+  it("has-compute roles should have startingComputeStock or be lab-ceo", () => {
+    for (const role of ROLES.filter(hasCompute)) {
+      if (isLabCeo(role)) {
+        // Lab CEOs get compute from DEFAULT_LABS, not startingComputeStock
+        continue;
+      }
+      expect(role.startingComputeStock).toBeDefined();
+      expect(role.startingComputeStock).toBeGreaterThan(0);
+    }
+  });
+});
+
+// ─── TAG HELPERS ─────────────────────────────────────────────────────────────
+
+describe("Tag Helpers", () => {
+  it("isLabCeo returns true only for lab-ceo tagged roles", () => {
+    const ceo = ROLES.find((r) => r.id === "openbrain-ceo")!;
+    const safety = ROLES.find((r) => r.id === "openbrain-safety")!;
+    const gov = ROLES.find((r) => r.id === "us-president")!;
+    expect(isLabCeo(ceo)).toBe(true);
+    expect(isLabCeo(safety)).toBe(false);
+    expect(isLabCeo(gov)).toBe(false);
+  });
+
+  it("isLabSafety returns true only for lab-safety tagged roles", () => {
+    const safety = ROLES.find((r) => r.id === "openbrain-safety")!;
+    const ceo = ROLES.find((r) => r.id === "openbrain-ceo")!;
+    expect(isLabSafety(safety)).toBe(true);
+    expect(isLabSafety(ceo)).toBe(false);
+  });
+
+  it("hasCompute returns true for roles with has-compute tag", () => {
+    const usPresident = ROLES.find((r) => r.id === "us-president")!;
+    const pacificIslands = ROLES.find((r) => r.id === "pacific-islands")!;
+    expect(hasCompute(usPresident)).toBe(true);
+    expect(hasCompute(pacificIslands)).toBe(false);
+  });
+
+  it("hasTag works with any tag", () => {
+    const us = ROLES.find((r) => r.id === "us-president")!;
+    expect(hasTag(us, "military")).toBe(true);
+    expect(hasTag(us, "regulation")).toBe(false);
   });
 });
 
@@ -97,15 +172,10 @@ describe("Round Configs", () => {
   });
 
   it("round narratives should reference scenario correctly", () => {
-    // Round 1: should reference the theft and whistleblower
     expect(ROUND_CONFIGS[0].narrative).toContain("stole");
     expect(ROUND_CONFIGS[0].narrative).toContain("whistleblower");
-
-    // Round 2: should reference Agent-3 and misalignment
     expect(ROUND_CONFIGS[1].narrative).toContain("Agent-3");
     expect(ROUND_CONFIGS[1].narrative).toContain("scheming");
-
-    // Round 3: should reference the fork
     expect(ROUND_CONFIGS[2].narrative).toContain("adversarially misaligned");
     expect(ROUND_CONFIGS[2].narrative).toContain("Safer");
   });
@@ -147,11 +217,10 @@ describe("Probability Cards", () => {
     expect(cycleProbability(70)).toBe(50);
     expect(cycleProbability(50)).toBe(30);
     expect(cycleProbability(30)).toBe(10);
-    expect(cycleProbability(10)).toBe(90); // wraps around
+    expect(cycleProbability(10)).toBe(90);
   });
 
   it("cycleProbability with unknown value should return 90", () => {
-    // indexOf returns -1, (-1 + 1) % 5 = 0, values[0] = 90
     expect(cycleProbability(42)).toBe(90);
   });
 });
@@ -188,20 +257,28 @@ describe("Default Labs", () => {
   });
 
   it("OpenBrain should have more compute than DeepCent", () => {
-    const ob = DEFAULT_LABS.find((l) => l.roleId === "openbrain")!;
-    const dc = DEFAULT_LABS.find((l) => l.roleId === "china")!;
+    const ob = DEFAULT_LABS.find((l) => l.roleId === "openbrain-ceo")!;
+    const dc = DEFAULT_LABS.find((l) => l.roleId === "deepcent-ceo")!;
     expect(ob.computeStock).toBeGreaterThan(dc.computeStock);
   });
 
   it("OpenBrain should have higher R&D multiplier", () => {
-    const ob = DEFAULT_LABS.find((l) => l.roleId === "openbrain")!;
-    const dc = DEFAULT_LABS.find((l) => l.roleId === "china")!;
+    const ob = DEFAULT_LABS.find((l) => l.roleId === "openbrain-ceo")!;
+    const dc = DEFAULT_LABS.find((l) => l.roleId === "deepcent-ceo")!;
     expect(ob.rdMultiplier).toBeGreaterThan(dc.rdMultiplier);
   });
 
   it("safety allocation should be very low (matching scenario)", () => {
     for (const lab of DEFAULT_LABS) {
       expect(lab.allocation.safety).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it("each lab should map to a lab-ceo role", () => {
+    for (const lab of DEFAULT_LABS) {
+      const role = ROLES.find((r) => r.id === lab.roleId);
+      expect(role).toBeDefined();
+      expect(isLabCeo(role!)).toBe(true);
     }
   });
 });
@@ -341,16 +418,6 @@ describe("Edge Cases", () => {
 
   it("MAX_ACTIONS should be 5", () => {
     expect(MAX_ACTIONS).toBe(5);
-  });
-
-  it("player-controlled lab roleIds should match a ROLES entry", () => {
-    // OpenBrain and DeepCent are player-controlled labs
-    // Conscienta is tracked but may not have a player role
-    for (const lab of DEFAULT_LABS.filter((l) => l.roleId !== "conscienta")) {
-      const role = ROLES.find((r) => r.id === lab.roleId);
-      expect(role).toBeDefined();
-      expect(role!.isLab).toBe(true);
-    }
   });
 
   it("all WORLD_STATE_INDICATORS keys should exist in DEFAULT_WORLD_STATE", () => {

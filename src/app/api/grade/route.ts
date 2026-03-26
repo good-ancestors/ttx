@@ -1,11 +1,11 @@
-import { generateText, Output, createGateway } from "ai";
 import { z } from "zod";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../../../convex/_generated/api";
 import type { Id } from "../../../../convex/_generated/dataModel";
 import { ROLES } from "@/lib/game-data";
-import { GRADING_MODEL } from "@/lib/ai-models";
+import { GRADING_MODEL, GRADING_FALLBACK } from "@/lib/ai-models";
 import { buildGradingPrompt } from "@/lib/ai-prompts";
+import { generateWithFallback } from "@/lib/ai-fallback";
 
 const GradingOutput = z.object({
   actions: z.array(
@@ -18,9 +18,6 @@ const GradingOutput = z.object({
     })
   ),
 });
-
-// AI SDK picks up AI_GATEWAY_API_KEY automatically from env
-const gw = createGateway();
 
 const convex = new ConvexHttpClient(
   process.env.NEXT_PUBLIC_CONVEX_URL ?? ""
@@ -56,21 +53,25 @@ export async function POST(request: Request) {
     });
     const currentRound = rounds?.find((r) => r.number === roundNumber);
 
-    // Fetch accepted proposals involving this role
+    // Fetch all requests involving this role (both directions)
     const allProposals = await convex.query(api.proposals.getByGameAndRound, {
       gameId: gameId as Id<"games">,
       roundNumber,
     });
-    const acceptedAgreements = (allProposals ?? [])
+    const actionRequests = (allProposals ?? [])
       .filter(
         (p) =>
-          p.status === "accepted" &&
+          p.status !== "pending" &&
           (p.fromRoleId === roleId || p.toRoleId === roleId)
       )
-      .map(
-        (p) =>
-          `"${p.actionText}" (agreed between ${p.fromRoleName} and ${p.toRoleName})`
-      );
+      .map((p) => ({
+        actionText: p.actionText,
+        fromRoleName: p.fromRoleName,
+        toRoleName: p.toRoleName,
+        requestType: p.requestType ?? "endorsement",
+        computeAmount: p.computeAmount,
+        status: p.status,
+      }));
 
     const prompt = buildGradingPrompt({
       round: roundNumber,
@@ -78,18 +79,18 @@ export async function POST(request: Request) {
       worldState: game.worldState,
       roleName: role?.name ?? roleId,
       roleDescription: role?.brief ?? "",
+      roleTags: role?.tags,
       actions,
       labs: game.labs,
       capabilityLevel: currentRound?.capabilityLevel ?? "Unknown",
-      acceptedAgreements,
+      actionRequests,
     });
 
-    const { output } = await generateText({
-      model: gw(GRADING_MODEL),
-      output: Output.object({
-        schema: GradingOutput,
-      }),
+    const { output, model, timeMs, tokens } = await generateWithFallback({
+      primary: GRADING_MODEL,
+      fallback: GRADING_FALLBACK,
       prompt,
+      schema: GradingOutput,
       maxRetries: 3,
     });
 
@@ -103,9 +104,19 @@ export async function POST(request: Request) {
           reasoning: a.reasoning,
         })),
       });
+
+      // Track AI metadata
+      await convex.mutation(api.submissions.setAiMeta, {
+        submissionId: submissionId as Id<"submissions">,
+        aiMeta: {
+          gradingModel: model,
+          gradingTimeMs: timeMs,
+          gradingTokens: tokens,
+        },
+      });
     }
 
-    return Response.json({ success: true, grading: output });
+    return Response.json({ success: true, grading: output, model, timeMs });
   } catch (error) {
     console.error("Grading error:", error);
     return Response.json(

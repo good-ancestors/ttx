@@ -175,9 +175,8 @@ async function main() {
   console.log("  Game started!");
 
   // Play 3 rounds
-  let game;
   for (let round = 1; round <= 3; round++) {
-    game = await playRound(gameId, round, tables);
+    await playRound(gameId, round, tables);
 
     if (round < 3) {
       console.log(`\n  Advancing to round ${round + 1}...`);

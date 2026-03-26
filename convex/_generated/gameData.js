@@ -1,11 +1,22 @@
 // Shared game constants used by Convex functions.
 export const ROLES = [
-    { id: "openbrain", name: "OpenBrain", isLab: true },
-    { id: "us_gov", name: "United States", isLab: false },
-    { id: "china", name: "China", isLab: true },
-    { id: "australia", name: "Australia & Allies", isLab: false },
-    { id: "safety", name: "AI Safety Community", isLab: false },
-    { id: "ai", name: "The AI Systems", isLab: false },
+    { id: "openbrain-ceo", name: "OpenBrain CEO", tags: ["lab-ceo", "has-compute"], labId: "openbrain" },
+    { id: "deepcent-ceo", name: "DeepCent CEO", tags: ["lab-ceo", "has-compute"], labId: "deepcent" },
+    { id: "conscienta-ceo", name: "Conscienta AI CEO", tags: ["lab-ceo", "has-compute"], labId: "conscienta" },
+    { id: "ai-systems", name: "The AI Systems", tags: ["ai-system"] },
+    { id: "us-president", name: "United States", tags: ["government", "military", "intelligence", "has-compute"], startingComputeStock: 8 },
+    { id: "china-president", name: "China", tags: ["government", "military", "intelligence", "has-compute"], startingComputeStock: 6 },
+    { id: "openbrain-safety", name: "OpenBrain Safety Lead", tags: ["lab-safety", "technical"], labId: "openbrain" },
+    { id: "deepcent-safety", name: "DeepCent Safety Lead", tags: ["lab-safety", "technical"], labId: "deepcent" },
+    { id: "conscienta-safety", name: "Conscienta Safety Lead", tags: ["lab-safety", "technical"], labId: "conscienta" },
+    { id: "australia-pm", name: "Australia", tags: ["government", "diplomatic", "has-compute"], startingComputeStock: 4 },
+    { id: "eu-president", name: "European Union", tags: ["government", "regulation", "has-compute"], startingComputeStock: 5 },
+    { id: "us-congress", name: "US Congress & Judiciary", tags: ["government", "regulation"] },
+    { id: "aisi-network", name: "Network of AISIs", tags: ["civil-society", "technical", "has-compute"], startingComputeStock: 2 },
+    { id: "safety-nonprofits", name: "AI Safety Nonprofits", tags: ["civil-society", "technical"] },
+    { id: "pacific-islands", name: "Pacific Islands", tags: ["government", "diplomatic"] },
+    { id: "global-public", name: "The Global Public", tags: ["public-influence"] },
+    { id: "global-media", name: "The Global Media", tags: ["public-influence"] },
 ];
 export const ROUND_CONFIGS = [
     {
@@ -41,21 +52,21 @@ export const DEFAULT_WORLD_STATE = {
 export const DEFAULT_LABS = [
     {
         name: "OpenBrain",
-        roleId: "openbrain",
+        roleId: "openbrain-ceo",
         computeStock: 22,
         rdMultiplier: 3,
         allocation: { users: 48, capability: 50, safety: 2 },
     },
     {
         name: "DeepCent",
-        roleId: "china",
+        roleId: "deepcent-ceo",
         computeStock: 17,
         rdMultiplier: 2.5,
         allocation: { users: 42, capability: 55, safety: 3 },
     },
     {
         name: "Conscienta",
-        roleId: "conscienta",
+        roleId: "conscienta-ceo",
         computeStock: 14,
         rdMultiplier: 2,
         allocation: { users: 53, capability: 42, safety: 5 },

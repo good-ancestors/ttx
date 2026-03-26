@@ -1,8 +1,10 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { logEvent } from "./events";
 const actionValidator = v.object({
     text: v.string(),
     priority: v.number(),
+    secret: v.optional(v.boolean()),
     probability: v.optional(v.number()),
     reasoning: v.optional(v.string()),
     rolled: v.optional(v.number()),
@@ -52,9 +54,10 @@ export const submit = mutation({
                 artifact: args.artifact,
                 status: "submitted",
             });
+            await logEvent(ctx, args.gameId, "submission", args.roleId, { round: args.roundNumber, actionCount: args.actions.length });
             return existing._id;
         }
-        return await ctx.db.insert("submissions", {
+        const id = await ctx.db.insert("submissions", {
             tableId: args.tableId,
             gameId: args.gameId,
             roundNumber: args.roundNumber,
@@ -64,6 +67,8 @@ export const submit = mutation({
             artifact: args.artifact,
             status: "submitted",
         });
+        await logEvent(ctx, args.gameId, "submission", args.roleId, { round: args.roundNumber, actionCount: args.actions.length });
+        return id;
     },
 });
 export const applyGrading = mutation({
@@ -91,6 +96,21 @@ export const applyGrading = mutation({
         });
     },
 });
+export const setAiMeta = mutation({
+    args: {
+        submissionId: v.id("submissions"),
+        aiMeta: v.object({
+            gradingModel: v.optional(v.string()),
+            gradingTimeMs: v.optional(v.number()),
+            gradingTokens: v.optional(v.number()),
+            playerModel: v.optional(v.string()),
+            playerTimeMs: v.optional(v.number()),
+        }),
+    },
+    handler: async (ctx, args) => {
+        await ctx.db.patch(args.submissionId, { aiMeta: args.aiMeta });
+    },
+});
 export const overrideProbability = mutation({
     args: {
         submissionId: v.id("submissions"),
@@ -109,6 +129,34 @@ export const overrideProbability = mutation({
             };
         }
         await ctx.db.patch(args.submissionId, { actions });
+    },
+});
+export const rerollAction = mutation({
+    args: {
+        submissionId: v.id("submissions"),
+        actionIndex: v.number(),
+    },
+    handler: async (ctx, args) => {
+        const sub = await ctx.db.get(args.submissionId);
+        if (!sub)
+            return;
+        const actions = [...sub.actions];
+        const action = actions[args.actionIndex];
+        if (!action || action.probability == null)
+            return;
+        const newRoll = Math.floor(Math.random() * 100) + 1;
+        actions[args.actionIndex] = {
+            ...action,
+            rolled: newRoll,
+            success: newRoll <= (action.probability ?? 50),
+        };
+        await ctx.db.patch(args.submissionId, { actions });
+        await logEvent(ctx, sub.gameId, "reroll", sub.roleId, {
+            actionIndex: args.actionIndex,
+            oldRoll: action.rolled,
+            newRoll,
+            probability: action.probability,
+        });
     },
 });
 // Fallback probability based on priority when AI grading hasn't happened
@@ -135,6 +183,8 @@ export const rollAllActions = mutation({
                 return { ...action, probability, rolled: roll, success: roll <= probability };
             });
             await ctx.db.patch(sub._id, { actions, status: "resolved" });
+            const successes = actions.filter((a) => a.success).length;
+            await logEvent(ctx, args.gameId, "roll", sub.roleId, { round: args.roundNumber, total: actions.length, successes });
         }
     },
 });

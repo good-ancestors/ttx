@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { logEvent } from "./events";
 export const getByGameAndRound = query({
     args: { gameId: v.id("games"), roundNumber: v.number() },
     handler: async (ctx, args) => {
@@ -30,20 +31,53 @@ export const send = mutation({
         toRoleId: v.string(),
         toRoleName: v.string(),
         actionText: v.string(),
+        requestType: v.union(v.literal("endorsement"), v.literal("compute"), v.literal("both")),
+        computeAmount: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
-        return await ctx.db.insert("proposals", {
+        const id = await ctx.db.insert("proposals", {
             ...args,
             status: "pending",
         });
+        await logEvent(ctx, args.gameId, "request_sent", args.fromRoleId, {
+            toRoleId: args.toRoleId,
+            requestType: args.requestType,
+            computeAmount: args.computeAmount,
+            actionText: args.actionText,
+        });
+        return id;
     },
 });
 export const respond = mutation({
     args: {
         proposalId: v.id("proposals"),
-        status: v.union(v.literal("accepted"), v.literal("rejected")),
+        status: v.union(v.literal("accepted"), v.literal("declined")),
     },
     handler: async (ctx, args) => {
+        const proposal = await ctx.db.get(args.proposalId);
+        if (!proposal)
+            return;
         await ctx.db.patch(args.proposalId, { status: args.status });
+        // If accepting a compute request, deduct from the acceptor's compute stock
+        if (args.status === "accepted" &&
+            (proposal.requestType === "compute" || proposal.requestType === "both") &&
+            proposal.computeAmount) {
+            const tables = await ctx.db
+                .query("tables")
+                .withIndex("by_game", (q) => q.eq("gameId", proposal.gameId))
+                .collect();
+            const acceptorTable = tables.find((t) => t.roleId === proposal.toRoleId);
+            if (acceptorTable && (acceptorTable.computeStock ?? 0) >= proposal.computeAmount) {
+                await ctx.db.patch(acceptorTable._id, {
+                    computeStock: (acceptorTable.computeStock ?? 0) - proposal.computeAmount,
+                });
+            }
+        }
+        await logEvent(ctx, proposal.gameId, `request_${args.status}`, proposal.toRoleId, {
+            fromRoleId: proposal.fromRoleId,
+            requestType: proposal.requestType,
+            computeAmount: proposal.computeAmount,
+            actionText: proposal.actionText,
+        });
     },
 });
