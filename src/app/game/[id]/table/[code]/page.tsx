@@ -257,11 +257,23 @@ export default function TablePlayerPage({
     role?.id ?? ""
   );
 
-  // Set connected on mount
+  // Set connected on mount, disconnect on unmount/close
   useEffect(() => {
-    if (tableId) {
-      void setConnected({ tableId, connected: true });
-    }
+    if (!tableId) return;
+    void setConnected({ tableId, connected: true });
+
+    const handleDisconnect = () => {
+      void setConnected({ tableId, connected: false });
+    };
+    window.addEventListener("beforeunload", handleDisconnect);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") handleDisconnect();
+      else void setConnected({ tableId, connected: true });
+    });
+    return () => {
+      window.removeEventListener("beforeunload", handleDisconnect);
+      handleDisconnect();
+    };
   }, [tableId, setConnected]);
 
   // Initialize compute allocation from role defaults

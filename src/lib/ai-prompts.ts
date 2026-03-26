@@ -1,5 +1,18 @@
 // AI system prompts for the TTX game.
 
+interface Lab {
+  name: string;
+  computeStock: number;
+  rdMultiplier: number;
+  allocation: { users: number; capability: number; safety: number };
+}
+
+export function formatLabStatus(labs: Lab[]): string {
+  return labs.map((l) =>
+    `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`
+  ).join("\n");
+}
+
 export const SCENARIO_CONTEXT = `You are the AI referee for an AGI tabletop exercise based on the AI 2027 scenario.
 
 SCENARIO BACKBONE (shifted to start January 2028):

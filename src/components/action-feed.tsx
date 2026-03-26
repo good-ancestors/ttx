@@ -102,7 +102,7 @@ export function ActionFeed({
                 key={itemKey}
                 initial={{ opacity: 0, x: -20 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.08, duration: 0.3 }}
+                transition={{ delay: Math.min(i * 0.08, 2), duration: 0.3 }}
                 className={`flex items-center gap-3 py-2.5 px-3 rounded-lg ${
                   isResolved ? "bg-navy" : "bg-navy-light/50"
                 }`}
