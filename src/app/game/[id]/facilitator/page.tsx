@@ -39,6 +39,10 @@ export default function FacilitatorPage({
     gameId,
     roundNumber: game?.currentRound ?? 1,
   });
+  const proposals = useQuery(api.proposals.getByGameAndRound, {
+    gameId,
+    roundNumber: game?.currentRound ?? 1,
+  });
 
   const advancePhase = useMutation(api.games.advancePhase);
   const startGame = useMutation(api.games.startGame);
@@ -50,9 +54,10 @@ export default function FacilitatorPage({
   const toggleAI = useMutation(api.tables.toggleAI);
   const toggleEnabled = useMutation(api.tables.toggleEnabled);
 
-  const { display: timerDisplay, isExpired } = useCountdown(game?.phaseEndsAt);
+  const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
   const [resolving, setResolving] = useState(false);
+  const [resolveStep, setResolveStep] = useState("");
   const [showSubmissionDetails, setShowSubmissionDetails] = useState(false);
 
   if (!game || !tables || !rounds) {
@@ -67,6 +72,7 @@ export default function FacilitatorPage({
   const phase = game.phase;
   const submissionCount = submissions?.length ?? 0;
   const connectedCount = tables.filter((t) => t.connected).length;
+  const enabledTables = tables.filter((t) => t.enabled);
 
   // Grade a single submission via API
   const gradeSubmission = (sub: {
@@ -123,20 +129,19 @@ export default function FacilitatorPage({
   const handleResolveRound = async () => {
     setResolving(true);
 
-    // 1. Trigger AI player submissions for any AI tables that haven't submitted
+    setResolveStep("AI players submitting...");
     triggerAIPlayers();
-    // Wait for AI submissions to arrive
     await new Promise((r) => setTimeout(r, 5000));
 
-    // 2. Grade any ungraded submissions (including fresh AI ones)
-    // Re-fetch won't help here since we're in the same render,
-    // but grading will pick up whatever's in the DB
+    setResolveStep("Grading actions...");
     gradeAllUngraded();
     await new Promise((r) => setTimeout(r, 3000));
 
-    // 3. Roll all dice
+    setResolveStep("Rolling dice...");
     await rollAll({ gameId, roundNumber: game.currentRound });
     await advancePhase({ gameId, phase: "rolling" });
+
+    setResolveStep("");
 
     // Trigger narrative generation in background
     fetch("/api/narrate", {
@@ -152,7 +157,7 @@ export default function FacilitatorPage({
   if (game.status === "lobby") {
     return (
       <div className="min-h-screen bg-navy-dark text-white">
-        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} />
+        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} />
         <div className="p-6 max-w-5xl mx-auto">
           <div className="text-center mb-8">
             <h2 className="text-2xl font-extrabold mb-2">Waiting for Tables</h2>
@@ -271,7 +276,7 @@ export default function FacilitatorPage({
   // ─── PLAYING ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-navy-dark text-white">
-      <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} />
+      <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} />
 
       <div className="p-6 max-w-[1400px] mx-auto">
         {currentRound && (
@@ -308,6 +313,18 @@ export default function FacilitatorPage({
                 >
                   Open Submissions
                 </button>
+                <button
+                  onClick={async () => {
+                    await advancePhase({ gameId, phase: "submit" });
+                    // Trigger all AI tables immediately for demo
+                    setTimeout(() => {
+                      triggerAIPlayers();
+                    }, 500);
+                  }}
+                  className="py-2 px-6 bg-navy-light text-text-light rounded-lg font-bold text-sm hover:bg-navy-muted transition-colors mt-3"
+                >
+                  Demo: Skip to AI Submissions
+                </button>
               </div>
             )}
 
@@ -320,6 +337,27 @@ export default function FacilitatorPage({
                   submissions={submissions ?? []}
                   onGradeAll={gradeAllUngraded}
                 />
+
+                {/* Accepted agreements */}
+                {(proposals ?? []).filter((p) => p.status === "accepted").length > 0 && (
+                  <div className="bg-navy-dark rounded-xl border border-navy-light p-4 mt-3">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-viz-safety mb-2 block">
+                      Accepted Agreements
+                    </span>
+                    {(proposals ?? []).filter((p) => p.status === "accepted").map((p) => (
+                      <div key={p._id} className="flex items-center gap-2 py-1.5 text-[13px]">
+                        <span className="text-viz-safety font-mono text-[11px]">✓</span>
+                        <span className="text-white">
+                          <span className="font-bold">{p.fromRoleName}</span>
+                          {" → "}
+                          <span className="font-bold">{p.toRoleName}</span>
+                          {": "}
+                        </span>
+                        <span className="text-[#E2E8F0] flex-1 truncate">{p.actionText}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Expandable submission details — optional review */}
                 {submissionCount > 0 && (
@@ -367,17 +405,22 @@ export default function FacilitatorPage({
                     onClick={handleResolveRound}
                     disabled={resolving}
                     className={`w-full py-4 rounded-lg font-extrabold text-lg mt-4 transition-colors flex items-center justify-center gap-2 ${
-                      submissionCount === tables.length
+                      submissionCount === enabledTables.length
                         ? "bg-white text-navy hover:bg-off-white"
                         : "bg-navy-light text-text-light hover:bg-navy-muted"
                     } disabled:opacity-50`}
                   >
                     {resolving ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        {resolveStep}
+                      </>
                     ) : (
-                      <Dices className="w-5 h-5" />
+                      <>
+                        <Dices className="w-5 h-5" />
+                        Resolve Round ({submissionCount}/{enabledTables.length} submitted)
+                      </>
                     )}
-                    Resolve Round ({submissionCount}/{tables.length} submitted)
                   </button>
                 )}
               </div>
@@ -437,11 +480,13 @@ function FacilitatorNav({
   phase,
   timerDisplay,
   isExpired,
+  isUrgent,
 }: {
   round: { label: string; number: number } | undefined;
   phase: string;
   timerDisplay: string;
   isExpired: boolean;
+  isUrgent: boolean;
 }) {
   const phaseColors: Record<string, { bg: string; text: string }> = {
     discuss: { bg: "#1E3A5F", text: "#60A5FA" },
@@ -472,7 +517,7 @@ function FacilitatorNav({
           {phase.toUpperCase()}
         </span>
         {timerDisplay !== "0:00" && (
-          <span className={`text-sm font-mono flex items-center gap-1 ${isExpired ? "text-viz-danger" : "text-text-light"}`}>
+          <span className={`text-sm font-mono flex items-center gap-1 ${isExpired ? "text-viz-danger" : isUrgent ? "text-viz-danger animate-pulse" : "text-text-light"}`}>
             <Clock className="w-4 h-4" /> {timerDisplay}
           </span>
         )}

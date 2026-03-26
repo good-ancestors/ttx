@@ -48,7 +48,7 @@ export default function TablePlayerPage({
 
   useKeyboardScroll();
 
-  const { display: timerDisplay } = useCountdown(game?.phaseEndsAt);
+  const { display: timerDisplay, isUrgent } = useCountdown(game?.phaseEndsAt);
 
   const role = table ? ROLES.find((r) => r.id === table.roleId) : null;
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
@@ -135,14 +135,14 @@ export default function TablePlayerPage({
             </div>
             <div className="flex items-center gap-3">
               {game.phaseEndsAt && (
-                <span className="text-xs text-text-muted font-mono flex items-center gap-1">
+                <span className={`text-xs font-mono flex items-center gap-1 ${isUrgent ? "text-viz-danger animate-pulse" : "text-text-muted"}`}>
                   <Clock className="w-3.5 h-3.5" /> {timerDisplay}
                 </span>
               )}
               <span className="text-[11px] text-text-muted font-mono">
                 {round.label} — Turn {round.number}/3
               </span>
-              <ConnectionIndicator status="connected" />
+              <ConnectionIndicator />
             </div>
           </div>
         </div>
@@ -313,23 +313,49 @@ export default function TablePlayerPage({
             </div>
           )}
 
-          {/* Rolling / narrate — show results */}
+          {/* Rolling / narrate — show results + narrative */}
           {(phase === "rolling" || phase === "narrate") && (
-            <div className="bg-white rounded-xl border border-border p-4">
-              <h3 className="text-sm font-bold text-text mb-3">
-                {phase === "rolling" ? "Resolving..." : "Results"}
-              </h3>
-              {submission?.actions.map((a, i) => (
-                <ActionCard
-                  key={i}
-                  action={a}
-                  index={i}
-                  onPriorityChange={() => {}}
-                  onRemove={() => {}}
-                  totalPriorityUsed={0}
-                  isSubmitted
-                />
-              ))}
+            <div>
+              {/* Narrative summary */}
+              {phase === "narrate" && round?.summary && (
+                <div className="bg-navy rounded-xl p-4 border border-navy-light mb-4 text-white">
+                  <h3 className="text-base font-bold mb-3">{round.label} — What Happened</h3>
+
+                  {round.summary.headlines.map((h, i) => (
+                    <p key={i} className="text-[13px] text-[#E2E8F0] italic mb-1.5 pl-3 border-l-2 border-viz-warning">
+                      {h}
+                    </p>
+                  ))}
+
+                  {round.summary.geopoliticalEvents.length > 0 && (
+                    <div className="mt-3">
+                      {round.summary.geopoliticalEvents.map((evt, i) => (
+                        <p key={i} className="text-[13px] text-[#CBD5E1] mb-1">
+                          {evt}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Own action results */}
+              <div className="bg-white rounded-xl border border-border p-4">
+                <h3 className="text-sm font-bold text-text mb-3">
+                  {phase === "rolling" ? "Resolving..." : "Your Results"}
+                </h3>
+                {submission?.actions.map((a, i) => (
+                  <ActionCard
+                    key={i}
+                    action={a}
+                    index={i}
+                    onPriorityChange={() => {}}
+                    onRemove={() => {}}
+                    totalPriorityUsed={0}
+                    isSubmitted
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>

@@ -62,7 +62,8 @@ export function useCountdown(phaseEndsAt: number | undefined) {
   const display = `${minutes}:${seconds.toString().padStart(2, "0")}`;
   const isExpired = secondsLeft <= 0 && phaseEndsAt != null;
 
-  return { secondsLeft, minutes, seconds, display, isExpired };
+  const isUrgent = secondsLeft > 0 && secondsLeft <= 60;
+  return { secondsLeft, minutes, seconds, display, isExpired, isUrgent };
 }
 
 /**

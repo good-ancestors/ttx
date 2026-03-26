@@ -1,7 +1,7 @@
 "use client";
 
 import { ROLES, getProbabilityCard } from "@/lib/game-data";
-import { Check, XCircle, Newspaper, Globe, Cpu, FileText } from "lucide-react";
+import { Check, XCircle, Newspaper, Globe, Cpu, FileText, Loader2 } from "lucide-react";
 
 interface Round {
   _id: string;
@@ -138,6 +138,21 @@ export function NarrativePanel({
           </p>
         </div>
       ) : null}
+
+      {!summary && !round.fallbackNarrative && (
+        <div className="bg-navy-dark rounded-xl border border-navy-light p-5 mb-4">
+          <div className="flex items-center gap-2 mb-4">
+            <Loader2 className="w-5 h-5 text-viz-capability animate-spin" />
+            <span className="text-sm font-medium text-text-light">Generating narrative...</span>
+          </div>
+          <div className="space-y-3">
+            <div className="h-4 bg-navy-light rounded animate-pulse w-3/4" />
+            <div className="h-4 bg-navy-light rounded animate-pulse w-full" />
+            <div className="h-4 bg-navy-light rounded animate-pulse w-5/6" />
+            <div className="h-4 bg-navy-light rounded animate-pulse w-2/3" />
+          </div>
+        </div>
+      )}
 
       {/* Action results */}
       <div className="bg-navy-dark rounded-xl border border-navy-light p-5 mb-4">

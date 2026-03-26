@@ -2,20 +2,15 @@
 
 import { useVisibilitySync } from "@/lib/hooks";
 
-type Status = "connected" | "reconnecting" | "disconnected";
-
-export function ConnectionIndicator({ status }: { status: Status }) {
+export function ConnectionIndicator() {
   const syncing = useVisibilitySync();
-  const effectiveStatus = syncing ? "reconnecting" : status;
+  const status = syncing ? "reconnecting" : "connected";
 
   return (
     <div className="flex items-center gap-1.5">
-      <div className={`connection-dot ${effectiveStatus}`} />
-      {effectiveStatus === "reconnecting" && (
+      <div className={`connection-dot ${status}`} />
+      {status === "reconnecting" && (
         <span className="text-[11px] text-text-light">Syncing...</span>
-      )}
-      {effectiveStatus === "disconnected" && (
-        <span className="text-[11px] text-viz-danger">Offline</span>
       )}
     </div>
   );
