@@ -35,25 +35,25 @@ export function ActionCard({
   return (
     <div className="bg-white rounded-lg p-3 border border-border relative mb-2">
       {!isSubmitted && (
-        <div className="absolute top-2 right-2 flex items-center gap-1">
+        <div className="absolute top-1.5 right-1.5 flex items-center gap-2">
           {onToggleSecret && (
             <button
               onClick={() => onToggleSecret(index)}
-              className={`p-1 rounded transition-colors ${action.secret ? "text-viz-warning bg-[#FFF7ED]" : "text-text-light hover:text-text-muted"}`}
+              className={`min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg transition-colors ${action.secret ? "text-viz-warning bg-[#FFF7ED]" : "text-text-light hover:text-text-muted hover:bg-warm-gray"}`}
               title={action.secret ? "Secret action — hidden from other players" : "Make secret"}
             >
-              {action.secret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              {action.secret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
           )}
           <button
             onClick={() => onRemove(index)}
-            className="text-text-light hover:text-text-muted"
+            className="min-w-[36px] min-h-[36px] flex items-center justify-center rounded-lg text-text-light hover:text-viz-danger hover:bg-[#FEF2F2] transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
-      <div className="flex items-start gap-2 mb-2 pr-14">
+      <div className="flex items-start gap-2 mb-2 pr-20">
         <span className="text-[11px] bg-warm-gray text-text-muted rounded px-1.5 py-0.5 font-mono font-semibold shrink-0">
           #{index + 1}
         </span>

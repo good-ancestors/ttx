@@ -152,10 +152,10 @@ export function ProposalPanel({
                             status: "accepted",
                           })
                         }
-                        className="flex-1 py-1.5 bg-[#ECFDF5] text-[#059669] rounded text-xs font-bold
-                                   flex items-center justify-center gap-1 hover:bg-[#D1FAE5]"
+                        className="flex-1 py-2.5 bg-[#ECFDF5] text-[#059669] rounded-lg text-sm font-bold
+                                   flex items-center justify-center gap-1.5 hover:bg-[#D1FAE5]"
                       >
-                        <Check className="w-3.5 h-3.5" /> Accept
+                        <Check className="w-4 h-4" /> Accept
                       </button>
                       <button
                         onClick={() =>
@@ -164,8 +164,8 @@ export function ProposalPanel({
                             status: "declined",
                           })
                         }
-                        className="flex-1 py-1.5 bg-[#FEF2F2] text-[#DC2626] rounded text-xs font-bold
-                                   flex items-center justify-center gap-1 hover:bg-[#FECACA]"
+                        className="flex-1 py-2.5 bg-[#FEF2F2] text-[#DC2626] rounded-lg text-sm font-bold
+                                   flex items-center justify-center gap-1.5 hover:bg-[#FECACA]"
                       >
                         <X className="w-3.5 h-3.5" /> Decline
                       </button>
