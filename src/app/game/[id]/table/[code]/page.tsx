@@ -512,6 +512,13 @@ export default function TablePlayerPage({
           {/* SUBMIT phase — not yet submitted */}
           {phase === "submit" && !isSubmitted && (
             <>
+              {/* Phase transition banner */}
+              <div className="bg-navy text-white rounded-xl p-3 mb-4 flex items-center gap-2">
+                <Send className="w-4 h-4 shrink-0" />
+                <span className="text-sm font-bold">Submissions are open!</span>
+                <span className="text-xs text-text-light ml-auto">{timerDisplay} remaining</span>
+              </div>
+
               {/* Compute allocation for lab CEO roles */}
               {isLabCeo(role) && (
                 <ComputeAllocation
