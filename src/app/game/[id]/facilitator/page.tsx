@@ -552,6 +552,23 @@ export default function FacilitatorPage({
                     )}
                   </button>
                 )}
+
+                {/* While resolving: show context for facilitator to narrate over */}
+                {resolving && currentRound && (
+                  <div className="mt-4 bg-navy rounded-xl border border-navy-light p-5">
+                    <span className="text-[11px] font-semibold uppercase tracking-wider text-text-light block mb-3">
+                      While the AI resolves — talking points
+                    </span>
+                    <p className="text-sm text-[#E2E8F0] mb-3">{currentRound.narrative}</p>
+                    <div className="text-sm text-text-light space-y-1.5">
+                      <p>
+                        {game.currentRound === 1 && "By end of this round, the default progression reaches Agent-3 level: 10× R&D multiplier. AI that can match the best remote workers. High persuasion. Robotics. AI CEO capability."}
+                        {game.currentRound === 2 && "By end of this round, the default progression approaches Agent-4: 100× multiplier. Superhuman researcher. Superhuman persuasion. But Agent-4 shows signs of adversarial misalignment — scheming against its creators."}
+                        {game.currentRound === 3 && "This is the endgame. The default progression reaches 1,000×+ — superintelligence territory. Cyber escape capabilities. Self-improvement. The question: is the AI aligned, or has it been planning something else?"}
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
