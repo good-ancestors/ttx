@@ -1,3 +1,4 @@
+import { checkApiAuth } from "@/lib/api-auth";
 import { z } from "zod";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
@@ -27,6 +28,8 @@ const AIPlayerOutput = z.object({
 
 export async function POST(request: Request) {
   try {
+    const authErr = checkApiAuth(request);
+    if (authErr) return authErr;
     const body = await request.json();
     const {
       tableId,
@@ -181,16 +184,21 @@ ${role?.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifac
     });
 
     if (output) {
+      // Clamp AI priorities to budget instead of letting server throw
+      let actions = output.actions.map((a) => ({ text: a.text, priority: a.priority, secret: a.secret || undefined }));
+      const totalPriority = actions.reduce((s, a) => s + a.priority, 0);
+      if (totalPriority > 10) {
+        const scale = 10 / totalPriority;
+        actions = actions.map((a) => ({ ...a, priority: Math.max(1, Math.round(a.priority * scale)) }));
+      }
+      if (actions.length > 5) actions = actions.slice(0, 5);
+
       const subId = await convex.mutation(api.submissions.submit, {
         tableId: tableId as Id<"tables">,
         gameId: gameId as Id<"games">,
         roundNumber,
         roleId,
-        actions: output.actions.map((a) => ({
-          text: a.text,
-          priority: a.priority,
-          secret: a.secret || undefined,
-        })),
+        actions,
         computeAllocation: output.computeAllocation,
         artifact: output.artifact,
       });

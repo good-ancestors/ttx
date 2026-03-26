@@ -12,6 +12,7 @@ const actionValidator = v.object({
   success: v.optional(v.boolean()),
 });
 
+// Full query — facilitator only (includes secret action text)
 export const getByGameAndRound = query({
   args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
@@ -21,6 +22,29 @@ export const getByGameAndRound = query({
         q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
       )
       .collect();
+  },
+});
+
+// Player-safe query — strips text from secret actions
+export const getByGameAndRoundRedacted = query({
+  args: { gameId: v.id("games"), roundNumber: v.number(), viewerRoleId: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const subs = await ctx.db
+      .query("submissions")
+      .withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
+      )
+      .collect();
+
+    return subs.map((sub) => ({
+      ...sub,
+      actions: sub.actions.map((a) => {
+        if (a.secret && sub.roleId !== args.viewerRoleId) {
+          return { ...a, text: "[Covert action]", reasoning: undefined };
+        }
+        return a;
+      }),
+    }));
   },
 });
 

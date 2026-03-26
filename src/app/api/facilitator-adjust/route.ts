@@ -1,3 +1,4 @@
+import { checkApiAuth } from "@/lib/api-auth";
 import { z } from "zod";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
@@ -37,6 +38,8 @@ const AdjustOutput = z.object({
 
 export async function POST(request: Request) {
   try {
+    const authErr = checkApiAuth(request);
+    if (authErr) return authErr;
     const body = await request.json();
     const { gameId, instruction }: { gameId: string; instruction: string } = body;
 
