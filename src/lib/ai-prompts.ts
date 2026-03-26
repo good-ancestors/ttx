@@ -254,7 +254,11 @@ ${args.round === 3 ? `   - Capability dial: should reach 8-10 (Agent-4/ASI terri
 7. COMPUTE AND R&D UPDATES: Output updated lab compute stocks and R&D multipliers. CRITICAL RULES:
    COMPUTE STOCK:
    - Stock is the total compute infrastructure a lab controls (data centres, chips, energy). Stock of compute is vastly more important than flow on a timescale of months.
-   - New compute this period: ~${args.round === 1 ? "11" : args.round === 2 ? "11" : "5"} new units. Distribute based on actions.
+   - New compute this period: ~${args.round === 1 ? "11" : args.round === 2 ? "11" : "5"} new units.
+   - DEFAULT COMPUTE DISTRIBUTION (if the race continues unimpeded — adjust based on actual player actions):
+${args.round === 1 ? "     OpenBrain +11 (dominant stockpile advantage), DeepCent +6 (state resources), Conscienta +6 (investment inflows), Other US Labs +4, Rest of World +4" : ""}${args.round === 2 ? "     OpenBrain +16 (DPA/procurement advantage), DeepCent +8 (state mobilisation), Conscienta +7 (talent/investment), Other US Labs +2 (consolidation squeeze), Rest of World +2" : ""}${args.round === 3 ? "     OpenBrain +15, DeepCent +6, Conscienta +5, Other US Labs -1 (absorbed/shutdown), Rest of World -1 (obsolete)" : ""}
+   - These defaults shift dramatically based on player actions: DPA consolidation transfers lab stock, Taiwan invasion disrupts chip supply (reduces all labs dependent on TSMC), sanctions reduce target's inflow, data centre nationalisation transfers stock.
+   - Compute can be destroyed, transferred, or redirected — it is not created from nothing.
    - DPA consolidation moves stock between labs (not creates new). If US nationalises a lab, transfer its stock.
    - Infrastructure actions DIRECTLY affect stock: e.g., if a country nationalises data centres hosting 30% of a lab's training runs, that lab LOSES ~30% of its compute stock. If Taiwan is invaded, chip supply is disrupted — reduce compute for labs dependent on TSMC chips.
    - Compute can be destroyed (sabotage, sanctions, nationalisation) or transferred (DPA, mergers, partnerships).
