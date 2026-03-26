@@ -38,7 +38,7 @@ export const ROLES: Role[] = [
       "Aggressive, visionary, Silicon Valley optimist. Moves fast, sees safety as a constraint to manage not a goal. Confident to the point of recklessness.",
     artifactPrompt:
       "Write OpenBrain's press release about your decisions this quarter.",
-    defaultCompute: { users: 48, capability: 50, safety: 2 },
+    defaultCompute: { users: 47, capability: 50, safety: 3 },
   },
   {
     id: "deepcent-ceo",
@@ -443,7 +443,7 @@ export const DEFAULT_LABS = [
     roleId: "openbrain-ceo",
     computeStock: 22,
     rdMultiplier: 3,
-    allocation: { users: 48, capability: 50, safety: 2 },
+    allocation: { users: 47, capability: 50, safety: 3 },
   },
   {
     name: "DeepCent",

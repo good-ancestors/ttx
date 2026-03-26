@@ -317,31 +317,34 @@ export default function TablePlayerPage({
     });
   }, [freeText, parsedActions, computeAllocation, artifact, game, tableId]);
 
-  // ── Timer auto-submit ────────────────────────────────────────────────────
+  // ── Timer auto-submit (auto-parses unparsed text first) ─────────────────
   useEffect(() => {
     if (
       isExpired &&
       phase === "submit" &&
       !isSubmitted &&
-      parsedActions.length > 0 &&
       !submitting &&
       !autoSubmittedRef.current
     ) {
-      autoSubmittedRef.current = true;
-      setAutoSubmitMessage("Time's up — submitting your actions");
-
-      // Brief delay so the user sees the message
-      const timeout = setTimeout(() => {
-        void handleSubmitInternal();
-      }, 1500);
-      return () => clearTimeout(timeout);
+      // Auto-parse if there's text but no parsed actions
+      if (parsedActions.length === 0 && freeText.trim()) {
+        handleParse();
+        return; // useEffect will re-fire with parsedActions populated
+      }
+      if (parsedActions.length > 0) {
+        autoSubmittedRef.current = true;
+        setAutoSubmitMessage("Time's up — submitting your actions");
+        const timeout = setTimeout(() => {
+          void handleSubmitInternal();
+        }, 1500);
+        return () => clearTimeout(timeout);
+      }
     }
-    // Reset the auto-submit flag when round changes
     if (!isExpired) {
       autoSubmittedRef.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isExpired, phase, isSubmitted, parsedActions.length, submitting]);
+  }, [isExpired, phase, isSubmitted, parsedActions.length, submitting, freeText]);
 
   const handleParse = useCallback(() => {
     const texts = parseActionsFromText(freeText);

@@ -97,10 +97,18 @@ export const respond = mutation({
         });
         return;
       }
-      // Deduct compute
+      // Deduct compute from giver
       if (acceptorTable) {
         await ctx.db.patch(acceptorTable._id, {
           computeStock: available - proposal.computeAmount,
+        });
+      }
+
+      // Credit compute to the requester's table (or their lab if they're a lab-ceo)
+      const requesterTable = tables.find((t) => t.roleId === proposal.fromRoleId);
+      if (requesterTable) {
+        await ctx.db.patch(requesterTable._id, {
+          computeStock: (requesterTable.computeStock ?? 0) + proposal.computeAmount,
         });
       }
     }

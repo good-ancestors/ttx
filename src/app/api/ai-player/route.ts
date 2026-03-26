@@ -1,4 +1,3 @@
-import { checkApiAuth } from "@/lib/api-auth";
 import { z } from "zod";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
@@ -28,8 +27,6 @@ const AIPlayerOutput = z.object({
 
 export async function POST(request: Request) {
   try {
-    const authErr = checkApiAuth(request);
-    if (authErr) return authErr;
     const body = await request.json();
     const {
       tableId,
@@ -213,7 +210,7 @@ ${role?.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifac
   } catch (error) {
     console.error("AI player error:", error);
     return Response.json(
-      { error: "AI player failed", details: String(error) },
+      { error: "AI player failed" },
       { status: 500 }
     );
   }

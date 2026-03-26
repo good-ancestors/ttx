@@ -62,7 +62,7 @@ export const DEFAULT_LABS = [
     roleId: "openbrain-ceo",
     computeStock: 22,
     rdMultiplier: 3,
-    allocation: { users: 48, capability: 50, safety: 2 },
+    allocation: { users: 47, capability: 50, safety: 3 },
   },
   {
     name: "DeepCent",

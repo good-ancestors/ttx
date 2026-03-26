@@ -1,4 +1,3 @@
-import { checkApiAuth } from "@/lib/api-auth";
 import { z } from "zod";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
@@ -45,8 +44,6 @@ const NarrativeOutput = z.object({
 
 export async function POST(request: Request) {
   try {
-    const authErr = checkApiAuth(request);
-    if (authErr) return authErr;
     const body = await request.json();
     const {
       gameId,
@@ -236,7 +233,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Narrative error:", error);
     return Response.json(
-      { error: "Narrative generation failed", details: String(error) },
+      { error: "Narrative generation failed" },
       { status: 500 }
     );
   }

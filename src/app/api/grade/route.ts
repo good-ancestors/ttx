@@ -1,4 +1,3 @@
-import { checkApiAuth } from "@/lib/api-auth";
 import { z } from "zod";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
@@ -22,8 +21,6 @@ const GradingOutput = z.object({
 
 export async function POST(request: Request) {
   try {
-    const authErr = checkApiAuth(request);
-    if (authErr) return authErr;
     const body = await request.json();
     const {
       submissionId,
@@ -122,7 +119,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Grading error:", error);
     return Response.json(
-      { error: "Grading failed", details: String(error) },
+      { error: "Grading failed" },
       { status: 500 }
     );
   }

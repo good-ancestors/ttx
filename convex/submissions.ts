@@ -77,6 +77,12 @@ export const submit = mutation({
     artifact: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Check game is in submit phase (or rolling — AI players submit during resolve)
+    const game = await ctx.db.get(args.gameId);
+    if (game && game.phase !== "submit" && game.phase !== "rolling") {
+      throw new Error(`Cannot submit during ${game.phase} phase`);
+    }
+
     // Enforce priority budget (max 10 total) and action limit (max 5)
     const totalPriority = args.actions.reduce((s, a) => s + a.priority, 0);
     if (totalPriority > 10) {
