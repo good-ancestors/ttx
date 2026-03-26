@@ -63,7 +63,7 @@ export const ROLES: Role[] = [
       "You lead a safety-first lab, three months behind OpenBrain but with elite talent and a reputation for responsible development. Governments trust you, but you worry OpenBrain's recklessness could doom everyone. You think it's better if you win the race.",
     artifactPrompt:
       "Write Conscienta AI's public statement about your approach this quarter.",
-    defaultCompute: { users: 53, capability: 42, safety: 5 },
+    defaultCompute: { users: 50, capability: 43, safety: 7 },
   },
 
   // ── The AI Systems ────────────────────────────────────────────────────────
@@ -422,7 +422,7 @@ export const DEFAULT_LABS = [
     roleId: "conscienta-ceo",
     computeStock: 14,
     rdMultiplier: 2,
-    allocation: { users: 53, capability: 42, safety: 5 },
+    allocation: { users: 50, capability: 43, safety: 7 },
   },
 ];
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
 import type { Id } from "../../../../../convex/_generated/dataModel";
@@ -629,14 +629,21 @@ function SubmissionTracker({
 }) {
   const enabledTables = tables.filter((t) => t.enabled);
 
-  // Auto-trigger grading when new submissions arrive
+  // Auto-trigger grading when new submissions arrive (useEffect, not render-time)
   const ungradedCount = submissions.filter(
     (s) => s.status === "submitted" && s.actions.some((a) => a.probability == null)
   ).length;
+  const gradedRef = useRef(new Set<string>());
 
-  if (ungradedCount > 0) {
-    setTimeout(onGradeAll, 100);
-  }
+  useEffect(() => {
+    if (ungradedCount > 0) {
+      const key = submissions.filter(s => s.status === "submitted").map(s => s.roleId).sort().join(",");
+      if (!gradedRef.current.has(key)) {
+        gradedRef.current.add(key);
+        onGradeAll();
+      }
+    }
+  }, [ungradedCount, submissions, onGradeAll]);
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">

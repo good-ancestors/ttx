@@ -46,6 +46,10 @@ export const send = mutation({
     computeAmount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // Validate compute amount is positive
+    if (args.computeAmount !== undefined && args.computeAmount <= 0) {
+      throw new Error("Compute amount must be positive");
+    }
     const id = await ctx.db.insert("proposals", {
       ...args,
       status: "pending",
@@ -68,10 +72,10 @@ export const respond = mutation({
   handler: async (ctx, args) => {
     const proposal = await ctx.db.get(args.proposalId);
     if (!proposal) return;
+    // Guard: only respond to pending proposals (prevents double-accept)
+    if (proposal.status !== "pending") return;
 
-    await ctx.db.patch(args.proposalId, { status: args.status });
-
-    // If accepting a compute request, deduct from the acceptor's compute stock
+    // If accepting a compute request, check funds first and deduct
     if (
       args.status === "accepted" &&
       (proposal.requestType === "compute" || proposal.requestType === "both") &&
@@ -82,12 +86,26 @@ export const respond = mutation({
         .withIndex("by_game", (q) => q.eq("gameId", proposal.gameId))
         .collect();
       const acceptorTable = tables.find((t) => t.roleId === proposal.toRoleId);
-      if (acceptorTable && (acceptorTable.computeStock ?? 0) >= proposal.computeAmount) {
+      const available = acceptorTable?.computeStock ?? 0;
+      if (available < proposal.computeAmount) {
+        // Insufficient compute — force decline
+        await ctx.db.patch(args.proposalId, { status: "declined" });
+        await logEvent(ctx, proposal.gameId, "request_declined_insufficient", proposal.toRoleId, {
+          fromRoleId: proposal.fromRoleId,
+          requested: proposal.computeAmount,
+          available,
+        });
+        return;
+      }
+      // Deduct compute
+      if (acceptorTable) {
         await ctx.db.patch(acceptorTable._id, {
-          computeStock: (acceptorTable.computeStock ?? 0) - proposal.computeAmount,
+          computeStock: available - proposal.computeAmount,
         });
       }
     }
+
+    await ctx.db.patch(args.proposalId, { status: args.status });
 
     await logEvent(ctx, proposal.gameId, `request_${args.status}`, proposal.toRoleId, {
       fromRoleId: proposal.fromRoleId,

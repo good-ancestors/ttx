@@ -53,6 +53,15 @@ export const submit = mutation({
     artifact: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Enforce priority budget (max 10 total) and action limit (max 5)
+    const totalPriority = args.actions.reduce((s, a) => s + a.priority, 0);
+    if (totalPriority > 10) {
+      throw new Error(`Priority budget exceeded: ${totalPriority}/10`);
+    }
+    if (args.actions.length > 5) {
+      throw new Error(`Too many actions: ${args.actions.length}/5`);
+    }
+
     const existing = await ctx.db
       .query("submissions")
       .withIndex("by_table_and_round", (q) =>
@@ -61,6 +70,10 @@ export const submit = mutation({
       .first();
 
     if (existing) {
+      // Don't overwrite already-graded or resolved submissions
+      if (existing.status === "graded" || existing.status === "resolved") {
+        return existing._id;
+      }
       await ctx.db.patch(existing._id, {
         actions: args.actions,
         computeAllocation: args.computeAllocation,
@@ -202,6 +215,8 @@ export const rollAllActions = mutation({
       .collect();
 
     for (const sub of subs) {
+      // Skip already-resolved submissions (prevents double-roll)
+      if (sub.status === "resolved") continue;
       const actions = sub.actions.map((action) => {
         const probability = action.probability ?? defaultProbability(action.priority);
         const roll = Math.floor(Math.random() * 100) + 1;

@@ -268,10 +268,16 @@ describe("Default Labs", () => {
     expect(ob.rdMultiplier).toBeGreaterThan(dc.rdMultiplier);
   });
 
-  it("safety allocation should be very low (matching scenario)", () => {
-    for (const lab of DEFAULT_LABS) {
-      expect(lab.allocation.safety).toBeLessThanOrEqual(5);
-    }
+  it("safety allocation should match source material", () => {
+    const ob = DEFAULT_LABS.find((l) => l.roleId === "openbrain-ceo")!;
+    const dc = DEFAULT_LABS.find((l) => l.roleId === "deepcent-ceo")!;
+    const con = DEFAULT_LABS.find((l) => l.roleId === "conscienta-ceo")!;
+    // OpenBrain: ~3% safety (from source: "3% of compute allocated to safety")
+    expect(ob.allocation.safety).toBeLessThanOrEqual(5);
+    // DeepCent: ~3% safety (from source: "3% of compute allocated to your research")
+    expect(dc.allocation.safety).toBeLessThanOrEqual(5);
+    // Conscienta: 7% safety (from source: "industry-leading 7% of the company's compute")
+    expect(con.allocation.safety).toBe(7);
   });
 
   it("each lab should map to a lab-ceo role", () => {

@@ -76,6 +76,6 @@ export const DEFAULT_LABS = [
     roleId: "conscienta-ceo",
     computeStock: 14,
     rdMultiplier: 2,
-    allocation: { users: 53, capability: 42, safety: 5 },
+    allocation: { users: 50, capability: 43, safety: 7 },
   },
 ];

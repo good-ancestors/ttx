@@ -126,18 +126,25 @@ export async function POST(request: Request) {
         },
       });
 
-      // Clamp world state values to 0-10, defaulting NaN/undefined to current value
-      const clamp = (v: number, fallback = 0) =>
-        Number.isFinite(v) ? Math.max(0, Math.min(10, Math.round(v))) : fallback;
+      // Clamp world state: 0-10 range, max ±3 change per round, NaN falls back to current
+      const clampDelta = (newVal: number, current: number, maxDelta = 3) => {
+        if (!Number.isFinite(newVal)) return current;
+        const clamped = Math.max(0, Math.min(10, Math.round(newVal)));
+        const delta = clamped - current;
+        if (Math.abs(delta) > maxDelta) {
+          return current + Math.sign(delta) * maxDelta;
+        }
+        return clamped;
+      };
       await convex.mutation(api.games.updateWorldState, {
         gameId: gameId as Id<"games">,
         worldState: {
-          capability: clamp(output.worldState.capability, game.worldState.capability),
-          alignment: clamp(output.worldState.alignment, game.worldState.alignment),
-          tension: clamp(output.worldState.tension, game.worldState.tension),
-          awareness: clamp(output.worldState.awareness, game.worldState.awareness),
-          regulation: clamp(output.worldState.regulation, game.worldState.regulation),
-          australia: clamp(output.worldState.australia, game.worldState.australia),
+          capability: clampDelta(output.worldState.capability, game.worldState.capability),
+          alignment: clampDelta(output.worldState.alignment, game.worldState.alignment),
+          tension: clampDelta(output.worldState.tension, game.worldState.tension),
+          awareness: clampDelta(output.worldState.awareness, game.worldState.awareness),
+          regulation: clampDelta(output.worldState.regulation, game.worldState.regulation),
+          australia: clampDelta(output.worldState.australia, game.worldState.australia),
         },
       });
 

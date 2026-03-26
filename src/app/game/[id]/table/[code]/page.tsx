@@ -419,7 +419,7 @@ export default function TablePlayerPage({
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}
       >
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-off-white/95 backdrop-blur-sm border-b border-border px-4 py-3">
+        <div className="sticky top-0 z-10 bg-off-white/95 backdrop-blur-sm border-b border-border px-4 py-3 pt-[max(12px,env(safe-area-inset-top))]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: role.color }} />
@@ -533,7 +533,7 @@ export default function TablePlayerPage({
                 <textarea
                   value={freeText}
                   onChange={(e) => setFreeText(e.target.value)}
-                  placeholder={`e.g.\nUse executive power to compel a merger between Conscentia and OpenBrain — gives us access to more compute\nLaunch a public safety review of Agent-2 — buys time for regulation\nOffer classified AI briefings to allied nations — builds coalition`}
+                  placeholder={`e.g.\nUse executive power to compel a merger between Conscienta and OpenBrain — gives us access to more compute\nLaunch a public safety review of Agent-2 — buys time for regulation\nOffer classified AI briefings to allied nations — builds coalition`}
                   rows={5}
                   spellCheck={false}
                   autoComplete="off"
