@@ -262,10 +262,8 @@ ${args.round === 3 ? `   - Capability dial: should reach 8-10 (Agent-4/ASI terri
    - The multiplier represents the AI system's current capability level. It can ONLY go up or stay flat — never decrease within a model generation. You cannot un-discover capabilities.
    - Slowing progress means the multiplier grows SLOWER (e.g., stays at 3x instead of jumping to 10x), NOT that it drops from 10x to 3x.
    - The ONLY exception: if a model is explicitly decommissioned/destroyed and replaced with a less capable one (e.g., pivot to Safer models replaces Agent-4 with a deliberately less capable transparent model).
-   - HARD CEILING PER ROUND (do NOT exceed — these are absolute maxima, not targets):
-     Round 1: max 10×
-     Round 2: max 100×
-     Round 3: max 1,000×
+   - These targets assume the race continues. Player actions can push multipliers above or below these ranges.
+   - Use your judgment — DPA consolidation, extreme compute concentration, or breakthroughs can accelerate beyond defaults.
    - Output updates for all tracked labs. Do not add labs that aren't in the current game state.
 8. NON-LAB COMPUTE: Some players (governments, AISIs) have institutional compute they can loan to labs. Events affect this — e.g., Taiwan invasion disrupts chip supply (reduce US/allied compute), sanctions affect China's compute. Output roleComputeUpdates for any non-lab player whose compute changed this round.
 ${args.roleCompute && args.roleCompute.length > 0 ? `\nNON-LAB COMPUTE STATUS:\n${args.roleCompute.map((r) => `- ${r.roleName}: ${r.computeStock}u`).join("\n")}` : ""}`;
