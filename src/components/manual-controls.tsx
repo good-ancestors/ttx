@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { WORLD_STATE_INDICATORS } from "@/lib/game-data";
 import { Pencil, Save, Minus, Plus, AlertTriangle, Wand2, Loader2 } from "lucide-react";
 
@@ -189,22 +189,38 @@ export function NarrativeEditor({
 }
 
 // AI-powered facilitator adjustment — type natural language instructions
+interface Snapshot {
+  worldState: { capability: number; alignment: number; tension: number; awareness: number; regulation: number; australia: number };
+  labs: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
+}
+
 export function FacilitatorAdjust({
   gameId,
+  currentWorldState,
+  currentLabs,
 }: {
   gameId: Id<"games">;
+  currentWorldState: Snapshot["worldState"];
+  currentLabs: Snapshot["labs"];
 }) {
+  const updateWorldState = useMutation(api.games.updateWorldState);
+  const updateLabs = useMutation(api.games.updateLabs);
+
   const [open, setOpen] = useState(false);
   const [instruction, setInstruction] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
 
   const handleSubmit = async () => {
     if (!instruction.trim()) return;
     setLoading(true);
     setResult(null);
     setError(null);
+
+    // Snapshot current state before applying
+    setSnapshot({ worldState: { ...currentWorldState }, labs: currentLabs.map(l => ({ ...l, allocation: { ...l.allocation } })) });
 
     try {
       const res = await fetch("/api/facilitator-adjust", {
@@ -219,12 +235,22 @@ export function FacilitatorAdjust({
         setInstruction("");
       } else {
         setError(data.error ?? "Adjustment failed");
+        setSnapshot(null);
       }
     } catch {
       setError("Network error");
+      setSnapshot(null);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRevert = async () => {
+    if (!snapshot) return;
+    await updateWorldState({ gameId, worldState: snapshot.worldState });
+    await updateLabs({ gameId, labs: snapshot.labs });
+    setResult(null);
+    setSnapshot(null);
   };
 
   if (!open) {
@@ -288,6 +314,15 @@ export function FacilitatorAdjust({
       {result && (
         <div className="mt-2 p-2 bg-navy-dark rounded border border-viz-safety/30 text-[11px] text-viz-safety">
           {result}
+          {snapshot && (
+            <button
+              onClick={handleRevert}
+              className="mt-1.5 w-full py-1.5 bg-navy-light text-text-light rounded text-[11px] font-bold
+                         hover:bg-navy-muted transition-colors flex items-center justify-center gap-1"
+            >
+              Revert adjustment
+            </button>
+          )}
         </div>
       )}
 

@@ -2,8 +2,8 @@
 
 import { use, useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
-import { api } from "../../../../../../convex/_generated/api";
-import type { Id } from "../../../../../../convex/_generated/dataModel";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { ROLES, MAX_PRIORITY, isLabCeo, isLabSafety, hasCompute, type Role } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll, parseActionsFromText } from "@/lib/hooks";
 import { ActionCard } from "@/components/action-card";

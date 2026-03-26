@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { api } from "@convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { Presentation, Smartphone, Loader2 } from "lucide-react";
 

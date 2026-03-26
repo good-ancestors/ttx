@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { ConvexHttpClient } from "convex/browser";
-import { api } from "../../../../convex/_generated/api";
-import type { Id } from "../../../../convex/_generated/dataModel";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { ROLES, isLabCeo, isLabSafety, hasCompute } from "@/lib/game-data";
 import { GRADING_MODEL, GRADING_FALLBACK } from "@/lib/ai-models";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";

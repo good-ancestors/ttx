@@ -2,8 +2,8 @@
 
 import { use, useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
-import { api } from "../../../../../convex/_generated/api";
-import type { Id } from "../../../../../convex/_generated/dataModel";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { ROLES, cycleProbability } from "@/lib/game-data";
 import { useCountdown } from "@/lib/hooks";
 import { CapabilityTimeline } from "@/components/capability-timeline";
@@ -529,7 +529,7 @@ export default function FacilitatorPage({
                     currentSummary={currentRound?.summary ?? undefined}
                   />
                   <WorldStateEditor gameId={gameId} worldState={game.worldState} />
-                  <FacilitatorAdjust gameId={gameId} />
+                  <FacilitatorAdjust gameId={gameId} currentWorldState={game.worldState} currentLabs={game.labs} />
                 </div>
 
                 {game.currentRound < 3 ? (
