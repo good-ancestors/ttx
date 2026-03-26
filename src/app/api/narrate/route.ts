@@ -25,6 +25,11 @@ const NarrativeOutput = z.object({
       name: z.string(),
       newComputeStock: z.number(),
       newRdMultiplier: z.number(),
+      newAllocation: z.object({
+        users: z.number(),
+        capability: z.number(),
+        safety: z.number(),
+      }),
     })
   ),
 });
@@ -117,13 +122,25 @@ export async function POST(request: Request) {
         },
       });
 
-      // Update lab compute stocks and R&D multipliers
+      // Update lab compute stocks, R&D multipliers, and allocation
       if (output.labUpdates) {
+        // Clamp multiplier to reasonable bounds
+        const maxMultiplier = roundNumber === 1 ? 10 : roundNumber === 2 ? 40 : 200;
         const updatedLabs = game.labs.map((lab) => {
           const update = output.labUpdates.find((u) => u.name === lab.name);
-          return update
-            ? { ...lab, computeStock: update.newComputeStock, rdMultiplier: update.newRdMultiplier }
-            : lab;
+          if (!update) return lab;
+          return {
+            ...lab,
+            computeStock: Math.max(0, Math.round(update.newComputeStock)),
+            rdMultiplier: Math.min(maxMultiplier, Math.max(0, update.newRdMultiplier)),
+            allocation: update.newAllocation
+              ? {
+                  users: Math.round(update.newAllocation.users),
+                  capability: Math.round(update.newAllocation.capability),
+                  safety: Math.round(update.newAllocation.safety),
+                }
+              : lab.allocation,
+          };
         });
         await convex.mutation(api.games.updateLabs, {
           gameId: gameId as Id<"games">,

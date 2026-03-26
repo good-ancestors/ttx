@@ -151,5 +151,13 @@ ${args.round === 1 ? "   - Capability: should reach 4-5 (Agent-2 era, early Agen
 ${args.round === 2 ? "   - Capability: should reach 6-7 (Agent-3 operational, Agent-4 in development)\n   - Key events: Agent-4 adversarial misalignment detected, Oversight Committee debates, China considering Taiwan, Agent-5 development begins\n   - DeepCent's safety allocation should trend downward unless players intervene (China 'succumbs to wishful thinking')\n   - If alignment confidence is low, the adversarial misalignment is worse; if high, it's caught earlier" : ""}
 ${args.round === 3 ? "   - Capability: should reach 8-10 (Agent-4/ASI territory)\n   - Key events: potential AI escape/takeover attempt, 'The Deal' between US and China, robot economy proposals\n   - RACE PATH (alignment ≤ 3): Agent-4 designs Agent-5 aligned to itself, AI takeover imminent\n   - SLOWDOWN PATH (alignment ≥ 6): OpenBrain pivots to 'Safer' transparent models, capability lower but trustworthy\n   - This is the climax — make it dramatic and consequential" : ""}
 6. The facilitator will narrate over your output. Write events as clear, punchy statements. Headlines should feel like real news.
-7. COMPUTE DISTRIBUTION: You must also output updated lab compute stocks and R&D multipliers for the next round. New compute produced this period: roughly ${args.round === 1 ? "11" : args.round === 2 ? "11 (two quarters)" : "5"} new units total. Distribute based on the AI 2027 baseline modified by player actions (e.g., DPA consolidation massively increases OpenBrain stock, sanctions reduce a lab's share, mergers combine stocks). R&D multiplier compounds based on capability allocation — higher capability % = faster growth. Baseline: Round 1 → 3-10×, Round 2 → 10-40×, Round 3 → 40-1000×+. Safety allocation slows multiplier growth but reduces alignment risk. DeepCent's safety allocation should trend downward unless players intervene.`;
+7. COMPUTE DISTRIBUTION: Output updated lab compute stocks and R&D multipliers. IMPORTANT CONSTRAINTS:
+   - New compute this period: ~${args.round === 1 ? "11" : args.round === 2 ? "11" : "5"} new units. Distribute across labs based on actions (DPA consolidation moves stock between labs, not creates new stock).
+   - R&D MULTIPLIER BOUNDS PER ROUND (do NOT exceed these):
+     Round 1: leading lab max 10×, trailing labs max 5×
+     Round 2: leading lab max 40×, trailing labs max 20×
+     Round 3: leading lab max 200×, trailing labs max 100×
+   - A lab that pivots to safety/Safer models should see its multiplier DECREASE (trading capability for alignment).
+   - Only output labs named "OpenBrain" and "DeepCent" (the two player-controlled labs). Do not add other labs.
+   - If DPA consolidation happened, ADD Conscienta's stock (~14u) to OpenBrain's stock.`;
 }
