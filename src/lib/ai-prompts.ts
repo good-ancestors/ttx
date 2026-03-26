@@ -230,15 +230,22 @@ ${args.round === 1 ? "   - Capability: should reach 4-5 (Agent-2 era, early Agen
 ${args.round === 2 ? "   - Capability: should reach 6-7 (Agent-3 operational, Agent-4 in development)\n   - Key events: Agent-4 adversarial misalignment detected, Oversight Committee debates, China considering Taiwan, Agent-5 development begins\n   - DeepCent's safety allocation should trend downward unless players intervene (China 'succumbs to wishful thinking')\n   - If alignment confidence is low, the adversarial misalignment is worse; if high, it's caught earlier" : ""}
 ${args.round === 3 ? "   - Capability: should reach 8-10 (Agent-4/ASI territory)\n   - Key events: potential AI escape/takeover attempt, 'The Deal' between US and China, robot economy proposals\n   - RACE PATH (alignment ≤ 3): Agent-4 designs Agent-5 aligned to itself, AI takeover imminent\n   - SLOWDOWN PATH (alignment ≥ 6): OpenBrain pivots to 'Safer' transparent models, capability lower but trustworthy\n   - This is the climax — make it dramatic and consequential" : ""}
 6. The facilitator will narrate over your output. Write events as clear, punchy statements. Headlines should feel like real news.
-7. COMPUTE DISTRIBUTION: Output updated lab compute stocks and R&D multipliers. IMPORTANT CONSTRAINTS:
-   - New compute this period: ~${args.round === 1 ? "11" : args.round === 2 ? "11" : "5"} new units. Distribute across labs based on actions (DPA consolidation moves stock between labs, not creates new stock).
-   - R&D MULTIPLIER BOUNDS PER ROUND (do NOT exceed these):
+7. COMPUTE AND R&D UPDATES: Output updated lab compute stocks and R&D multipliers. CRITICAL RULES:
+   COMPUTE STOCK:
+   - Stock is the total compute infrastructure a lab controls (data centres, chips, energy). Stock of compute is vastly more important than flow on a timescale of months.
+   - New compute this period: ~${args.round === 1 ? "11" : args.round === 2 ? "11" : "5"} new units. Distribute based on actions.
+   - DPA consolidation moves stock between labs (not creates new). If US nationalises a lab, transfer its stock.
+   - Infrastructure actions DIRECTLY affect stock: e.g., if a country nationalises data centres hosting 30% of a lab's training runs, that lab LOSES ~30% of its compute stock. If Taiwan is invaded, chip supply is disrupted — reduce compute for labs dependent on TSMC chips.
+   - Compute can be destroyed (sabotage, sanctions, nationalisation) or transferred (DPA, mergers, partnerships).
+   R&D MULTIPLIER:
+   - The multiplier represents the AI system's current capability level. It can ONLY go up or stay flat — never decrease within a model generation. You cannot un-discover capabilities.
+   - Slowing progress means the multiplier grows SLOWER (e.g., stays at 3x instead of jumping to 10x), NOT that it drops from 10x to 3x.
+   - The ONLY exception: if a model is explicitly decommissioned/destroyed and replaced with a less capable one (e.g., pivot to Safer models replaces Agent-4 with a deliberately less capable transparent model).
+   - BOUNDS PER ROUND (do NOT exceed):
      Round 1: leading lab max 10×, trailing labs max 5×
      Round 2: leading lab max 40×, trailing labs max 20×
      Round 3: leading lab max 200×, trailing labs max 100×
-   - A lab that pivots to safety/Safer models should see its multiplier DECREASE (trading capability for alignment).
-   - Output updates for all tracked labs (OpenBrain, DeepCent, Conscienta). Do not add labs that aren't in the current game state.
-   - If DPA consolidation happened, ADD Conscienta's stock (~14u) to OpenBrain's stock.
+   - Output updates for all tracked labs. Do not add labs that aren't in the current game state.
 8. NON-LAB COMPUTE: Some players (governments, AISIs) have institutional compute they can loan to labs. Events affect this — e.g., Taiwan invasion disrupts chip supply (reduce US/allied compute), sanctions affect China's compute. Output roleComputeUpdates for any non-lab player whose compute changed this round.
 ${args.roleCompute && args.roleCompute.length > 0 ? `\nNON-LAB COMPUTE STATUS:\n${args.roleCompute.map((r) => `- ${r.roleName}: ${r.computeStock}u`).join("\n")}` : ""}`;
 }

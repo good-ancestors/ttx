@@ -166,15 +166,17 @@ export async function POST(request: Request) {
 
       // Update lab compute stocks, R&D multipliers, and allocation
       if (output.labUpdates) {
-        // Clamp multiplier — generous bounds, AI scenario allows extreme values in later rounds
         const maxMultiplier = roundNumber === 1 ? 15 : roundNumber === 2 ? 100 : 1000;
         const updatedLabs = game.labs.map((lab) => {
           const update = output.labUpdates.find((u) => u.name === lab.name);
           if (!update) return lab;
+          // R&D multiplier can only go up or stay flat — never decrease
+          // (you can't un-discover capabilities within a model generation)
+          const newMultiplier = Math.min(maxMultiplier, Math.max(lab.rdMultiplier, update.newRdMultiplier));
           return {
             ...lab,
             computeStock: Math.max(0, Math.round(update.newComputeStock)),
-            rdMultiplier: Math.min(maxMultiplier, Math.max(0, update.newRdMultiplier)),
+            rdMultiplier: newMultiplier,
             allocation: update.newAllocation
               ? {
                   users: Math.round(update.newAllocation.users),
