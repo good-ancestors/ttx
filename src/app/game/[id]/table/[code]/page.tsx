@@ -220,7 +220,9 @@ export default function TablePlayerPage({
   });
 
   const submitActions = useMutation(api.submissions.submit);
+  const sendRequest = useMutation(api.requests.send);
   const setConnected = useMutation(api.tables.setConnected);
+  const allTables = useQuery(api.tables.getByGame, { gameId });
 
   const [actionDrafts, setActionDrafts] = useState<ActionDraft[]>([emptyAction()]);
   // Legacy compat — keep these for draft persistence and auto-submit
@@ -248,6 +250,9 @@ export default function TablePlayerPage({
   const { display: timerDisplay, isUrgent, isExpired } = useCountdown(game?.phaseEndsAt);
 
   const role = table ? ROLES.find((r) => r.id === table.roleId) : null;
+  const enabledRoles = (allTables ?? [])
+    .filter((t) => t.enabled && t.roleId !== table?.roleId)
+    .map((t) => ({ id: t.roleId, name: t.roleName }));
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
   const phase = game?.phase ?? "discuss";
 
@@ -363,6 +368,24 @@ export default function TablePlayerPage({
         // computeLoans removed — now handled by action request system
         artifact: artifact.trim() || undefined,
       });
+      // Send endorsement requests for actions that have targets
+      for (const draft of actionDrafts) {
+        if (draft.text.trim() && draft.endorseTargets.length > 0) {
+          for (const targetRoleId of draft.endorseTargets) {
+            const targetRole = enabledRoles.find((r) => r.id === targetRoleId);
+            void sendRequest({
+              gameId,
+              roundNumber: game?.currentRound ?? 1,
+              fromRoleId: role?.id ?? "",
+              fromRoleName: role?.name ?? "",
+              toRoleId: targetRoleId,
+              toRoleName: targetRole?.name ?? targetRoleId,
+              actionText: draft.text.trim(),
+              requestType: "endorsement" as const,
+            });
+          }
+        }
+      }
       // Clear draft on successful submit
       if (game) {
         clearDraft(tableId, game.currentRound);
@@ -520,6 +543,7 @@ export default function TablePlayerPage({
                   onChange={setActionDrafts}
                   roleId={role.id}
                   roleName={role.name}
+                  enabledRoles={enabledRoles}
                   isSubmitted={false}
                 />
 
