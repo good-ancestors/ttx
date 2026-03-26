@@ -177,15 +177,14 @@ export default function FacilitatorPage({
   const handleResolveRound = async () => {
     setResolving(true);
 
-    // Phase 1: AI proposals (two passes, compressed)
-    setResolveStep("AI negotiating (1/4)...");
-    triggerAIProposals();
-    await new Promise((r) => setTimeout(r, 3000));
-    triggerAIProposals(); // second pass responds to first
+    // AI proposals already sent when submit phase opened
+    // Phase 1: AI responds to any human endorsement requests
+    setResolveStep("AI responding to requests (1/3)...");
+    triggerAIProposals(); // responds to pending requests from humans
     await new Promise((r) => setTimeout(r, 3000));
 
     // Phase 2: AI players submit + start grading arrivals in parallel
-    setResolveStep("AI players acting (2/4)...");
+    setResolveStep("AI players acting (2/3)...");
     triggerAIPlayers();
     await new Promise((r) => setTimeout(r, 4000));
     // Start grading what's arrived so far while remaining AI players finish
@@ -196,12 +195,12 @@ export default function FacilitatorPage({
     await new Promise((r) => setTimeout(r, 2000));
 
     // Phase 3: Roll dice
-    setResolveStep("Rolling dice (3/4)...");
+    setResolveStep("Rolling dice (3/3)...");
     await rollAll({ gameId, roundNumber: game.currentRound });
     await advancePhase({ gameId, phase: "rolling" });
 
     // Phase 4: Generate narrative in background
-    setResolveStep("Generating narrative (4/4)...");
+    setResolveStep("Generating narrative (narrative)...");
     fetch("/api/narrate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -397,7 +396,11 @@ export default function FacilitatorPage({
                   ))}
                 </div>
                 <button
-                  onClick={() => advancePhase({ gameId, phase: "submit", durationSeconds: submitDuration * 60 })}
+                  onClick={async () => {
+                    await advancePhase({ gameId, phase: "submit", durationSeconds: submitDuration * 60 });
+                    // Trigger AI proposals early so humans can react during submit phase
+                    setTimeout(() => triggerAIProposals(), 500);
+                  }}
                   className="py-3 px-8 bg-white text-navy rounded-lg font-bold text-base hover:bg-off-white transition-colors"
                 >
                   Open Submissions ({submitDuration}min)

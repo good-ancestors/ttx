@@ -143,34 +143,38 @@ export function ProposalPanel({
                       Requesting: {p.requestType === "compute" ? `${p.computeAmount ?? 0} compute` : p.requestType === "both" ? `endorsement + ${p.computeAmount ?? 0} compute` : "endorsement"}
                     </p>
                   )}
-                  {p.status === "pending" && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() =>
-                          respondToProposal({
-                            proposalId: p._id,
-                            status: "accepted",
-                          })
-                        }
-                        className="flex-1 py-2.5 bg-[#ECFDF5] text-[#059669] rounded-lg text-sm font-bold
-                                   flex items-center justify-center gap-1.5 hover:bg-[#D1FAE5]"
-                      >
-                        <Check className="w-4 h-4" /> Accept
-                      </button>
-                      <button
-                        onClick={() =>
-                          respondToProposal({
-                            proposalId: p._id,
-                            status: "declined",
-                          })
-                        }
-                        className="flex-1 py-2.5 bg-[#FEF2F2] text-[#DC2626] rounded-lg text-sm font-bold
-                                   flex items-center justify-center gap-1.5 hover:bg-[#FECACA]"
-                      >
-                        <X className="w-3.5 h-3.5" /> Decline
-                      </button>
-                    </div>
-                  )}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() =>
+                        respondToProposal({
+                          proposalId: p._id,
+                          status: "accepted",
+                        })
+                      }
+                      className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                        p.status === "accepted"
+                          ? "bg-[#059669] text-white"
+                          : "bg-[#ECFDF5] text-[#059669] hover:bg-[#D1FAE5]"
+                      }`}
+                    >
+                      <Check className="w-4 h-4" /> {p.status === "accepted" ? "Accepted" : "Accept"}
+                    </button>
+                    <button
+                      onClick={() =>
+                        respondToProposal({
+                          proposalId: p._id,
+                          status: "declined",
+                        })
+                      }
+                      className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                        p.status === "declined"
+                          ? "bg-[#DC2626] text-white"
+                          : "bg-[#FEF2F2] text-[#DC2626] hover:bg-[#FECACA]"
+                      }`}
+                    >
+                      <X className="w-3.5 h-3.5" /> {p.status === "declined" ? "Declined" : "Decline"}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

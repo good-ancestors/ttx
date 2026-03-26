@@ -56,9 +56,11 @@ interface Props {
   roleName: string;
   enabledRoles?: { id: string; name: string }[];
   isSubmitted: boolean;
+  onSendRequest?: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
+  onCancelRequest?: (targetRoleId: string, actionText: string) => void;
 }
 
-export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitted }: Props) {
+export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitted, onSendRequest, onCancelRequest }: Props) {
   const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId)).filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId : true);
 
   const updateAction = (index: number, patch: Partial<ActionDraft>) => {
@@ -110,6 +112,8 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
             onRemove={() => removeAction(i)}
             otherRoles={otherRoles}
             isSubmitted={isSubmitted}
+            onSendRequest={onSendRequest}
+            onCancelRequest={onCancelRequest}
             canRemove={actions.length > 1 || action.text.trim() !== ""}
           />
         ))}
@@ -136,6 +140,8 @@ function ActionCard({
   otherRoles,
   isSubmitted,
   canRemove,
+  onSendRequest,
+  onCancelRequest,
 }: {
   action: ActionDraft;
   index: number;
@@ -144,6 +150,8 @@ function ActionCard({
   otherRoles: { id: string; name: string }[];
   isSubmitted: boolean;
   canRemove: boolean;
+  onSendRequest?: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
+  onCancelRequest?: (targetRoleId: string, actionText: string) => void;
 }) {
   const [showEndorse, setShowEndorse] = useState(false);
 
@@ -236,10 +244,19 @@ function ActionCard({
                 <button
                   key={r.id}
                   onClick={() => {
-                    const targets = selected
-                      ? action.endorseTargets.filter((id) => id !== r.id)
-                      : [...action.endorseTargets, r.id];
-                    onUpdate({ endorseTargets: targets });
+                    if (selected) {
+                      onUpdate({ endorseTargets: action.endorseTargets.filter((id) => id !== r.id) });
+                      // Cancel the request so it disappears for the target
+                      if (onCancelRequest && action.text.trim()) {
+                        onCancelRequest(r.id, action.text.trim());
+                      }
+                    } else {
+                      onUpdate({ endorseTargets: [...action.endorseTargets, r.id] });
+                      // Send request immediately so target sees it while still writing
+                      if (onSendRequest && action.text.trim()) {
+                        onSendRequest(r.id, r.name, action.text.trim());
+                      }
+                    }
                   }}
                   className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors ${
                     selected

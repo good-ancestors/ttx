@@ -221,8 +221,13 @@ export default function TablePlayerPage({
 
   const submitActions = useMutation(api.submissions.submit);
   const sendRequest = useMutation(api.requests.send);
+  const cancelRequest = useMutation(api.requests.cancel);
   const setConnected = useMutation(api.tables.setConnected);
   const allTables = useQuery(api.tables.getByGame, { gameId });
+  const allRequests = useQuery(api.requests.getByGameAndRound, {
+    gameId,
+    roundNumber: game?.currentRound ?? 1,
+  });
 
   const [actionDrafts, setActionDrafts] = useState<ActionDraft[]>([emptyAction()]);
   // Legacy compat — keep these for draft persistence and auto-submit
@@ -368,24 +373,7 @@ export default function TablePlayerPage({
         // computeLoans removed — now handled by action request system
         artifact: artifact.trim() || undefined,
       });
-      // Send endorsement requests for actions that have targets
-      for (const draft of actionDrafts) {
-        if (draft.text.trim() && draft.endorseTargets.length > 0) {
-          for (const targetRoleId of draft.endorseTargets) {
-            const targetRole = enabledRoles.find((r) => r.id === targetRoleId);
-            void sendRequest({
-              gameId,
-              roundNumber: game?.currentRound ?? 1,
-              fromRoleId: role?.id ?? "",
-              fromRoleName: role?.name ?? "",
-              toRoleId: targetRoleId,
-              toRoleName: targetRole?.name ?? targetRoleId,
-              actionText: draft.text.trim(),
-              requestType: "endorsement" as const,
-            });
-          }
-        }
-      }
+      // Endorsement requests already sent immediately when targets selected
       // Clear draft on successful submit
       if (game) {
         clearDraft(tableId, game.currentRound);
@@ -545,6 +533,27 @@ export default function TablePlayerPage({
                   roleName={role.name}
                   enabledRoles={enabledRoles}
                   isSubmitted={false}
+                  onSendRequest={(targetRoleId, targetRoleName, actionText) => {
+                    void sendRequest({
+                      gameId,
+                      roundNumber: game?.currentRound ?? 1,
+                      fromRoleId: role?.id ?? "",
+                      fromRoleName: role?.name ?? "",
+                      toRoleId: targetRoleId,
+                      toRoleName: targetRoleName,
+                      actionText,
+                      requestType: "endorsement" as const,
+                    });
+                  }}
+                  onCancelRequest={(targetRoleId, actionText) => {
+                    // Find and cancel the matching request
+                    const match = (allRequests ?? []).find(
+                      (r) => r.fromRoleId === role?.id && r.toRoleId === targetRoleId && r.actionText === actionText
+                    );
+                    if (match) {
+                      void cancelRequest({ requestId: match._id });
+                    }
+                  }}
                 />
 
                 {/* Submit button */}
