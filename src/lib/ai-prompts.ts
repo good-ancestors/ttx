@@ -111,6 +111,7 @@ export function buildGradingPrompt(args: {
   labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
   capabilityLevel: string;
   actionRequests?: ActionRequest[];
+  enabledRoles?: string[];
 }) {
   // Group requests by action text
   const requestsByAction = new Map<string, ActionRequest[]>();
@@ -148,8 +149,12 @@ export function buildGradingPrompt(args: {
     }
   }
 
-  return `${SCENARIO_CONTEXT}
+  const activeRolesNote = args.enabledRoles && args.enabledRoles.length > 0
+    ? `\nACTIVE PLAYERS THIS GAME: ${args.enabledRoles.join(", ")}\nOnly these roles are at the table. Actions targeting inactive roles should get lower probability.\n`
+    : "";
 
+  return `${SCENARIO_CONTEXT}
+${activeRolesNote}
 CURRENT GAME STATE:
 - Round: ${args.round} (${args.roundLabel})
 - Current AI capability: ${args.capabilityLevel}

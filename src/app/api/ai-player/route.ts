@@ -141,7 +141,13 @@ export async function POST(request: Request) {
       proposalContext += `\nIncorporate these agreements into your actions where relevant.`;
     }
 
+    const enabledRoles: string[] = body.enabledRoles ?? [];
+    const activeRolesNote = enabledRoles.length > 0
+      ? `\nACTIVE PLAYERS THIS GAME (only these roles are at the table — do not reference or target roles not listed here):\n${enabledRoles.map((r: string) => `- ${r}`).join("\n")}`
+      : "";
+
     const prompt = `${SCENARIO_CONTEXT}
+${activeRolesNote}
 
 CURRENT GAME STATE:
 - Round: ${roundNumber} (${currentRound?.label ?? ""})

@@ -110,6 +110,7 @@ export default function FacilitatorPage({
           text: a.text,
           priority: a.priority,
         })),
+        enabledRoles: (tables ?? []).filter((t) => t.enabled).map((t) => t.roleName),
       }),
     }).catch(console.error);
   };
@@ -127,6 +128,7 @@ export default function FacilitatorPage({
   const triggerAIPlayers = () => {
     const aiTables = (tables ?? []).filter((t) => t.isAI && t.enabled);
     const submitted = new Set((submissions ?? []).map((s) => s.roleId));
+    const enabledRoleNames = (tables ?? []).filter((t) => t.enabled).map((t) => t.roleName);
     for (const table of aiTables) {
       if (!submitted.has(table.roleId)) {
         fetch("/api/ai-player", {
@@ -137,6 +139,7 @@ export default function FacilitatorPage({
             gameId,
             roundNumber: game.currentRound,
             roleId: table.roleId,
+            enabledRoles: enabledRoleNames,
             computeStock: table.computeStock ?? 0,
           }),
         }).catch(console.error);

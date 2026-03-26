@@ -28,12 +28,14 @@ export async function POST(request: Request) {
       roundNumber,
       roleId,
       actions,
+      enabledRoles,
     }: {
       submissionId: string;
       gameId: string;
       roundNumber: number;
       roleId: string;
       actions: { text: string; priority: number }[];
+      enabledRoles?: string[];
     } = body;
 
     const game = await convex.query(api.games.get, {
@@ -80,6 +82,7 @@ export async function POST(request: Request) {
       labs: game.labs,
       capabilityLevel: currentRound?.capabilityLevel ?? "Unknown",
       actionRequests,
+      enabledRoles,
     });
 
     const { output, model, timeMs, tokens } = await generateWithFallback({
