@@ -5,7 +5,7 @@ import { useMutation } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { WORLD_STATE_INDICATORS } from "@/lib/game-data";
-import { Pencil, Save, Minus, Plus, AlertTriangle } from "lucide-react";
+import { Pencil, Save, Minus, Plus, AlertTriangle, Wand2, Loader2 } from "lucide-react";
 
 // Manual world state editor — facilitator can tweak dials directly
 export function WorldStateEditor({
@@ -184,6 +184,118 @@ export function NarrativeEditor({
         rows={2}
         className="w-full p-2 bg-navy-dark border border-navy-light rounded text-[13px] text-white resize-none outline-none"
       />
+    </div>
+  );
+}
+
+// AI-powered facilitator adjustment — type natural language instructions
+export function FacilitatorAdjust({
+  gameId,
+}: {
+  gameId: Id<"games">;
+}) {
+  const [open, setOpen] = useState(false);
+  const [instruction, setInstruction] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async () => {
+    if (!instruction.trim()) return;
+    setLoading(true);
+    setResult(null);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/facilitator-adjust", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ gameId, instruction: instruction.trim() }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setResult(data.explanation);
+        setInstruction("");
+      } else {
+        setError(data.error ?? "Adjustment failed");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="text-[11px] text-text-light hover:text-white flex items-center gap-1 mt-2 transition-colors"
+      >
+        <Wand2 className="w-3 h-3" /> AI adjustment
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 p-4 bg-navy rounded-xl border border-navy-light">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <Wand2 className="w-4 h-4 text-viz-capability" />
+          <span className="text-xs font-semibold text-viz-capability uppercase tracking-wider">
+            AI Adjustment
+          </span>
+        </div>
+        <button
+          onClick={() => setOpen(false)}
+          className="text-[11px] text-text-light hover:text-white"
+        >
+          Close
+        </button>
+      </div>
+
+      <p className="text-[11px] text-text-light mb-2">
+        Describe changes in plain English. The AI will update world state and lab values.
+      </p>
+
+      <textarea
+        value={instruction}
+        onChange={(e) => setInstruction(e.target.value)}
+        placeholder='e.g. "Reduce OpenBrain compute by 30% due to the bombing. Increase US-China tension to 8. DeepCent should be close behind OpenBrain now."'
+        rows={3}
+        disabled={loading}
+        className="w-full p-2 bg-navy-dark border border-navy-light rounded text-[13px] text-white resize-none outline-none mb-2 placeholder:text-navy-muted disabled:opacity-50"
+      />
+
+      <button
+        onClick={handleSubmit}
+        disabled={loading || !instruction.trim()}
+        className="w-full py-2 bg-viz-capability text-navy rounded font-bold text-xs
+                   disabled:opacity-30 flex items-center justify-center gap-1.5 hover:opacity-90 transition-opacity"
+      >
+        {loading ? (
+          <>
+            <Loader2 className="w-3.5 h-3.5 animate-spin" /> Adjusting...
+          </>
+        ) : (
+          <>
+            <Wand2 className="w-3.5 h-3.5" /> Apply Adjustment
+          </>
+        )}
+      </button>
+
+      {result && (
+        <div className="mt-2 p-2 bg-navy-dark rounded border border-viz-safety/30 text-[11px] text-viz-safety">
+          {result}
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-2 p-2 bg-navy-dark rounded border border-viz-danger/30 text-[11px] text-viz-danger">
+          {error}
+        </div>
+      )}
     </div>
   );
 }

@@ -14,7 +14,7 @@ import { ActionFeed } from "@/components/action-feed";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
-import { WorldStateEditor, NarrativeEditor } from "@/components/manual-controls";
+import { WorldStateEditor, NarrativeEditor, FacilitatorAdjust } from "@/components/manual-controls";
 import { DebugPanel } from "@/components/debug-panel";
 import {
   Play,
@@ -529,6 +529,7 @@ export default function FacilitatorPage({
                     currentSummary={currentRound?.summary ?? undefined}
                   />
                   <WorldStateEditor gameId={gameId} worldState={game.worldState} />
+                  <FacilitatorAdjust gameId={gameId} />
                 </div>
 
                 {game.currentRound < 3 ? (
