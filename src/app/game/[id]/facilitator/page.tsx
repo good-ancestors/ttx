@@ -65,6 +65,7 @@ export default function FacilitatorPage({
   const [resolving, setResolving] = useState(false);
   const [resolveStep, setResolveStep] = useState("");
   const [showSubmissionDetails, setShowSubmissionDetails] = useState(false);
+  const [submitDuration, setSubmitDuration] = useState(4);
 
   if (!game || !tables || !rounds) {
     return (
@@ -357,11 +358,26 @@ export default function FacilitatorPage({
                 <p className="text-text-light mb-6 text-sm">
                   Each table: discuss what your actor does this quarter, then submit.
                 </p>
+                <div className="flex items-center justify-center gap-2 mb-3">
+                  {[2, 4, 6, 8, 10].map((min) => (
+                    <button
+                      key={min}
+                      onClick={() => setSubmitDuration(min)}
+                      className={`text-sm px-3 py-1.5 rounded font-medium transition-colors ${
+                        submitDuration === min
+                          ? "bg-white text-navy"
+                          : "bg-navy-light text-text-light hover:bg-navy-muted"
+                      }`}
+                    >
+                      {min}m
+                    </button>
+                  ))}
+                </div>
                 <button
-                  onClick={() => advancePhase({ gameId, phase: "submit", durationSeconds: 4 * 60 })}
+                  onClick={() => advancePhase({ gameId, phase: "submit", durationSeconds: submitDuration * 60 })}
                   className="py-3 px-8 bg-white text-navy rounded-lg font-bold text-base hover:bg-off-white transition-colors"
                 >
-                  Open Submissions
+                  Open Submissions ({submitDuration}min)
                 </button>
                 <button
                   onClick={async () => {
