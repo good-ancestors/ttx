@@ -172,34 +172,35 @@ export default function FacilitatorPage({
     }
   };
 
-  // Resolve round: roll all dice + trigger narrative generation
+  // Resolve round: optimised parallel pipeline
   const handleResolveRound = async () => {
     setResolving(true);
 
-    // Two-pass proposals: first pass sends, second pass responds
-    setResolveStep("AI sending support requests...");
+    // Phase 1: AI proposals (two passes, compressed)
+    setResolveStep("AI negotiating (1/4)...");
     triggerAIProposals();
-    await new Promise((r) => setTimeout(r, 4000));
+    await new Promise((r) => setTimeout(r, 3000));
+    triggerAIProposals(); // second pass responds to first
+    await new Promise((r) => setTimeout(r, 3000));
 
-    setResolveStep("AI responding to requests...");
-    triggerAIProposals(); // second pass picks up proposals from first pass
-    await new Promise((r) => setTimeout(r, 4000));
-
-    setResolveStep("AI players submitting...");
+    // Phase 2: AI players submit + start grading arrivals in parallel
+    setResolveStep("AI players acting (2/4)...");
     triggerAIPlayers();
-    await new Promise((r) => setTimeout(r, 8000));
-
-    setResolveStep("Grading actions...");
+    await new Promise((r) => setTimeout(r, 4000));
+    // Start grading what's arrived so far while remaining AI players finish
     gradeAllUngraded();
-    await new Promise((r) => setTimeout(r, 5000));
+    await new Promise((r) => setTimeout(r, 4000));
+    // Grade any stragglers
+    gradeAllUngraded();
+    await new Promise((r) => setTimeout(r, 2000));
 
-    setResolveStep("Rolling dice...");
+    // Phase 3: Roll dice
+    setResolveStep("Rolling dice (3/4)...");
     await rollAll({ gameId, roundNumber: game.currentRound });
     await advancePhase({ gameId, phase: "rolling" });
 
-    setResolveStep("");
-
-    // Trigger narrative generation in background
+    // Phase 4: Generate narrative in background
+    setResolveStep("Generating narrative (4/4)...");
     fetch("/api/narrate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -431,6 +432,8 @@ export default function FacilitatorPage({
                   tables={tables}
                   submissions={submissions ?? []}
                   onGradeAll={gradeAllUngraded}
+                  onKickToAI={(id) => kickToAI({ tableId: id })}
+                  onSetHuman={(id) => toggleAI({ tableId: id })}
                 />
 
                 {/* Accepted agreements */}
@@ -752,10 +755,14 @@ function SubmissionTracker({
   tables,
   submissions,
   onGradeAll,
+  onKickToAI,
+  onSetHuman,
 }: {
-  tables: { _id: Id<"tables">; roleId: string; roleName: string; isAI: boolean; enabled: boolean }[];
+  tables: { _id: Id<"tables">; roleId: string; roleName: string; isAI: boolean; enabled: boolean; connected: boolean }[];
   submissions: { roleId: string; status: string; actions: { text: string; probability?: number }[] }[];
   onGradeAll: () => void;
+  onKickToAI?: (tableId: Id<"tables">) => void;
+  onSetHuman?: (tableId: Id<"tables">) => void;
 }) {
   const enabledTables = tables.filter((t) => t.enabled);
 
@@ -799,6 +806,25 @@ function SubmissionTracker({
                 </span>
               ) : (
                 <span className="text-[11px] text-navy-muted">Waiting...</span>
+              )}
+              {/* Quick role management during play */}
+              {table.isAI && onSetHuman && (
+                <button
+                  onClick={() => onSetHuman(table._id)}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-text-light hover:bg-navy-muted"
+                  title="Open for a human player to join"
+                >
+                  Open
+                </button>
+              )}
+              {!table.isAI && !sub && onKickToAI && (
+                <button
+                  onClick={() => onKickToAI(table._id)}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-text-light hover:bg-navy-muted"
+                  title="Switch to AI control"
+                >
+                  AI
+                </button>
               )}
             </div>
           );
