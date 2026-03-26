@@ -36,10 +36,13 @@ export default function SplashPage() {
   return (
     <div className="min-h-dvh bg-navy flex flex-col items-center justify-center p-8 text-center">
       <div className="max-w-md w-full">
-        {/* GA logo mark */}
-        <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center mx-auto mb-6">
-          <span className="text-2xl font-black text-navy">g</span>
-        </div>
+        {/* Good Ancestors logo */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/good-ancestors-logo.svg"
+          alt="Good Ancestors"
+          className="h-10 mx-auto mb-8"
+        />
 
         <h1 className="text-3xl font-extrabold text-white mb-1 tracking-tight">
           The Race to AGI
