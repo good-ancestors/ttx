@@ -40,8 +40,5 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# convex
+# convex local state
 .convex/
-
-# Convex generated files
-convex/_generated/
