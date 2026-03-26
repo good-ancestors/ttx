@@ -557,19 +557,11 @@ export default function FacilitatorPage({
 
             {/* ─── ROLLING ─── */}
             {phase === "rolling" && (
-              <div>
-                <ActionFeed
-                  submissions={submissions ?? []}
-                  onComplete={() => advancePhase({ gameId, phase: "narrate" })}
-                  isFacilitator
-                />
-                {/* State of Play shows immediately — facilitator narrates while AI generates */}
-                <StateOfPlay
-                  labs={game.labs}
-                  worldState={game.worldState}
-                  roundLabel={currentRound?.label ?? ""}
-                />
-              </div>
+              <ActionFeed
+                submissions={submissions ?? []}
+                onComplete={() => advancePhase({ gameId, phase: "narrate" })}
+                isFacilitator
+              />
             )}
 
             {/* ─── NARRATE ─── */}
