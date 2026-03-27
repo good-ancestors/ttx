@@ -8,7 +8,7 @@ import { ROLES, MAX_PRIORITY, isLabCeo, isLabSafety, hasCompute, type Role } fro
 import { useCountdown, useKeyboardScroll, parseActionsFromText } from "@/lib/hooks";
 import { ActionCard } from "@/components/action-card";
 import { ActionInput, normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
-import { loadSampleActions, getSampleActions, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
+import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { ComputeAllocation } from "@/components/compute-allocation";
 // Compute loans now handled via action request system
 import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
@@ -353,8 +353,8 @@ export default function TablePlayerPage({
     const all = getSampleActions(sampleActionsData, role.id, game.currentRound);
     if (all.length === 0) return;
     // Fisher-Yates shuffle and take 3
-    const shuffled = [...all].sort(() => Math.random() - 0.5);
-    setShownSuggestions(shuffled.slice(0, 3));
+    const shuffled = pickRandom(all, 3);
+    setShownSuggestions(shuffled);
   }, [sampleActionsData, role, game?.currentRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-expand "Need ideas?" when timer ≤ 2min and 0 filled actions ───

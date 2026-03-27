@@ -25,3 +25,21 @@ export function getSampleActions(
 ): SampleAction[] {
   return data[roleId]?.[round] ?? [];
 }
+
+/** Pick n random items from an array (unbiased shuffle) */
+export function pickRandom<T>(arr: T[], n: number): T[] {
+  const copy = [...arr];
+  for (let i = copy.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy.slice(0, n);
+}
+
+/** Normalise numeric priorities to fit within a budget */
+export function normalisePriorities(priorities: number[], budget = 10): number[] {
+  const total = priorities.reduce((s, p) => s + p, 0);
+  if (total <= budget) return priorities;
+  const scale = budget / total;
+  return priorities.map((p) => Math.max(1, Math.round(p * scale)));
+}

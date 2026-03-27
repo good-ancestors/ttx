@@ -3,6 +3,8 @@ import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLES, isLabCeo, isLabSafety, hasCompute } from "@/lib/game-data";
+import { pickRandom, normalisePriorities, type SampleActionsData } from "@/lib/sample-actions";
+import { priorityToNumber } from "@/components/action-input";
 import { GRADING_MODEL, GRADING_FALLBACK } from "@/lib/ai-models";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
 import { generateWithFallback } from "@/lib/ai-fallback";
@@ -54,22 +56,16 @@ export async function POST(request: Request) {
     // Sample action mode — skip LLM, use pre-authored actions
     if (useSample) {
       const sampleRes = await fetch(new URL("/sample-actions.json", request.url));
-      const sampleData = await sampleRes.json() as Record<string, Record<number, { text: string; priority: string; secret: boolean }[]>>;
+      const sampleData = (await sampleRes.json()) as SampleActionsData;
       const pool = sampleData[roleId]?.[roundNumber] ?? [];
-      const shuffled = [...pool].sort(() => Math.random() - 0.5);
-      const picked = shuffled.slice(0, 3);
-      const priorityMap: Record<string, number> = { high: 5, medium: 3, low: 2 };
-      const actions = picked.map((a) => ({
+      const picked = pickRandom(pool, 3);
+      const rawPriorities = picked.map((a) => priorityToNumber(a.priority));
+      const normalised = normalisePriorities(rawPriorities);
+      const actions = picked.map((a, i) => ({
         text: a.text,
-        priority: priorityMap[a.priority] ?? 3,
+        priority: normalised[i],
         secret: a.secret || undefined,
       }));
-      // Normalise
-      const total = actions.reduce((s, a) => s + a.priority, 0);
-      if (total > 10) {
-        const scale = 10 / total;
-        actions.forEach((a) => { a.priority = Math.max(1, Math.round(a.priority * scale)); });
-      }
       const subId = await convex.mutation(api.submissions.submit, {
         tableId: tableId as Id<"tables">,
         gameId: gameId as Id<"games">,

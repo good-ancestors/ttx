@@ -31,7 +31,7 @@ import {
   Plus,
   FileText,
 } from "lucide-react";
-import { loadSampleActions, getSampleActions, type SampleActionsData } from "@/lib/sample-actions";
+import { loadSampleActions, getSampleActions, pickRandom, normalisePriorities, type SampleActionsData } from "@/lib/sample-actions";
 import { priorityToNumber } from "@/components/action-input";
 
 export default function FacilitatorPage({
@@ -196,8 +196,8 @@ export default function FacilitatorPage({
       if (all.length === 0) continue;
 
       // Pick 3 random actions
-      const shuffled = [...all].sort(() => Math.random() - 0.5);
-      const picked = shuffled.slice(0, 3);
+      
+      const picked = pickRandom(all, 3);
 
       // Normalise priorities to fit within budget of 10
       const rawPriorities = picked.map((a) => priorityToNumber(a.priority));
