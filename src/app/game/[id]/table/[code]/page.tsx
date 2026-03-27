@@ -8,6 +8,7 @@ import { ROLES, MAX_PRIORITY, isLabCeo, isLabSafety, hasCompute, type Role } fro
 import { useCountdown, useKeyboardScroll, parseActionsFromText } from "@/lib/hooks";
 import { ActionCard } from "@/components/action-card";
 import { ActionInput, normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
+import { loadSampleActions, getSampleActions, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { ComputeAllocation } from "@/components/compute-allocation";
 // Compute loans now handled via action request system
 import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
@@ -29,6 +30,8 @@ import {
   MessageSquare,
   Handshake,
   AlertTriangle,
+  Lightbulb,
+  EyeOff,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -250,9 +253,19 @@ export default function TablePlayerPage({
   // Track whether draft has been restored to avoid overwriting on mount
   const draftRestoredRef = useRef(false);
 
+  // Sample actions for "Need ideas?" suggestions
+  const [sampleActionsData, setSampleActionsData] = useState<SampleActionsData | null>(null);
+  const [ideasOpen, setIdeasOpen] = useState(false);
+  const [shownSuggestions, setShownSuggestions] = useState<SampleAction[]>([]);
+
   useKeyboardScroll();
 
-  const { display: timerDisplay, isUrgent, isExpired } = useCountdown(game?.phaseEndsAt);
+  // Load sample actions on mount
+  useEffect(() => {
+    loadSampleActions().then(setSampleActionsData).catch(() => {});
+  }, []);
+
+  const { display: timerDisplay, secondsLeft, isUrgent, isExpired } = useCountdown(game?.phaseEndsAt);
 
   const role = table ? ROLES.find((r) => r.id === table.roleId) : null;
   const enabledRoles = (allTables ?? [])
@@ -334,6 +347,25 @@ export default function TablePlayerPage({
     });
   }, [actionDrafts, computeAllocation, artifact, game, tableId]);
 
+  // ── Pick 3 random sample suggestions when data/role/round changes ───────
+  useEffect(() => {
+    if (!sampleActionsData || !role || !game) return;
+    const all = getSampleActions(sampleActionsData, role.id, game.currentRound);
+    if (all.length === 0) return;
+    // Fisher-Yates shuffle and take 3
+    const shuffled = [...all].sort(() => Math.random() - 0.5);
+    setShownSuggestions(shuffled.slice(0, 3));
+  }, [sampleActionsData, role, game?.currentRound]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Auto-expand "Need ideas?" when timer ≤ 2min and 0 filled actions ───
+  useEffect(() => {
+    if (phase !== "submit" || isSubmitted) return;
+    const filledCount = actionDrafts.filter((a) => a.text.trim()).length;
+    if (secondsLeft <= 120 && secondsLeft > 0 && filledCount === 0 && !ideasOpen) {
+      setIdeasOpen(true);
+    }
+  }, [secondsLeft, phase, isSubmitted, actionDrafts, ideasOpen]);
+
   // ── Timer auto-submit (auto-parses unparsed text first) ─────────────────
   useEffect(() => {
     if (
@@ -357,6 +389,25 @@ export default function TablePlayerPage({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpired, phase, isSubmitted, parsedActions.length, submitting, freeText]);
+
+  const handleSuggestionTap = useCallback((suggestion: SampleAction) => {
+    setActionDrafts((prev) => {
+      const emptyIdx = prev.findIndex((a) => !a.text.trim());
+      const newDraft: ActionDraft = {
+        text: suggestion.text,
+        priority: suggestion.priority,
+        secret: suggestion.secret,
+        endorseTargets: [],
+      };
+      if (emptyIdx >= 0) {
+        const next = [...prev];
+        next[emptyIdx] = newDraft;
+        return next;
+      }
+      // All filled — add a new one
+      return [...prev, newDraft];
+    });
+  }, []);
 
   const handleSubmit = async () => {
     if (parsedActions.length === 0) return;
@@ -555,6 +606,52 @@ export default function TablePlayerPage({
                     }
                   }}
                 />
+
+                {/* Need ideas? collapsible suggestions */}
+                {shownSuggestions.length > 0 && (
+                  <div className="mt-3 bg-[#EFF6FF] border border-[#BFDBFE] rounded-xl overflow-hidden">
+                    <button
+                      onClick={() => setIdeasOpen(!ideasOpen)}
+                      className="w-full flex items-center gap-2 px-3 py-2.5 text-left"
+                    >
+                      <Lightbulb className="w-4 h-4 text-[#2563EB] shrink-0" />
+                      <span className="text-sm font-semibold text-[#1D4ED8]">Need ideas?</span>
+                      {ideasOpen ? (
+                        <ChevronUp className="w-4 h-4 text-[#2563EB] ml-auto" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-[#2563EB] ml-auto" />
+                      )}
+                    </button>
+                    {ideasOpen && (
+                      <div className="px-3 pb-3 space-y-2">
+                        <p className="text-[11px] text-[#3B82F6]">Tap a suggestion to add it as an action</p>
+                        {shownSuggestions.map((s, i) => (
+                          <button
+                            key={i}
+                            onClick={() => handleSuggestionTap(s)}
+                            className="w-full text-left bg-white rounded-lg p-3 border border-[#DBEAFE] hover:border-[#93C5FD] transition-colors"
+                          >
+                            <p className="text-sm text-text leading-snug">{s.text}</p>
+                            <div className="flex items-center gap-2 mt-1.5">
+                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
+                                s.priority === "high" ? "bg-navy text-white" :
+                                s.priority === "medium" ? "bg-navy/10 text-navy" :
+                                "bg-warm-gray text-text-muted"
+                              }`}>
+                                {s.priority}
+                              </span>
+                              {s.secret && (
+                                <span className="text-[10px] text-viz-warning font-medium flex items-center gap-0.5">
+                                  <EyeOff className="w-3 h-3" /> Secret
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Submit button */}
                 {parsedActions.length > 0 && (

@@ -29,7 +29,10 @@ import {
   SkipForward,
   Bot,
   Plus,
+  FileText,
 } from "lucide-react";
+import { loadSampleActions, getSampleActions, type SampleActionsData } from "@/lib/sample-actions";
+import { priorityToNumber } from "@/components/action-input";
 
 export default function FacilitatorPage({
   params,
@@ -63,6 +66,7 @@ export default function FacilitatorPage({
   const skipTimer = useMutation(api.games.skipTimer);
   const kickToAI = useMutation(api.tables.kickToAI);
   const addLab = useMutation(api.games.addLab);
+  const submitActions = useMutation(api.submissions.submit);
 
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
@@ -76,6 +80,13 @@ export default function FacilitatorPage({
   const [newLabRoleId, setNewLabRoleId] = useState("");
   const [newLabCompute, setNewLabCompute] = useState(10);
   const [newLabMultiplier, setNewLabMultiplier] = useState(1);
+  const [useSampleForAI, setUseSampleForAI] = useState(false);
+  const [sampleActionsData, setSampleActionsData] = useState<SampleActionsData | null>(null);
+
+  // Load sample actions on mount
+  useEffect(() => {
+    loadSampleActions().then(setSampleActionsData).catch(() => {});
+  }, []);
 
   const toggleReveal = (key: string) => {
     setRevealedSecrets((prev) => {
@@ -173,6 +184,46 @@ export default function FacilitatorPage({
     }
   };
 
+  // Submit sample actions for AI-controlled tables (skips AI API call)
+  const submitSampleActionsForAI = async () => {
+    if (!sampleActionsData) return;
+    const aiTables = (tables ?? []).filter((t) => t.isAI && t.enabled);
+    const submitted = new Set((submissions ?? []).map((s) => s.roleId));
+
+    for (const table of aiTables) {
+      if (submitted.has(table.roleId)) continue;
+      const all = getSampleActions(sampleActionsData, table.roleId, game.currentRound);
+      if (all.length === 0) continue;
+
+      // Pick 3 random actions
+      const shuffled = [...all].sort(() => Math.random() - 0.5);
+      const picked = shuffled.slice(0, 3);
+
+      // Normalise priorities to fit within budget of 10
+      const rawPriorities = picked.map((a) => priorityToNumber(a.priority));
+      const total = rawPriorities.reduce((s, p) => s + p, 0);
+      const scale = total > 10 ? 10 / total : 1;
+
+      const actions = picked.map((a, i) => ({
+        text: a.text,
+        priority: Math.max(1, Math.round(rawPriorities[i] * scale)),
+        secret: a.secret || undefined,
+      }));
+
+      try {
+        await submitActions({
+          tableId: table._id,
+          gameId,
+          roundNumber: game.currentRound,
+          roleId: table.roleId,
+          actions,
+        });
+      } catch (err) {
+        console.error(`Failed to submit sample actions for ${table.roleName}:`, err);
+      }
+    }
+  };
+
   // Resolve round: optimised parallel pipeline
   const handleResolveRound = async () => {
     setResolving(true);
@@ -183,16 +234,28 @@ export default function FacilitatorPage({
     triggerAIProposals(); // responds to pending requests from humans
     await new Promise((r) => setTimeout(r, 3000));
 
-    // Phase 2: AI players submit + start grading arrivals in parallel
-    setResolveStep("AI players acting (2/3)...");
-    triggerAIPlayers();
-    await new Promise((r) => setTimeout(r, 4000));
-    // Start grading what's arrived so far while remaining AI players finish
-    gradeAllUngraded();
-    await new Promise((r) => setTimeout(r, 4000));
-    // Grade any stragglers
-    gradeAllUngraded();
-    await new Promise((r) => setTimeout(r, 2000));
+    if (useSampleForAI && sampleActionsData) {
+      // Phase 2 (sample mode): Submit pre-written actions for AI tables
+      setResolveStep("Submitting sample actions for AI (2/3)...");
+      await submitSampleActionsForAI();
+      await new Promise((r) => setTimeout(r, 1000));
+      // Grade all submissions
+      gradeAllUngraded();
+      await new Promise((r) => setTimeout(r, 4000));
+      gradeAllUngraded();
+      await new Promise((r) => setTimeout(r, 2000));
+    } else {
+      // Phase 2 (AI mode): AI players submit + start grading arrivals in parallel
+      setResolveStep("AI players acting (2/3)...");
+      triggerAIPlayers();
+      await new Promise((r) => setTimeout(r, 4000));
+      // Start grading what's arrived so far while remaining AI players finish
+      gradeAllUngraded();
+      await new Promise((r) => setTimeout(r, 4000));
+      // Grade any stragglers
+      gradeAllUngraded();
+      await new Promise((r) => setTimeout(r, 2000));
+    }
 
     // Phase 3: Roll dice
     setResolveStep("Rolling dice (3/3)...");
@@ -530,6 +593,20 @@ export default function FacilitatorPage({
                     </button>
                   )}
                 </div>
+
+                {/* Sample actions toggle for AI players */}
+                <label className="flex items-center gap-2 mt-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={useSampleForAI}
+                    onChange={(e) => setUseSampleForAI(e.target.checked)}
+                    className="w-4 h-4 rounded border-navy-light accent-viz-safety"
+                  />
+                  <FileText className="w-3.5 h-3.5 text-text-light" />
+                  <span className="text-[12px] text-text-light">
+                    Use sample actions for AI players (saves API costs)
+                  </span>
+                </label>
 
                 {/* Resolve button */}
                 {submissionCount > 0 && (

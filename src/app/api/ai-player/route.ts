@@ -33,11 +33,13 @@ export async function POST(request: Request) {
       gameId,
       roundNumber,
       roleId,
+      useSample,
     }: {
       tableId: string;
       gameId: string;
       roundNumber: number;
       roleId: string;
+      useSample?: boolean;
     } = body;
 
     const game = await convex.query(api.games.get, {
@@ -48,6 +50,40 @@ export async function POST(request: Request) {
     }
 
     const role = ROLES.find((r) => r.id === roleId);
+
+    // Sample action mode — skip LLM, use pre-authored actions
+    if (useSample) {
+      const sampleRes = await fetch(new URL("/sample-actions.json", request.url));
+      const sampleData = await sampleRes.json() as Record<string, Record<number, { text: string; priority: string; secret: boolean }[]>>;
+      const pool = sampleData[roleId]?.[roundNumber] ?? [];
+      const shuffled = [...pool].sort(() => Math.random() - 0.5);
+      const picked = shuffled.slice(0, 3);
+      const priorityMap: Record<string, number> = { high: 5, medium: 3, low: 2 };
+      const actions = picked.map((a) => ({
+        text: a.text,
+        priority: priorityMap[a.priority] ?? 3,
+        secret: a.secret || undefined,
+      }));
+      // Normalise
+      const total = actions.reduce((s, a) => s + a.priority, 0);
+      if (total > 10) {
+        const scale = 10 / total;
+        actions.forEach((a) => { a.priority = Math.max(1, Math.round(a.priority * scale)); });
+      }
+      const subId = await convex.mutation(api.submissions.submit, {
+        tableId: tableId as Id<"tables">,
+        gameId: gameId as Id<"games">,
+        roundNumber,
+        roleId,
+        actions,
+        computeAllocation: role && isLabCeo(role) ? role.defaultCompute : undefined,
+      });
+      await convex.mutation(api.submissions.setAiMeta, {
+        submissionId: subId,
+        aiMeta: { playerModel: "sample", playerTimeMs: 0 },
+      });
+      return Response.json({ success: true, actions: { actions }, model: "sample", timeMs: 0 });
+    }
     const rounds = await convex.query(api.rounds.getByGame, {
       gameId: gameId as Id<"games">,
     });
