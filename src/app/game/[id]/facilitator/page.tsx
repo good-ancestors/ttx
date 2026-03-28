@@ -921,7 +921,7 @@ export default function FacilitatorPage({
           </div>
         )}
 
-        <div className="grid grid-cols-[320px_1fr] gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
           {/* Left sidebar */}
           <div className="flex flex-col gap-4">
             <RdProgressChart rounds={rounds} currentLabs={game.labs} />
