@@ -11,12 +11,14 @@ import { Pencil, Save, Minus, Plus, AlertTriangle, Wand2, Loader2, Check, Undo2,
 export function WorldStateEditor({
   gameId,
   worldState,
+  startOpen = false,
 }: {
   gameId: Id<"games">;
   worldState: Record<string, number>;
+  startOpen?: boolean;
 }) {
   const updateWorldState = useMutation(api.games.updateWorldState);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startOpen);
   const [local, setLocal] = useState(worldState);
 
   const handleSave = async () => {
@@ -94,6 +96,7 @@ export function NarrativeEditor({
   gameId,
   roundNumber,
   currentSummary,
+  startOpen = false,
 }: {
   gameId: Id<"games">;
   roundNumber: number;
@@ -104,9 +107,10 @@ export function NarrativeEditor({
     headlines: string[];
     facilitatorNotes?: string;
   };
+  startOpen?: boolean;
 }) {
   const applySummary = useMutation(api.rounds.applySummary);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startOpen);
   // Derive current narrative from summary, updating when summary changes reactively
   const existingNarrative = currentSummary?.narrative
     ?? (currentSummary ? [...currentSummary.geopoliticalEvents, ...currentSummary.aiStateOfPlay].join("\n") : "");

@@ -1420,10 +1420,10 @@ export default function FacilitatorPage({
                         <button onClick={() => setEditModal(null)} className="text-text-light hover:text-white text-sm">Close</button>
                       </div>
                       {editModal === "narrative" && (
-                        <NarrativeEditor gameId={gameId} roundNumber={game.currentRound} currentSummary={currentRound?.summary ?? undefined} />
+                        <NarrativeEditor gameId={gameId} roundNumber={game.currentRound} currentSummary={currentRound?.summary ?? undefined} startOpen />
                       )}
                       {editModal === "dials" && (
-                        <WorldStateEditor gameId={gameId} worldState={game.worldState} />
+                        <WorldStateEditor gameId={gameId} worldState={game.worldState} startOpen />
                       )}
 {editModal === "addlab" && (
                         <div>
@@ -1506,11 +1506,13 @@ export default function FacilitatorPage({
 
         {/* Facilitator copilot — always visible during gameplay */}
         {!isProjector && (
-          <FacilitatorCopilot
-            gameId={gameId}
-            currentWorldState={game.worldState}
-            currentLabs={game.labs}
-          />
+          <div className="sticky bottom-0 z-40 bg-navy-dark">
+            <FacilitatorCopilot
+              gameId={gameId}
+              currentWorldState={game.worldState}
+              currentLabs={game.labs}
+            />
+          </div>
         )}
 
         {/* Debug panel */}
