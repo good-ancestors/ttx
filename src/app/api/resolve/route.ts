@@ -302,9 +302,8 @@ async function applyResolution(opts: {
         console.warn(`[resolve] No labUpdate match for "${lab.name}". AI provided: ${output.labUpdates.map((u) => u.name).join(", ")}`);
         return lab;
       }
-      const newMultiplier = Math.min(maxMultiplier, Math.max(lab.rdMultiplier, Math.round(update.newRdMultiplier * 10) / 10));
-      // Never let compute drop below 5u
-      const newCompute = Math.max(5, Math.round(update.newComputeStock));
+      const newMultiplier = Math.min(maxMultiplier, Math.max(0, Math.round(update.newRdMultiplier * 10) / 10));
+      const newCompute = Math.max(0, Math.round(update.newComputeStock));
       const allocation = update.newAllocation
         ? normaliseAllocation(update.newAllocation)
         : lab.allocation;
