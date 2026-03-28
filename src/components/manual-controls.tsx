@@ -105,7 +105,6 @@ export function NarrativeEditor({
     geopoliticalEvents: string[];
     aiStateOfPlay: string[];
     headlines: string[];
-    facilitatorNotes?: string;
   };
   startOpen?: boolean;
 }) {

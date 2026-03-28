@@ -1236,13 +1236,11 @@ export default function FacilitatorPage({
                                       </button>
                                       <span className={`text-xs ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>/</span>
                                       <button
-                                        onClick={() => {
-                                          const buckets = [10, 30, 50, 70, 90];
-                                          const current = action.probability ?? 50;
-                                          const idx2 = buckets.indexOf(current);
-                                          const next = buckets[(idx2 + 1) % buckets.length];
-                                          void overrideProbability({ submissionId: sub._id, actionIndex: i, probability: next });
-                                        }}
+                                        onClick={() => void overrideProbability({
+                                          submissionId: sub._id,
+                                          actionIndex: i,
+                                          probability: cycleProbability(action.probability ?? 50),
+                                        })}
                                         className="text-xs font-mono px-1 rounded hover:bg-navy-light text-text-light"
                                         title="Click to cycle probability"
                                       >
@@ -1413,7 +1411,7 @@ export default function FacilitatorPage({
                     <button onClick={() => setEditModal("dials")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
                       <Pencil className="w-3 h-3" /> Edit dials
                     </button>
-<button onClick={() => setEditModal("addlab")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
+                    <button onClick={() => setEditModal("addlab")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
                       <Plus className="w-3 h-3" /> Add Lab
                     </button>
                   </div>
@@ -1433,7 +1431,7 @@ export default function FacilitatorPage({
                       {editModal === "dials" && (
                         <WorldStateEditor gameId={gameId} worldState={game.worldState} startOpen />
                       )}
-{editModal === "addlab" && (
+                      {editModal === "addlab" && (
                         <div>
                           <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end">
                             <div>

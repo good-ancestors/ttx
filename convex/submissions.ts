@@ -219,7 +219,7 @@ export const rerollAction = mutation({
     if (!action || action.probability == null) return;
 
     const rawRoll = Math.floor(Math.random() * 100) + 1;
-    const displayRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
+    const displayRoll = applyInfluence(rawRoll, action.aiInfluence);
     actions[args.actionIndex] = {
       ...action,
       rolled: displayRoll,
@@ -292,6 +292,11 @@ export const applyAiInfluence = mutation({
     });
   },
 });
+
+/** Apply AI influence to a dice roll. Positive influence = boost (lower roll), negative = sabotage. */
+function applyInfluence(rawRoll: number, aiInfluence?: number): number {
+  return Math.max(1, Math.min(100, rawRoll - (aiInfluence ?? 0)));
+}
 
 // Fallback probability based on priority when AI grading hasn't happened
 function defaultProbability(priority: number): number {
