@@ -707,6 +707,16 @@ export default function TablePlayerPage({
                 </div>
                 <p className="text-sm font-semibold text-text mb-1">{role.name}</p>
                 <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
+                {role.handout && (
+                  <details className="mt-3">
+                    <summary className="text-xs font-semibold text-text-muted cursor-pointer hover:text-text">
+                      Full Brief
+                    </summary>
+                    <div className="mt-2 text-xs text-text-muted whitespace-pre-line leading-relaxed">
+                      {role.handout}
+                    </div>
+                  </details>
+                )}
                 <HowToPlaySection role={role} />
               </div>
 
@@ -752,6 +762,16 @@ export default function TablePlayerPage({
               </div>
               <p className="text-sm font-semibold text-text mb-1">{role.name}</p>
               <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
+              {role.handout && (
+                <details className="mt-3">
+                  <summary className="text-xs font-semibold text-text-muted cursor-pointer hover:text-text">
+                    Full Brief
+                  </summary>
+                  <div className="mt-2 text-xs text-text-muted whitespace-pre-line leading-relaxed">
+                    {role.handout}
+                  </div>
+                </details>
+              )}
               <HowToPlaySection role={role} />
             </div>
           )}
@@ -783,6 +803,29 @@ export default function TablePlayerPage({
                   <span className="font-bold text-white">{getDisposition(table.aiDisposition)?.label}</span>
                   <span className="text-xs ml-auto">Secret — locked for game</span>
                 </div>
+              )}
+
+              {/* Lab Directives — AI Systems player sees all labs' current specs */}
+              {role.tags.includes("ai-system") && (
+                <details className="bg-white rounded-xl border border-border p-4 mb-4">
+                  <summary className="flex items-center gap-2 cursor-pointer">
+                    <FileText className="w-4 h-4 text-text" />
+                    <span className="text-sm font-bold text-text">Lab Directives</span>
+                  </summary>
+                  <p className="text-xs text-text-muted mt-2 mb-3">
+                    These are the current AI directives set by each lab&apos;s CEO. Your behaviour should be informed by these specs (and your secret disposition).
+                  </p>
+                  <div className="space-y-2">
+                    {game.labs.map((lab) => (
+                      <div key={lab.name} className="bg-off-white rounded-lg p-3 border border-border">
+                        <span className="text-xs font-bold text-text">{lab.name}</span>
+                        <p className="text-xs text-text-muted mt-1 whitespace-pre-line">
+                          {lab.spec || "No directive set yet."}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               )}
 
               {/* Lab spec editor — CEO can write the AI directive */}

@@ -1337,6 +1337,11 @@ export default function FacilitatorPage({
                                 <div className="text-sm font-bold text-white">{lab.name}</div>
                                 <div className="text-xl font-black text-[#06B6D4] font-mono">{lab.rdMultiplier}×</div>
                                 <div className="text-xs text-text-light">{lab.computeStock}u · Safety {lab.allocation.safety}%</div>
+                                {lab.spec && (
+                                  <div className="text-[10px] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
+                                    Spec: {lab.spec}
+                                  </div>
+                                )}
                               </div>
                             ))}
                           </div>

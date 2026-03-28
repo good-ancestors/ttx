@@ -26,7 +26,7 @@ export const ROUND_CONFIGS = [
     label: "Q1 2028",
     title: "The Starting Gun",
     narrative:
-      "OpenBrain's Agent-2 is a 3× R&D accelerator — the first weak AGI. Rumours are circulating that China may have obtained the weights, and DeepCent is closing the gap suspiciously fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. The race is on.",
+      "OpenBrain's Agent-2 is a 3× R&D accelerator — the first weak AGI with autonomous cyber and CBRN agent capabilities. Rumours are circulating that China may have obtained the weights, and DeepCent is closing the gap suspiciously fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. The race is on.",
     capabilityLevel: "3× R&D multiplier",
   },
   {
