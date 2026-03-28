@@ -1,19 +1,7 @@
 "use client";
 
-import { use, useState, useEffect, useRef, type ReactNode } from "react";
+import { use, useState, useEffect, useRef } from "react";
 
-/** Render facilitator notes with line breaks and **bold** markers. */
-function renderFacilitatorNotes(text: string): ReactNode {
-  return text.split('\n').map((line, i) => (
-    <p key={i} className="text-xs text-text-light mb-1">
-      {line.split(/(\*\*.*?\*\*)/).map((part, j) =>
-        part.startsWith('**') && part.endsWith('**')
-          ? <strong key={j} className="text-white">{part.slice(2, -2)}</strong>
-          : part
-      )}
-    </p>
-  ));
-}
 
 /** Compute stagger delays for AI table submissions. Pure function — no side effects. */
 function computeStaggerDelays(count: number, durationSeconds: number): number[] {
@@ -53,7 +41,7 @@ import { ProbabilityBadge } from "@/components/action-card";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
-import { WorldStateEditor, NarrativeEditor, FacilitatorAdjust, FacilitatorCopilot } from "@/components/manual-controls";
+import { WorldStateEditor, NarrativeEditor, FacilitatorCopilot } from "@/components/manual-controls";
 import { DebugPanel } from "@/components/debug-panel";
 import {
   Play,
@@ -142,7 +130,7 @@ export default function FacilitatorPage({
   const [showSubmissionDetails, setShowSubmissionDetails] = useState(false);
   const [showQROverlay, setShowQROverlay] = useState(false);
   const [focusedQR, setFocusedQR] = useState<string | null>(null);
-  const [editModal, setEditModal] = useState<"narrative" | "dials" | "adjust" | "addlab" | null>(null);
+  const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
   const [submitDuration, setSubmitDuration] = useState(4);
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
@@ -1234,15 +1222,6 @@ export default function FacilitatorPage({
                                 >
                                   {isCovert ? "[Covert action]" : action.text}
                                 </span>
-                                <span className="text-xs text-text-light font-mono shrink-0">P{action.priority}</span>
-                                <ProbabilityBadge
-                                  probability={action.probability ?? 50}
-                                  onClick={isProjector ? undefined : () => overrideProbability({
-                                    submissionId: sub._id,
-                                    actionIndex: i,
-                                    probability: cycleProbability(action.probability!),
-                                  })}
-                                />
                                 <span className={`text-xs font-mono shrink-0 ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>
                                   {action.rolled}/{action.probability}%
                                 </span>
@@ -1334,13 +1313,6 @@ export default function FacilitatorPage({
                         );
                       })}
                     </div>
-                    {/* Facilitator notes (private) */}
-                    {currentRound.facilitatorNotes && (
-                      <div className="mt-3 pt-3 border-t border-navy-light">
-                        <span className="text-[10px] font-semibold uppercase tracking-wider text-viz-warning block mb-1">Facilitator Notes</span>
-                        <div className="whitespace-pre-wrap">{renderFacilitatorNotes(currentRound.facilitatorNotes)}</div>
-                      </div>
-                    )}
                     {!isProjector && (
                       <button
                         onClick={handleReNarrate}
@@ -1428,10 +1400,7 @@ export default function FacilitatorPage({
                     <button onClick={() => setEditModal("dials")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
                       <Pencil className="w-3 h-3" /> Edit dials
                     </button>
-                    <button onClick={() => setEditModal("adjust")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
-                      <Bot className="w-3 h-3" /> AI adjustment
-                    </button>
-                    <button onClick={() => setEditModal("addlab")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
+<button onClick={() => setEditModal("addlab")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
                       <Plus className="w-3 h-3" /> Add Lab
                     </button>
                   </div>
@@ -1442,7 +1411,7 @@ export default function FacilitatorPage({
                   <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8" onClick={() => setEditModal(null)}>
                     <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-between mb-4">
-                        <span className="text-sm font-bold text-white capitalize">{editModal === "addlab" ? "Add Lab" : editModal === "adjust" ? "AI Adjustment" : editModal === "dials" ? "Edit World State" : "Edit Narrative"}</span>
+                        <span className="text-sm font-bold text-white capitalize">{editModal === "addlab" ? "Add Lab" : editModal === "dials" ? "Edit World State" : "Edit Narrative"}</span>
                         <button onClick={() => setEditModal(null)} className="text-text-light hover:text-white text-sm">Close</button>
                       </div>
                       {editModal === "narrative" && (
@@ -1451,10 +1420,7 @@ export default function FacilitatorPage({
                       {editModal === "dials" && (
                         <WorldStateEditor gameId={gameId} worldState={game.worldState} />
                       )}
-                      {editModal === "adjust" && (
-                        <FacilitatorAdjust gameId={gameId} currentWorldState={game.worldState} currentLabs={game.labs} />
-                      )}
-                      {editModal === "addlab" && (
+{editModal === "addlab" && (
                         <div>
                           <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end">
                             <div>

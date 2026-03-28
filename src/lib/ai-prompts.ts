@@ -379,9 +379,7 @@ ${formatRoundExpectations(args.round)}
    - Output updates for all tracked labs. Do not add labs that aren't in the current game state.
 
 5. NON-LAB COMPUTE: Output roleComputeUpdates for any non-lab player whose compute changed this round.
-${args.roleCompute && args.roleCompute.length > 0 ? `\nNON-LAB COMPUTE STATUS:\n${args.roleCompute.map((r) => `- ${r.roleName} (${r.roleId}): ${r.computeStock}u`).join("\n")}` : ""}
-
-6. FACILITATOR NOTES: Brief private notes — key tensions, what to watch for next round, trajectory assessment (race vs slowdown).`;
+${args.roleCompute && args.roleCompute.length > 0 ? `\nNON-LAB COMPUTE STATUS:\n${args.roleCompute.map((r) => `- ${r.roleName} (${r.roleId}): ${r.computeStock}u`).join("\n")}` : ""}`;
 }
 
 // ─── NARRATIVE PROMPT ──────────────────────────────────────────────────────────
@@ -482,6 +480,5 @@ ${args.roleCompute && args.roleCompute.length > 0 ? `\nNON-LAB COMPUTE STATUS:\n
 
 OUTPUT FORMAT:
 - "narrative": STRICT LENGTH: exactly 6-8 sentences. Weave only the 4-5 most consequential player actions into a coherent dramatic briefing.
-- "headlines": 4-6 punchy one-line news headlines (ALL CAPS style).
-- "facilitatorNotes": Brief private notes for the facilitator.`;
+- "headlines": 4-6 punchy one-line news headlines (ALL CAPS style).`;
 }

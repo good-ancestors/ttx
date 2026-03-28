@@ -65,7 +65,6 @@ function buildResolveSchema(labNames: [string, ...string[]]) {
       })
     )
   ),
-    facilitatorNotes: z.string(),
   });
 }
 
@@ -105,7 +104,6 @@ async function applyResolution(
     gameId: gameId as Id<"games">,
     roundNumber,
     resolvedEvents: output.resolvedEvents,
-    facilitatorNotes: output.facilitatorNotes,
   });
 
   // Apply world state (clamped)
@@ -386,7 +384,6 @@ export async function POST(request: Request) {
     return Response.json({
       success: true,
       resolvedEvents: output.resolvedEvents,
-      facilitatorNotes: output.facilitatorNotes,
       model: usedModel,
       timeMs,
     });
