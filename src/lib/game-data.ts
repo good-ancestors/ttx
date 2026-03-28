@@ -656,8 +656,6 @@ export const BACKGROUND_LABS = [
   { name: "Rest of World", computeStock: 16, rdMultiplier: 1.8, allocation: { users: 28, capability: 69, safety: 3 } },
 ];
 
-export const NEW_COMPUTE_PER_ROUND = [11, 11, 5, 3];
-
 // Race scenario baseline R&D multiplier targets from AI 2027 CSV.
 // These are the DEFAULT progression if no player actions change allocation.
 // See docs/lab-progression.md for full explanation.

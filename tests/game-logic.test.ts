@@ -9,7 +9,7 @@ import {
   DEFAULT_WORLD_STATE,
   DEFAULT_LABS,
   BACKGROUND_LABS,
-  NEW_COMPUTE_PER_ROUND,
+  NEW_COMPUTE_PER_GAME_ROUND,
   DEFAULT_COMPUTE_DISTRIBUTION,
   MAX_PRIORITY,
   MAX_ACTIONS,
@@ -308,12 +308,14 @@ describe("Background Labs", () => {
 describe("Compute Distribution", () => {
   it("should have distributions for 3 rounds", () => {
     expect(DEFAULT_COMPUTE_DISTRIBUTION).toHaveLength(3);
-    expect(NEW_COMPUTE_PER_ROUND).toHaveLength(3);
   });
 
-  it("round 2 should have more compute than round 3 (covers 2 quarters)", () => {
-    expect(NEW_COMPUTE_PER_ROUND[1]).toBeGreaterThanOrEqual(
-      NEW_COMPUTE_PER_ROUND[2]
+  it("new compute per round should decrease over time (physical constraint)", () => {
+    expect(NEW_COMPUTE_PER_GAME_ROUND[1]).toBeGreaterThanOrEqual(
+      NEW_COMPUTE_PER_GAME_ROUND[2]
+    );
+    expect(NEW_COMPUTE_PER_GAME_ROUND[2]).toBeGreaterThanOrEqual(
+      NEW_COMPUTE_PER_GAME_ROUND[3]
     );
   });
 });

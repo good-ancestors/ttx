@@ -196,11 +196,11 @@ async function runScenario(scenario: Scenario) {
   for (const lab of game.labs) {
     const r = results[lab.name];
     const growth = (r[3].mult / r[0].mult).toFixed(0);
-    console.log(`  ${lab.name.padEnd(13)}| ${String(r[0].mult + "×").padEnd(7)}| ${String(r[1].mult + "×").padEnd(7)}| ${String(r[2].mult + "×").padEnd(7)}| ${String(r[3].mult + "×").padEnd(7)}| ${growth}×`);
+    console.log(`  ${lab.name.padEnd(13)}| ${String(`${r[0].mult  }×`).padEnd(7)}| ${String(`${r[1].mult  }×`).padEnd(7)}| ${String(`${r[2].mult  }×`).padEnd(7)}| ${String(`${r[3].mult  }×`).padEnd(7)}| ${growth}×`);
   }
   console.log(`\n  CSV baseline (${scenario}):`);
   for (const [name, vals] of Object.entries(csvBaseline)) {
-    console.log(`  ${name.padEnd(13)}| ${("3×").padEnd(7)}| ${String(vals.r1 + "×").padEnd(7)}| ${String(vals.r2 + "×").padEnd(7)}| ${String(vals.r3 + "×").padEnd(7)}|`);
+    console.log(`  ${name.padEnd(13)}| ${("3×").padEnd(7)}| ${String(`${vals.r1  }×`).padEnd(7)}| ${String(`${vals.r2  }×`).padEnd(7)}| ${String(`${vals.r3  }×`).padEnd(7)}|`);
   }
 
   // Cleanup
@@ -209,7 +209,7 @@ async function runScenario(scenario: Scenario) {
 }
 
 async function main() {
-  const scenario = (process.argv[2] ?? "both") as string;
+  const scenario = (process.argv[2] ?? "both");
 
   const valid = ["race", "slowdown", "catchup", "all"];
   if (!valid.includes(scenario)) {
