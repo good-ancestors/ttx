@@ -313,6 +313,27 @@ async function applyResolution(opts: {
     });
   }
 
+  // Fallback: ensure labs progress even if AI omits labUpdates
+  // The scenario backbone requires multipliers to grow each round
+  const minFloors: Record<number, number> = { 1: 3, 2: 10, 3: 100, 4: 500 };
+  const minFloor = minFloors[roundNumber] ?? 3;
+  const currentLeading = Math.max(...game.labs.map((l) => l.rdMultiplier));
+  const latestLabs = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
+  const latestLeading = latestLabs ? Math.max(...latestLabs.labs.map((l: { rdMultiplier: number }) => l.rdMultiplier)) : currentLeading;
+  if (latestLeading < minFloor) {
+    console.warn(`[resolve] R${roundNumber} leading lab ${latestLeading}x below floor ${minFloor}x — auto-bumping`);
+    const scale = minFloor / Math.max(1, currentLeading);
+    const bumpedLabs = (latestLabs?.labs ?? game.labs).map((lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }) => ({
+      ...lab,
+      rdMultiplier: Math.min(maxMultiplier, Math.round(lab.rdMultiplier * scale * 10) / 10),
+      computeStock: lab.computeStock + Math.round(roundNumber * 3),
+    }));
+    await convex.mutation(api.games.updateLabs, {
+      gameId: gameId as Id<"games">,
+      labs: bumpedLabs,
+    });
+  }
+
   // Snapshot final state
   const clampedWorldState = {
     capability: clampDelta(output.worldState.capability, game.worldState.capability),
