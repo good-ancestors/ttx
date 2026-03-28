@@ -4,12 +4,13 @@ Manual testing guide for The Race to AGI tabletop exercise app. Covers full game
 
 ## Setup for Efficient Testing
 
-### Minimise API costs
+### Reduce unnecessary API calls
 
-- Set most tables to **NPC** mode (draws from pre-authored sample actions, zero LLM calls)
-- Only set tables to **AI** when testing AI-generated actions or grading quality
-- Keep 1-2 human players for interactive testing; the rest NPC
+- Use **NPC** mode for tables you're not actively testing (draws from pre-authored sample actions, zero LLM calls)
+- Use **AI** mode when testing AI-generated actions, grading quality, or AI proposals
+- Keep 1-2 human players for interactive testing; NPC for the rest
 - Use the **"Demo: Skip to AI Submissions"** button during discuss phase to auto-submit AI/NPC players with a 30s stagger
+- The copilot, resolve, narrate, and grading endpoints all make real API calls — test these, just don't run them repeatedly for no reason
 
 ### Recommended minimal config
 
