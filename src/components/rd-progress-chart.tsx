@@ -38,16 +38,12 @@ function labColor(roleId: string): string {
 }
 
 // Dynamic scale: adapts to the peak value
-// At game start (peak ~3x), 3x is near the top
-// As labs grow, the scale expands to accommodate
 function makeScaleY(ceiling: number) {
   return (multiplier: number): number => {
     const v = Math.max(1, multiplier);
     if (ceiling <= 15) {
-      // Early game: linear 1 to ceiling
       return (v - 1) / (ceiling - 1);
     }
-    // Late game: hybrid linear/log
     if (v <= 10) {
       return ((v - 1) / 9) * 0.5;
     }
@@ -56,21 +52,49 @@ function makeScaleY(ceiling: number) {
   };
 }
 
-export function RdProgressChart({
-  rounds,
-  currentLabs,
-  currentRound = 1,
-  compact = false,
-}: {
-  rounds: Round[];
-  currentLabs: Lab[];
-  currentRound?: number;
-  compact?: boolean;
-}) {
+// ─── Data preparation (pure, testable) ──────────────────────────────────────
+
+export interface ChartPoint { x: number; y: number; value: number }
+export interface LabSeries {
+  name: string;
+  roleId: string;
+  points: ChartPoint[];
+  isBackground: boolean;
+  isAbsorbed: boolean;
+}
+
+interface ChartLayout {
+  width: number;
+  height: number;
+  padLeft: number;
+  padRight: number;
+  padTop: number;
+  padBottom: number;
+  chartW: number;
+  chartH: number;
+}
+
+interface ChartData {
+  series: LabSeries[];
+  xLabels: string[];
+  yTicks: number[];
+  visibleMilestones: typeof MILESTONES;
+  ceiling: number;
+  scaleY: (v: number) => number;
+  yPos: (v: number) => number;
+  xPos: (i: number) => number;
+  layout: ChartLayout;
+}
+
+export function buildChartData(
+  rounds: Round[],
+  currentLabs: Lab[],
+  currentRound: number,
+  compact: boolean,
+): ChartData {
   const allLabs = [...DEFAULT_LABS, ...BACKGROUND_LABS.map((l, i) => ({ ...l, roleId: `bg-${i}` }))];
   const completedRounds = rounds.filter((r) => r.labsAfter && r.labsAfter.length > 0);
 
-  // Chart dimensions
   const width = 340;
   const height = compact ? 170 : 210;
   const padLeft = 32;
@@ -79,10 +103,10 @@ export function RdProgressChart({
   const padBottom = 28;
   const chartW = width - padLeft - padRight;
   const chartH = height - padTop - padBottom;
+  const layout = { width, height, padLeft, padRight, padTop, padBottom, chartW, chartH };
 
-  // Dynamic x-axis: only show up to current round + 1
   const allLabels = ["Pre", "Start", "R1", "R2", "R3", "R4"];
-  const visibleCount = Math.min(allLabels.length, currentRound + 2); // Pre, Start, + current round
+  const visibleCount = Math.min(allLabels.length, currentRound + 2);
   const xLabels = allLabels.slice(0, visibleCount);
   const xCount = xLabels.length;
 
@@ -91,35 +115,26 @@ export function RdProgressChart({
   }
 
   // Build per-lab point series
-  type LabSeries = { name: string; roleId: string; points: { x: number; y: number; value: number }[]; isBackground: boolean; isAbsorbed: boolean };
   const series: LabSeries[] = [];
 
   for (const lab of allLabs) {
     const isBackground = !DEFAULT_LABS.some((d) => d.roleId === lab.roleId);
     const isAbsorbed = !isBackground && !currentLabs.some((l) => l.name === lab.name);
-    const points: { x: number; y: number; value: number }[] = [];
+    const points: ChartPoint[] = [];
 
-    // Pre-game (~Oct 2027)
-    const preVal = PRE_GAME_MULTIPLIERS[lab.name] ?? 1.1;
-    points.push({ x: xPos(0), y: 0, value: preVal }); // y set after scale determined
-
-    // Start (game creation state)
+    points.push({ x: xPos(0), y: 0, value: PRE_GAME_MULTIPLIERS[lab.name] ?? 1.1 });
     points.push({ x: xPos(1), y: 0, value: lab.rdMultiplier });
 
-    // Completed rounds — stop at last round where this lab existed
     for (let i = 0; i < completedRounds.length; i++) {
       const roundLab = completedRounds[i].labsAfter?.find((l) => l.name === lab.name);
-      if (!roundLab && isAbsorbed) break; // Lab was absorbed — stop the line here
-      const val = roundLab?.rdMultiplier ?? lab.rdMultiplier;
-      points.push({ x: xPos(2 + i), y: 0, value: val });
+      if (!roundLab && isAbsorbed) break;
+      points.push({ x: xPos(2 + i), y: 0, value: roundLab?.rdMultiplier ?? lab.rdMultiplier });
     }
 
-    // Current round if values changed from last snapshot (only for active labs)
     if (!isAbsorbed && completedRounds.length < 4 && completedRounds.length > 0) {
       const currentLab = currentLabs.find((l) => l.name === lab.name);
       const val = currentLab?.rdMultiplier ?? lab.rdMultiplier;
-      const lastSnapshotVal = points[points.length - 1]?.value;
-      if (val !== lastSnapshotVal) {
+      if (val !== points[points.length - 1]?.value) {
         points.push({ x: xPos(2 + completedRounds.length), y: 0, value: val });
       }
     }
@@ -127,13 +142,8 @@ export function RdProgressChart({
     series.push({ name: lab.name, roleId: lab.roleId, points, isBackground, isAbsorbed });
   }
 
-  // Find peak value across all visible points
-  const peakValue = Math.max(
-    ...series.flatMap((s) => s.points.map((p) => p.value)),
-    3 // minimum ceiling so the chart isn't empty
-  );
-
-  // Dynamic ceiling: next nice round number above peak, with 20% headroom
+  // Scale
+  const peakValue = Math.max(...series.flatMap((s) => s.points.map((p) => p.value)), 3);
   const ceilingRaw = peakValue * 1.3;
   const ceiling = ceilingRaw <= 5 ? 5
     : ceilingRaw <= 15 ? 15
@@ -148,19 +158,34 @@ export function RdProgressChart({
     return padTop + chartH - scaleY(multiplier) * chartH;
   }
 
-  // Now set y positions on all points
   for (const s of series) {
     for (const p of s.points) {
       p.y = yPos(p.value);
     }
   }
 
-  // Y-axis ticks: only show values up to the ceiling
   const allTicks = [1, 2, 3, 5, 10, 50, 100, 500, 1000, 5000];
   const yTicks = allTicks.filter((v) => v <= ceiling && scaleY(v) <= 1.05);
-
-  // Milestones: only show those at or below the peak (+ small buffer)
   const visibleMilestones = MILESTONES.filter((m) => m.multiplier <= peakValue * 1.5);
+
+  return { series, xLabels, yTicks, visibleMilestones, ceiling, scaleY, yPos, xPos, layout };
+}
+
+// ─── Renderer ───────────────────────────────────────────────────────────────
+
+export function RdProgressChart({
+  rounds,
+  currentLabs,
+  currentRound = 1,
+  compact = false,
+}: {
+  rounds: Round[];
+  currentLabs: Lab[];
+  currentRound?: number;
+  compact?: boolean;
+}) {
+  const { series, xLabels, yTicks, visibleMilestones, scaleY, yPos, xPos, layout } = buildChartData(rounds, currentLabs, currentRound, compact);
+  const { width, height, padLeft, padRight } = layout;
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-4">
@@ -176,52 +201,25 @@ export function RdProgressChart({
         {yTicks.map((v) => (
           <g key={v}>
             <line
-              x1={padLeft}
-              y1={yPos(v)}
-              x2={width - padRight}
-              y2={yPos(v)}
-              stroke="#334155"
-              strokeWidth={0.5}
-              strokeDasharray="4,3"
+              x1={padLeft} y1={yPos(v)} x2={width - padRight} y2={yPos(v)}
+              stroke="#334155" strokeWidth={0.5} strokeDasharray="4,3"
             />
-            <text
-              x={padLeft - 4}
-              y={yPos(v) + 3}
-              textAnchor="end"
-              fill="#64748B"
-              fontSize={9}
-              fontFamily="monospace"
-            >
+            <text x={padLeft - 4} y={yPos(v) + 3} textAnchor="end" fill="#64748B" fontSize={9} fontFamily="monospace">
               {v >= 1000 ? `${v / 1000}k` : v}×
             </text>
           </g>
         ))}
 
-        {/* Milestone labels on right edge — only visible ones */}
+        {/* Milestone labels on right edge */}
         {visibleMilestones.filter((m) => scaleY(m.multiplier) <= 1).map((m) => (
-          <text
-            key={m.label}
-            x={width - 2}
-            y={yPos(m.multiplier) + 3}
-            textAnchor="end"
-            fill={m.color}
-            fontSize={8}
-            opacity={0.6}
-          >
+          <text key={m.label} x={width - 2} y={yPos(m.multiplier) + 3} textAnchor="end" fill={m.color} fontSize={8} opacity={0.6}>
             {m.label}
           </text>
         ))}
 
-        {/* X-axis labels — only visible rounds */}
+        {/* X-axis labels */}
         {xLabels.map((label, i) => (
-          <text
-            key={label}
-            x={xPos(i)}
-            y={height - 6}
-            textAnchor="middle"
-            fill="#94A3B8"
-            fontSize={10}
-          >
+          <text key={label} x={xPos(i)} y={height - 6} textAnchor="middle" fill="#94A3B8" fontSize={10}>
             {label}
           </text>
         ))}
@@ -231,15 +229,11 @@ export function RdProgressChart({
           <polyline
             key={s.roleId}
             points={s.points.map((p) => `${p.x},${p.y}`).join(" ")}
-            fill="none"
-            stroke="#475569"
-            strokeWidth={1}
-            strokeDasharray="3,3"
-            opacity={0.3}
+            fill="none" stroke="#475569" strokeWidth={1} strokeDasharray="3,3" opacity={0.3}
           />
         ))}
 
-        {/* Main lab lines — step function (flat during round, jump at resolve) */}
+        {/* Main lab lines — step function */}
         {series.filter((s) => !s.isBackground).map((s) => {
           const stepPoints: string[] = [];
           for (let i = 0; i < s.points.length; i++) {
@@ -251,39 +245,30 @@ export function RdProgressChart({
             }
           }
           const color = labColor(s.roleId);
+          const last = s.points[s.points.length - 1];
           return (
           <g key={s.roleId} opacity={s.isAbsorbed ? 0.35 : 1}>
             <polyline
               points={stepPoints.join(" ")}
-              fill="none"
-              stroke={color}
+              fill="none" stroke={color}
               strokeWidth={s.isAbsorbed ? 1.5 : 2.5}
-              strokeLinejoin="round"
-              strokeLinecap="round"
+              strokeLinejoin="round" strokeLinecap="round"
               strokeDasharray={s.isAbsorbed ? "4,3" : undefined}
             />
-            {/* Data points */}
             {s.points.map((p, i) => (
               <circle
-                key={`${s.roleId}-pt-${i}`}
-                cx={p.x}
-                cy={p.y}
+                key={`${s.roleId}-pt-${i}`} cx={p.x} cy={p.y}
                 r={i === s.points.length - 1 ? (s.isAbsorbed ? 3 : 4.5) : 2.5}
                 fill={color}
               />
             ))}
-            {/* Value label on latest point */}
             <text
-              x={s.points[s.points.length - 1].x + 7}
-              y={s.points[s.points.length - 1].y + 4}
-              fill={color}
+              x={last.x + 7} y={last.y + 4} fill={color}
               fontSize={s.isAbsorbed ? 9 : 11}
               fontWeight={s.isAbsorbed ? 400 : 700}
               fontFamily="monospace"
             >
-              {s.points[s.points.length - 1].value < 10
-                ? `${Math.round(s.points[s.points.length - 1].value * 10) / 10}×`
-                : `${Math.round(s.points[s.points.length - 1].value)}×`}
+              {last.value < 10 ? `${Math.round(last.value * 10) / 10}×` : `${Math.round(last.value)}×`}
             </text>
           </g>
           );

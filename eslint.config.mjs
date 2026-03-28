@@ -120,12 +120,11 @@ const eslintConfig = defineConfig([
     },
   },
 
-  // Components with inherently high branching (debug/lobby/chart views)
+  // Components with inherently high branching (debug/lobby views)
   {
     files: [
       "**/components/debug-panel.tsx",
       "**/components/facilitator/lobby-phase.tsx",
-      "**/components/rd-progress-chart.tsx",
     ],
     rules: {
       complexity: "off",
