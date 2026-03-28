@@ -31,6 +31,7 @@ export const applySummary = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     summary: v.object({
+      narrative: v.optional(v.string()),
       geopoliticalEvents: v.array(v.string()),
       aiStateOfPlay: v.array(v.string()),
       headlines: v.array(v.string()),
@@ -102,11 +103,46 @@ export const snapshotState = mutation({
   },
 });
 
+export const applyResolution = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    resolvedEvents: v.array(
+      v.object({
+        id: v.string(),
+        description: v.string(),
+        visibility: v.union(v.literal("public"), v.literal("covert")),
+        actors: v.array(v.string()),
+        worldImpact: v.optional(v.string()),
+        sourceActions: v.optional(v.array(v.string())),
+      })
+    ),
+    facilitatorNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db
+      .query("rounds")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (!round) return;
+
+    await ctx.db.patch(round._id, {
+      resolvedEvents: args.resolvedEvents,
+      facilitatorNotes: args.facilitatorNotes,
+    });
+  },
+});
+
 export const setAiMeta = mutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
     aiMeta: v.object({
+      resolveModel: v.optional(v.string()),
+      resolveTimeMs: v.optional(v.number()),
+      resolveTokens: v.optional(v.number()),
       narrativeModel: v.optional(v.string()),
       narrativeTimeMs: v.optional(v.number()),
       narrativeTokens: v.optional(v.number()),

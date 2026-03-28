@@ -1,6 +1,25 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { logEvent } from "./events";
+import { logEvent, assertPhase } from "./events";
+/** Transfer compute between two roles' tables. Positive amount = giver→requester, negative = reverse. */
+async function transferCompute(db, gameId, giverRoleId, requesterRoleId, amount) {
+    const tables = await db
+        .query("tables")
+        .withIndex("by_game", (q) => q.eq("gameId", gameId))
+        .collect();
+    const giverTable = tables.find((t) => t.roleId === giverRoleId);
+    const requesterTable = tables.find((t) => t.roleId === requesterRoleId);
+    if (giverTable) {
+        await db.patch(giverTable._id, {
+            computeStock: Math.max(0, (giverTable.computeStock ?? 0) - amount),
+        });
+    }
+    if (requesterTable) {
+        await db.patch(requesterTable._id, {
+            computeStock: Math.max(0, (requesterTable.computeStock ?? 0) + amount),
+        });
+    }
+}
 export const getByGameAndRound = query({
     args: { gameId: v.id("games"), roundNumber: v.number() },
     handler: async (ctx, args) => {
@@ -31,7 +50,7 @@ export const send = mutation({
         toRoleId: v.string(),
         toRoleName: v.string(),
         actionText: v.string(),
-        requestType: v.union(v.literal("endorsement"), v.literal("compute"), v.literal("both")),
+        requestType: v.union(v.literal("endorsement"), v.literal("compute")),
         computeAmount: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
@@ -61,28 +80,12 @@ export const cancel = mutation({
         const request = await ctx.db.get(args.requestId);
         if (!request)
             return;
+        await assertPhase(ctx, request.gameId, ["submit"], "cancel requests");
         // If compute was already transferred (accepted compute request), reverse it
         if (request.status === "accepted" &&
-            (request.requestType === "compute" || request.requestType === "both") &&
+            request.requestType === "compute" &&
             request.computeAmount) {
-            const tables = await ctx.db
-                .query("tables")
-                .withIndex("by_game", (q) => q.eq("gameId", request.gameId))
-                .collect();
-            // Return compute to the acceptor (giver)
-            const giverTable = tables.find((t) => t.roleId === request.toRoleId);
-            if (giverTable) {
-                await ctx.db.patch(giverTable._id, {
-                    computeStock: (giverTable.computeStock ?? 0) + request.computeAmount,
-                });
-            }
-            // Remove compute from requester
-            const requesterTable = tables.find((t) => t.roleId === request.fromRoleId);
-            if (requesterTable) {
-                await ctx.db.patch(requesterTable._id, {
-                    computeStock: Math.max(0, (requesterTable.computeStock ?? 0) - request.computeAmount),
-                });
-            }
+            await transferCompute(ctx.db, request.gameId, request.toRoleId, request.fromRoleId, -request.computeAmount);
         }
         await ctx.db.delete(args.requestId);
         await logEvent(ctx, request.gameId, "request_cancelled", request.fromRoleId, {
@@ -101,6 +104,7 @@ export const respond = mutation({
         const proposal = await ctx.db.get(args.proposalId);
         if (!proposal)
             return;
+        await assertPhase(ctx, proposal.gameId, ["submit"], "respond to requests");
         // Allow changing response (pending→accepted, pending→declined, accepted↔declined)
         const oldStatus = proposal.status;
         // Handle compute for endorsement-type requests (no compute transfer)
@@ -115,29 +119,20 @@ export const respond = mutation({
             return;
         }
         // For compute requests: handle transfer/reversal
-        if ((proposal.requestType === "compute" || proposal.requestType === "both") &&
+        if (proposal.requestType === "compute" &&
             proposal.computeAmount) {
-            const tables = await ctx.db
-                .query("tables")
-                .withIndex("by_game", (q) => q.eq("gameId", proposal.gameId))
-                .collect();
-            const giverTable = tables.find((t) => t.roleId === proposal.toRoleId);
-            const requesterTable = tables.find((t) => t.roleId === proposal.fromRoleId);
             // If was accepted and now declining — reverse the transfer
             if (oldStatus === "accepted" && args.status === "declined") {
-                if (giverTable && proposal.computeAmount) {
-                    await ctx.db.patch(giverTable._id, {
-                        computeStock: (giverTable.computeStock ?? 0) + proposal.computeAmount,
-                    });
-                }
-                if (requesterTable && proposal.computeAmount) {
-                    await ctx.db.patch(requesterTable._id, {
-                        computeStock: Math.max(0, (requesterTable.computeStock ?? 0) - proposal.computeAmount),
-                    });
-                }
+                await transferCompute(ctx.db, proposal.gameId, proposal.toRoleId, proposal.fromRoleId, -proposal.computeAmount);
             }
             // If accepting (from pending or declined) — do the transfer
             if (args.status === "accepted" && oldStatus !== "accepted") {
+                // Check giver has enough compute
+                const tables = await ctx.db
+                    .query("tables")
+                    .withIndex("by_game", (q) => q.eq("gameId", proposal.gameId))
+                    .collect();
+                const giverTable = tables.find((t) => t.roleId === proposal.toRoleId);
                 const available = giverTable?.computeStock ?? 0;
                 if (available < proposal.computeAmount) {
                     await ctx.db.patch(args.proposalId, { status: "declined" });
@@ -148,16 +143,7 @@ export const respond = mutation({
                     });
                     return;
                 }
-                if (giverTable) {
-                    await ctx.db.patch(giverTable._id, {
-                        computeStock: available - proposal.computeAmount,
-                    });
-                }
-                if (requesterTable) {
-                    await ctx.db.patch(requesterTable._id, {
-                        computeStock: (requesterTable.computeStock ?? 0) + proposal.computeAmount,
-                    });
-                }
+                await transferCompute(ctx.db, proposal.gameId, proposal.toRoleId, proposal.fromRoleId, proposal.computeAmount);
             }
         }
         await ctx.db.patch(args.proposalId, { status: args.status });

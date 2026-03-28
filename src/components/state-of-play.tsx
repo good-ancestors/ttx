@@ -1,7 +1,8 @@
 "use client";
 
 import { getCapabilityDescription, WORLD_STATE_INDICATORS } from "@/lib/game-data";
-import { Cpu, Shield, Zap, AlertTriangle, TrendingUp } from "lucide-react";
+import { RdProgressChart } from "@/components/rd-progress-chart";
+import { Cpu, Zap, AlertTriangle, TrendingUp } from "lucide-react";
 
 interface Lab {
   name: string;
@@ -11,10 +12,17 @@ interface Lab {
   allocation: { users: number; capability: number; safety: number };
 }
 
+interface Round {
+  number: number;
+  label: string;
+  labsAfter?: Lab[];
+}
+
 interface Props {
   labs: Lab[];
   worldState: Record<string, number>;
   roundLabel: string;
+  rounds?: Round[];
 }
 
 /**
@@ -22,7 +30,7 @@ interface Props {
  * Shows lab stats + capability description immediately (no AI needed).
  * Facilitator narrates over this while narrative generates in background.
  */
-export function StateOfPlay({ labs, worldState, roundLabel }: Props) {
+export function StateOfPlay({ labs, worldState, roundLabel, rounds }: Props) {
   const leading = labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b), labs[0]);
   const cap = getCapabilityDescription(leading?.rdMultiplier ?? 1);
 
@@ -68,6 +76,13 @@ export function StateOfPlay({ labs, worldState, roundLabel }: Props) {
         ))}
       </div>
 
+      {/* R&D Progress Chart — shows trajectory across rounds */}
+      {rounds && rounds.length > 0 && (
+        <div className="mb-4">
+          <RdProgressChart rounds={rounds} currentLabs={labs} />
+        </div>
+      )}
+
       {/* Capability description — like the slide's "How capable is AI?" */}
       <div className="bg-navy rounded-lg p-4 border border-navy-light mb-4">
         <div className="flex items-center gap-2 mb-3">
@@ -87,9 +102,9 @@ export function StateOfPlay({ labs, worldState, roundLabel }: Props) {
           ))}
         </div>
 
-        <div className="flex items-start gap-2 pt-2 border-t border-navy-light">
-          <TrendingUp className="w-4 h-4 text-text-light shrink-0 mt-0.5" />
-          <span className="text-xs text-text-light italic">{cap.timeCompression}</span>
+        <div className="flex items-center gap-2 pt-3 mt-2 border-t border-navy-light">
+          <TrendingUp className="w-5 h-5 text-viz-capability shrink-0" />
+          <span className="text-base font-bold text-white">{cap.timeCompression}</span>
         </div>
       </div>
 

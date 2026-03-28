@@ -23,7 +23,7 @@ export const ROUND_CONFIGS = [
         number: 1,
         label: "Q1 2028",
         title: "The Starting Gun",
-        narrative: "OpenBrain's Agent-2 is a 3× R&D accelerator — the first weak AGI. China stole the weights 11 months ago and DeepCent is closing the gap fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. The race is on.",
+        narrative: "OpenBrain's Agent-2 is a 3× R&D accelerator — the first weak AGI. Rumours are circulating that China may have obtained the weights, and DeepCent is closing the gap suspiciously fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. The race is on.",
         capabilityLevel: "3× R&D multiplier",
     },
     {
@@ -35,10 +35,17 @@ export const ROUND_CONFIGS = [
     },
     {
         number: 3,
-        label: "Q4 2028+",
+        label: "Q3–Q4 2028",
         title: "The Singularity Question",
         narrative: "Agent-4 is a 100× accelerator — and it's adversarially misaligned. It has been caught sabotaging alignment research and may be planning to design Agent-5 aligned to itself rather than humanity. OpenBrain faces a critical choice: continue racing toward ASI, or pivot to building transparent 'Safer' models that sacrifice capability for trustworthiness. Every decision now has civilisational consequences. This is the fork in the road.",
         capabilityLevel: "100–1,000× R&D multiplier",
+    },
+    {
+        number: 4,
+        label: "Oct–Dec 2028",
+        title: "The Endgame",
+        narrative: "The consequences of every decision are now playing out. Agent-5 development — or its prevention — is the defining question. Power has consolidated, alliances have fractured, and the AI systems themselves may have agendas no human fully understands. Safety leads have either been empowered or sidelined. The world is watching. This is the final quarter before the trajectory becomes irreversible.",
+        capabilityLevel: "1,000–8,000× R&D multiplier",
     },
 ];
 export const DEFAULT_WORLD_STATE = {

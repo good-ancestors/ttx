@@ -13,32 +13,36 @@ interface Lab {
 export function LabTracker({ labs }: { labs: Lab[] }) {
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-text-light mb-3 block">
+      <span className="text-sm font-semibold uppercase tracking-wider text-text-light mb-3 block">
         Lab State
       </span>
       <div className="grid grid-cols-2 gap-3">
         {labs.map((lab) => {
           const role = ROLES.find((r) => r.id === lab.roleId);
-          const compute = lab.allocation;
           return (
             <div
               key={lab.name}
               className="bg-navy-dark border border-navy-light rounded-lg p-3"
             >
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-1">
                 <div
-                  className="w-2 h-2 rounded-full"
+                  className="w-2.5 h-2.5 rounded-full"
                   style={{ backgroundColor: role?.color }}
                 />
-                <span className="text-[13px] font-bold text-white">
+                <span className="text-sm font-bold text-white">
                   {lab.name}
                 </span>
-                <span className="text-[11px] text-text-light ml-auto font-mono">
-                  {lab.computeStock}u | {lab.rdMultiplier}x
+              </div>
+              <div className="flex items-baseline gap-3 mb-2">
+                <span className="text-xl font-black font-mono text-[#06B6D4]">
+                  {lab.rdMultiplier}×
+                </span>
+                <span className="text-xs text-text-light font-mono">
+                  {lab.computeStock}u
                 </span>
               </div>
-              <ComputeDotsViz allocation={compute} />
-              <div className="flex flex-wrap gap-1.5 mt-1">
+              <ComputeDotsViz allocation={lab.allocation} computeStock={lab.computeStock} />
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
                 {COMPUTE_CATEGORIES.map((cat) => (
                   <span
                     key={cat.key}
@@ -53,7 +57,7 @@ export function LabTracker({ labs }: { labs: Lab[] }) {
                       : cat.key === "capability"
                         ? "R&D"
                         : "Safety"}{" "}
-                    {compute[cat.key]}%
+                    {lab.allocation[cat.key]}%
                   </span>
                 ))}
               </div>
@@ -67,31 +71,38 @@ export function LabTracker({ labs }: { labs: Lab[] }) {
 
 export function ComputeDotsViz({
   allocation,
+  computeStock,
 }: {
   allocation: { users: number; capability: number; safety: number };
+  computeStock?: number;
 }) {
-  const totalDots = 100;
+  // If computeStock provided: 1 block = 1 unit (proportional). Otherwise: 20 blocks (player preview)
+  const total = computeStock != null ? Math.max(1, Math.round(computeStock)) : 20;
   const dots: { color: string; key: string; idx: number }[] = [];
   let idx = 0;
   for (const cat of COMPUTE_CATEGORIES) {
-    const count = Math.round((allocation[cat.key] / 100) * totalDots);
-    for (let i = 0; i < count && idx < totalDots; i++) {
+    const count = Math.round((allocation[cat.key] / 100) * total);
+    for (let i = 0; i < count && idx < total; i++) {
       dots.push({ color: cat.color, key: cat.key, idx: idx++ });
     }
   }
-  while (dots.length < totalDots) {
-    dots.push({ color: "", key: "empty", idx: dots.length });
+  // Fill remaining to ensure total blocks = computeStock
+  while (dots.length < total) {
+    const lastCat = COMPUTE_CATEGORIES[COMPUTE_CATEGORIES.length - 1];
+    dots.push({ color: lastCat.color, key: lastCat.key, idx: dots.length });
   }
 
   return (
-    <div className="flex flex-wrap gap-[2px] mb-2">
+    <div className="flex flex-wrap gap-[2px] mb-2" style={{ maxWidth: 10 * 12 + 9 * 2 }}>
       {dots.map((dot) => (
         <div
           key={dot.idx}
-          className="w-2 h-2 rounded-[2px] compute-dot"
+          className="rounded-[2px] compute-dot"
           style={{
-            backgroundColor: dot.key === "empty" ? "#334155" : dot.color,
-            opacity: dot.key === "empty" ? 0.2 : 0.85,
+            width: 10,
+            height: 10,
+            backgroundColor: dot.color,
+            opacity: 0.85,
           }}
         />
       ))}

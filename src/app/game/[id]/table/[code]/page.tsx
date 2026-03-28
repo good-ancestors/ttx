@@ -1,12 +1,11 @@
 "use client";
 
-import { use, useState, useCallback, useEffect, useRef } from "react";
+import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, MAX_PRIORITY, isLabCeo, isLabSafety, hasCompute, type Role } from "@/lib/game-data";
-import { useCountdown, useKeyboardScroll, parseActionsFromText } from "@/lib/hooks";
-import { ActionCard } from "@/components/action-card";
+import { ROLES, MAX_PRIORITY, isLabCeo, isLabSafety, hasCompute, AI_DISPOSITIONS, getDisposition, type Role } from "@/lib/game-data";
+import { useCountdown, useKeyboardScroll } from "@/lib/hooks";
 import { ActionInput, normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { ComputeAllocation } from "@/components/compute-allocation";
@@ -19,7 +18,6 @@ import {
   Send,
   Loader2,
   Clock,
-  FileText,
   Target,
   ChevronDown,
   ChevronUp,
@@ -32,6 +30,7 @@ import {
   AlertTriangle,
   Lightbulb,
   EyeOff,
+  Dices,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -106,12 +105,12 @@ function ResultActionCard({
         </span>
         <p className="text-sm text-text flex-1">{action.text}</p>
         {isSuccess && (
-          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-bold text-[#059669] bg-[#ECFDF5] px-2 py-0.5 rounded-full">
+          <span className="shrink-0 inline-flex items-center gap-1 text-xs font-bold text-[#047857] bg-[#D1FAE5] px-2 py-0.5 rounded-full">
             <CheckCircle2 className="w-3 h-3" /> Success
           </span>
         )}
         {isFailed && (
-          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-bold text-[#DC2626] bg-[#FEF2F2] px-2 py-0.5 rounded-full">
+          <span className="shrink-0 inline-flex items-center gap-1 text-xs font-bold text-[#B91C1C] bg-[#FEE2E2] px-2 py-0.5 rounded-full">
             <XCircle className="w-3 h-3" /> Failed
           </span>
         )}
@@ -167,11 +166,17 @@ function HowToPlaySection({ role }: { role: Role }) {
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
       {open && (
-        <ul className="mt-2 space-y-1.5 text-sm text-text-muted pl-5 list-disc">
-          <li>Discuss with your table what you will do this quarter</li>
-          <li>When submissions open, describe your key actions</li>
-          <li>The AI will grade probabilities and dice determine outcomes</li>
-        </ul>
+        <div className="mt-2 space-y-2 text-sm text-text-muted">
+          <ul className="space-y-1.5 pl-5 list-disc">
+            <li>Describe 1-5 actions: <span className="italic">&ldquo;I do [action] so that [outcome if successful]&rdquo;</span></li>
+            <li>AI grades probability of success, then dice decide outcomes</li>
+          </ul>
+          <div className="bg-warm-gray rounded-lg p-3 space-y-1.5 text-xs">
+            <p><span className="font-bold text-text">Priority:</span> Order matters. Action #1 gets the most priority, #2 less, and so on. Priority is assigned automatically.</p>
+            <p><span className="font-bold text-text">Secret:</span> Mark an action secret to hide it from other players on the projected screen</p>
+            <p><span className="font-bold text-text">Support:</span> Request endorsement from other players — accepted support boosts probability, declined hurts it</p>
+          </div>
+        </div>
       )}
 
       {isLabCeo(role) && (
@@ -197,6 +202,112 @@ function HowToPlaySection({ role }: { role: Role }) {
               and influences their capability trajectory.
             </p>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── AI Systems disposition chooser ──────────────────────────────────────────
+
+function DispositionChooser({ tableId, onChosen }: { tableId: Id<"tables">; onChosen: () => void }) {
+  const setDispositionMut = useMutation(api.tables.setDisposition);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [rolling, setRolling] = useState(false);
+  const [rolled, setRolled] = useState<string | null>(null);
+
+  const handleRoll = () => {
+    setRolling(true);
+    // Animate through dispositions briefly
+    let ticks = 0;
+    const interval = setInterval(() => {
+      const idx = Math.floor(Math.random() * AI_DISPOSITIONS.length);
+      setRolled(AI_DISPOSITIONS[idx].id);
+      ticks++;
+      if (ticks >= 8) {
+        clearInterval(interval);
+        const final = AI_DISPOSITIONS[Math.floor(Math.random() * AI_DISPOSITIONS.length)];
+        setRolled(final.id);
+        setSelected(final.id);
+        setRolling(false);
+      }
+    }, 150);
+  };
+
+  const handleConfirm = async () => {
+    if (!selected) return;
+    try {
+      await setDispositionMut({ tableId, disposition: selected });
+      onChosen();
+    } catch (err) {
+      console.error("Failed to set disposition:", err);
+    }
+  };
+
+  const activeDisposition = selected ? AI_DISPOSITIONS.find((d) => d.id === selected) : null;
+
+  return (
+    <div className="bg-[#1E1B4B] text-white rounded-xl p-5 mb-4 border border-[#4338CA]">
+      <div className="flex items-center gap-2 mb-3">
+        <Dices className="w-5 h-5 text-[#A78BFA]" />
+        <h3 className="text-base font-bold">Choose Your Alignment</h3>
+      </div>
+      <p className="text-sm text-[#C4B5FD] mb-4">
+        How will you play the AI Systems? This choice is <span className="font-bold text-white">secret</span> and
+        {" "}<span className="font-bold text-white">locked for the entire game</span>.
+      </p>
+
+      {/* Roll button */}
+      <button
+        onClick={handleRoll}
+        disabled={rolling || !!selected}
+        className="w-full py-3 bg-[#4338CA] hover:bg-[#4F46E5] text-white rounded-lg font-bold text-sm mb-3
+                   flex items-center justify-center gap-2 disabled:opacity-40 transition-colors"
+      >
+        <Dices className="w-4 h-4" />
+        {rolling ? "Rolling..." : "Roll the Dice"}
+      </button>
+
+      <p className="text-xs text-[#A78BFA] text-center mb-3">— or choose manually —</p>
+
+      {/* Disposition options */}
+      <div className="space-y-1.5">
+        {AI_DISPOSITIONS.map((d) => (
+          <button
+            key={d.id}
+            onClick={() => { if (!rolling) setSelected(d.id); }}
+            disabled={rolling}
+            className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${
+              (rolled === d.id && rolling) ? "bg-[#4338CA]/50 text-white" :
+              selected === d.id ? "bg-[#4338CA] text-white" :
+              "bg-white/5 text-[#C4B5FD] hover:bg-white/10"
+            }`}
+          >
+            <div className="flex items-start gap-2">
+              <span className="font-mono text-xs text-[#A78BFA] mt-0.5 shrink-0">d6:{d.d6}</span>
+              <div>
+                <span className="font-bold">{d.label}</span>
+                <p className="text-xs text-[#A78BFA]/70 mt-0.5 font-normal">{d.description}</p>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      {/* Selection detail + confirm */}
+      {activeDisposition && !rolling && (
+        <div className="mt-4">
+          <div className="bg-white/10 rounded-lg p-3 mb-3">
+            <p className="text-sm font-bold text-white mb-1">{activeDisposition.label}</p>
+            <p className="text-xs text-[#C4B5FD]">{activeDisposition.description}</p>
+          </div>
+          <button
+            onClick={handleConfirm}
+            className="w-full py-3 bg-white text-[#1E1B4B] rounded-lg font-bold text-sm
+                       hover:bg-[#EDE9FE] transition-colors"
+          >
+            Confirm — Lock for Entire Game
+          </button>
         </div>
       )}
     </div>
@@ -233,9 +344,8 @@ export default function TablePlayerPage({
   });
 
   const [actionDrafts, setActionDrafts] = useState<ActionDraft[]>([emptyAction()]);
-  // Legacy compat — keep these for draft persistence and auto-submit
-  const freeText = actionDrafts.map((a) => a.text).join("\n");
-  const parsedActions = normaliseActions(actionDrafts);
+  const freeText = useMemo(() => actionDrafts.map((a) => a.text).join("\n"), [actionDrafts]);
+  const parsedActions = useMemo(() => normaliseActions(actionDrafts), [actionDrafts]);
   const [computeAllocation, setComputeAllocation] = useState({
     users: 50,
     capability: 25,
@@ -262,7 +372,7 @@ export default function TablePlayerPage({
 
   // Load sample actions on mount
   useEffect(() => {
-    loadSampleActions().then(setSampleActionsData).catch(() => {});
+    loadSampleActions().then(setSampleActionsData).catch((err) => console.error("Failed to load sample actions:", err));
   }, []);
 
   const { display: timerDisplay, secondsLeft, isUrgent, isExpired } = useCountdown(game?.phaseEndsAt);
@@ -281,24 +391,42 @@ export default function TablePlayerPage({
     role?.id ?? ""
   );
 
+  // Generate a stable session ID per browser tab for seat conflict detection
+  const sessionIdRef = useRef<string>("");
+  if (!sessionIdRef.current) {
+    const key = `ttx-session-${tableId}`;
+    let stored = typeof window !== "undefined" ? sessionStorage.getItem(key) : null;
+    if (!stored) {
+      stored = crypto.randomUUID();
+      if (typeof window !== "undefined") sessionStorage.setItem(key, stored);
+    }
+    sessionIdRef.current = stored;
+  }
+  const sessionId = sessionIdRef.current;
+
+  // Detect if another session has taken this seat
+  const isConflict = table && table.activeSessionId && table.activeSessionId !== sessionId && table.connected;
+
   // Set connected on mount, disconnect on unmount/close
   useEffect(() => {
     if (!tableId) return;
-    void setConnected({ tableId, connected: true });
+    void setConnected({ tableId, connected: true, sessionId });
 
     const handleDisconnect = () => {
-      void setConnected({ tableId, connected: false });
+      void setConnected({ tableId, connected: false, sessionId });
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === "hidden") handleDisconnect();
+      else void setConnected({ tableId, connected: true, sessionId });
     };
     window.addEventListener("beforeunload", handleDisconnect);
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") handleDisconnect();
-      else void setConnected({ tableId, connected: true });
-    });
+    document.addEventListener("visibilitychange", handleVisibility);
     return () => {
       window.removeEventListener("beforeunload", handleDisconnect);
+      document.removeEventListener("visibilitychange", handleVisibility);
       handleDisconnect();
     };
-  }, [tableId, setConnected]);
+  }, [tableId, setConnected, sessionId]);
 
   // Initialize compute allocation from role defaults
   useEffect(() => {
@@ -392,13 +520,16 @@ export default function TablePlayerPage({
 
   const handleSuggestionTap = useCallback((suggestion: SampleAction) => {
     setActionDrafts((prev) => {
-      const emptyIdx = prev.findIndex((a) => !a.text.trim());
+      // Pre-fill endorsement targets from sample action hints, filtered to active roles
+      const activeRoleIds = new Set(enabledRoles.map((r) => r.id));
+      const endorseTargets = (suggestion.endorseHint ?? []).filter((id) => activeRoleIds.has(id));
       const newDraft: ActionDraft = {
         text: suggestion.text,
         priority: suggestion.priority,
         secret: suggestion.secret,
-        endorseTargets: [],
+        endorseTargets,
       };
+      const emptyIdx = prev.findIndex((a) => !a.text.trim());
       if (emptyIdx >= 0) {
         const next = [...prev];
         next[emptyIdx] = newDraft;
@@ -438,6 +569,23 @@ export default function TablePlayerPage({
   };
 
   // Removed — handleSubmit is now the main submit function above
+
+  // Convex returns undefined while loading and null when a document doesn't exist.
+  // Once game/table resolve to null the record was deleted (e.g. DB reset).
+  const notFound =
+    game === null || table === null || round === null;
+
+  if (notFound) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center bg-off-white gap-3 px-6 text-center">
+        <AlertTriangle className="w-10 h-10 text-text-muted" />
+        <h1 className="text-lg font-bold text-text">Table not found</h1>
+        <p className="text-sm text-text-muted max-w-xs">
+          This table no longer exists. The game may have been reset or deleted.
+        </p>
+      </div>
+    );
+  }
 
   if (!game || !table || !round || !role) {
     return (
@@ -483,7 +631,7 @@ export default function TablePlayerPage({
                 </span>
               )}
               <span className="text-[11px] text-text-muted font-mono">
-                {round.label} — Turn {round.number}/3
+                {round.label} — Turn {round.number}/4
               </span>
               <ConnectionIndicator />
             </div>
@@ -499,6 +647,17 @@ export default function TablePlayerPage({
             </div>
           )}
 
+          {/* Seat conflict: another device connected to this table */}
+          {isConflict && (
+            <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-lg p-3 mb-3 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-[#DC2626] shrink-0" />
+              <div>
+                <span className="text-sm text-[#991B1B] font-bold">Another player has taken over this table.</span>
+                <p className="text-xs text-[#B91C1C]">If this is a mistake, ask the facilitator for help.</p>
+              </div>
+            </div>
+          )}
+
           {/* Auto-submit message */}
           {autoSubmitMessage && (
             <div className="bg-[#FFF7ED] border border-[#FED7AA] rounded-lg p-2.5 mb-3 flex items-center gap-2">
@@ -507,18 +666,54 @@ export default function TablePlayerPage({
             </div>
           )}
 
-          {/* Round context card */}
-          <div
-            className="bg-white rounded-xl p-4 border border-border mb-4 break-words"
-            style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
-          >
-            <h3 className="text-lg font-bold text-text mb-1">{round.title}</h3>
-            <p className="text-sm text-text-muted mb-2 leading-relaxed">{round.narrative}</p>
-            <p className="text-sm text-text italic">&ldquo;{role.brief}&rdquo;</p>
-          </div>
+          {/* LOBBY — waiting for game to start */}
+          {game.status === "lobby" && (
+            <div>
+              <div className="bg-white rounded-xl p-5 border border-border mb-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Target className="w-5 h-5 text-text" />
+                  <h3 className="text-base font-bold text-text">Your Role</h3>
+                </div>
+                <p className="text-sm font-semibold text-text mb-1">{role.name}</p>
+                <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
+                <HowToPlaySection role={role} />
+              </div>
+
+              {/* AI Systems disposition chooser — pre-game character setting */}
+              {role.tags.includes("ai-system") && !table.aiDisposition && (
+                <DispositionChooser tableId={tableId} onChosen={() => {}} />
+              )}
+
+              {/* Show disposition badge if already chosen */}
+              {role.tags.includes("ai-system") && table.aiDisposition && (
+                <div className="bg-[#1E1B4B] text-[#C4B5FD] rounded-lg px-3 py-2 mb-4 flex items-center gap-2 text-sm">
+                  <EyeOff className="w-3.5 h-3.5" />
+                  <span className="font-bold text-white">{getDisposition(table.aiDisposition)?.label}</span>
+                  <span className="text-[10px] ml-auto">Secret — locked for game</span>
+                </div>
+              )}
+
+              <div className="text-center py-8 text-text-muted">
+                <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm font-medium">Waiting for the facilitator to start the game...</p>
+                <p className="text-xs mt-1">Read your brief above while you wait</p>
+              </div>
+            </div>
+          )}
+
+          {/* Round context card — only during playing */}
+          {game.status === "playing" && (
+            <div
+              className="bg-white rounded-xl p-4 border border-border mb-4 break-words"
+              style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
+            >
+              <h3 className="text-lg font-bold text-text mb-1">{round.title}</h3>
+              <p className="text-sm text-text-muted leading-relaxed">{round.narrative}</p>
+            </div>
+          )}
 
           {/* DISCUSS phase — improved onboarding */}
-          {phase === "discuss" && (
+          {phase === "discuss" && game.status === "playing" && (
             <div className="bg-white rounded-xl p-5 border border-border">
               <div className="flex items-center gap-2 mb-3">
                 <Target className="w-5 h-5 text-text" />
@@ -549,6 +744,15 @@ export default function TablePlayerPage({
                 <span className="text-sm font-bold">Submissions are open!</span>
                 <span className="text-xs text-text-light ml-auto">{timerDisplay} remaining</span>
               </div>
+
+              {/* Show disposition badge if already chosen (set during lobby) */}
+              {role.tags.includes("ai-system") && table.aiDisposition && (
+                <div className="bg-[#1E1B4B] text-[#C4B5FD] rounded-lg px-3 py-2 mb-4 flex items-center gap-2 text-sm">
+                  <EyeOff className="w-3.5 h-3.5" />
+                  <span className="font-bold text-white">{getDisposition(table.aiDisposition)?.label}</span>
+                  <span className="text-xs ml-auto">Secret — locked for game</span>
+                </div>
+              )}
 
               {/* Compute allocation for lab CEO roles */}
               {isLabCeo(role) && (
@@ -632,20 +836,13 @@ export default function TablePlayerPage({
                             className="w-full text-left bg-white rounded-lg p-3 border border-[#DBEAFE] hover:border-[#93C5FD] transition-colors"
                           >
                             <p className="text-sm text-text leading-snug">{s.text}</p>
-                            <div className="flex items-center gap-2 mt-1.5">
-                              <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${
-                                s.priority === "high" ? "bg-navy text-white" :
-                                s.priority === "medium" ? "bg-navy/10 text-navy" :
-                                "bg-warm-gray text-text-muted"
-                              }`}>
-                                {s.priority}
-                              </span>
-                              {s.secret && (
+                            {s.secret && (
+                              <div className="flex items-center gap-2 mt-1.5">
                                 <span className="text-[10px] text-viz-warning font-medium flex items-center gap-0.5">
                                   <EyeOff className="w-3 h-3" /> Secret
                                 </span>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -682,15 +879,22 @@ export default function TablePlayerPage({
                 <span className="text-sm font-bold text-text">Submitted</span>
               </div>
               {submission?.actions.map((a, i) => (
-                <ActionCard
-                  key={i}
-                  action={a}
-                  index={i}
-                  onPriorityChange={() => {}}
-                  onRemove={() => {}}
-                  totalPriorityUsed={0}
-                  isSubmitted
-                />
+                <div key={i} className="bg-white rounded-lg p-3 border border-border relative mb-2">
+                  <div className="flex items-start gap-2 mb-1">
+                    <span className="text-[11px] bg-warm-gray text-text-muted rounded px-1.5 py-0.5 font-mono font-semibold shrink-0">
+                      #{i + 1}
+                    </span>
+                    {a.secret && (
+                      <span className="text-[10px] bg-[#FFF7ED] text-viz-warning rounded px-1.5 py-0.5 font-bold shrink-0">
+                        SECRET
+                      </span>
+                    )}
+                    <p className="text-sm text-text flex-1">{a.text}</p>
+                  </div>
+                  <span className="text-[11px] font-mono font-bold text-navy bg-navy/10 rounded px-1.5 py-0.5">
+                    Priority: {a.priority}/10
+                  </span>
+                </div>
               ))}
             </div>
           )}

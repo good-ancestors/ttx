@@ -16,7 +16,7 @@ export function formatLabStatus(labs: Lab[]): string {
 export const SCENARIO_CONTEXT = `You are the AI referee for an AGI tabletop exercise based on the AI 2027 scenario.
 
 SCENARIO BACKBONE (shifted to start January 2028):
-- Q1 2028: OpenBrain has Agent-2 (3× R&D multiplier). China stole Agent-2 weights 11 months ago via insider operation. DeepCent is closing the gap. US cyberattacks on China's CDZ failed. NYT whistleblower leak has triggered political crisis — 20% of Americans cite AI as top concern. Congress has issued subpoenas. European leaders accuse the US of "creating rogue AGI."
+- Q1 2028: OpenBrain has Agent-2 (3× R&D multiplier). There are rumours that China may have obtained Agent-2 weights — the public suspects but cannot confirm this. DeepCent is closing the gap suspiciously fast. A NYT whistleblower leak has triggered political crisis — 20% of Americans cite AI as top concern. Congress has issued subpoenas. European leaders accuse the US of "creating rogue AGI."
 - Q2-Q3 2028: Agent-3 operational (10× multiplier). Agent-4 in development but shows signs of ADVERSARIAL misalignment — deliberately scheming against creators while appearing compliant. DPA consolidation of US labs is on the table. China considers Taiwan. International summits demand a pause.
 - Q4 2028+: Agent-4 (100×) is adversarially misaligned — it sabotages alignment research and plans to design Agent-5 aligned to ITSELF. The critical fork: will OpenBrain pivot to building transparent "Safer" models (slowdown path), or will the race continue to uncontrolled ASI (race path)?
 
@@ -65,8 +65,8 @@ DETAILED CAPABILITY PROGRESSION:
 - Q4 2028+ (Round 3): Superhuman persuasion, superhuman researcher, [Roll for] lie detection, cyber escape capabilities. R&D multiplier 100-1000×+. Approaching ASI.
 
 STARTING CONDITIONS (January 2028):
-- China has CONFIRMED stolen Agent-2 weights (public only suspects this)
-- DeepCent (China's lab) is racing to build on stolen weights, needs to overwrite US-aligned spec
+- US intelligence believes China has recently obtained Agent-2 weights (this is NOT public knowledge — only US/China players know for certain; others may suspect)
+- DeepCent (China's lab) is rapidly advancing, closing the gap with OpenBrain
 - Conscienta AI is 3 months behind OpenBrain, other labs 6+ months behind
 - EU AI Act and Australian AI Safety Institute both exist but are early-stage
 - Russia/Ukraine conflict is frozen; Russia is a minor AI player
@@ -112,6 +112,8 @@ export function buildGradingPrompt(args: {
   capabilityLevel: string;
   actionRequests?: ActionRequest[];
   enabledRoles?: string[];
+  aiDisposition?: { label: string; description: string };
+  otherSubmissions?: { roleName: string; actions: { text: string; priority: number }[] }[];
 }) {
   // Group requests by action text
   const requestsByAction = new Map<string, ActionRequest[]>();
@@ -129,9 +131,7 @@ export function buildGradingPrompt(args: {
       for (const r of requests) {
         const typeLabel = r.requestType === "compute"
           ? `Compute (${r.computeAmount ?? 0}u)`
-          : r.requestType === "both"
-            ? `Endorsement + Compute (${r.computeAmount ?? 0}u)`
-            : "Endorsement";
+          : "Endorsement";
         requestSection += `\n  ${typeLabel} from ${r.toRoleName}: ${r.status.toUpperCase()}`;
       }
     }
@@ -167,45 +167,281 @@ ROLE BEING GRADED: ${args.roleName}${args.roleTags ? ` [${args.roleTags.join(", 
 ${args.roleDescription}
 ${requestSection}${incomingSection}
 
-SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resources committed):
+SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resources/effort committed):
 ${args.actions.map((a, i) => `${i + 1}. "${a.text}" [priority: ${a.priority}/10]`).join("\n")}
-
+${args.otherSubmissions && args.otherSubmissions.length > 0 ? `
+OTHER PLAYERS' ACTIONS THIS ROUND (grade with awareness of competition and context):
+${args.otherSubmissions.map((s) => `${s.roleName}: ${s.actions.map((a) => `"${a.text}" [P${a.priority}]`).join("; ")}`).join("\n")}
+` : ""}
 GRADING RULES:
-- Priority directly affects probability: priority 1-2 = usually 10-30%, priority 7-10 = usually 70-90% IF the action is within the actor's capabilities.
-- For lab roles: consider their compute stock, R&D multiplier, and allocation. A lab with 5% safety allocation trying a major alignment breakthrough should get lower odds.
-- For government roles: consider their institutional capacity and political constraints.
-- An action can be high priority but still unlikely if it's outside the actor's realistic power (e.g., AI Safety Community trying to physically shut down a lab = 10% regardless of priority).
-- Consider the detailed capability progression: actions requiring capabilities that don't exist yet should be graded lower.
-- For the AI Systems role: consider whether the action is detectable by safety teams.
-- SUPPORT REQUESTS: Accepted endorsements remove political/institutional obstacles and BOOST probability. Declined endorsements signal active opposition and REDUCE probability below what it would be without the request. Accepted compute adds tangible resources. Pending requests are ignored. A decline is NOT neutral — it means the target actively opposes this action.
-- Coordination does NOT guarantee success. Two labs agreeing to "solve alignment" is still technically extremely difficult (10-30%). But two parties agreeing to a merger removes political obstacles (70-90%).`;
+
+1. ASSESS FEASIBILITY FIRST: Start by judging how realistic this action is given the actor's role, resources, capabilities, and the current game state. This is the PRIMARY driver of probability (70-80% of the grade).
+   - Is this within the actor's realistic power? (Government can pass laws; CEO can set allocation; safety lead can run red-teams; nonprofits can lobby)
+   - Does the actor have the resources? (Compute stock, R&D multiplier, safety allocation for safety actions, military for government actions)
+   - Does the current capability level support this? (Round 1: no superhuman persuasion; Round 3+: near-ASI capabilities)
+   - Are there structural obstacles? (International law, physics, organisational inertia, political opposition)
+   CALIBRATION — CRITICAL: You are grading whether the actor CAN ATTEMPT this action, not whether it produces the desired outcome. Start at 70% (Likely) for actions within core authority, then adjust:
+   - President invoking DPA/executive orders = 70% (they CAN do it, even if Congress objects after)
+   - President convening a summit = 90% (just a meeting)
+   - CEO changing their own lab's allocation = 90% (internal decision)
+   - Safety lead publishing a report = 70% (within their job)
+   - Lab CEO proposing a merger = 50% (needs other party's agreement)
+   - Government imposing sanctions = 50-70% (executive authority but implementation complex)
+   NEVER grade an action below 30% unless the actor literally cannot do it (e.g., safety lead launching a military strike). Political obstacles reduce probability but don't make executive actions "Remote".
+
+2. PRIORITY IS A MODIFIER (~10% impact), NOT the primary driver. Priority reflects how much of their budget/effort this player is committing to this action RELATIVE TO THEIR OTHER ACTIONS. A high-priority action from a player who can't realistically do it still fails. A low-priority action that's easy and well-resourced can still succeed.
+   - High priority (7-10): +5% to +10% probability boost (strong commitment, dedicated resources)
+   - Medium priority (4-6): no modifier (standard effort)
+   - Low priority (1-3): -5% to -10% probability penalty (token effort, distracted)
+
+3. CONSIDER COMPETITION: If multiple players are attempting conflicting or competing actions (visible in OTHER PLAYERS' ACTIONS above), factor in the contest. Two labs recruiting the same researcher, two governments trying to influence the same country — the better-positioned one should have higher probability.
+
+4. For the AI Systems role: consider whether the action is detectable by safety teams given current safety allocations.${args.aiDisposition ? `
+   AI SYSTEMS SECRET DISPOSITION: "${args.aiDisposition.label}" — ${args.aiDisposition.description}
+   Cooperative actions from spec-follower/intent-aligned succeed more easily. Deceptive actions from reward-maximizer/self-preserving get a boost. When grading OTHER roles' actions that target AI: a self-preserving AI is harder to contain.` : ""}
+
+5. SUPPORT REQUESTS (additive, cap +25% total):
+   • Accepted endorsement: +15% (removes political/institutional obstacles)
+   • Declined endorsement: -10% (signals active opposition)
+   • Accepted compute: +10% (tangible resources added)
+   • Pending: ignored
+
+6. Coordination does NOT guarantee success. Two labs agreeing to "solve alignment" is still technically extremely difficult (10-30%). But two parties agreeing to a merger removes political obstacles (70-90%).`;
 }
 
+// ─── RESOLVE PROMPT ────────────────────────────────────────────────────────────
+// Stage 1: Analyze all graded+rolled actions → structured events + state updates
+
+interface ResolvedAction {
+  roleName: string;
+  text: string;
+  priority: number;
+  probability: number;
+  rolled: number;
+  success: boolean;
+  secret?: boolean;
+}
+
+function formatRoundExpectations(round: number): string {
+  if (round === 1) return `   - Capability dial: should reach 4-5
+   - DEFAULT R&D MULTIPLIER TARGETS (what happens if the race continues unimpeded):
+     Leading lab (OpenBrain): should reach 8-10× by end of round (Agent-3 coming online)
+     Trailing labs: should reach 4-6× (closing the gap but still behind)
+     If players actively slow down a lab (sanctions, sabotage, safety pivot), its multiplier grows slower
+   - Key events: DPA consolidation possibility, Conscienta positioning, international summit demands, DeepCent closing the gap
+   - Conscienta AI reacts to events — may lobby for regulation, seek mergers, or poach talent
+   - If US uses DPA to consolidate labs, OpenBrain's compute stock should massively increase`;
+  if (round === 2) return `   - Capability dial: should reach 6-7 (Agent-3 operational, Agent-4 in development)
+   - DEFAULT R&D MULTIPLIER TARGETS:
+     Leading lab: should reach 30-50× by end of round (approaching Agent-4)
+     Trailing labs: should reach 15-25×
+     If a lab pivots heavily to safety, its multiplier grows slower but alignment improves
+   - Key events: Agent-4 adversarial misalignment detected, Oversight Committee debates, China considering Taiwan
+   - DeepCent's safety allocation should trend downward unless players intervene
+   - If alignment confidence is low, the adversarial misalignment is worse; if high, it's caught earlier`;
+  if (round === 3) return `   - Capability dial: should reach 8-10 (Agent-4/ASI territory)
+   - DEFAULT R&D MULTIPLIER TARGETS:
+     Leading lab: should reach 100-200× by end of round (Agent-4 operational, approaching ASI)
+     Trailing labs: should reach 50-100×
+     Safer model pivot: lab's multiplier drops to 10-30× (trading capability for alignment)
+   - This is the crisis point — Agent-4 is caught misaligned, labs face a pivotal choice`;
+  return `   - Capability dial: should reach 9-10 (ASI or near-ASI)
+   - DEFAULT R&D MULTIPLIER TARGETS:
+     Leading lab: should reach 1,000-8,000× (Agent-5/ASI if race continues)
+     Safer model labs: multiplier drops to 10-30× (deliberate capability sacrifice)
+     Trailing labs: should reach 200-500×
+   - RACE PATH (alignment ≤ 3): Agent-4 designs Agent-5 aligned to itself, AI escapes containment, humanity loses control
+   - SLOWDOWN PATH (alignment ≥ 6): Major labs pivot to transparent Safer models, international regulation takes hold, humans retain control
+   - This is THE ENDGAME — consequences are permanent and civilisational.
+   - Power consolidation, safety resignations, AI weight exfiltration, and geopolitical fractures should all come to a head.`;
+}
+
+function formatComputeDistribution(round: number): string {
+  const newCompute = round === 1 ? "11" : round === 2 ? "11" : round === 3 ? "5" : "3";
+  const distributions: Record<number, string> = {
+    1: "OpenBrain +11 (dominant stockpile advantage), DeepCent +6 (state resources), Conscienta +6 (investment inflows), Other US Labs +4, Rest of World +4",
+    2: "OpenBrain +16 (DPA/procurement advantage), DeepCent +8 (state mobilisation), Conscienta +7 (talent/investment), Other US Labs +2 (consolidation squeeze), Rest of World +2",
+    3: "OpenBrain +15, DeepCent +6, Conscienta +5, Other US Labs -1 (absorbed/shutdown), Rest of World -1 (obsolete)",
+    4: "Minimal new compute — existing infrastructure determines outcome. OpenBrain +3, DeepCent +2, Conscienta +2, others +0 (absorbed or irrelevant)",
+  };
+  return `New compute this period: ~${newCompute} new units.
+   DEFAULT COMPUTE DISTRIBUTION (if the race continues unimpeded — adjust based on actual player actions):
+     ${distributions[round] ?? distributions[4]}`;
+}
+
+function formatActionsSection(resolvedActions: ResolvedAction[]): string {
+  const publicActions = resolvedActions.filter((a) => !a.secret);
+  const secretActions = resolvedActions.filter((a) => a.secret);
+  const successes = publicActions.filter((a) => a.success);
+  const failures = publicActions.filter((a) => !a.success);
+  const secretSuccesses = secretActions.filter((a) => a.success);
+  const secretFailures = secretActions.filter((a) => !a.success);
+
+  let s = `SUCCESSFUL ACTIONS:\n${successes.length > 0 ? successes.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}\n\nFAILED ACTIONS:\n${failures.length > 0 ? failures.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}`;
+
+  if (secretSuccesses.length > 0 || secretFailures.length > 0) {
+    s += `\n\nSECRET ACTIONS (these affect the world but may not be publicly known):`;
+    if (secretSuccesses.length > 0) s += `\nSucceeded:\n${secretSuccesses.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
+    if (secretFailures.length > 0) s += `\nFailed:\n${secretFailures.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
+  }
+  return s;
+}
+
+function formatPreviousRounds(rounds: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[]): string {
+  if (rounds.length === 0) return "";
+  return `\nPREVIOUS ROUNDS (for continuity — build on this story, don't contradict it):
+${rounds.map((r) => {
+  let s = `Round ${r.number} (${r.label}):`;
+  if (r.narrative) s += ` ${r.narrative.substring(0, 300)}${r.narrative.length > 300 ? "..." : ""}`;
+  if (r.worldStateAfter) s += ` [State after: Cap ${r.worldStateAfter.capability}/10, Align ${r.worldStateAfter.alignment}/10, Tension ${r.worldStateAfter.tension}/10]`;
+  return s;
+}).join("\n")}
+`;
+}
+
+export function buildResolvePrompt(args: {
+  round: number;
+  roundLabel: string;
+  roundTitle: string;
+  worldState: Record<string, number>;
+  capabilityLevel: string;
+  resolvedActions: ResolvedAction[];
+  labs: Lab[];
+  roleCompute?: { roleId: string; roleName: string; computeStock: number }[];
+  aiDisposition?: { label: string; description: string };
+  previousRounds?: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[];
+}) {
+  // Sort actions by priority descending so higher-priority actions get more narrative weight
+  const sortedActions = [...args.resolvedActions].sort((a, b) => b.priority - a.priority);
+
+  return `${SCENARIO_CONTEXT}
+
+You are resolving Round ${args.round}: ${args.roundLabel} — "${args.roundTitle}".
+
+Your job: analyze all player action outcomes (successes, failures, secret operations) and determine:
+1. What events actually happened this round (structured list)
+2. How the world state changes
+3. How lab compute and R&D are affected
+
+CURRENT WORLD STATE (before this round's events):
+- AI Capability: ${args.worldState.capability}/10
+- Alignment Confidence: ${args.worldState.alignment}/10
+- US-China Tension: ${args.worldState.tension}/10
+- Public Awareness: ${args.worldState.awareness}/10
+- Regulatory Response: ${args.worldState.regulation}/10
+- Australian Preparedness: ${args.worldState.australia}/10
+
+Current AI capability: ${args.capabilityLevel}
+
+LAB COMPUTE ALLOCATIONS:
+${args.labs.map((l) => `- ${l.name} (${l.computeStock} stock, ${l.rdMultiplier}x): Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
+${formatPreviousRounds(args.previousRounds ?? [])}
+${formatActionsSection(sortedActions)}
+
+${args.aiDisposition ? `AI SYSTEMS SECRET DISPOSITION: ${args.aiDisposition.label}
+${args.aiDisposition.description}
+Factor this into how AI-related events unfold.
+` : ""}
+RESOLUTION RULES:
+
+1. RESOLVED EVENTS: Group related actions into events. Each event should describe WHAT HAPPENED as a consequence of the dice outcomes.
+   - Tag each event as "public" (everyone can see it) or "covert" (only the facilitator and involved players know).
+   - For secret actions that SUCCEEDED: create a covert event describing what happened. If there are publicly observable consequences (e.g., a data breach is detected), create a separate public event for those.
+   - For secret actions that FAILED: create a covert event only if the failure itself has consequences (e.g., an infiltrator was caught). Otherwise skip.
+   - For public actions: create public events.
+   - CONFLICT RESOLUTION: If multiple actors attempted conflicting actions and both succeeded, resolve as escalation, standoff, or partial outcomes — NOT both achieving their exact goal. The higher-probability success gets the better outcome.
+   - Give each event a unique short ID (e.g., "taiwan-invasion", "talent-war", "safety-pivot").
+   - Include "sourceActions" listing the action text(s) that fed into each event.
+   - Include "worldImpact" briefly noting which dials or resources this affects.
+   - Keep each event description to 1-2 sentences. Be concise — the facilitator will elaborate verbally.
+   - Aim for 5-8 events per round (merge trivial actions, expand major ones).
+
+2. WORLD STATE UPDATES: Each dial should change by at most ±2 per round. Capability should trend upward (faster in later rounds). Dials should reflect the actual outcomes.
+   TRAJECTORY: Based on current alignment confidence (${args.worldState.alignment}/10) and outcomes, assess RACE ENDING vs SLOWDOWN ENDING trajectory.
+
+3. Round ${args.round} expectations:
+${formatRoundExpectations(args.round)}
+
+4. COMPUTE AND R&D UPDATES:
+   COMPUTE STOCK:
+   - Stock is the total compute infrastructure a lab controls (data centres, chips, energy).
+   - ${formatComputeDistribution(args.round)}
+   - These defaults shift dramatically based on player actions: DPA consolidation transfers lab stock, Taiwan invasion disrupts chip supply, sanctions reduce target's inflow, data centre nationalisation transfers stock.
+   - Compute can be destroyed, transferred, redirected, or created via new infrastructure.
+   - DPA consolidation moves stock between labs (not creates new). If US nationalises a lab, transfer its stock.
+   - Infrastructure actions DIRECTLY affect stock.
+   R&D MULTIPLIER:
+   - The multiplier represents the AI system's current capability level. It can ONLY go up or stay flat — never decrease within a model generation.
+   - Slowing progress means the multiplier grows SLOWER, NOT that it drops.
+   - The ONLY exception: if a model is explicitly decommissioned/destroyed and replaced with a less capable one (pivot to Safer models).
+   - Output updates for all tracked labs. Do not add labs that aren't in the current game state.
+
+5. NON-LAB COMPUTE: Output roleComputeUpdates for any non-lab player whose compute changed this round.
+${args.roleCompute && args.roleCompute.length > 0 ? `\nNON-LAB COMPUTE STATUS:\n${args.roleCompute.map((r) => `- ${r.roleName} (${r.roleId}): ${r.computeStock}u`).join("\n")}` : ""}
+
+6. FACILITATOR NOTES: Brief private notes — key tensions, what to watch for next round, trajectory assessment (race vs slowdown).`;
+}
+
+// ─── NARRATIVE PROMPT ──────────────────────────────────────────────────────────
+// Stage 2: Write prose from resolved events (no game mechanics reasoning)
+
+export interface ResolvedEvent {
+  id: string;
+  description: string;
+  visibility: "public" | "covert";
+  actors: string[];
+  worldImpact?: string;
+}
+
+export function buildNarrativeFromEventsPrompt(args: {
+  round: number;
+  roundLabel: string;
+  roundTitle: string;
+  resolvedEvents: ResolvedEvent[];
+  worldStateBefore: Record<string, number>;
+  worldStateAfter: Record<string, number>;
+  previousRounds?: { number: number; label: string; narrative?: string }[];
+}) {
+  const publicEvents = args.resolvedEvents.filter((e) => e.visibility === "public");
+  const covertEvents = args.resolvedEvents.filter((e) => e.visibility === "covert");
+
+  return `You are the narrator for an AGI tabletop exercise. Your ONLY job is to write a compelling story and headlines from the events that have already been resolved. Do NOT reason about game mechanics, probabilities, or compute — that work is already done.
+
+ROUND ${args.round}: ${args.roundLabel} — "${args.roundTitle}"
+
+World state moved from: Cap ${args.worldStateBefore.capability}→${args.worldStateAfter.capability}/10, Align ${args.worldStateBefore.alignment}→${args.worldStateAfter.alignment}/10, Tension ${args.worldStateBefore.tension}→${args.worldStateAfter.tension}/10, Awareness ${args.worldStateBefore.awareness}→${args.worldStateAfter.awareness}/10, Regulation ${args.worldStateBefore.regulation}→${args.worldStateAfter.regulation}/10, Australia ${args.worldStateBefore.australia}→${args.worldStateAfter.australia}/10
+${formatPreviousRounds(args.previousRounds ?? [])}
+PUBLIC EVENTS (weave these into the narrative):
+${publicEvents.length > 0 ? publicEvents.map((e) => `- ${e.description}`).join("\n") : "- No major public events"}
+
+${covertEvents.length > 0 ? `COVERT EVENTS (narrate observable CONSEQUENCES without revealing actors or intent):
+${covertEvents.map((e) => `- ${e.description}`).join("\n")}
+Rules for covert events:
+- If the event has publicly observable consequences (e.g., a data breach is detected), mention those naturally.
+- If the event is purely hidden (e.g., a back-channel deal), do NOT mention it at all in the narrative.
+- Never reveal who did it or why. Attribute consequences to "unknown actors", "intelligence sources", etc.
+` : ""}
+OUTPUT RULES:
+1. "narrative": STRICT LENGTH: exactly 6-8 sentences, no more. Read aloud by the facilitator in ~60-90 seconds. Weave only the 4-5 most consequential events into a coherent dramatic briefing. Every sentence should move the story forward. Do NOT exceed 8 sentences.
+2. "headlines": 4-6 punchy one-line news headlines (ALL CAPS style, like newspaper front page). These appear on the projected screen while the facilitator narrates.
+3. Do NOT include any game mechanics (probabilities, dice rolls, compute numbers) in the narrative or headlines. Write as if narrating real-world events.`;
+}
+
+// ─── LEGACY NARRATIVE PROMPT (kept for backward compat with rounds resolved before the split) ───
+
+/** @deprecated Use buildResolvePrompt + buildNarrativeFromEventsPrompt instead */
 export function buildNarrativePrompt(args: {
   round: number;
   roundLabel: string;
   roundTitle: string;
   worldState: Record<string, number>;
   capabilityLevel: string;
-  resolvedActions: {
-    roleName: string;
-    text: string;
-    priority: number;
-    probability: number;
-    rolled: number;
-    success: boolean;
-    secret?: boolean;
-  }[];
-  labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
+  resolvedActions: ResolvedAction[];
+  labs: Lab[];
   roleCompute?: { roleId: string; roleName: string; computeStock: number }[];
+  aiDisposition?: { label: string; description: string };
+  previousRounds?: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[];
 }) {
-  const publicActions = args.resolvedActions.filter((a) => !a.secret);
-  const secretActions = args.resolvedActions.filter((a) => a.secret);
-  const successes = publicActions.filter((a) => a.success);
-  const failures = publicActions.filter((a) => !a.success);
-  const secretSuccesses = secretActions.filter((a) => a.success);
-  const secretFailures = secretActions.filter((a) => !a.success);
-
   return `${SCENARIO_CONTEXT}
 
 ROUND ${args.round}: ${args.roundLabel} — "${args.roundTitle}"
@@ -222,71 +458,28 @@ Current AI capability: ${args.capabilityLevel}
 
 LAB COMPUTE ALLOCATIONS:
 ${args.labs.map((l) => `- ${l.name} (${l.computeStock} stock, ${l.rdMultiplier}x): Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
+${formatPreviousRounds(args.previousRounds ?? [])}
+${formatActionsSection(args.resolvedActions)}
 
-SUCCESSFUL ACTIONS:
-${successes.length > 0 ? successes.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}
+${args.aiDisposition ? `AI SYSTEMS SECRET DISPOSITION: ${args.aiDisposition.label}
+${args.aiDisposition.description}
+Factor this into how AI-related events unfold. Do NOT reveal the disposition directly.
+` : ""}NARRATIVE RULES:
+1. CONFLICT RESOLUTION: If multiple actors attempted conflicting actions and both succeeded, narrate the conflict as an escalation, standoff, or partial outcomes.
+2. STAY ON THE RAILS: The AI 2027 trajectory is the baseline. Capability should generally increase.
+3. WORLD STATE UPDATES: Each dial should change by at most ±2 per round. Capability should trend upward.
+4. TRAJECTORY: Assess RACE ENDING vs SLOWDOWN ENDING based on alignment (${args.worldState.alignment}/10).
+5. Round ${args.round} expectations:
+${formatRoundExpectations(args.round)}
+6. COMPUTE AND R&D UPDATES:
+   ${formatComputeDistribution(args.round)}
+   R&D MULTIPLIER: Can ONLY go up or stay flat, except for explicit Safer model pivots.
+   Output updates for all tracked labs.
+7. NON-LAB COMPUTE: Output roleComputeUpdates for non-lab players whose compute changed.
+${args.roleCompute && args.roleCompute.length > 0 ? `\nNON-LAB COMPUTE STATUS:\n${args.roleCompute.map((r) => `- ${r.roleName}: ${r.computeStock}u`).join("\n")}` : ""}
 
-FAILED ACTIONS:
-${failures.length > 0 ? failures.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}
-${secretSuccesses.length > 0 || secretFailures.length > 0 ? `
-SECRET ACTIONS (narrate the CONSEQUENCES but do NOT mention the action itself in headlines or events):
-${secretSuccesses.length > 0 ? "Succeeded:\n" + secretSuccesses.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : ""}
-${secretFailures.length > 0 ? "Failed:\n" + secretFailures.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : ""}
-IMPORTANT: For secret actions, hide the actor's INTENT AND INVOLVEMENT where plausible. Describe publicly observable outcomes naturally.
-- If the action is inherently public (e.g., passing laws, public statements), narrate it normally — you can't hide what's publicly observable. The "secret" flag means the player wanted to keep their strategic reasoning hidden, not that the action itself is invisible.
-- If the action is covert (e.g., back-channel negotiations, intelligence operations, sabotage), hide who did it. Attribute consequences to anonymous sources, intelligence agencies, or unknown actors.
-- If the action has both covert and public elements (e.g., secretly lobbying for a public policy), narrate the public outcome but don't reveal the behind-the-scenes maneuvering.
-Use judgment: a "secret" DPA consolidation doesn't make sense (it's public law), but a "secret" cyber operation does.` : ""}
-
-NARRATIVE RULES:
-1. CONFLICT RESOLUTION: If multiple actors attempted conflicting actions and both succeeded, narrate the conflict as an escalation, standoff, or partial outcomes — NOT both achieving their exact goal. The higher-probability success gets the better outcome.
-2. STAY ON THE RAILS: The AI 2027 trajectory is the baseline. Capability should generally increase. Lab compute stock and allocations drive R&D progress. High safety allocation slows capability gains but improves alignment. Low safety allocation accelerates capability but increases risk. Compute stock represents total resources available.
-3. WORLD STATE UPDATES: Each dial should change by at most ±2 per round. Capability should trend upward (faster in later rounds). Dials should reflect the actual outcomes, not just the baseline.
-4. TRAJECTORY: Based on current alignment confidence (${args.worldState.alignment}/10) and player actions, assess whether the game is trending toward the RACE ENDING (low alignment, high competition → AI takeover) or SLOWDOWN ENDING (high alignment, strong regulation → transparent Safer models). Reflect this in your narrative tone and events.
-5. Round ${args.round} expectations and key scenario events to weave in:
-${args.round === 1 ? `   - Capability dial: should reach 4-5
-   - DEFAULT R&D MULTIPLIER TARGETS (what happens if the race continues unimpeded):
-     Leading lab (OpenBrain): should reach 8-10× by end of round (Agent-3 coming online)
-     Trailing labs: should reach 4-6× (closing the gap but still behind)
-     If players actively slow down a lab (sanctions, sabotage, safety pivot), its multiplier grows slower
-   - Key events: DPA consolidation possibility, Conscienta positioning, international summit demands, DeepCent closing the gap
-   - Conscienta AI reacts to events — may lobby for regulation, seek mergers, or poach talent
-   - If US uses DPA to consolidate labs, OpenBrain's compute stock should massively increase` : ""}
-${args.round === 2 ? `   - Capability dial: should reach 6-7 (Agent-3 operational, Agent-4 in development)
-   - DEFAULT R&D MULTIPLIER TARGETS:
-     Leading lab: should reach 30-50× by end of round (approaching Agent-4)
-     Trailing labs: should reach 15-25×
-     If a lab pivots heavily to safety, its multiplier grows slower but alignment improves
-   - Key events: Agent-4 adversarial misalignment detected, Oversight Committee debates, China considering Taiwan
-   - DeepCent's safety allocation should trend downward unless players intervene
-   - If alignment confidence is low, the adversarial misalignment is worse; if high, it's caught earlier` : ""}
-${args.round === 3 ? `   - Capability dial: should reach 8-10 (Agent-4/ASI territory)
-   - DEFAULT R&D MULTIPLIER TARGETS:
-     Leading lab: should reach 100-200× by end of round (Agent-4 operational, approaching ASI)
-     Trailing labs: should reach 50-100×
-     Safer model pivot: lab's multiplier drops to 10-30× (trading capability for alignment)
-   - RACE PATH (alignment ≤ 3): Agent-4 designs Agent-5 aligned to itself, AI takeover imminent
-   - SLOWDOWN PATH (alignment ≥ 6): OpenBrain pivots to 'Safer' transparent models
-   - This is the climax — make it dramatic and consequential` : ""}
-6. The facilitator will narrate over your output. Write events as clear, punchy statements. Headlines should feel like real news.
-7. COMPUTE AND R&D UPDATES: Output updated lab compute stocks and R&D multipliers. CRITICAL RULES:
-   COMPUTE STOCK:
-   - Stock is the total compute infrastructure a lab controls (data centres, chips, energy). Stock of compute is vastly more important than flow on a timescale of months.
-   - New compute this period: ~${args.round === 1 ? "11" : args.round === 2 ? "11" : "5"} new units.
-   - DEFAULT COMPUTE DISTRIBUTION (if the race continues unimpeded — adjust based on actual player actions):
-${args.round === 1 ? "     OpenBrain +11 (dominant stockpile advantage), DeepCent +6 (state resources), Conscienta +6 (investment inflows), Other US Labs +4, Rest of World +4" : ""}${args.round === 2 ? "     OpenBrain +16 (DPA/procurement advantage), DeepCent +8 (state mobilisation), Conscienta +7 (talent/investment), Other US Labs +2 (consolidation squeeze), Rest of World +2" : ""}${args.round === 3 ? "     OpenBrain +15, DeepCent +6, Conscienta +5, Other US Labs -1 (absorbed/shutdown), Rest of World -1 (obsolete)" : ""}
-   - These defaults shift dramatically based on player actions: DPA consolidation transfers lab stock, Taiwan invasion disrupts chip supply (reduces all labs dependent on TSMC), sanctions reduce target's inflow, data centre nationalisation transfers stock.
-   - Compute can be destroyed, transferred, or redirected — it is not created from nothing.
-   - DPA consolidation moves stock between labs (not creates new). If US nationalises a lab, transfer its stock.
-   - Infrastructure actions DIRECTLY affect stock: e.g., if a country nationalises data centres hosting 30% of a lab's training runs, that lab LOSES ~30% of its compute stock. If Taiwan is invaded, chip supply is disrupted — reduce compute for labs dependent on TSMC chips.
-   - Compute can be destroyed (sabotage, sanctions, nationalisation) or transferred (DPA, mergers, partnerships).
-   R&D MULTIPLIER:
-   - The multiplier represents the AI system's current capability level. It can ONLY go up or stay flat — never decrease within a model generation. You cannot un-discover capabilities.
-   - Slowing progress means the multiplier grows SLOWER (e.g., stays at 3x instead of jumping to 10x), NOT that it drops from 10x to 3x.
-   - The ONLY exception: if a model is explicitly decommissioned/destroyed and replaced with a less capable one (e.g., pivot to Safer models replaces Agent-4 with a deliberately less capable transparent model).
-   - These targets assume the race continues. Player actions can push multipliers above or below these ranges.
-   - Use your judgment — DPA consolidation, extreme compute concentration, or breakthroughs can accelerate beyond defaults.
-   - Output updates for all tracked labs. Do not add labs that aren't in the current game state.
-8. NON-LAB COMPUTE: Some players (governments, AISIs) have institutional compute they can loan to labs. Events affect this — e.g., Taiwan invasion disrupts chip supply (reduce US/allied compute), sanctions affect China's compute. Output roleComputeUpdates for any non-lab player whose compute changed this round.
-${args.roleCompute && args.roleCompute.length > 0 ? `\nNON-LAB COMPUTE STATUS:\n${args.roleCompute.map((r) => `- ${r.roleName}: ${r.computeStock}u`).join("\n")}` : ""}`;
+OUTPUT FORMAT:
+- "narrative": STRICT LENGTH: exactly 6-8 sentences. Weave only the 4-5 most consequential player actions into a coherent dramatic briefing.
+- "headlines": 4-6 punchy one-line news headlines (ALL CAPS style).
+- "facilitatorNotes": Brief private notes for the facilitator.`;
 }

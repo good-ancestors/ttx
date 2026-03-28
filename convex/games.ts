@@ -1,7 +1,25 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS } from "./gameData";
 import { logEvent } from "./events";
+
+/** Auto-snapshot a round's final state (world state, labs, role compute). */
+async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
+  const game = await ctx.db.get(gameId);
+  if (!game) return;
+  const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect();
+  const round = rounds.find((r) => r.number === roundNumber);
+  if (!round || round.worldStateAfter) return; // Already snapshotted
+  const tables = await ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect();
+  await ctx.db.patch(round._id, {
+    worldStateAfter: game.worldState,
+    labsAfter: game.labs,
+    roleComputeAfter: tables.filter((t) => t.computeStock != null).map((t) => ({
+      roleId: t.roleId, roleName: t.roleName, computeStock: t.computeStock ?? 0,
+    })),
+  });
+}
 
 function generateJoinCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -47,7 +65,7 @@ export const create = mutation({
         roleName: role.name,
         joinCode: generateJoinCode(),
         connected: false,
-        isAI: true,
+        controlMode: "ai",
         enabled,
         computeStock: ("startingComputeStock" in role ? role.startingComputeStock : undefined) as number | undefined,
       });
@@ -73,6 +91,44 @@ export const get = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.gameId);
+  },
+});
+
+export const list = query({
+  args: {},
+  handler: async (ctx) => {
+    const games = await ctx.db.query("games").order("desc").take(20);
+    // Enrich with table counts
+    const enriched = await Promise.all(
+      games.map(async (game) => {
+        const tables = await ctx.db
+          .query("tables")
+          .withIndex("by_game", (q) => q.eq("gameId", game._id))
+          .collect();
+        const enabledCount = tables.filter((t) => t.enabled).length;
+        const connectedCount = tables.filter((t) => t.connected).length;
+        return { ...game, enabledCount, connectedCount };
+      })
+    );
+    return enriched;
+  },
+});
+
+export const remove = mutation({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    // Fetch all related data in parallel
+    const [tables, submissions, rounds, requests, events] = await Promise.all([
+      ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
+      ctx.db.query("submissions").withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId)).collect(),
+      ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
+      ctx.db.query("requests").withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId)).collect(),
+      ctx.db.query("events").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
+    ]);
+    // Delete all documents
+    const allDocs = [...tables, ...submissions, ...rounds, ...requests, ...events];
+    for (const doc of allDocs) await ctx.db.delete(doc._id);
+    await ctx.db.delete(args.gameId);
   },
 });
 
@@ -162,7 +218,7 @@ export const startGame = mutation({
     await ctx.db.patch(args.gameId, {
       status: "playing",
       phase: "discuss",
-      phaseEndsAt: Date.now() + 8 * 60 * 1000, // 8 minutes
+      phaseEndsAt: undefined,
     });
     await logEvent(ctx, args.gameId, "game_start");
   },
@@ -172,13 +228,15 @@ export const advanceRound = mutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
-    if (!game || game.currentRound >= 3) return;
+    if (!game || game.currentRound >= 4) return;
+
+    await snapshotRound(ctx, args.gameId, game.currentRound);
 
     const nextRound = game.currentRound + 1;
     await ctx.db.patch(args.gameId, {
       currentRound: nextRound,
       phase: "discuss",
-      phaseEndsAt: Date.now() + 8 * 60 * 1000,
+      phaseEndsAt: undefined,
     });
     await logEvent(ctx, args.gameId, "round_advance", undefined, { round: nextRound });
   },
@@ -218,6 +276,8 @@ export const addLab = mutation({
 export const finishGame = mutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (game) await snapshotRound(ctx, args.gameId, game.currentRound);
     await ctx.db.patch(args.gameId, { status: "finished" });
     await logEvent(ctx, args.gameId, "game_finish");
   },

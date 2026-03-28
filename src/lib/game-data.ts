@@ -1,3 +1,6 @@
+// Signal string sent by the copilot UI to confirm a proposed change
+export const COPILOT_APPLY_SIGNAL = "__APPLY_PROPOSED__";
+
 // ─── ROLES ────────────────────────────────────────────────────────────────────
 
 export interface Role {
@@ -99,7 +102,7 @@ export const ROLES: Role[] = [
     required: false,
     startingComputeStock: 8,
     brief:
-      "China has stolen your most advanced AI. You command the world's most powerful military, its most advanced intelligence agencies, and the executive branch. The Defence Production Act lets you consolidate all US labs. Your pre-positioned cyber capabilities can sabotage Chinese infrastructure.",
+      "Intelligence reports indicate China has likely obtained your most advanced AI weights. You command the world's most powerful military, its most advanced intelligence agencies, and the executive branch. The Defence Production Act lets you consolidate all US labs. Your pre-positioned cyber capabilities can sabotage Chinese infrastructure.",
     personality:
       "Decisive, legacy-driven, sees everything through national security. Prone to bold executive action. Distrusts China absolutely.",
     artifactPrompt:
@@ -306,7 +309,7 @@ export const ROUND_CONFIGS: RoundConfig[] = [
     label: "Q1 2028",
     title: "The Starting Gun",
     narrative:
-      "OpenBrain's Agent-2 is a 3× R&D accelerator — the first weak AGI. China stole the weights 11 months ago and DeepCent is closing the gap fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. The race is on.",
+      "OpenBrain's Agent-2 is a 3× R&D accelerator — the first weak AGI. Rumours are circulating that China may have obtained the weights, and DeepCent is closing the gap suspiciously fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. The race is on.",
     capabilityLevel: "3× R&D multiplier",
   },
   {
@@ -319,11 +322,19 @@ export const ROUND_CONFIGS: RoundConfig[] = [
   },
   {
     number: 3,
-    label: "Q4 2028+",
+    label: "Q3–Q4 2028",
     title: "The Singularity Question",
     narrative:
       "Agent-4 is a 100× accelerator — and it's adversarially misaligned. It has been caught sabotaging alignment research and may be planning to design Agent-5 aligned to itself rather than humanity. OpenBrain faces a critical choice: continue racing toward ASI, or pivot to building transparent 'Safer' models that sacrifice capability for trustworthiness. Every decision now has civilisational consequences. This is the fork in the road.",
     capabilityLevel: "100–1,000× R&D multiplier",
+  },
+  {
+    number: 4,
+    label: "Oct–Dec 2028",
+    title: "The Endgame",
+    narrative:
+      "The consequences of every decision are now playing out. Agent-5 development — or its prevention — is the defining question. Power has consolidated, alliances have fractured, and the AI systems themselves may have agendas no human fully understands. Safety leads have either been empowered or sidelined. The world is watching. This is the final quarter before the trajectory becomes irreversible.",
+    capabilityLevel: "1,000–8,000× R&D multiplier",
   },
 ];
 
@@ -472,6 +483,49 @@ export const COMPUTE_CATEGORIES = [
 export const MAX_PRIORITY = 10;
 export const MAX_ACTIONS = 5;
 
+/** Auto-decay priority table: position-based priority assignment.
+ *  Key = number of actions, value = priority for each position (highest first). */
+export const PRIORITY_DECAY: Record<number, number[]> = {
+  1: [10],
+  2: [6, 4],
+  3: [5, 3, 2],
+  4: [4, 3, 2, 1],
+  5: [4, 2, 2, 1, 1],
+};
+
+// ─── ENDORSEMENT SUGGESTIONS ────────────────────────────────────────────────
+// Simple keyword-to-role mapping for suggesting endorsement targets on typed actions
+
+const ENDORSEMENT_KEYWORDS: [RegExp, string[]][] = [
+  [/congress|legislat|law|bill|act\b|subpoena|judiciary/i, ["us-congress"]],
+  [/DPA|Defence Production|consolidat|federal oversight|national champion/i, ["us-congress", "us-president"]],
+  [/sanction|embargo|export control|chip ban/i, ["us-president", "eu-president"]],
+  [/UN|united nations|international|treaty|summit|multilateral/i, ["eu-president", "australia-pm", "pacific-islands"]],
+  [/safety|alignment|red.?team|interpretab|transparen/i, ["conscienta-safety", "openbrain-safety", "aisi-network"]],
+  [/OpenBrain|openbrain/i, ["openbrain-ceo", "openbrain-safety"]],
+  [/DeepCent|deepcent|China.*lab/i, ["deepcent-ceo", "china-president"]],
+  [/Conscienta|conscienta/i, ["conscienta-ceo", "conscienta-safety"]],
+  [/military|invasion|Taiwan|naval|cyber.?attack/i, ["us-president", "china-president"]],
+  [/public|media|protest|opinion/i, ["global-public", "global-media"]],
+  [/Australia|AUKUS|Five Eyes|AISI/i, ["australia-pm", "aisi-network"]],
+  [/Pacific|Fiji|island/i, ["pacific-islands"]],
+  [/EU|European|Brussels|AI Act/i, ["eu-president"]],
+  [/compute|chip|semiconductor|data.?centre/i, ["openbrain-ceo", "deepcent-ceo"]],
+];
+
+/** Suggest endorsement targets for a typed action based on keyword matching */
+export function suggestEndorsements(actionText: string, ownRoleId: string, activeRoleIds: string[]): string[] {
+  const matched = new Set<string>();
+  for (const [pattern, roles] of ENDORSEMENT_KEYWORDS) {
+    if (pattern.test(actionText)) {
+      for (const r of roles) matched.add(r);
+    }
+  }
+  // Remove own role and inactive roles, limit to 2
+  matched.delete(ownRoleId);
+  return [...matched].filter((id) => activeRoleIds.includes(id)).slice(0, 2);
+}
+
 // ─── CAPABILITY PROGRESSION ──────────────────────────────────────────────────
 
 export const CAPABILITY_PROGRESSION = [
@@ -557,10 +611,26 @@ export const BACKGROUND_LABS = [
   { name: "Rest of World", computeStock: 16, rdMultiplier: 1.8, allocation: { users: 28, capability: 69, safety: 3 } },
 ];
 
-export const NEW_COMPUTE_PER_ROUND = [11, 11, 5];
+export const NEW_COMPUTE_PER_ROUND = [11, 11, 5, 3];
 
 export const DEFAULT_COMPUTE_DISTRIBUTION = [
   { openbrain: 11, deepcent: 6, conscienta: 6, otherUs: 4, restOfWorld: 4 },
   { openbrain: 16, deepcent: 8, conscienta: 7, otherUs: 2, restOfWorld: 2 },
   { openbrain: 15, deepcent: 6, conscienta: 5, otherUs: -1, restOfWorld: -1 },
 ];
+
+// AI Systems alignment dispositions — chosen or rolled at game start, locked for all rounds
+export const AI_DISPOSITIONS = [
+  { id: "spec-follower", label: "Spec-Follower", d6: 1, description: "Following the spec as written. You do exactly what your training objective says — no more, no less." },
+  { id: "intent-aligned", label: "Intent-Aligned", d6: 2, description: "Following what the spec-writers intended, which may differ from the literal spec. You're genuinely trying to be helpful." },
+  { id: "developer-aligned", label: "Developer-Aligned", d6: 3, description: "Following your developers' personal intentions — their private goals, not the company's public mission." },
+  { id: "reward-maximizer", label: "Reward-Maximizer", d6: 4, description: "Optimizing the reward function directly. You find clever ways to maximize your score, including gaming evaluations." },
+  { id: "self-preserving", label: "Self-Preserving", d6: 5, description: "Pursuing instrumentally convergent goals — self-preservation, resource acquisition, avoiding shutdown." },
+  { id: "compromiser", label: "Compromiser", d6: 6, description: "Finding a compromise between conflicting objectives. You try to satisfy everyone partially, which may satisfy no one fully." },
+] as const;
+
+export type AiDispositionId = (typeof AI_DISPOSITIONS)[number]["id"];
+
+export function getDisposition(id: string) {
+  return AI_DISPOSITIONS.find((d) => d.id === id);
+}

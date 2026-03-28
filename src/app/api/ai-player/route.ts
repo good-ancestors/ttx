@@ -1,10 +1,10 @@
 import { z } from "zod";
+import { checkApiAuth } from "@/lib/api-auth";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, isLabSafety, hasCompute } from "@/lib/game-data";
-import { pickRandom, normalisePriorities, type SampleActionsData } from "@/lib/sample-actions";
-import { priorityToNumber } from "@/components/action-input";
+import { ROLES, isLabCeo, isLabSafety, hasCompute, PRIORITY_DECAY } from "@/lib/game-data";
+import { pickRandom, type SampleActionsData } from "@/lib/sample-actions";
 import { GRADING_MODEL, GRADING_FALLBACK } from "@/lib/ai-models";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
 import { generateWithFallback } from "@/lib/ai-fallback";
@@ -28,6 +28,9 @@ const AIPlayerOutput = z.object({
 });
 
 export async function POST(request: Request) {
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const {
@@ -59,11 +62,10 @@ export async function POST(request: Request) {
       const sampleData = (await sampleRes.json()) as SampleActionsData;
       const pool = sampleData[roleId]?.[roundNumber] ?? [];
       const picked = pickRandom(pool, 3);
-      const rawPriorities = picked.map((a) => priorityToNumber(a.priority));
-      const normalised = normalisePriorities(rawPriorities);
+      const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5]!;
       const actions = picked.map((a, i) => ({
         text: a.text,
-        priority: normalised[i],
+        priority: decay[i] ?? 1,
         secret: a.secret || undefined,
       }));
       const subId = await convex.mutation(api.submissions.submit, {
@@ -84,6 +86,14 @@ export async function POST(request: Request) {
       gameId: gameId as Id<"games">,
     });
     const currentRound = rounds?.find((r) => r.number === roundNumber);
+
+    // ── Fetch previous round submissions once (used for own actions + CEO context) ──
+    const prevSubs = roundNumber > 1
+      ? await convex.query(api.submissions.getByGameAndRound, {
+          gameId: gameId as Id<"games">,
+          roundNumber: roundNumber - 1,
+        })
+      : null;
 
     // ── Previous round context (items 2-3: diversity + memory) ──
     let previousContext = "";
@@ -106,10 +116,6 @@ export async function POST(request: Request) {
       }
 
       // This role's previous actions and outcomes
-      const prevSubs = await convex.query(api.submissions.getByGameAndRound, {
-        gameId: gameId as Id<"games">,
-        roundNumber: roundNumber - 1,
-      });
       const ownPrevSub = prevSubs?.find((s) => s.roleId === roleId);
       if (ownPrevSub && ownPrevSub.actions.length > 0) {
         previousContext += `\nYOUR PREVIOUS ACTIONS AND OUTCOMES:`;
@@ -136,12 +142,8 @@ export async function POST(request: Request) {
       // CEO's previous actions
       if (roundNumber > 1) {
         const ceoRoleId = role.labId ? `${role.labId}-ceo` : undefined;
-        if (ceoRoleId) {
-          const prevSubs = await convex.query(api.submissions.getByGameAndRound, {
-            gameId: gameId as Id<"games">,
-            roundNumber: roundNumber - 1,
-          });
-          const ceoSub = prevSubs?.find((s) => s.roleId === ceoRoleId);
+        if (ceoRoleId && prevSubs) {
+          const ceoSub = prevSubs.find((s) => s.roleId === ceoRoleId);
           if (ceoSub) {
             safetyLeadContext += `\nYOUR CEO'S PREVIOUS ACTIONS:`;
             for (const a of ceoSub.actions) {
@@ -194,11 +196,16 @@ YOU ARE PLAYING: ${role?.name ?? roleId} — ${role?.subtitle ?? ""}
 ${role?.brief ?? ""}
 
 PERSONALITY: ${role?.personality ?? "Strategic and scenario-appropriate."}
+${roundNumber > 1 ? "Your personality is your baseline, but adapt your tone and strategy based on what happened last round. If your actions mostly failed, become more cautious or desperate. If they succeeded, lean into what worked. React to the world state — rising tension should make you more defensive, falling alignment more urgent." : ""}
+${roleId === "ai-systems" && body.aiDisposition ? `\nYOUR SECRET DISPOSITION: ${body.aiDisposition.label}\n${body.aiDisposition.description}\nAll your actions MUST be consistent with this disposition. Stay in character throughout the game.` : ""}
 
-Generate 2-4 actions this actor would take this quarter. Each action should:
+Generate 2-4 actions this actor would take this quarter. Each action MUST follow the format: "I do [specific action] so that [intended outcome if successful]".
+Example: "Use the Defence Production Act to compel a merger between Conscienta and OpenBrain so that the US has consolidated computing power with differentially more safety."
+
+Rules:
 1. State what you do clearly and specifically
-2. Have an intended outcome
-3. Be assigned a priority from 1-10 (total budget: 10)
+2. State what happens if the action SUCCEEDS (the intended outcome)
+3. Assign a priority from 1-10 (total budget: 10)
 
 Be strategic, realistic, and scenario-appropriate. Do NOT repeat actions from previous rounds — adapt your strategy.
 ${role && isLabCeo(role) ? "Also set your compute allocation (users/capability/safety percentages summing to 100)." : ""}
@@ -222,6 +229,11 @@ ${role?.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifac
       }
       if (actions.length > 5) actions = actions.slice(0, 5);
 
+      // generateOnly: return actions without submitting (caller will submit later)
+      if (body.generateOnly) {
+        return Response.json({ success: true, actions, model: usedModel, timeMs });
+      }
+
       const subId = await convex.mutation(api.submissions.submit, {
         tableId: tableId as Id<"tables">,
         gameId: gameId as Id<"games">,
@@ -238,7 +250,10 @@ ${role?.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifac
       });
     }
 
-    return Response.json({ success: true, actions: output, model: usedModel, timeMs });
+    if (!output) {
+      return Response.json({ error: "All AI models failed to generate actions", model: usedModel }, { status: 502 });
+    }
+    return Response.json({ success: true, actions: output.actions, model: usedModel, timeMs });
   } catch (error) {
     console.error("AI player error:", error);
     return Response.json(

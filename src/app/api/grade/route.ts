@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checkApiAuth } from "@/lib/api-auth";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -11,15 +12,25 @@ const GradingOutput = z.object({
   actions: z.array(
     z.object({
       text: z.string(),
-      probability: z
-        .enum(["90", "70", "50", "30", "10"])
-        .transform(Number),
+      probability: z.union([
+        z.enum(["90", "70", "50", "30", "10"]).transform(Number),
+        z.number().min(0).max(100),
+      ]).transform((p) => {
+        // Snap to nearest valid bucket
+        const buckets = [10, 30, 50, 70, 90];
+        return buckets.reduce((closest, curr) =>
+          Math.abs(curr - p) < Math.abs(closest - p) ? curr : closest
+        );
+      }),
       reasoning: z.string(),
     })
   ),
 });
 
 export async function POST(request: Request) {
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const {
@@ -29,6 +40,7 @@ export async function POST(request: Request) {
       roleId,
       actions,
       enabledRoles,
+      aiDisposition,
     }: {
       submissionId: string;
       gameId: string;
@@ -36,6 +48,7 @@ export async function POST(request: Request) {
       roleId: string;
       actions: { text: string; priority: number }[];
       enabledRoles?: string[];
+      aiDisposition?: { label: string; description: string };
     } = body;
 
     const game = await convex.query(api.games.get, {
@@ -50,6 +63,18 @@ export async function POST(request: Request) {
       gameId: gameId as Id<"games">,
     });
     const currentRound = rounds?.find((r) => r.number === roundNumber);
+
+    // Fetch all submissions for holistic grading (see other players' actions)
+    const allSubmissions = await convex.query(api.submissions.getByGameAndRound, {
+      gameId: gameId as Id<"games">,
+      roundNumber,
+    });
+    const otherSubmissions = (allSubmissions ?? [])
+      .filter((s) => s.roleId !== roleId && s.status === "submitted")
+      .map((s) => ({
+        roleName: ROLES.find((r) => r.id === s.roleId)?.name ?? s.roleId,
+        actions: s.actions.map((a) => ({ text: a.text, priority: a.priority })),
+      }));
 
     // Fetch all requests involving this role (both directions)
     const allProposals = await convex.query(api.requests.getByGameAndRound, {
@@ -83,6 +108,8 @@ export async function POST(request: Request) {
       capabilityLevel: currentRound?.capabilityLevel ?? "Unknown",
       actionRequests,
       enabledRoles,
+      aiDisposition,
+      otherSubmissions,
     });
 
     const { output, model, timeMs, tokens } = await generateWithFallback({
@@ -123,7 +150,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("Grading error:", error);
     return Response.json(
-      { error: "Grading failed" },
+      { error: "Grading failed", detail: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

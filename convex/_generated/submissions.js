@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { logEvent } from "./events";
+import { logEvent, assertPhase } from "./events";
 const actionValidator = v.object({
     text: v.string(),
     priority: v.number(),
@@ -68,9 +68,10 @@ export const submit = mutation({
         if (game && game.phase !== "submit" && game.phase !== "rolling") {
             throw new Error(`Cannot submit during ${game.phase} phase`);
         }
-        // Enforce priority budget (max 10 total) and action limit (max 5)
+        // Enforce action limit (max 5) and sanity-check priority budget
+        // Auto-decay always sums to 10, but allow tolerance for edge cases
         const totalPriority = args.actions.reduce((s, a) => s + a.priority, 0);
-        if (totalPriority > 10) {
+        if (totalPriority > 12) {
             throw new Error(`Priority budget exceeded: ${totalPriority}/10`);
         }
         if (args.actions.length > 5) {
@@ -122,6 +123,7 @@ export const applyGrading = mutation({
         const sub = await ctx.db.get(args.submissionId);
         if (!sub)
             return;
+        await assertPhase(ctx, sub.gameId, ["submit", "rolling"], "apply grading");
         const actions = sub.actions.map((a, i) => ({
             ...a,
             probability: args.gradedActions[i]?.probability ?? a.probability,
@@ -193,6 +195,30 @@ export const rerollAction = mutation({
             oldRoll: action.rolled,
             newRoll,
             probability: action.probability,
+        });
+    },
+});
+export const overrideOutcome = mutation({
+    args: {
+        submissionId: v.id("submissions"),
+        actionIndex: v.number(),
+        success: v.boolean(),
+    },
+    handler: async (ctx, args) => {
+        const sub = await ctx.db.get(args.submissionId);
+        if (!sub)
+            return;
+        const actions = [...sub.actions];
+        if (actions[args.actionIndex]) {
+            actions[args.actionIndex] = {
+                ...actions[args.actionIndex],
+                success: args.success,
+            };
+        }
+        await ctx.db.patch(args.submissionId, { actions });
+        await logEvent(ctx, sub.gameId, "override_outcome", sub.roleId, {
+            actionIndex: args.actionIndex,
+            success: args.success,
         });
     },
 });

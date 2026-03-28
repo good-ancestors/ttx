@@ -57,9 +57,11 @@ export function useCountdown(phaseEndsAt: number | undefined) {
     return () => clearInterval(interval);
   }, [phaseEndsAt]);
 
+  // Derive display from secondsLeft, but show empty when no timer is active
+  const hasTimer = phaseEndsAt != null;
   const minutes = Math.floor(secondsLeft / 60);
   const seconds = secondsLeft % 60;
-  const display = `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  const display = hasTimer ? `${minutes}:${seconds.toString().padStart(2, "0")}` : "";
   const isExpired = secondsLeft <= 0 && phaseEndsAt != null;
 
   const isUrgent = secondsLeft > 0 && secondsLeft <= 60;

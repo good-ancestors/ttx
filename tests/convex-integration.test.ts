@@ -32,7 +32,7 @@ describe("Game Creation", () => {
   it("all tables should start as AI-controlled", async () => {
     const tables = await convex.query(api.tables.getByGame, { gameId });
     for (const table of tables) {
-      expect(table.isAI).toBe(true);
+      expect(table.controlMode).toBe("ai");
     }
   });
 
@@ -139,7 +139,7 @@ describe("Table Join Flow", () => {
     });
     const table = await convex.query(api.tables.get, { tableId });
     expect(table!.connected).toBe(true);
-    expect(table!.isAI).toBe(false);
+    expect(table!.controlMode).toBe("human");
   });
 
   it("disconnecting should switch back to AI", async () => {
@@ -149,7 +149,7 @@ describe("Table Join Flow", () => {
     });
     const table = await convex.query(api.tables.get, { tableId });
     expect(table!.connected).toBe(false);
-    expect(table!.isAI).toBe(true);
+    expect(table!.controlMode).toBe("ai");
   });
 });
 

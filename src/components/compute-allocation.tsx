@@ -92,17 +92,19 @@ export function ComputeAllocation({
                   <>
                     <button
                       onClick={() => handleChange(cat.key, allocation[cat.key] - 5)}
-                      className="w-8 h-8 rounded-md border border-border bg-warm-gray text-text
+                      aria-label={`Decrease ${cat.label}`}
+                      className="w-11 h-11 rounded-md border border-border bg-warm-gray text-text
                                  flex items-center justify-center active:bg-border-dark"
                     >
-                      <Minus className="w-3.5 h-3.5" />
+                      <Minus className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleChange(cat.key, allocation[cat.key] + 5)}
-                      className="w-8 h-8 rounded-md border border-border bg-warm-gray text-text
+                      aria-label={`Increase ${cat.label}`}
+                      className="w-11 h-11 rounded-md border border-border bg-warm-gray text-text
                                  flex items-center justify-center active:bg-border-dark"
                     >
-                      <Plus className="w-3.5 h-3.5" />
+                      <Plus className="w-4 h-4" />
                     </button>
                   </>
                 )}

@@ -26,26 +26,43 @@ export const get = query({
     },
 });
 export const setConnected = mutation({
-    args: { tableId: v.id("tables"), connected: v.boolean() },
+    args: {
+        tableId: v.id("tables"),
+        connected: v.boolean(),
+        sessionId: v.optional(v.string()),
+    },
     handler: async (ctx, args) => {
         const table = await ctx.db.get(args.tableId);
-        // When a human connects, switch from AI to human control
-        await ctx.db.patch(args.tableId, {
+        const patch = {
             connected: args.connected,
-            isAI: args.connected ? false : true,
-        });
+            controlMode: args.connected ? "human" : "ai",
+        };
+        // Track which browser session owns this seat
+        if (args.connected && args.sessionId) {
+            patch.activeSessionId = args.sessionId;
+        }
+        else if (!args.connected) {
+            patch.activeSessionId = undefined;
+        }
+        await ctx.db.patch(args.tableId, patch);
         if (table) {
-            await logEvent(ctx, table.gameId, args.connected ? "player_connect" : "player_disconnect", table.roleId);
+            await logEvent(ctx, table.gameId, args.connected ? "player_connect" : "player_disconnect", table.roleId, {
+                sessionId: args.sessionId,
+                previousSessionId: table.activeSessionId,
+            });
         }
     },
 });
-export const toggleAI = mutation({
-    args: { tableId: v.id("tables") },
+export const setControlMode = mutation({
+    args: {
+        tableId: v.id("tables"),
+        controlMode: v.union(v.literal("human"), v.literal("ai"), v.literal("npc")),
+    },
     handler: async (ctx, args) => {
         const table = await ctx.db.get(args.tableId);
         if (!table)
             return;
-        await ctx.db.patch(args.tableId, { isAI: !table.isAI });
+        await ctx.db.patch(args.tableId, { controlMode: args.controlMode });
     },
 });
 export const kickToAI = mutation({
@@ -54,7 +71,7 @@ export const kickToAI = mutation({
         const table = await ctx.db.get(args.tableId);
         if (!table)
             return;
-        await ctx.db.patch(args.tableId, { isAI: true, connected: false });
+        await ctx.db.patch(args.tableId, { controlMode: "ai", connected: false });
         await logEvent(ctx, table.gameId, "kick_to_ai", table.roleId);
     },
 });
@@ -65,5 +82,23 @@ export const toggleEnabled = mutation({
         if (!table)
             return;
         await ctx.db.patch(args.tableId, { enabled: !table.enabled });
+    },
+});
+export const setDisposition = mutation({
+    args: {
+        tableId: v.id("tables"),
+        disposition: v.string(),
+    },
+    handler: async (ctx, args) => {
+        const table = await ctx.db.get(args.tableId);
+        if (!table)
+            return;
+        if (table.aiDisposition) {
+            throw new Error("AI disposition already set — cannot change");
+        }
+        await ctx.db.patch(args.tableId, { aiDisposition: args.disposition });
+        await logEvent(ctx, table.gameId, "disposition_set", table.roleId, {
+            disposition: args.disposition,
+        });
     },
 });

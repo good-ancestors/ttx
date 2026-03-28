@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { checkApiAuth } from "@/lib/api-auth";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -20,7 +21,7 @@ const AIProposalsOutput = z.object({
       z.object({
         toRoleId: z.string(),
         actionText: z.string(),
-        requestType: z.enum(["endorsement", "compute", "both"]),
+        requestType: z.enum(["endorsement", "compute"]),
         computeAmount: z.optional(z.number()),
       })
     )
@@ -28,6 +29,9 @@ const AIProposalsOutput = z.object({
 });
 
 export async function POST(request: Request) {
+  const authError = checkApiAuth(request);
+  if (authError) return authError;
+
   try {
     const body = await request.json();
     const {
@@ -106,10 +110,10 @@ ${otherRolesSection}
 INSTRUCTIONS:
 For each pending request, decide whether to accept or decline. Accept requests that genuinely benefit your strategic position. Decline ones that don't — declining is a signal of opposition.
 
-Optionally, send 0-1 new requests to other enabled roles. Each request is for a specific action you plan to take and asks for either "endorsement" (political support), "compute" (resource backing), or "both". Only request if there's a clear strategic reason.
+Optionally, send 0-1 new requests to other enabled roles. Each request is for a specific action you plan to take and asks for either "endorsement" (political support) or "compute" (resource backing). If you need both, send two separate requests. Only request if there's a clear strategic reason.
 
 For the "responses" array, use the exact proposal IDs listed above.
-For "newRequests", use the roleId as toRoleId, write the action text, set requestType ("endorsement", "compute", or "both"), and set computeAmount if requesting compute.`;
+For "newRequests", use the roleId as toRoleId, write the action text, set requestType ("endorsement" or "compute"), and set computeAmount if requesting compute.`;
 
     const { output } = await generateWithFallback({
       primary: GRADING_MODEL,

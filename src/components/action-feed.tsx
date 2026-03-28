@@ -79,7 +79,7 @@ export function ActionFeed({
   const allResolved = feedItems.length > 0 && feedItems.every((f) => f.rolled != null);
 
   return (
-    <div>
+    <div className="overflow-hidden">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-bold">Action Feed</h3>
         <span className="text-xs text-text-light font-mono">
@@ -108,9 +108,12 @@ export function ActionFeed({
                 }`}
               >
                 <div
-                  className="w-2 h-2 rounded-full shrink-0"
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: item.roleColor }}
                 />
+                <span className="text-sm font-bold text-text-light shrink-0 w-[100px] truncate" title={item.roleName}>
+                  {item.roleName}
+                </span>
                 {isSecretForNonFacilitator && (
                   <EyeOff className="w-3.5 h-3.5 text-viz-warning shrink-0" />
                 )}
@@ -123,8 +126,8 @@ export function ActionFeed({
                       ? "text-text-light italic cursor-pointer hover:text-white transition-colors"
                       : "text-[#E2E8F0]"
                   }`}
-                  onClick={isSecretHidden ? () => toggleReveal(itemKey) : undefined}
-                  title={isSecretHidden ? "Click to reveal secret action" : undefined}
+                  onClick={(item.secret && isFacilitator) ? () => toggleReveal(itemKey) : undefined}
+                  title={(item.secret && isFacilitator) ? (isSecretHidden ? "Click to reveal" : "Click to re-hide") : undefined}
                 >
                   {isSecretHidden ? item.redactedText : item.displayText}
                 </span>

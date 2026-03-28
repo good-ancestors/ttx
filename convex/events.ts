@@ -2,6 +2,21 @@ import { v } from "convex/values";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
+/** Assert the game is in one of the allowed phases. Throws descriptive error if not. */
+export async function assertPhase(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  allowedPhases: string[],
+  action: string,
+) {
+  const game = await ctx.db.get(gameId);
+  if (!game) throw new Error("Game not found");
+  if (!allowedPhases.includes(game.phase)) {
+    throw new Error(`Cannot ${action} during ${game.phase} phase — only allowed during ${allowedPhases.join("/")}`);
+  }
+  return game;
+}
+
 // Internal helper — call from other mutations to log events
 export async function logEvent(
   ctx: MutationCtx,

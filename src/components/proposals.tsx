@@ -61,22 +61,31 @@ export function ProposalPanel({
 
   const otherRoles = ROLES.filter((r) => r.id !== roleId);
 
+  const [sendError, setSendError] = useState<string | null>(null);
+
   const handleSend = async () => {
     if (!targetRole || !proposalText.trim()) return;
     setSending(true);
-    const target = ROLES.find((r) => r.id === targetRole);
-    await sendProposal({
-      gameId,
-      roundNumber,
-      fromRoleId: roleId,
-      fromRoleName: roleName,
-      toRoleId: targetRole,
-      toRoleName: target?.name ?? targetRole,
-      actionText: proposalText.trim(),
-      requestType: "endorsement" as const,
-    });
-    setProposalText("");
-    setSending(false);
+    setSendError(null);
+    try {
+      const target = ROLES.find((r) => r.id === targetRole);
+      await sendProposal({
+        gameId,
+        roundNumber,
+        fromRoleId: roleId,
+        fromRoleName: roleName,
+        toRoleId: targetRole,
+        toRoleName: target?.name ?? targetRole,
+        actionText: proposalText.trim(),
+        requestType: "endorsement" as const,
+      });
+      setProposalText("");
+    } catch (err) {
+      console.error("Failed to send request:", err);
+      setSendError("Failed to send — try again");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -135,12 +144,12 @@ export function ProposalPanel({
                       </span>
                     )}
                   </div>
-                  <p className="text-sm text-text mb-1">
+                  <p className="text-sm text-text mb-1 line-clamp-2">
                     {p.actionText}
                   </p>
                   {(p.requestType || p.computeAmount) && (
                     <p className="text-[11px] text-text-muted mb-2">
-                      Requesting: {p.requestType === "compute" ? `${p.computeAmount ?? 0} compute` : p.requestType === "both" ? `endorsement + ${p.computeAmount ?? 0} compute` : "endorsement"}
+                      Requesting: {p.requestType === "compute" ? `${p.computeAmount ?? 0} compute` : "endorsement"}
                     </p>
                   )}
                   <div className="flex gap-2">
@@ -151,7 +160,7 @@ export function ProposalPanel({
                           status: "accepted",
                         })
                       }
-                      className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                      className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 transition-colors ${
                         p.status === "accepted"
                           ? "bg-[#059669] text-white"
                           : "bg-[#ECFDF5] text-[#059669] hover:bg-[#D1FAE5]"
@@ -166,7 +175,7 @@ export function ProposalPanel({
                           status: "declined",
                         })
                       }
-                      className={`flex-1 py-2 rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 transition-colors ${
+                      className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold flex items-center justify-center gap-1.5 transition-colors ${
                         p.status === "declined"
                           ? "bg-[#DC2626] text-white"
                           : "bg-[#FEF2F2] text-[#DC2626] hover:bg-[#FECACA]"
@@ -258,8 +267,9 @@ export function ProposalPanel({
               className="w-full py-2 bg-navy text-white rounded-lg text-xs font-bold
                          disabled:opacity-30 flex items-center justify-center gap-1"
             >
-              <Send className="w-3.5 h-3.5" /> Send Request
+              <Send className="w-3.5 h-3.5" /> {sending ? "Sending..." : "Send Request"}
             </button>
+            {sendError && <p className="text-xs text-viz-danger mt-1">{sendError}</p>}
           </div>
         </div>
       )}

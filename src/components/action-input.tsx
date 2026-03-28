@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { ROLES } from "@/lib/game-data";
+import { ROLES, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
 import { EyeOff, Eye, Handshake, Trash2, Plus, X } from "lucide-react";
+
 
 export type PriorityLevel = "low" | "medium" | "high";
 
@@ -13,34 +14,16 @@ export interface ActionDraft {
   endorseTargets: string[]; // roleIds
 }
 
-const PRIORITY_COLORS: Record<PriorityLevel, string> = {
-  low: "bg-warm-gray text-text-muted",
-  medium: "bg-navy/10 text-navy",
-  high: "bg-navy text-white",
-};
-
-export function priorityToNumber(p: PriorityLevel): number {
-  return p === "high" ? 5 : p === "medium" ? 3 : 2;
-}
-
+/** Assign priorities using the auto-decay table based on position order. */
 export function normaliseActions(actions: ActionDraft[]): { text: string; priority: number; secret?: boolean }[] {
   const filled = actions.filter((a) => a.text.trim());
-  const rawPriorities = filled.map((a) => priorityToNumber(a.priority));
-  const total = rawPriorities.reduce((s, p) => s + p, 0);
+  const count = filled.length;
+  if (count === 0) return [];
+  const decay = PRIORITY_DECAY[count] ?? PRIORITY_DECAY[5]!;
 
-  if (total <= 10) {
-    return filled.map((a, i) => ({
-      text: a.text.trim(),
-      priority: rawPriorities[i],
-      secret: a.secret || undefined,
-    }));
-  }
-
-  // Scale down proportionally
-  const scale = 10 / total;
   return filled.map((a, i) => ({
     text: a.text.trim(),
-    priority: Math.max(1, Math.round(rawPriorities[i] * scale)),
+    priority: decay[i] ?? 1,
     secret: a.secret || undefined,
   }));
 }
@@ -88,6 +71,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
   const needsPlaceholder = lastAction?.text.trim() && actions.length < 5;
 
   const filledCount = actions.filter((a) => a.text.trim()).length;
+  const decay = PRIORITY_DECAY[filledCount] ?? PRIORITY_DECAY[5];
 
   return (
     <div>
@@ -97,7 +81,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
         </h3>
         {filledCount > 0 && (
           <span className="text-[11px] text-text-muted font-mono">
-            max 5 actions
+            #1 = highest priority
           </span>
         )}
       </div>
@@ -108,6 +92,8 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
             key={i}
             action={action}
             index={i}
+            decayPriority={action.text.trim() && decay ? decay[actions.slice(0, i).filter((a) => a.text.trim()).length] : undefined}
+            ownRoleId={roleId}
             onUpdate={(patch) => updateAction(i, patch)}
             onRemove={() => removeAction(i)}
             otherRoles={otherRoles}
@@ -135,6 +121,8 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
 function ActionCard({
   action,
   index,
+  decayPriority,
+  ownRoleId,
   onUpdate,
   onRemove,
   otherRoles,
@@ -145,6 +133,8 @@ function ActionCard({
 }: {
   action: ActionDraft;
   index: number;
+  decayPriority?: number;
+  ownRoleId?: string;
   onUpdate: (patch: Partial<ActionDraft>) => void;
   onRemove: () => void;
   otherRoles: { id: string; name: string }[];
@@ -155,13 +145,19 @@ function ActionCard({
 }) {
   const [showEndorse, setShowEndorse] = useState(false);
 
+  // Suggest endorsement targets based on action text keywords
+  const activeRoleIds = otherRoles.map((r) => r.id);
+  const suggestions = action.text.trim().length > 20 && action.endorseTargets.length === 0 && !isSubmitted
+    ? suggestEndorsements(action.text, ownRoleId ?? "", activeRoleIds)
+    : [];
+
   return (
     <div className={`bg-white rounded-xl border p-4 ${action.secret ? "border-viz-warning/40" : "border-border"}`}>
       {/* Text input */}
       <textarea
         value={action.text}
         onChange={(e) => onUpdate({ text: e.target.value })}
-        placeholder={index === 0 ? "What does your actor do this quarter?" : "Add another action..."}
+        placeholder={index === 0 ? "I do [action] so that [intended outcome]..." : "I do [action] so that [intended outcome]..."}
         rows={2}
         disabled={isSubmitted}
         spellCheck={false}
@@ -171,53 +167,45 @@ function ActionCard({
       {/* Controls row — only show when there's text */}
       {(action.text.trim() || isSubmitted) && (
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Priority toggle */}
-          <div className="flex rounded-lg overflow-hidden border border-border">
-            {(["low", "medium", "high"] as PriorityLevel[]).map((level) => (
-              <button
-                key={level}
-                onClick={() => onUpdate({ priority: level })}
-                disabled={isSubmitted}
-                className={`px-2.5 py-1 text-[11px] font-bold capitalize transition-colors ${
-                  action.priority === level
-                    ? PRIORITY_COLORS[level]
-                    : "bg-white text-text-muted hover:bg-warm-gray"
-                } disabled:opacity-60`}
-              >
-                {level}
-              </button>
-            ))}
-          </div>
+          {/* Auto-decay priority indicator */}
+          {decayPriority != null && (
+            <span className="min-h-[44px] px-3 flex items-center text-xs font-bold font-mono bg-navy/10 text-navy rounded-lg">
+              Priority: {decayPriority}/10
+            </span>
+          )}
 
           {/* Secret toggle */}
           <button
             onClick={() => onUpdate({ secret: !action.secret })}
             disabled={isSubmitted}
-            className={`p-1.5 rounded-lg transition-colors ${
+            aria-label={action.secret ? "Secret — hidden from others" : "Make secret"}
+            aria-pressed={action.secret}
+            className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               action.secret
                 ? "bg-[#FFF7ED] text-viz-warning"
                 : "text-text-light hover:text-text-muted hover:bg-warm-gray"
             }`}
-            title={action.secret ? "Secret — hidden from others" : "Make secret"}
           >
             {action.secret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            <span className="text-xs font-medium">{action.secret ? "Secret" : "Visible"}</span>
           </button>
 
           {/* Endorsement toggle */}
           <button
             onClick={() => setShowEndorse(!showEndorse)}
             disabled={isSubmitted}
-            className={`p-1.5 rounded-lg transition-colors flex items-center gap-1 ${
+            aria-label="Request support from other players"
+            aria-expanded={showEndorse}
+            className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               action.endorseTargets.length > 0
                 ? "bg-[#ECFDF5] text-[#059669]"
                 : "text-text-light hover:text-text-muted hover:bg-warm-gray"
             }`}
-            title="Request support from other players"
           >
             <Handshake className="w-4 h-4" />
-            {action.endorseTargets.length > 0 && (
-              <span className="text-[10px] font-bold">{action.endorseTargets.length}</span>
-            )}
+            <span className="text-xs font-medium">
+              Support{action.endorseTargets.length > 0 ? ` (${action.endorseTargets.length})` : ""}
+            </span>
           </button>
 
           {/* Spacer + remove */}
@@ -225,7 +213,8 @@ function ActionCard({
           {canRemove && !isSubmitted && (
             <button
               onClick={onRemove}
-              className="p-1.5 rounded-lg text-text-light hover:text-viz-danger hover:bg-[#FEF2F2] transition-colors"
+              aria-label="Remove action"
+              className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-text-light hover:text-viz-danger hover:bg-[#FEF2F2] transition-colors"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -258,7 +247,7 @@ function ActionCard({
                       }
                     }
                   }}
-                  className={`text-[11px] px-2 py-1 rounded-full font-medium transition-colors ${
+                  className={`text-xs min-h-[36px] px-3 py-1.5 rounded-full font-medium transition-colors ${
                     selected
                       ? "bg-[#059669] text-white"
                       : "bg-warm-gray text-text-muted hover:bg-border"
@@ -281,6 +270,27 @@ function ActionCard({
               <X className="w-3 h-3" /> Clear all
             </button>
           )}
+        </div>
+      )}
+
+      {/* Endorsement suggestions — keyword-matched chips */}
+      {suggestions.length > 0 && (
+        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] text-text-muted">Ask for support?</span>
+          {suggestions.map((roleId) => {
+            const role = otherRoles.find((r) => r.id === roleId);
+            if (!role) return null;
+            return (
+              <button
+                key={roleId}
+                onClick={() => onUpdate({ endorseTargets: [...action.endorseTargets, roleId] })}
+                className="text-[11px] px-2 py-1 bg-[#ECFDF5] text-[#059669] rounded-full font-medium hover:bg-[#D1FAE5] transition-colors flex items-center gap-1"
+              >
+                <Handshake className="w-3 h-3" />
+                {role.name}
+              </button>
+            );
+          })}
         </div>
       )}
 

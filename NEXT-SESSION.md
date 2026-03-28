@@ -96,7 +96,7 @@ roles: defineTable({
   brief: v.string(),
   color: v.string(),
   enabled: v.boolean(),
-  isAI: v.boolean(),
+  controlMode: v.union(v.literal("human"), v.literal("ai"), v.literal("npc")),
   connected: v.boolean(),
   joinCode: v.string(),
 })

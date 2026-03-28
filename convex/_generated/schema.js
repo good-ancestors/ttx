@@ -33,9 +33,14 @@ export default defineSchema({
         roleName: v.string(),
         joinCode: v.string(),
         connected: v.boolean(),
-        isAI: v.boolean(),
+        controlMode: v.union(v.literal("human"), v.literal("ai"), v.literal("npc")),
         enabled: v.boolean(),
         computeStock: v.optional(v.number()),
+        aiDisposition: v.optional(v.string()),
+        // Session tracking: random ID per browser tab, used to detect seat conflicts
+        // TODO Phase 2: Add playerName (nickname entered on first join) for facilitator visibility
+        // TODO Phase 3: Replace with Convex Auth identity for persistent accounts + game history
+        activeSessionId: v.optional(v.string()),
     })
         .index("by_game", ["gameId"])
         .index("by_joinCode", ["joinCode"]),
@@ -77,14 +82,28 @@ export default defineSchema({
         title: v.string(),
         narrative: v.string(),
         capabilityLevel: v.string(),
+        // Structured resolution output — what happened this round
+        resolvedEvents: v.optional(v.array(v.object({
+            id: v.string(),
+            description: v.string(),
+            visibility: v.union(v.literal("public"), v.literal("covert")),
+            actors: v.array(v.string()),
+            worldImpact: v.optional(v.string()),
+            sourceActions: v.optional(v.array(v.string())),
+        }))),
+        facilitatorNotes: v.optional(v.string()),
         summary: v.optional(v.object({
+            narrative: v.optional(v.string()),
+            headlines: v.array(v.string()),
             geopoliticalEvents: v.array(v.string()),
             aiStateOfPlay: v.array(v.string()),
-            headlines: v.array(v.string()),
             facilitatorNotes: v.optional(v.string()),
         })),
         fallbackNarrative: v.optional(v.string()),
         aiMeta: v.optional(v.object({
+            resolveModel: v.optional(v.string()),
+            resolveTimeMs: v.optional(v.number()),
+            resolveTokens: v.optional(v.number()),
             narrativeModel: v.optional(v.string()),
             narrativeTimeMs: v.optional(v.number()),
             narrativeTokens: v.optional(v.number()),
@@ -124,7 +143,7 @@ export default defineSchema({
         toRoleId: v.string(),
         toRoleName: v.string(),
         actionText: v.string(),
-        requestType: v.union(v.literal("endorsement"), v.literal("compute"), v.literal("both")),
+        requestType: v.union(v.literal("endorsement"), v.literal("compute")),
         computeAmount: v.optional(v.number()),
         status: v.union(v.literal("pending"), v.literal("accepted"), v.literal("declined")),
     })

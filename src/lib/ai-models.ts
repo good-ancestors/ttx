@@ -18,6 +18,9 @@
 export const GRADING_MODEL = "anthropic/claude-sonnet-4-6";
 export const GRADING_FALLBACK = "anthropic/claude-haiku-4-5";
 
+export const RESOLVE_MODEL = "anthropic/claude-sonnet-4-6";
+export const RESOLVE_FALLBACK = "anthropic/claude-haiku-4-5";
+
 export const NARRATIVE_MODEL = "anthropic/claude-sonnet-4-6";
 export const NARRATIVE_FALLBACK = "anthropic/claude-haiku-4-5";
 
