@@ -96,8 +96,8 @@ export const ROLES: Role[] = [
   // ── Governments ───────────────────────────────────────────────────────────
   {
     id: "us-president",
-    name: "United States",
-    subtitle: "The President",
+    name: "US President",
+    subtitle: "United States",
     color: "#DC2626",
     tags: ["government", "military", "intelligence", "has-compute"],
     required: false,
@@ -111,8 +111,8 @@ export const ROLES: Role[] = [
   },
   {
     id: "china-president",
-    name: "China",
-    subtitle: "The President",
+    name: "China President",
+    subtitle: "People's Republic of China",
     color: "#EA580C",
     tags: ["government", "military", "intelligence", "has-compute"],
     required: false,
@@ -175,8 +175,8 @@ export const ROLES: Role[] = [
   // ── More Governments ──────────────────────────────────────────────────────
   {
     id: "australia-pm",
-    name: "Australia",
-    subtitle: "The Prime Minister",
+    name: "Australia PM",
+    subtitle: "Prime Minister of Australia",
     color: "#059669",
     tags: ["government", "diplomatic", "has-compute"],
     required: false,
@@ -190,7 +190,7 @@ export const ROLES: Role[] = [
   },
   {
     id: "eu-president",
-    name: "European Union",
+    name: "EU President",
     subtitle: "President of the European Commission",
     color: "#2563EB",
     tags: ["government", "regulation", "has-compute"],
