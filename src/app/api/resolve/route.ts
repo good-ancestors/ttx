@@ -221,6 +221,30 @@ function createCompletionStream(
 
 // ─── Apply resolution to Convex ──────────────────────────────────────────────
 
+/** Apply lab updates to Convex */
+async function applyLabUpdates(
+  gameId: string,
+  currentLabs: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }[],
+  updates: { name: string; newComputeStock: number; newRdMultiplier: number; newAllocation?: { users: number; capability: number; safety: number } }[],
+  maxMultiplier: number,
+) {
+  const updatedLabs = currentLabs.map((lab) => {
+    const update = updates.find((u) => u.name === lab.name)
+      ?? updates.find((u) => u.name.toLowerCase() === lab.name.toLowerCase());
+    if (!update) return lab;
+    return {
+      ...lab,
+      computeStock: Math.max(0, Math.round(update.newComputeStock)),
+      rdMultiplier: Math.min(maxMultiplier, Math.max(0, Math.round(update.newRdMultiplier * 10) / 10)),
+      allocation: update.newAllocation ? normaliseAllocation(update.newAllocation) : lab.allocation,
+    };
+  });
+  await convex.mutation(api.games.updateLabs, {
+    gameId: gameId as Id<"games">,
+    labs: updatedLabs,
+  });
+}
+
 /** Apply resolved output to Convex — shared by streaming and non-streaming paths */
 async function applyResolution(opts: {
   output: ResolveOutputType;
@@ -285,50 +309,74 @@ async function applyResolution(opts: {
   }
 
   // Update lab compute, R&D multipliers, and allocation
+  // Strategy: use main resolve labUpdates if present, otherwise make a dedicated API call
   const maxMultiplier = roundNumber === 1 ? 15 : roundNumber === 2 ? 200 : roundNumber === 3 ? 5000 : 10000;
-  const minFloors: Record<number, number> = { 1: 3, 2: 10, 3: 100, 4: 500 };
-  const minFloor = minFloors[roundNumber] ?? 3;
-  let labsUpdatedByAI = false;
-  let labsFallbackApplied = false;
+  let labsSource = "none";
 
   if (output.labUpdates && output.labUpdates.length > 0) {
-    labsUpdatedByAI = true;
-    console.info(`[resolve] R${roundNumber} AI provided ${output.labUpdates.length} labUpdates: ${JSON.stringify(output.labUpdates.map(u => ({ name: u.name, mult: u.newRdMultiplier, compute: u.newComputeStock })))}`);
-    const updatedLabs = game.labs.map((lab) => {
-      const update = output.labUpdates.find((u) => u.name === lab.name)
-        ?? output.labUpdates.find((u) => u.name.toLowerCase() === lab.name.toLowerCase())
-        ?? output.labUpdates.find((u) => u.name.toLowerCase().startsWith(lab.name.toLowerCase().slice(0, 4)));
-      if (!update) {
-        console.warn(`[resolve] No labUpdate match for "${lab.name}". AI provided: ${output.labUpdates.map((u) => u.name).join(", ")}`);
-        return lab;
-      }
-      const newMultiplier = Math.min(maxMultiplier, Math.max(0, Math.round(update.newRdMultiplier * 10) / 10));
-      const newCompute = Math.max(0, Math.round(update.newComputeStock));
-      const allocation = update.newAllocation
-        ? normaliseAllocation(update.newAllocation)
-        : lab.allocation;
-      return { ...lab, computeStock: newCompute, rdMultiplier: newMultiplier, allocation };
-    });
-    await convex.mutation(api.games.updateLabs, {
-      gameId: gameId as Id<"games">,
-      labs: updatedLabs,
-    });
+    labsSource = "resolve";
+    console.info(`[resolve] R${roundNumber} labs from resolve: ${JSON.stringify(output.labUpdates.map(u => ({ name: u.name, mult: u.newRdMultiplier, compute: u.newComputeStock })))}`);
+    await applyLabUpdates(gameId, game.labs, output.labUpdates, maxMultiplier);
   } else {
-    console.error(`[resolve] R${roundNumber} ERROR: AI output contained NO labUpdates! Output keys: ${Object.keys(output).join(", ")}`);
+    // Main resolve didn't include labs — make a dedicated focused call
+    console.warn(`[resolve] R${roundNumber} resolve output missing labUpdates — making dedicated lab update call`);
+    const labNames = game.labs.map((l) => l.name) as [string, ...string[]];
+    const labSchema = z.object({
+      labs: z.array(z.object({
+        name: z.enum(labNames),
+        newComputeStock: z.number(),
+        newRdMultiplier: z.number(),
+        newAllocation: z.object({ users: z.number(), capability: z.number(), safety: z.number() }),
+      })).length(labNames.length),
+    });
+    const labPrompt = `You are updating lab state for Round ${roundNumber} of an AI tabletop exercise.
+
+CURRENT LABS:
+${game.labs.map(l => `- ${l.name}: ${l.rdMultiplier}x R&D, ${l.computeStock}u compute, allocation ${l.allocation.users}%/${l.allocation.capability}%/${l.allocation.safety}%`).join("\n")}
+
+ROUND ${roundNumber} EVENTS (summary):
+${output.resolvedEvents.map(e => `- ${e.description}`).join("\n")}
+
+EXPECTED CAPABILITY PROGRESSION:
+- R1: 3-10x, R2: 10-50x, R3: 100-1000x, R4: 500-5000x
+
+Output updated values for ALL ${labNames.length} labs. Account for the events above.
+The leading lab's R&D multiplier should be in the expected range for Round ${roundNumber}.`;
+
+    try {
+      const { output: labOutput } = await generateWithFallback({
+        primary: "anthropic/claude-haiku-4-5",
+        fallback: RESOLVE_FALLBACK,
+        prompt: labPrompt,
+        schema: labSchema,
+        maxRetries: 2,
+      });
+      if (labOutput?.labs && labOutput.labs.length > 0) {
+        labsSource = "dedicated";
+        console.info(`[resolve] R${roundNumber} labs from dedicated call: ${JSON.stringify(labOutput.labs.map(u => ({ name: u.name, mult: u.newRdMultiplier, compute: u.newComputeStock })))}`);
+        await applyLabUpdates(gameId, game.labs, labOutput.labs, maxMultiplier);
+      } else {
+        console.error(`[resolve] R${roundNumber} dedicated lab call also failed!`);
+      }
+    } catch (err) {
+      console.error(`[resolve] R${roundNumber} dedicated lab call error:`, err);
+    }
   }
 
-  // Fallback floor: ensure labs progress even if AI omits or under-reports
+  // Final fallback floor
+  const minFloors: Record<number, number> = { 1: 3, 2: 10, 3: 100, 4: 500 };
+  const minFloor = minFloors[roundNumber] ?? 3;
   const latestGame = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
   const latestLeading = latestGame ? Math.max(...latestGame.labs.map((l: { rdMultiplier: number }) => l.rdMultiplier)) : 1;
   if (latestLeading < minFloor) {
-    labsFallbackApplied = true;
+    labsSource = "fallback";
     const prevLeading = Math.max(...game.labs.map((l) => l.rdMultiplier));
-    console.warn(`[resolve] R${roundNumber} FALLBACK: leading lab ${latestLeading}x below floor ${minFloor}x (was ${prevLeading}x before resolve). Auto-bumping all labs.`);
+    console.warn(`[resolve] R${roundNumber} FALLBACK: leading ${latestLeading}x < floor ${minFloor}x. Bumping.`);
     const scale = minFloor / Math.max(1, prevLeading);
     const bumpedLabs = (latestGame?.labs ?? game.labs).map((lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }) => ({
       ...lab,
       rdMultiplier: Math.min(maxMultiplier, Math.round(lab.rdMultiplier * scale * 10) / 10),
-      computeStock: Math.max(lab.computeStock, lab.computeStock + Math.round(roundNumber * 3)),
+      computeStock: lab.computeStock + Math.round(roundNumber * 3),
     }));
     await convex.mutation(api.games.updateLabs, {
       gameId: gameId as Id<"games">,
@@ -336,10 +384,9 @@ async function applyResolution(opts: {
     });
   }
 
-  // Log final state for debugging
   const finalGame = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
   if (finalGame) {
-    console.info(`[resolve] R${roundNumber} FINAL labs: ${finalGame.labs.map((l: { name: string; rdMultiplier: number; computeStock: number }) => `${l.name}: ${l.rdMultiplier}x/${l.computeStock}u`).join(", ")} | aiUpdated=${labsUpdatedByAI} fallback=${labsFallbackApplied}`);
+    console.info(`[resolve] R${roundNumber} FINAL labs: ${finalGame.labs.map((l: { name: string; rdMultiplier: number; computeStock: number }) => `${l.name}: ${l.rdMultiplier}x/${l.computeStock}u`).join(", ")} | source=${labsSource}`);
   }
 
   // Snapshot final state
