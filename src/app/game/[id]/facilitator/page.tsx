@@ -1204,44 +1204,49 @@ export default function FacilitatorPage({
                             return (
                               <div
                                 key={`${sub._id}-${i}`}
-                                className={`flex items-center gap-2 py-1.5 border-b border-navy-light/50 last:border-0 transition-all duration-300 ${
+                                className={`py-2 border-b border-navy-light/50 last:border-0 transition-all duration-300 ${
                                   idx < revealedCount ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"
                                 }`}
                               >
-                                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: role?.color }} />
-                                <span className="text-xs font-bold text-white shrink-0 w-24 truncate">{role?.name ?? sub.roleId}</span>
-                                {action.secret && (
-                                  <Lock
-                                    className="w-3 h-3 text-viz-warning shrink-0 cursor-pointer"
-                                    onClick={() => toggleReveal(secretKey)}
-                                  />
-                                )}
-                                <span
-                                  className={`text-sm flex-1 min-w-0 truncate ${isCovert ? "text-text-light italic cursor-pointer" : "text-[#E2E8F0]"}`}
-                                  onClick={action.secret ? () => toggleReveal(secretKey) : undefined}
-                                >
-                                  {isCovert ? "[Covert action]" : action.text}
-                                </span>
-                                <span className={`text-xs font-mono shrink-0 ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>
-                                  {action.rolled}/{action.probability}%
-                                </span>
-                                {!isProjector && (
-                                  <button
-                                    onClick={() => overrideOutcome({
-                                      submissionId: sub._id,
-                                      actionIndex: i,
-                                      success: !action.success,
-                                    })}
-                                    className="shrink-0"
-                                    title={`Click to flip to ${action.success ? "FAIL" : "SUCCESS"}`}
+                                {/* Row 1: role + action text */}
+                                <div className="flex items-start gap-2">
+                                  <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: role?.color }} />
+                                  <span className="text-xs font-bold text-white shrink-0">{role?.name ?? sub.roleId}</span>
+                                  {action.secret && (
+                                    <Lock
+                                      className="w-3 h-3 text-viz-warning shrink-0 mt-0.5 cursor-pointer"
+                                      onClick={() => toggleReveal(secretKey)}
+                                    />
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5 pl-4">
+                                  <span
+                                    className={`text-sm flex-1 min-w-0 ${isCovert ? "text-text-light italic cursor-pointer" : "text-[#E2E8F0]"}`}
+                                    onClick={action.secret ? () => toggleReveal(secretKey) : undefined}
                                   >
-                                    {action.success ? (
-                                      <ToggleRight className="w-5 h-5 text-viz-safety" />
-                                    ) : (
-                                      <ToggleLeft className="w-5 h-5 text-viz-danger" />
-                                    )}
-                                  </button>
-                                )}
+                                    {isCovert ? "[Covert action]" : action.text}
+                                  </span>
+                                  <span className={`text-xs font-mono shrink-0 ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>
+                                    {action.rolled}/{action.probability}%
+                                  </span>
+                                  {!isProjector && (
+                                    <button
+                                      onClick={() => overrideOutcome({
+                                        submissionId: sub._id,
+                                        actionIndex: i,
+                                        success: !action.success,
+                                      })}
+                                      className="shrink-0"
+                                      title={`Click to flip to ${action.success ? "FAIL" : "SUCCESS"}`}
+                                    >
+                                      {action.success ? (
+                                        <ToggleRight className="w-5 h-5 text-viz-safety" />
+                                      ) : (
+                                        <ToggleLeft className="w-5 h-5 text-viz-danger" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                             );
                       })}
