@@ -1,6 +1,10 @@
 /**
- * Test script: Verify deterministic lab progression through 3 rounds.
- * Usage: npx tsx scripts/test-lab-progression.ts <gameId>
+ * Test script: Full E2E lab progression through 3 rounds.
+ * Supports two scenarios: "race" (default) and "slowdown" (Safer pivot).
+ *
+ * Usage:
+ *   npx tsx scripts/test-lab-progression.ts race
+ *   npx tsx scripts/test-lab-progression.ts slowdown
  */
 
 import { ConvexHttpClient } from "convex/browser";
@@ -23,59 +27,90 @@ const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL ?? "");
 const API_BASE = "http://localhost:3001";
 const apiKey = process.env.API_SECRET_KEY ?? "";
 
-interface Lab {
-  name: string;
-  roleId: string;
-  computeStock: number;
-  rdMultiplier: number;
-  allocation: { users: number; capability: number; safety: number };
-}
+// Expected baselines from CSV for verification
+const CSV_RACE = {
+  OpenBrain:  { r1: 10, r2: 100, r3: 1000 },
+  DeepCent:   { r1: 5.7, r2: 22, r3: 80 },
+  Conscienta: { r1: 5, r2: 15, r3: 40 },
+};
+const CSV_SLOWDOWN = {
+  OpenBrain:  { r1: 10, r2: 40, r3: 55 },
+  DeepCent:   { r1: 5.7, r2: 35, r3: 80 },
+  Conscienta: { r1: 5, r2: 15, r3: 40 },
+};
 
-async function main() {
-  const gameId = (process.argv[2] ?? "") as Id<"games">;
-  if (!gameId) {
-    console.error("Usage: npx tsx scripts/test-lab-progression.ts <gameId>");
-    process.exit(1);
+type Scenario = "race" | "slowdown";
+
+// Scenario-specific actions per round per role
+function getActions(scenario: Scenario, roleId: string, round: number) {
+  if (scenario === "slowdown" && roleId === "openbrain-ceo" && round >= 2) {
+    // OpenBrain pivots to Safer models — heavy safety allocation, decommission Agent-4
+    return {
+      actions: [
+        { text: "Pivot to building transparent Safer models — decommission Agent-4 and sacrifice capability for trustworthy alignment", priority: 6, secret: false, probability: 80, rolled: 30, success: true },
+        { text: "Invest heavily in alignment research and interpretability tools", priority: 4, secret: false, probability: 70, rolled: 40, success: true },
+      ],
+      computeAllocation: { users: 30, capability: 20, safety: 50 },
+    };
+  }
+  if (scenario === "slowdown" && roleId === "deepcent-ceo" && round >= 2) {
+    // DeepCent goes aggressive on capability while OpenBrain slows down
+    return {
+      actions: [
+        { text: "Accelerate Agent-4 development using maximum compute allocation to R&D", priority: 6, secret: false, probability: 70, rolled: 35, success: true },
+        { text: "Recruit top talent from OpenBrain as they pivot to safety", priority: 4, secret: false, probability: 60, rolled: 50, success: true },
+      ],
+      computeAllocation: { users: 15, capability: 80, safety: 5 },
+    };
   }
 
-  console.log(`\n=== Lab Progression Test ===`);
-  console.log(`Game: ${gameId}\n`);
+  // Default race actions
+  return {
+    actions: [
+      { text: "Invest in capability research to advance AI development", priority: 5, secret: false, probability: 70, rolled: 45, success: true },
+      { text: "Coordinate with allies on safety standards", priority: 3, secret: false, probability: 50, rolled: 62, success: false },
+    ],
+  };
+}
 
-  // Get initial game state
+async function runScenario(scenario: Scenario) {
+  const csvBaseline = scenario === "race" ? CSV_RACE : CSV_SLOWDOWN;
+
+  // Create fresh game
+  const gameId = await convex.mutation(api.games.create, { tableCount: 6 }) as Id<"games">;
+  await convex.mutation(api.games.startGame, { gameId });
+
   const game = await convex.query(api.games.get, { gameId });
   if (!game) { console.error("Game not found"); process.exit(1); }
 
-  console.log(`Initial: Round ${game.currentRound}, Phase: ${game.phase}`);
-  console.log("Initial labs:");
+  console.log(`\n${"═".repeat(60)}`);
+  console.log(`  SCENARIO: ${scenario.toUpperCase()}`);
+  console.log(`  Game: ${gameId}`);
+  console.log(`${"═".repeat(60)}`);
+  console.log("\nInitial labs:");
   for (const lab of game.labs) {
     console.log(`  ${lab.name}: ${lab.rdMultiplier}x / ${lab.computeStock}u [${lab.allocation.capability}% R&D]`);
   }
 
-  // Get tables
   const tables = await convex.query(api.tables.getByGame, { gameId });
   const enabledTables = (tables ?? []).filter(t => t.enabled);
-  console.log(`\nEnabled tables: ${enabledTables.length}`);
 
-  // Run 3 rounds
+  const results: Record<string, { mult: number; compute: number }[]> = {};
+  for (const lab of game.labs) {
+    results[lab.name] = [{ mult: lab.rdMultiplier, compute: lab.computeStock }];
+  }
+
   for (let round = 1; round <= 3; round++) {
-    console.log(`\n${"=".repeat(50)}`);
-    console.log(`ROUND ${round}`);
-    console.log("=".repeat(50));
+    console.log(`\n── Round ${round} ──`);
 
-    // Get labs BEFORE this round
     const gameBefore = await convex.query(api.games.get, { gameId });
     const labsBefore = gameBefore!.labs;
 
-    // Set phase to submit
     await convex.mutation(api.games.advancePhase, { gameId, phase: "submit" });
 
-    // Create submissions
+    // Submit scenario-specific actions
     for (const table of enabledTables) {
-      const actions = [
-        { text: `Invest in capability research to advance AI development`, priority: 5, secret: false, probability: 70, rolled: 45, success: true },
-        { text: `Coordinate with allies on safety standards`, priority: 3, secret: false, probability: 50, rolled: 62, success: false },
-      ];
-
+      const { actions, computeAllocation } = getActions(scenario, table.roleId, round);
       try {
         await convex.mutation(api.submissions.submit, {
           tableId: table._id,
@@ -83,72 +118,88 @@ async function main() {
           roundNumber: round,
           roleId: table.roleId,
           actions,
+          computeAllocation,
         });
       } catch (err: unknown) {
         console.warn(`  Submit failed for ${table.roleName}: ${String(err)}`);
       }
     }
-    console.log(`Submitted ${enabledTables.length} roles`);
 
-    // Set phase to rolling
     await convex.mutation(api.games.advancePhase, { gameId, phase: "rolling" });
 
-    // Call resolve API
-    console.log("Calling resolve API...");
-    const startTime = Date.now();
-    const resolveRes = await fetch(`${API_BASE}/api/resolve`, {
+    console.log("  Resolving...");
+    const t0 = Date.now();
+    const res = await fetch(`${API_BASE}/api/resolve`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-      },
+      headers: { "Content-Type": "application/json", "x-api-key": apiKey },
       body: JSON.stringify({ gameId, roundNumber: round }),
     });
 
-    const elapsed = Date.now() - startTime;
-
-    if (!resolveRes.ok) {
-      const errText = await resolveRes.text();
-      console.error(`  RESOLVE FAILED (${resolveRes.status}): ${errText}`);
+    if (!res.ok) {
+      console.error(`  FAILED (${res.status}): ${await res.text()}`);
       continue;
     }
+    const data = await res.json();
+    console.log(`  ${data.resolvedEvents?.length ?? 0} events, ${Date.now() - t0}ms`);
 
-    const resolveData = await resolveRes.json();
-    console.log(`  Resolved: ${resolveData.resolvedEvents?.length ?? 0} events, model=${resolveData.model}, ${elapsed}ms`);
-
-    // Check lab state after resolve
     const gameAfter = await convex.query(api.games.get, { gameId });
-    console.log(`\n  Labs after Round ${round}:`);
-    let allProgressed = true;
+    const roundKey = `r${round}` as "r1" | "r2" | "r3";
+
+    console.log(`\n  Lab results (vs CSV baseline):`);
     for (const lab of gameAfter!.labs) {
       const before = labsBefore.find(l => l.name === lab.name);
       if (!before) continue;
-      const multDelta = lab.rdMultiplier - before.rdMultiplier;
-      const compDelta = lab.computeStock - before.computeStock;
-      const status = multDelta > 0 ? "✓" : multDelta === 0 ? "⚠ FLAT" : "↓ DECREASED";
-      if (multDelta <= 0) allProgressed = false;
-      console.log(`  ${status} ${lab.name}: ${before.rdMultiplier}x → ${lab.rdMultiplier}x (${multDelta >= 0 ? "+" : ""}${multDelta.toFixed(1)}) | ${before.computeStock}u → ${lab.computeStock}u (${compDelta >= 0 ? "+" : ""}${compDelta})`);
-    }
-    console.log(allProgressed ? "  ✓ All labs progressed" : "  ⚠ Some labs did NOT progress!");
+      results[lab.name].push({ mult: lab.rdMultiplier, compute: lab.computeStock });
 
-    // Advance round
+      const expected = csvBaseline[lab.name as keyof typeof csvBaseline]?.[roundKey];
+      const pctOff = expected ? Math.round(((lab.rdMultiplier - expected) / expected) * 100) : null;
+      const matchStr = pctOff !== null
+        ? (Math.abs(pctOff) <= 30 ? `✓ ${pctOff >= 0 ? "+" : ""}${pctOff}% vs CSV` : `⚠ ${pctOff >= 0 ? "+" : ""}${pctOff}% vs CSV ${expected}×`)
+        : "";
+
+      console.log(`  ${lab.name}: ${before.rdMultiplier}x → ${lab.rdMultiplier}x | ${before.computeStock}u → ${lab.computeStock}u  ${matchStr}`);
+    }
+
     if (round < 3) {
       await convex.mutation(api.games.advancePhase, { gameId, phase: "narrate" });
       await convex.mutation(api.games.advanceRound, { gameId });
-      console.log(`  → Advanced to Round ${round + 1}`);
     }
   }
 
-  // Final summary
-  const finalGame = await convex.query(api.games.get, { gameId });
-  console.log(`\n${"=".repeat(50)}`);
-  console.log("FINAL STATE");
-  console.log("=".repeat(50));
-  for (const lab of finalGame!.labs) {
-    const initial = game.labs.find(l => l.name === lab.name)!;
-    console.log(`  ${lab.name}: ${initial.rdMultiplier}x → ${lab.rdMultiplier}x (${(lab.rdMultiplier / initial.rdMultiplier).toFixed(1)}x growth) | ${initial.computeStock}u → ${lab.computeStock}u`);
+  // Summary table
+  console.log(`\n${"─".repeat(60)}`);
+  console.log(`  SUMMARY: ${scenario.toUpperCase()}`);
+  console.log(`${"─".repeat(60)}`);
+  console.log("  Lab          | Start  | R1     | R2     | R3     | Growth");
+  console.log("  -------------|--------|--------|--------|--------|-------");
+  for (const lab of game.labs) {
+    const r = results[lab.name];
+    const growth = (r[3].mult / r[0].mult).toFixed(0);
+    console.log(`  ${lab.name.padEnd(13)}| ${String(r[0].mult + "×").padEnd(7)}| ${String(r[1].mult + "×").padEnd(7)}| ${String(r[2].mult + "×").padEnd(7)}| ${String(r[3].mult + "×").padEnd(7)}| ${growth}×`);
   }
-  console.log("\n=== Test Complete ===\n");
+  console.log(`\n  CSV baseline (${scenario}):`);
+  for (const [name, vals] of Object.entries(csvBaseline)) {
+    console.log(`  ${name.padEnd(13)}| ${("3×").padEnd(7)}| ${String(vals.r1 + "×").padEnd(7)}| ${String(vals.r2 + "×").padEnd(7)}| ${String(vals.r3 + "×").padEnd(7)}|`);
+  }
+
+  // Cleanup
+  await convex.mutation(api.games.remove, { gameId });
+  console.log(`\n  Game cleaned up.`);
+}
+
+async function main() {
+  const scenario = (process.argv[2] ?? "both") as string;
+
+  if (scenario === "race" || scenario === "both") {
+    await runScenario("race");
+  }
+  if (scenario === "slowdown" || scenario === "both") {
+    await runScenario("slowdown");
+  }
+  if (scenario !== "race" && scenario !== "slowdown" && scenario !== "both") {
+    console.error("Usage: npx tsx scripts/test-lab-progression.ts [race|slowdown|both]");
+    process.exit(1);
+  }
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

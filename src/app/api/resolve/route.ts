@@ -308,13 +308,16 @@ async function applyResolution(opts: {
         const actualRdPct = lab.allocation.capability;
         // Allocation ratio: >1 means more R&D than baseline, <1 means less
         const allocRatio = actualRdPct / Math.max(1, baselineRdPct);
-        // Compute ratio: if lab has more/less compute than expected, it affects growth
-        // Labs that acquire extra compute (DPA, trade) or lose it (sanctions) deviate
+        // Asymmetric sensitivity: cutting R&D has outsized impact (recursive loop breaks)
+        // Boosting R&D helps but with diminishing returns (can't discover faster than physics)
+        const allocExponent = allocRatio < 1 ? 1.5 : 0.5;
+        const allocFactor = Math.pow(allocRatio, allocExponent);
+        // Compute ratio: more/less compute than baseline affects growth
         const baselineCompute: Record<string, number> = { OpenBrain: 22, DeepCent: 17, Conscienta: 14 };
         const expectedCompute = baselineCompute[lab.name] ?? lab.computeStock;
         const computeRatio = lab.computeStock / Math.max(1, expectedCompute);
-        // Combined adjustment: allocation matters more (exponent 0.7), compute adds boost
-        const combinedRatio = Math.pow(allocRatio, 0.7) * Math.pow(computeRatio, 0.3);
+        // Combined: allocation dominates (0.75 weight), compute secondary (0.25)
+        const combinedRatio = Math.pow(allocFactor, 0.75) * Math.pow(computeRatio, 0.25);
         // Growth toward baseline target, adjusted by player decisions
         const baseGrowthRatio = baselineTarget / lab.rdMultiplier;
         const adjustedRatio = 1 + (baseGrowthRatio - 1) * combinedRatio;
