@@ -25,28 +25,29 @@ function normaliseAllocation(raw: { users: number; capability: number; safety: n
   return alloc;
 }
 
-const ResolveOutput = z.object({
-  resolvedEvents: z.array(
-    z.object({
-      id: z.string(),
-      description: z.string(),
-      visibility: z.enum(["public", "covert"]),
-      actors: z.array(z.string()),
-      worldImpact: z.optional(z.string()),
-      sourceActions: z.optional(z.array(z.string())),
-    })
-  ),
-  worldState: z.object({
-    capability: z.number().min(0).max(10),
-    alignment: z.number().min(0).max(10),
-    tension: z.number().min(0).max(10),
-    awareness: z.number().min(0).max(10),
-    regulation: z.number().min(0).max(10),
-    australia: z.number().min(0).max(10),
-  }),
-  labUpdates: z.array(
-    z.object({
-      name: z.enum(["OpenBrain", "DeepCent", "Conscienta"]),
+function buildResolveSchema(labNames: [string, ...string[]]) {
+  return z.object({
+    resolvedEvents: z.array(
+      z.object({
+        id: z.string(),
+        description: z.string(),
+        visibility: z.enum(["public", "covert"]),
+        actors: z.array(z.string()),
+        worldImpact: z.optional(z.string()),
+        sourceActions: z.optional(z.array(z.string())),
+      })
+    ),
+    worldState: z.object({
+      capability: z.number().min(0).max(10),
+      alignment: z.number().min(0).max(10),
+      tension: z.number().min(0).max(10),
+      awareness: z.number().min(0).max(10),
+      regulation: z.number().min(0).max(10),
+      australia: z.number().min(0).max(10),
+    }),
+    labUpdates: z.array(
+      z.object({
+        name: z.enum(labNames),
       newComputeStock: z.number(),
       newRdMultiplier: z.number(),
       newAllocation: z.object({
@@ -64,9 +65,12 @@ const ResolveOutput = z.object({
       })
     )
   ),
-  facilitatorNotes: z.string(),
-});
+    facilitatorNotes: z.string(),
+  });
+}
 
+// Default schema for type inference
+const ResolveOutput = buildResolveSchema(["OpenBrain", "DeepCent", "Conscienta"]);
 type ResolveOutputType = z.infer<typeof ResolveOutput>;
 
 interface Lab {
@@ -235,6 +239,10 @@ export async function POST(request: Request) {
       return Response.json({ error: "Game not found" }, { status: 404 });
     }
 
+    // Build schema with dynamic lab names from current game state
+    const labNames = game.labs.map((l: { name: string }) => l.name) as [string, ...string[]];
+    const resolveSchema = buildResolveSchema(labNames);
+
     const currentRound = rounds?.find((r) => r.number === roundNumber);
 
     const resolvedActions = (submissions ?? []).flatMap((sub) => {
@@ -289,7 +297,7 @@ export async function POST(request: Request) {
       const aiStream = streamPrimary({
         primary: RESOLVE_MODEL,
         fallback: RESOLVE_FALLBACK,
-        schema: ResolveOutput,
+        schema: resolveSchema,
         prompt,
       });
 
