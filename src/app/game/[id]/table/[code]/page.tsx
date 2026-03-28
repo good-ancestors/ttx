@@ -417,7 +417,7 @@ export default function TablePlayerPage({
   const sessionId = sessionIdRef.current;
 
   // Detect if another session has taken this seat
-  const isConflict = table && table.activeSessionId && table.activeSessionId !== sessionId && table.connected;
+  const isConflict = table?.activeSessionId && table.activeSessionId !== sessionId && table.connected;
 
   // Set connected on mount, disconnect on unmount/close
   useEffect(() => {

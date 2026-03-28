@@ -2,7 +2,7 @@
 
 import { useInAppBrowserDetection } from "@/lib/hooks";
 import { ExternalLink } from "lucide-react";
-import { ReactNode } from "react";
+import { type ReactNode } from "react";
 
 export function InAppBrowserGate({ children }: { children: ReactNode }) {
   const isInApp = useInAppBrowserDetection();

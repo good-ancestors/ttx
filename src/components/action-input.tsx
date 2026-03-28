@@ -19,7 +19,7 @@ export function normaliseActions(actions: ActionDraft[]): { text: string; priori
   const filled = actions.filter((a) => a.text.trim());
   const count = filled.length;
   if (count === 0) return [];
-  const decay = PRIORITY_DECAY[count] ?? PRIORITY_DECAY[5]!;
+  const decay = PRIORITY_DECAY[count] ?? PRIORITY_DECAY[5];
 
   return filled.map((a, i) => ({
     text: a.text.trim(),

@@ -85,7 +85,7 @@ export const submit = mutation({
     }
 
     // Server-side timer enforcement (5s grace for clock drift)
-    if (game && game.phase === "submit" && game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) {
+    if (game?.phase === "submit" && game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) {
       throw new Error("Submission deadline has passed");
     }
 
@@ -216,7 +216,7 @@ export const rerollAction = mutation({
 
     const actions = [...sub.actions];
     const action = actions[args.actionIndex];
-    if (!action || action.probability == null) return;
+    if (action?.probability == null) return;
 
     const rawRoll = Math.floor(Math.random() * 100) + 1;
     const displayRoll = applyInfluence(rawRoll, action.aiInfluence);

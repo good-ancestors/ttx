@@ -108,21 +108,21 @@ describe("Adversarial narrative: world state", () => {
   const labsBefore = r1.stateBefore.labs as Lab[];
 
   it("handles world state values far out of range (negative)", () => {
-    const adversarial = { ...r1.narrativeResponse!.worldState, capability: -50, alignment: -100 };
+    const adversarial = { ...r1.narrativeResponse.worldState, capability: -50, alignment: -100 };
     const result = applyWorldState(r1.stateBefore.worldState, adversarial);
     expect(result.capability).toBe(0);
     expect(result.alignment).toBe(0);
   });
 
   it("handles world state values far out of range (huge positive)", () => {
-    const adversarial = { ...r1.narrativeResponse!.worldState, capability: 999, tension: 50000 };
+    const adversarial = { ...r1.narrativeResponse.worldState, capability: 999, tension: 50000 };
     const result = applyWorldState(r1.stateBefore.worldState, adversarial);
     expect(result.capability).toBe(10);
     expect(result.tension).toBe(10);
   });
 
   it("handles NaN in world state", () => {
-    const adversarial = { ...r1.narrativeResponse!.worldState, capability: NaN };
+    const adversarial = { ...r1.narrativeResponse.worldState, capability: NaN };
     const result = applyWorldState(r1.stateBefore.worldState, adversarial);
     // NaN clamped: Math.round(NaN) = NaN, Math.max(0, NaN) = NaN — this IS a problem
     // The clamp function should handle NaN

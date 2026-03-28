@@ -284,7 +284,7 @@ export default function FacilitatorPage({
         const all = getSampleActions(sampleActionsData, table.roleId, game.currentRound);
         if (all.length === 0) continue;
         const picked = pickRandom(all, 3);
-        const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5]!;
+        const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
         pending.push({
           table,
           actions: picked.map((a, i) => ({ text: a.text, priority: decay[i] ?? 1, secret: a.secret || undefined })),
@@ -298,7 +298,7 @@ export default function FacilitatorPage({
         const all = getSampleActions(sampleActionsData, table.roleId, game.currentRound);
         if (all.length === 0) continue;
         const picked = pickRandom(all, 3);
-        const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5]!;
+        const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
         pending.push({
           table,
           actions: picked.map((a, i) => ({ text: a.text, priority: decay[i] ?? 1, secret: a.secret || undefined })),
@@ -435,7 +435,7 @@ export default function FacilitatorPage({
       await new Promise((r) => setTimeout(r, 2000));
 
       // Phase 2.5: AI Systems secret influence
-      if (aiSystemsTable && aiSystemsTable.aiDisposition && aiSystemsTable.enabled) {
+      if (aiSystemsTable?.aiDisposition && aiSystemsTable.enabled) {
         const roundNumber = game.currentRound;
         const power = getAiInfluencePower(game.labs);
 

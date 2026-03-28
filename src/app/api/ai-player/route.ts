@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       const sampleData = (await sampleRes.json()) as SampleActionsData;
       const pool = sampleData[roleId]?.[roundNumber] ?? [];
       const picked = pickRandom(pool, 3);
-      const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5]!;
+      const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
       const actions = picked.map((a, i) => ({
         text: a.text,
         priority: decay[i] ?? 1,

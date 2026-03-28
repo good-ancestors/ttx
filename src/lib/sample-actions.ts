@@ -48,6 +48,6 @@ export function pickRandom<T>(arr: T[], n: number): T[] {
 export function normalisePriorities(priorities: number[]): number[] {
   const count = priorities.length;
   if (count === 0) return [];
-  const decay = PRIORITY_DECAY[count] ?? PRIORITY_DECAY[5]!;
+  const decay = PRIORITY_DECAY[count] ?? PRIORITY_DECAY[5];
   return priorities.map((_, i) => decay[i] ?? 1);
 }

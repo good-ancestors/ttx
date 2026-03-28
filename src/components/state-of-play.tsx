@@ -45,7 +45,7 @@ export function StateOfPlay({ labs, worldState, roundLabel, rounds }: Props) {
         </span>
         <span
           className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-          style={{ backgroundColor: alignmentColor + "20", color: alignmentColor }}
+          style={{ backgroundColor: `${alignmentColor  }20`, color: alignmentColor }}
         >
           {trajectory} TRAJECTORY
         </span>

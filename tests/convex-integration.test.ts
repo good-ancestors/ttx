@@ -368,7 +368,7 @@ describe("Dice Rolling", () => {
     for (const sub of subs) {
       for (const action of sub.actions) {
         if (action.rolled != null && action.probability != null) {
-          expect(action.success).toBe(action.rolled! <= action.probability);
+          expect(action.success).toBe(action.rolled <= action.probability);
         }
       }
     }

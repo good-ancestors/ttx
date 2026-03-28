@@ -193,7 +193,7 @@ export default function SplashPage() {
           </div>
         )}
 
-        {games && games.length === 0 && (
+        {games?.length === 0 && (
           <p className="text-center text-text-light text-sm mt-4">
             No games yet. Create one to get started.
           </p>

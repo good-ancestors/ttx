@@ -151,7 +151,7 @@ export function NarratePhase({
                   <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Where We Are Now</span>
                   <span
                     className="text-xs font-bold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: alignmentColor + "20", color: alignmentColor }}
+                    style={{ backgroundColor: `${alignmentColor  }20`, color: alignmentColor }}
                   >
                     {trajectory}
                   </span>
