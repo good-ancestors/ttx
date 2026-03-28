@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { COMPUTE_CATEGORIES, ROLES } from "@/lib/game-data";
+import { Merge } from "lucide-react";
 
 interface Lab {
   name: string;
@@ -10,7 +12,15 @@ interface Lab {
   allocation: { users: number; capability: number; safety: number };
 }
 
-export function LabTracker({ labs }: { labs: Lab[] }) {
+export function LabTracker({
+  labs,
+  onMerge,
+}: {
+  labs: Lab[];
+  onMerge?: (survivorName: string, absorbedName: string) => Promise<void>;
+}) {
+  const [mergeSource, setMergeSource] = useState<string | null>(null);
+
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
       <span className="text-sm font-semibold uppercase tracking-wider text-text-light mb-3 block">
@@ -19,20 +29,54 @@ export function LabTracker({ labs }: { labs: Lab[] }) {
       <div className="grid grid-cols-2 gap-3">
         {labs.map((lab) => {
           const role = ROLES.find((r) => r.id === lab.roleId);
+          const isMergeSource = mergeSource === lab.name;
+          const isMergeTarget = mergeSource !== null && mergeSource !== lab.name;
           return (
             <div
               key={lab.name}
-              className="bg-navy-dark border border-navy-light rounded-lg p-3"
+              className={`bg-navy-dark border rounded-lg p-3 transition-colors ${
+                isMergeTarget
+                  ? "border-viz-warning cursor-pointer hover:bg-navy-light"
+                  : isMergeSource
+                    ? "border-viz-capability"
+                    : "border-navy-light"
+              }`}
+              onClick={isMergeTarget ? async () => {
+                await onMerge?.(lab.name, mergeSource);
+                setMergeSource(null);
+              } : undefined}
             >
               <div className="flex items-center gap-2 mb-1">
                 <div
                   className="w-2.5 h-2.5 rounded-full"
                   style={{ backgroundColor: role?.color }}
                 />
-                <span className="text-sm font-bold text-white">
+                <span className="text-sm font-bold text-white flex-1">
                   {lab.name}
                 </span>
+                {onMerge && labs.length > 1 && !mergeSource && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setMergeSource(lab.name); }}
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-text-light hover:bg-navy-muted flex items-center gap-1"
+                    title={`Merge ${lab.name} into another lab`}
+                  >
+                    <Merge className="w-3 h-3" />
+                  </button>
+                )}
+                {isMergeSource && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setMergeSource(null); }}
+                    className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-viz-warning"
+                  >
+                    Cancel
+                  </button>
+                )}
               </div>
+              {isMergeTarget && (
+                <div className="text-[10px] text-viz-warning mb-1">
+                  Click to absorb {mergeSource} into {lab.name}
+                </div>
+              )}
               <div className="flex items-baseline gap-3 mb-2">
                 <span className="text-xl font-black font-mono text-[#06B6D4]">
                   {lab.rdMultiplier}×

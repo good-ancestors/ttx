@@ -91,6 +91,7 @@ export default function FacilitatorPage({
   const skipTimer = useMutation(api.games.skipTimer);
   const kickToAI = useMutation(api.tables.kickToAI);
   const addLab = useMutation(api.games.addLab);
+  const mergeLabs = useMutation(api.games.mergeLabs);
   const submitActions = useMutation(api.submissions.submit);
   const setDispositionMut = useMutation(api.tables.setDisposition);
   const applyAiInfluenceMut = useMutation(api.submissions.applyAiInfluence);
@@ -774,7 +775,12 @@ export default function FacilitatorPage({
               <WorldStatePanel worldState={game.worldState} variant="dark" />
               {!isProjector && <WorldStateEditor gameId={gameId} worldState={game.worldState} />}
             </div>
-            <LabTracker labs={game.labs} />
+            <LabTracker
+              labs={game.labs}
+              onMerge={isProjector ? undefined : async (survivor, absorbed) => {
+                await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
+              }}
+            />
           </div>
 
           {/* Main content area */}
