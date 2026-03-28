@@ -543,6 +543,24 @@ export default function TablePlayerPage({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isExpired, phase, isSubmitted, parsedActions.length, submitting, freeText]);
 
+  // ── Auto-submit on phase change (facilitator resolved before timer expired) ──
+  const prevPhaseRef = useRef(phase);
+  useEffect(() => {
+    if (
+      prevPhaseRef.current === "submit" &&
+      phase === "rolling" &&
+      !isSubmitted &&
+      !submitting &&
+      !autoSubmittedRef.current &&
+      parsedActions.length > 0
+    ) {
+      autoSubmittedRef.current = true;
+      void handleSubmit();
+    }
+    prevPhaseRef.current = phase;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
+
   const handleSuggestionTap = useCallback((suggestion: SampleAction) => {
     setActionDrafts((prev) => {
       // Pre-fill endorsement targets from sample action hints, filtered to active roles
