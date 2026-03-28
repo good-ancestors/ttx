@@ -19,7 +19,9 @@ export function LabTracker({
   labs: Lab[];
   onMerge?: (survivorName: string, absorbedName: string) => Promise<void>;
 }) {
-  const [mergeSource, setMergeSource] = useState<string | null>(null);
+  const [mergeSourceRaw, setMergeSource] = useState<string | null>(null);
+  // Auto-clear if the source lab no longer exists (e.g., merged by another action)
+  const mergeSource = mergeSourceRaw && labs.some(l => l.name === mergeSourceRaw) ? mergeSourceRaw : null;
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">

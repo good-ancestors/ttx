@@ -404,7 +404,7 @@ Do NOT output a merge unless the event clearly describes one lab absorbing anoth
     return { ...lab, computeStock, rdMultiplier };
   });
 
-  // Apply merges — survivor gets absorbed lab's compute + higher multiplier
+  // Apply merges locally — updateLabs below writes the authoritative state
   for (const merge of merges) {
     const absorbed = finalLabs.find(l => l.name === merge.absorbedLab);
     if (!absorbed) continue;
@@ -415,12 +415,6 @@ Do NOT output a merge unless the event clearly describes one lab absorbing anoth
         computeStock: l.computeStock + absorbed.computeStock,
         rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier),
       } : l);
-    // Also execute the Convex mutation so the merge persists independently
-    await convex.mutation(api.games.mergeLabs, {
-      gameId: gameId as Id<"games">,
-      survivorName: merge.survivorLab,
-      absorbedName: merge.absorbedLab,
-    });
     console.info(`[resolve] R${roundNumber} MERGED: ${merge.absorbedLab} → ${merge.survivorLab} (${merge.reason})`);
   }
 

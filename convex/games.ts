@@ -300,8 +300,8 @@ export const mergeLabs = mutation({
     const game = await ctx.db.get(args.gameId);
     if (!game) return;
 
-    const survivor = game.labs.find((l: { name: string }) => l.name === args.survivorName);
-    const absorbed = game.labs.find((l: { name: string }) => l.name === args.absorbedName);
+    const survivor = game.labs.find((l) => l.name === args.survivorName);
+    const absorbed = game.labs.find((l) => l.name === args.absorbedName);
     if (!survivor || !absorbed || survivor.name === absorbed.name) return;
 
     // Merge: survivor gets absorbed lab's compute, keeps higher multiplier, absorbed is removed
