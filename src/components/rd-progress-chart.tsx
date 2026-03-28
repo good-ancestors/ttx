@@ -202,11 +202,23 @@ export function RdProgressChart({
           />
         ))}
 
-        {/* Main lab lines */}
-        {series.filter((s) => !s.isBackground).map((s) => (
+        {/* Main lab lines — step function (flat during round, jump at resolve) */}
+        {series.filter((s) => !s.isBackground).map((s) => {
+          // Convert to step-after path: horizontal to new x, then vertical to new y
+          const stepPoints: string[] = [];
+          for (let i = 0; i < s.points.length; i++) {
+            if (i === 0) {
+              stepPoints.push(`${s.points[i].x},${s.points[i].y}`);
+            } else {
+              // Step: hold previous y until new x, then jump to new y
+              stepPoints.push(`${s.points[i].x},${s.points[i - 1].y}`);
+              stepPoints.push(`${s.points[i].x},${s.points[i].y}`);
+            }
+          }
+          return (
           <g key={s.roleId}>
             <polyline
-              points={s.points.map((p) => `${p.x},${p.y}`).join(" ")}
+              points={stepPoints.join(" ")}
               fill="none"
               stroke={labColor(s.roleId)}
               strokeWidth={2.5}
@@ -237,7 +249,8 @@ export function RdProgressChart({
                 : `${Math.round(s.points[s.points.length - 1].value)}×`}
             </text>
           </g>
-        ))}
+          );
+        })}
       </svg>
 
       {/* Legend */}
