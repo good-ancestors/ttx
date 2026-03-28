@@ -926,7 +926,7 @@ export default function FacilitatorPage({
             <RdProgressChart rounds={rounds} currentLabs={game.labs} />
             <div>
               <WorldStatePanel worldState={game.worldState} variant="dark" />
-              <WorldStateEditor gameId={gameId} worldState={game.worldState} />
+              {!isProjector && <WorldStateEditor gameId={gameId} worldState={game.worldState} />}
             </div>
             <LabTracker labs={game.labs} />
           </div>
