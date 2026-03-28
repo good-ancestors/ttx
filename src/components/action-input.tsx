@@ -101,6 +101,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
             onSendRequest={onSendRequest}
             onCancelRequest={onCancelRequest}
             canRemove={actions.length > 1 || action.text.trim() !== ""}
+            onAddNext={actions.length < 5 && !isSubmitted ? addAction : undefined}
           />
         ))}
       </div>
@@ -130,6 +131,7 @@ function ActionCard({
   canRemove,
   onSendRequest,
   onCancelRequest,
+  onAddNext,
 }: {
   action: ActionDraft;
   index: number;
@@ -142,6 +144,7 @@ function ActionCard({
   canRemove: boolean;
   onSendRequest?: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
   onCancelRequest?: (targetRoleId: string, actionText: string) => void;
+  onAddNext?: () => void;
 }) {
   const [showEndorse, setShowEndorse] = useState(false);
 
@@ -157,6 +160,12 @@ function ActionCard({
       <textarea
         value={action.text}
         onChange={(e) => onUpdate({ text: e.target.value })}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            if (action.text.trim() && onAddNext) onAddNext();
+          }
+        }}
         placeholder={index === 0 ? "I do [action] so that [intended outcome]..." : "I do [action] so that [intended outcome]..."}
         rows={2}
         disabled={isSubmitted}
