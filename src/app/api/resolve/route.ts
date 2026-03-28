@@ -329,7 +329,7 @@ async function applyResolution(opts: {
   // Deterministic lab growth — see docs/lab-progression.md
   const updatedLabs = computeLabGrowth(game.labs, ceoAllocations, roundNumber, maxMult);
 
-  // Event-based modifiers via focused AI call
+  // Event-based modifiers + merges via focused AI call
   const labNames = game.labs.map((l) => l.name) as [string, ...string[]];
   const modifierSchema = z.object({
     modifiers: z.array(z.object({
@@ -338,17 +338,26 @@ async function applyResolution(opts: {
       multiplierFactor: z.number(),
       reason: z.string(),
     })),
+    merges: z.optional(z.array(z.object({
+      survivorLab: z.enum(labNames),
+      absorbedLab: z.enum(labNames),
+      reason: z.string(),
+    }))),
   });
 
   const eventSummary = output.resolvedEvents.map(e => `- ${e.description}`).join("\n");
-  let modifiers: { labName: string; computeChange: number; multiplierFactor: number; reason: string }[] = [];
+  type Modifier = { labName: string; computeChange: number; multiplierFactor: number; reason: string };
+  type Merge = { survivorLab: string; absorbedLab: string; reason: string };
+  let modifiers: Modifier[] = [];
+  let merges: Merge[] = [];
   try {
     const { output: modOutput } = await generateWithFallback({
       primary: "anthropic/claude-haiku-4-5",
       fallback: RESOLVE_FALLBACK,
-      prompt: `Given these game events, output any modifiers to lab compute and R&D progress.
+      prompt: `Given these game events, output any modifiers to lab compute/R&D progress, and any lab mergers.
 Only output modifiers for events that DIRECTLY affect a specific lab's resources or capability.
-If no events affect labs, output an empty modifiers array.
+Only output merges when a successful action explicitly consolidates two labs (e.g., DPA nationalisation, Manhattan Project).
+If no events affect labs, output empty arrays.
 
 EVENTS:
 ${eventSummary}
@@ -358,10 +367,15 @@ LABS: ${labNames.join(", ")}
 Examples of modifiers:
 - Sanctions on China → DeepCent computeChange: -5, multiplierFactor: 0.9
 - DPA consolidation → OpenBrain computeChange: +10 (from seized labs)
-- Sabotage of alignment research → target lab multiplierFactor: 1.1 (safety research destroyed, capability unaffected)
+- Sabotage of alignment research → target lab multiplierFactor: 1.1
 - Taiwan invasion → all labs computeChange: -8 (chip supply disrupted)
-- Pivot to Safer models (decommission Agent-4) → lab multiplierFactor: 0.3 (massive capability sacrifice for safety)
-- Safety budget increased to 30%+ → lab multiplierFactor: 0.85 (slower capability growth)`,
+- Pivot to Safer models → lab multiplierFactor: 0.3
+- Safety budget increased to 30%+ → lab multiplierFactor: 0.85
+
+Examples of merges:
+- DPA picks OpenBrain as national champion, absorbs Conscienta → survivorLab: "OpenBrain", absorbedLab: "Conscienta"
+- Manhattan Project nationalises both US labs → survivorLab: "OpenBrain", absorbedLab: "Conscienta" (or vice versa)
+Do NOT output a merge unless the event clearly describes one lab absorbing another.`,
       schema: modifierSchema,
       maxRetries: 2,
     });
@@ -371,12 +385,16 @@ Examples of modifiers:
         console.info(`[resolve] R${roundNumber} event modifiers: ${JSON.stringify(modifiers)}`);
       }
     }
+    if (modOutput?.merges?.length) {
+      merges = modOutput.merges;
+      console.info(`[resolve] R${roundNumber} lab merges: ${JSON.stringify(merges)}`);
+    }
   } catch (err) {
     console.warn(`[resolve] R${roundNumber} modifier call failed (non-critical):`, err);
   }
 
   // Apply modifiers to baseline
-  const finalLabs = updatedLabs.map(lab => {
+  let finalLabs = updatedLabs.map(lab => {
     const labModifiers = modifiers.filter(m => m.labName === lab.name);
     let { computeStock, rdMultiplier } = lab;
     for (const mod of labModifiers) {
@@ -385,6 +403,26 @@ Examples of modifiers:
     }
     return { ...lab, computeStock, rdMultiplier };
   });
+
+  // Apply merges — survivor gets absorbed lab's compute + higher multiplier
+  for (const merge of merges) {
+    const absorbed = finalLabs.find(l => l.name === merge.absorbedLab);
+    if (!absorbed) continue;
+    finalLabs = finalLabs
+      .filter(l => l.name !== merge.absorbedLab)
+      .map(l => l.name === merge.survivorLab ? {
+        ...l,
+        computeStock: l.computeStock + absorbed.computeStock,
+        rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier),
+      } : l);
+    // Also execute the Convex mutation so the merge persists independently
+    await convex.mutation(api.games.mergeLabs, {
+      gameId: gameId as Id<"games">,
+      survivorName: merge.survivorLab,
+      absorbedName: merge.absorbedLab,
+    });
+    console.info(`[resolve] R${roundNumber} MERGED: ${merge.absorbedLab} → ${merge.survivorLab} (${merge.reason})`);
+  }
 
   console.info(`[resolve] R${roundNumber} FINAL labs: ${finalLabs.map(l => `${l.name}: ${l.rdMultiplier}x/${l.computeStock}u`).join(", ")} | modifiers=${modifiers.length}`);
   await convex.mutation(api.games.updateLabs, { gameId: gameId as Id<"games">, labs: finalLabs });

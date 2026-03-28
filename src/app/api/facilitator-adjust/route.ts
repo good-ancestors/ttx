@@ -42,6 +42,10 @@ const AdjustOutput = z.object({
     )
   ),
   narrativeUpdate: z.optional(z.string()),
+  labMerge: z.optional(z.object({
+    survivorLab: z.string(),
+    absorbedLab: z.string(),
+  })),
 });
 
 export async function POST(request: Request) {
@@ -120,7 +124,7 @@ YOUR BEHAVIOR:
    - In "response", describe what you'll change and why (be specific with numbers)
    - Include the proposed worldState/labUpdates/narrativeUpdate
    ${dryRun ? '- The facilitator will review your proposal before you apply it. End your response with "Apply these changes?"' : "- Apply the changes."}
-4. For lab mergers: ask which lab absorbs the other, what happens to compute stock (combine?), and which role controls the merged entity.
+4. For lab mergers: use labMerge with survivorLab (keeps the name/role) and absorbedLab (removed). The survivor gets the absorbed lab's compute stock added and keeps the higher R&D multiplier.
 5. For adding labs: propose a name, controlling role, starting compute, and multiplier.
 6. Be precise and literal. "Reduce by 30%" means calculate 30% and subtract. "Set to 5" means set exactly to 5.
 7. Keep responses SHORT (1-3 sentences). This is a live game — the facilitator doesn't have time to read paragraphs.`;
@@ -139,7 +143,8 @@ YOUR BEHAVIOR:
     const hasChanges = output.intent === "proposal" && (
       output.worldState !== undefined ||
       (output.labUpdates !== undefined && output.labUpdates.length > 0) ||
-      output.narrativeUpdate !== undefined
+      output.narrativeUpdate !== undefined ||
+      output.labMerge !== undefined
     );
 
     // Only apply mutations if not dry run OR if this is a confirmed apply
@@ -201,6 +206,15 @@ YOUR BEHAVIOR:
             });
           }
         }
+      }
+
+      // Apply lab merge
+      if (output.labMerge) {
+        await convex.mutation(api.games.mergeLabs, {
+          gameId: gameId as Id<"games">,
+          survivorName: output.labMerge.survivorLab,
+          absorbedName: output.labMerge.absorbedLab,
+        });
       }
 
       // Apply narrative update
