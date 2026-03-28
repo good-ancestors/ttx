@@ -17,16 +17,15 @@ interface Round {
 }
 
 // Pre-game baseline multipliers (Oct 2027 — before Agent-2 breakthrough)
-// Matches the left edge of the source material's R&D Progress chart
 const PRE_GAME_MULTIPLIERS: Record<string, number> = {
   OpenBrain: 1.15,
   DeepCent: 1.08,
-  "Conscienta": 1.12,
+  Conscienta: 1.12,
   "Other US Labs": 1.1,
   "Rest of World": 1.05,
 };
 
-// Milestone markers on the capability scale
+// Milestone markers — only shown when the peak value reaches them
 const MILESTONES = [
   { multiplier: 3, label: "Agent-2", color: "#22C55E" },
   { multiplier: 10, label: "Agent-3", color: "#06B6D4" },
@@ -38,26 +37,34 @@ function labColor(roleId: string): string {
   return ROLES.find((r) => r.id === roleId)?.color ?? "#94A3B8";
 }
 
-// Hybrid scale: linear 1-10×, then log above 10×
-// This makes early-game differences visible while still fitting late-game values
-function scaleY(multiplier: number): number {
-  const v = Math.max(1, multiplier);
-  if (v <= 10) {
-    // Linear 1-10 → maps to 0-0.6 of chart height
-    return ((v - 1) / 9) * 0.6;
-  }
-  // Log above 10 → maps to 0.6-1.0
-  // log10(10)=1, log10(1000)=3, so range is 2 units
-  return 0.6 + ((Math.log10(v) - 1) / 2) * 0.4;
+// Dynamic scale: adapts to the peak value
+// At game start (peak ~3x), 3x is near the top
+// As labs grow, the scale expands to accommodate
+function makeScaleY(ceiling: number) {
+  return (multiplier: number): number => {
+    const v = Math.max(1, multiplier);
+    if (ceiling <= 15) {
+      // Early game: linear 1 to ceiling
+      return (v - 1) / (ceiling - 1);
+    }
+    // Late game: hybrid linear/log
+    if (v <= 10) {
+      return ((v - 1) / 9) * 0.5;
+    }
+    const logCeiling = Math.log10(ceiling);
+    return 0.5 + ((Math.log10(v) - 1) / (logCeiling - 1)) * 0.5;
+  };
 }
 
 export function RdProgressChart({
   rounds,
   currentLabs,
+  currentRound = 1,
   compact = false,
 }: {
   rounds: Round[];
   currentLabs: Lab[];
+  currentRound?: number;
   compact?: boolean;
 }) {
   const allLabs = [...DEFAULT_LABS, ...BACKGROUND_LABS.map((l, i) => ({ ...l, roleId: `bg-${i}` }))];
@@ -67,22 +74,20 @@ export function RdProgressChart({
   const width = 340;
   const height = compact ? 170 : 210;
   const padLeft = 32;
-  const padRight = 50; // Space for value labels
+  const padRight = 50;
   const padTop = 10;
   const padBottom = 28;
   const chartW = width - padLeft - padRight;
   const chartH = height - padTop - padBottom;
 
-  // Fixed x-axis: Pre, Start, R1, R2, R3, R4 — always show all labels
-  const xLabels = ["Pre", "Start", "R1", "R2", "R3", "R4"];
+  // Dynamic x-axis: only show up to current round + 1
+  const allLabels = ["Pre", "Start", "R1", "R2", "R3", "R4"];
+  const visibleCount = Math.min(allLabels.length, currentRound + 2); // Pre, Start, + current round
+  const xLabels = allLabels.slice(0, visibleCount);
   const xCount = xLabels.length;
 
   function xPos(i: number): number {
     return padLeft + (i / Math.max(1, xCount - 1)) * chartW;
-  }
-
-  function yPos(multiplier: number): number {
-    return padTop + chartH - scaleY(multiplier) * chartH;
   }
 
   // Build per-lab point series
@@ -95,34 +100,65 @@ export function RdProgressChart({
 
     // Pre-game (~Oct 2027)
     const preVal = PRE_GAME_MULTIPLIERS[lab.name] ?? 1.1;
-    points.push({ x: xPos(0), y: yPos(preVal), value: preVal });
+    points.push({ x: xPos(0), y: 0, value: preVal }); // y set after scale determined
 
     // Start (game creation state)
-    points.push({ x: xPos(1), y: yPos(lab.rdMultiplier), value: lab.rdMultiplier });
+    points.push({ x: xPos(1), y: 0, value: lab.rdMultiplier });
 
-    // Completed rounds (R1=index 2, R2=index 3, R3=index 4)
+    // Completed rounds
     for (let i = 0; i < completedRounds.length; i++) {
       const roundLab = completedRounds[i].labsAfter?.find((l) => l.name === lab.name);
       const val = roundLab?.rdMultiplier ?? lab.rdMultiplier;
-      points.push({ x: xPos(2 + i), y: yPos(val), value: val });
+      points.push({ x: xPos(2 + i), y: 0, value: val });
     }
 
-    // Current round (not yet resolved) — only show if value changed from last snapshot
-    // (e.g., facilitator adjusted mid-round). Otherwise line ends at last completed round.
+    // Current round if values changed from last snapshot
     if (completedRounds.length < 4 && completedRounds.length > 0) {
       const currentLab = currentLabs.find((l) => l.name === lab.name);
       const val = currentLab?.rdMultiplier ?? lab.rdMultiplier;
       const lastSnapshotVal = points[points.length - 1]?.value;
       if (val !== lastSnapshotVal) {
-        points.push({ x: xPos(2 + completedRounds.length), y: yPos(val), value: val });
+        points.push({ x: xPos(2 + completedRounds.length), y: 0, value: val });
       }
     }
 
     series.push({ name: lab.name, roleId: lab.roleId, points, isBackground });
   }
 
-  // Y-axis tick values (hybrid scale)
-  const yTicks = [1, 2, 3, 5, 10, 100, 1000].filter((v) => scaleY(v) <= 1.05);
+  // Find peak value across all visible points
+  const peakValue = Math.max(
+    ...series.flatMap((s) => s.points.map((p) => p.value)),
+    3 // minimum ceiling so the chart isn't empty
+  );
+
+  // Dynamic ceiling: next nice round number above peak, with 20% headroom
+  const ceilingRaw = peakValue * 1.3;
+  const ceiling = ceilingRaw <= 5 ? 5
+    : ceilingRaw <= 15 ? 15
+    : ceilingRaw <= 50 ? 50
+    : ceilingRaw <= 200 ? 200
+    : ceilingRaw <= 1500 ? 1500
+    : 10000;
+
+  const scaleY = makeScaleY(ceiling);
+
+  function yPos(multiplier: number): number {
+    return padTop + chartH - scaleY(multiplier) * chartH;
+  }
+
+  // Now set y positions on all points
+  for (const s of series) {
+    for (const p of s.points) {
+      p.y = yPos(p.value);
+    }
+  }
+
+  // Y-axis ticks: only show values up to the ceiling
+  const allTicks = [1, 2, 3, 5, 10, 50, 100, 500, 1000, 5000];
+  const yTicks = allTicks.filter((v) => v <= ceiling && scaleY(v) <= 1.05);
+
+  // Milestones: only show those at or below the peak (+ small buffer)
+  const visibleMilestones = MILESTONES.filter((m) => m.multiplier <= peakValue * 1.5);
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-4">
@@ -154,13 +190,13 @@ export function RdProgressChart({
               fontSize={9}
               fontFamily="monospace"
             >
-              {v >= 1000 ? "1k" : v}×
+              {v >= 1000 ? `${v / 1000}k` : v}×
             </text>
           </g>
         ))}
 
-        {/* Milestone labels on right edge */}
-        {MILESTONES.filter((m) => scaleY(m.multiplier) <= 1).map((m) => (
+        {/* Milestone labels on right edge — only visible ones */}
+        {visibleMilestones.filter((m) => scaleY(m.multiplier) <= 1).map((m) => (
           <text
             key={m.label}
             x={width - 2}
@@ -174,7 +210,7 @@ export function RdProgressChart({
           </text>
         ))}
 
-        {/* X-axis labels */}
+        {/* X-axis labels — only visible rounds */}
         {xLabels.map((label, i) => (
           <text
             key={label}
@@ -183,7 +219,6 @@ export function RdProgressChart({
             textAnchor="middle"
             fill="#94A3B8"
             fontSize={10}
-            fontWeight={label === "Now" ? 600 : 400}
           >
             {label}
           </text>
@@ -204,13 +239,11 @@ export function RdProgressChart({
 
         {/* Main lab lines — step function (flat during round, jump at resolve) */}
         {series.filter((s) => !s.isBackground).map((s) => {
-          // Convert to step-after path: horizontal to new x, then vertical to new y
           const stepPoints: string[] = [];
           for (let i = 0; i < s.points.length; i++) {
             if (i === 0) {
               stepPoints.push(`${s.points[i].x},${s.points[i].y}`);
             } else {
-              // Step: hold previous y until new x, then jump to new y
               stepPoints.push(`${s.points[i].x},${s.points[i - 1].y}`);
               stepPoints.push(`${s.points[i].x},${s.points[i].y}`);
             }

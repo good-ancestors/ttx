@@ -911,7 +911,7 @@ export default function FacilitatorPage({
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
           {/* Left sidebar */}
           <div className="flex flex-col gap-4">
-            <RdProgressChart rounds={rounds} currentLabs={game.labs} />
+            <RdProgressChart rounds={rounds} currentLabs={game.labs} currentRound={game.currentRound} />
             <div>
               <WorldStatePanel worldState={game.worldState} variant="dark" />
               {!isProjector && <WorldStateEditor gameId={gameId} worldState={game.worldState} />}
