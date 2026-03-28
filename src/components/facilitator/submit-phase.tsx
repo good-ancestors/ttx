@@ -8,7 +8,6 @@ import { Lock, Dices, Loader2, SkipForward, EyeOff } from "lucide-react";
 import type { FacilitatorPhaseProps, Submission, Proposal, Table, Round } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 
-// Re-export SubmissionTracker for use in parent (it was previously inline)
 export { SubmissionTracker };
 
 interface SubmitPhaseProps extends FacilitatorPhaseProps {
