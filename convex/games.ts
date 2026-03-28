@@ -259,6 +259,46 @@ export const advanceRound = mutation({
   },
 });
 
+export const restoreSnapshot = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) return;
+
+    const rounds = await ctx.db.query("rounds")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (!round?.worldStateAfter || !round?.labsAfter) return;
+
+    // Restore world state and labs from the snapshot
+    await ctx.db.patch(args.gameId, {
+      worldState: round.worldStateAfter,
+      labs: round.labsAfter,
+    });
+
+    // Restore role compute if available
+    if (round.roleComputeAfter) {
+      const tables = await ctx.db.query("tables")
+        .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+        .collect();
+      for (const rc of round.roleComputeAfter) {
+        const table = tables.find((t) => t.roleId === rc.roleId);
+        if (table) {
+          await ctx.db.patch(table._id, { computeStock: rc.computeStock });
+        }
+      }
+    }
+
+    await logEvent(ctx, args.gameId, "snapshot_restored", undefined, {
+      restoredFromRound: args.roundNumber,
+    });
+  },
+});
+
 export const skipTimer = mutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {

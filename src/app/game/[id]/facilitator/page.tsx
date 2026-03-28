@@ -44,6 +44,7 @@ import {
   Clock,
   Loader2,
   Dices,
+  RotateCcw,
 } from "lucide-react";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleActionsData } from "@/lib/sample-actions";
 import { PRIORITY_DECAY } from "@/lib/game-data";
@@ -92,6 +93,7 @@ export default function FacilitatorPage({
   const kickToAI = useMutation(api.tables.kickToAI);
   const addLab = useMutation(api.games.addLab);
   const mergeLabs = useMutation(api.games.mergeLabs);
+  const restoreSnapshot = useMutation(api.games.restoreSnapshot);
   const submitActions = useMutation(api.submissions.submit);
   const setDispositionMut = useMutation(api.tables.setDisposition);
   const applyAiInfluenceMut = useMutation(api.submissions.applyAiInfluence);
@@ -781,6 +783,22 @@ export default function FacilitatorPage({
                 await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
               }}
             />
+            {!isProjector && (() => {
+              const snapshotRounds = (rounds ?? []).filter(r => r.worldStateAfter);
+              if (snapshotRounds.length === 0) return null;
+              const latest = snapshotRounds[snapshotRounds.length - 1];
+              return (
+                <button
+                  onClick={async () => {
+                    await restoreSnapshot({ gameId, roundNumber: latest.number });
+                  }}
+                  className="text-[11px] text-text-light hover:text-viz-warning transition-colors flex items-center gap-1"
+                  title={`Revert world state and labs to end of ${latest.label}`}
+                >
+                  <RotateCcw className="w-3 h-3" /> Revert to {latest.label} snapshot
+                </button>
+              );
+            })()}
           </div>
 
           {/* Main content area */}
