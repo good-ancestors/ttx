@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { worldStateValidator, labSnapshotValidator } from "./schema";
 export const getByGame = query({
     args: { gameId: v.id("games") },
     handler: async (ctx, args) => {
@@ -45,29 +46,35 @@ export const applySummary = mutation({
         await ctx.db.patch(round._id, { summary: args.summary });
     },
 });
+export const snapshotBefore = mutation({
+    args: {
+        gameId: v.id("games"),
+        roundNumber: v.number(),
+        worldStateBefore: worldStateValidator,
+        labsBefore: v.array(labSnapshotValidator),
+    },
+    handler: async (ctx, args) => {
+        const rounds = await ctx.db
+            .query("rounds")
+            .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+            .collect();
+        const round = rounds.find((r) => r.number === args.roundNumber);
+        if (!round)
+            throw new Error(`Round ${args.roundNumber} not found for game ${args.gameId}`);
+        if (round.worldStateBefore)
+            return; // Already snapshotted — idempotent no-op
+        await ctx.db.patch(round._id, {
+            worldStateBefore: args.worldStateBefore,
+            labsBefore: args.labsBefore,
+        });
+    },
+});
 export const snapshotState = mutation({
     args: {
         gameId: v.id("games"),
         roundNumber: v.number(),
-        worldStateAfter: v.object({
-            capability: v.number(),
-            alignment: v.number(),
-            tension: v.number(),
-            awareness: v.number(),
-            regulation: v.number(),
-            australia: v.number(),
-        }),
-        labsAfter: v.array(v.object({
-            name: v.string(),
-            roleId: v.string(),
-            computeStock: v.number(),
-            rdMultiplier: v.number(),
-            allocation: v.object({
-                users: v.number(),
-                capability: v.number(),
-                safety: v.number(),
-            }),
-        })),
+        worldStateAfter: worldStateValidator,
+        labsAfter: v.array(labSnapshotValidator),
         roleComputeAfter: v.optional(v.array(v.object({
             roleId: v.string(),
             roleName: v.string(),
