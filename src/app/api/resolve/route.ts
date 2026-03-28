@@ -286,9 +286,15 @@ async function applyResolution(opts: {
 
   // Update lab compute, R&D multipliers, and allocation
   const maxMultiplier = roundNumber === 1 ? 15 : roundNumber === 2 ? 200 : roundNumber === 3 ? 5000 : 10000;
+  const minFloors: Record<number, number> = { 1: 3, 2: 10, 3: 100, 4: 500 };
+  const minFloor = minFloors[roundNumber] ?? 3;
+  let labsUpdatedByAI = false;
+  let labsFallbackApplied = false;
+
   if (output.labUpdates && output.labUpdates.length > 0) {
+    labsUpdatedByAI = true;
+    console.info(`[resolve] R${roundNumber} AI provided ${output.labUpdates.length} labUpdates: ${JSON.stringify(output.labUpdates.map(u => ({ name: u.name, mult: u.newRdMultiplier, compute: u.newComputeStock })))}`);
     const updatedLabs = game.labs.map((lab) => {
-      // Fuzzy match: try exact, then case-insensitive, then startsWith
       const update = output.labUpdates.find((u) => u.name === lab.name)
         ?? output.labUpdates.find((u) => u.name.toLowerCase() === lab.name.toLowerCase())
         ?? output.labUpdates.find((u) => u.name.toLowerCase().startsWith(lab.name.toLowerCase().slice(0, 4)));
@@ -296,42 +302,45 @@ async function applyResolution(opts: {
         console.warn(`[resolve] No labUpdate match for "${lab.name}". AI provided: ${output.labUpdates.map((u) => u.name).join(", ")}`);
         return lab;
       }
-      const newMultiplier = Math.min(maxMultiplier, Math.max(0, Math.round(update.newRdMultiplier * 10) / 10));
+      const newMultiplier = Math.min(maxMultiplier, Math.max(lab.rdMultiplier, Math.round(update.newRdMultiplier * 10) / 10));
+      // Never let compute drop below 5u
+      const newCompute = Math.max(5, Math.round(update.newComputeStock));
       const allocation = update.newAllocation
         ? normaliseAllocation(update.newAllocation)
         : lab.allocation;
-      return {
-        ...lab,
-        computeStock: Math.max(0, Math.round(update.newComputeStock)),
-        rdMultiplier: newMultiplier,
-        allocation,
-      };
+      return { ...lab, computeStock: newCompute, rdMultiplier: newMultiplier, allocation };
     });
     await convex.mutation(api.games.updateLabs, {
       gameId: gameId as Id<"games">,
       labs: updatedLabs,
     });
+  } else {
+    console.error(`[resolve] R${roundNumber} ERROR: AI output contained NO labUpdates! Output keys: ${Object.keys(output).join(", ")}`);
   }
 
-  // Fallback: ensure labs progress even if AI omits labUpdates
-  // The scenario backbone requires multipliers to grow each round
-  const minFloors: Record<number, number> = { 1: 3, 2: 10, 3: 100, 4: 500 };
-  const minFloor = minFloors[roundNumber] ?? 3;
-  const currentLeading = Math.max(...game.labs.map((l) => l.rdMultiplier));
-  const latestLabs = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
-  const latestLeading = latestLabs ? Math.max(...latestLabs.labs.map((l: { rdMultiplier: number }) => l.rdMultiplier)) : currentLeading;
+  // Fallback floor: ensure labs progress even if AI omits or under-reports
+  const latestGame = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
+  const latestLeading = latestGame ? Math.max(...latestGame.labs.map((l: { rdMultiplier: number }) => l.rdMultiplier)) : 1;
   if (latestLeading < minFloor) {
-    console.warn(`[resolve] R${roundNumber} leading lab ${latestLeading}x below floor ${minFloor}x — auto-bumping`);
-    const scale = minFloor / Math.max(1, currentLeading);
-    const bumpedLabs = (latestLabs?.labs ?? game.labs).map((lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }) => ({
+    labsFallbackApplied = true;
+    const prevLeading = Math.max(...game.labs.map((l) => l.rdMultiplier));
+    console.warn(`[resolve] R${roundNumber} FALLBACK: leading lab ${latestLeading}x below floor ${minFloor}x (was ${prevLeading}x before resolve). Auto-bumping all labs.`);
+    const scale = minFloor / Math.max(1, prevLeading);
+    const bumpedLabs = (latestGame?.labs ?? game.labs).map((lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }) => ({
       ...lab,
       rdMultiplier: Math.min(maxMultiplier, Math.round(lab.rdMultiplier * scale * 10) / 10),
-      computeStock: lab.computeStock + Math.round(roundNumber * 3),
+      computeStock: Math.max(lab.computeStock, lab.computeStock + Math.round(roundNumber * 3)),
     }));
     await convex.mutation(api.games.updateLabs, {
       gameId: gameId as Id<"games">,
       labs: bumpedLabs,
     });
+  }
+
+  // Log final state for debugging
+  const finalGame = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
+  if (finalGame) {
+    console.info(`[resolve] R${roundNumber} FINAL labs: ${finalGame.labs.map((l: { name: string; rdMultiplier: number; computeStock: number }) => `${l.name}: ${l.rdMultiplier}x/${l.computeStock}u`).join(", ")} | aiUpdated=${labsUpdatedByAI} fallback=${labsFallbackApplied}`);
   }
 
   // Snapshot final state
