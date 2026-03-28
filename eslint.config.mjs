@@ -49,15 +49,18 @@ const eslintConfig = defineConfig([
         { checksVoidReturn: { attributes: false } },
       ],
       "@typescript-eslint/switch-exhaustiveness-check": "error",
-      "@typescript-eslint/no-unnecessary-condition": "warn",
-      "@typescript-eslint/prefer-nullish-coalescing": "warn",
-      "@typescript-eslint/prefer-optional-chain": "warn",
+      // Disabled: too aggressive with Convex reactive queries and defensive coding
+      "@typescript-eslint/no-unnecessary-condition": "off",
+      "@typescript-eslint/prefer-nullish-coalescing": "off",
+      "@typescript-eslint/prefer-optional-chain": "off",
       "@typescript-eslint/no-unnecessary-type-assertion": "warn",
-      "@typescript-eslint/no-unsafe-member-access": "warn",
-      "@typescript-eslint/no-unsafe-argument": "warn",
-      "@typescript-eslint/no-unsafe-assignment": "warn",
-      "@typescript-eslint/no-unsafe-return": "warn",
-      "@typescript-eslint/no-unsafe-call": "warn",
+      // Disabled: Convex queries return untyped data; fixing requires schema-wide typing
+      // that adds boilerplate without runtime safety benefit (Convex validates server-side)
+      "@typescript-eslint/no-unsafe-member-access": "off",
+      "@typescript-eslint/no-unsafe-argument": "off",
+      "@typescript-eslint/no-unsafe-assignment": "off",
+      "@typescript-eslint/no-unsafe-return": "off",
+      "@typescript-eslint/no-unsafe-call": "off",
 
       // === Code Complexity ===
       "max-lines-per-function": ["warn", { max: 200, skipBlankLines: true, skipComments: true }],
@@ -79,7 +82,8 @@ const eslintConfig = defineConfig([
       "prefer-template": "warn",
       eqeqeq: ["error", "always", { null: "ignore" }],
       "no-console": ["warn", { allow: ["log", "warn", "error", "info"] }],
-      "no-nested-ternary": "warn",
+      // Nested ternaries are idiomatic in JSX conditional rendering
+      "no-nested-ternary": "off",
 
       // === Browser API restrictions ===
       // Native dialogs (alert/confirm/prompt) block the event loop and break
