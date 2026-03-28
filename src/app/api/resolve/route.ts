@@ -46,7 +46,7 @@ const ResolveOutput = z.object({
   }),
   labUpdates: z.array(
     z.object({
-      name: z.string(),
+      name: z.enum(["OpenBrain", "DeepCent", "Conscienta"]),
       newComputeStock: z.number(),
       newRdMultiplier: z.number(),
       newAllocation: z.object({
