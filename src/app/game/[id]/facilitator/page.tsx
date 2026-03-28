@@ -194,6 +194,7 @@ export default function FacilitatorPage({
   const currentRound = rounds.find((r) => r.number === game.currentRound);
   const phase = game.phase;
   const connectedCount = tables.filter((t) => t.connected).length;
+  const snapshotRounds = isProjector ? [] : rounds.filter(r => r.worldStateAfter).map(r => ({ number: r.number, label: r.label }));
 
   // Get AI Systems disposition for passing to grading/narrate/AI player prompts
   const aiSystemsTable = tables.find((t) => t.roleId === "ai-systems");
@@ -649,7 +650,7 @@ export default function FacilitatorPage({
   if (game.status === "lobby") {
     return (
       <div className="min-h-screen bg-navy-dark text-white">
-        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} />
+        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotRounds} onRestore={async (rn) => { await restoreSnapshot({ gameId, roundNumber: rn }); }} />
         <LobbyPhase
           gameId={gameId}
           game={game}
@@ -671,7 +672,7 @@ export default function FacilitatorPage({
   if (game.status === "finished") {
     return (
       <div className="min-h-screen bg-navy-dark text-white">
-        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} />
+        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotRounds} onRestore={async (rn) => { await restoreSnapshot({ gameId, roundNumber: rn }); }} />
         <div className="p-6 max-w-[1400px] mx-auto">
           <div className="text-center mb-8">
             <Dices className="w-12 h-12 text-text-light mx-auto mb-4" />
@@ -691,7 +692,7 @@ export default function FacilitatorPage({
   // ─── PLAYING ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-navy-dark text-white">
-      <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} />
+      <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotRounds} onRestore={async (rn) => { await restoreSnapshot({ gameId, roundNumber: rn }); }} />
 
       {/* QR codes overlay — accessible during any phase */}
       {/* Fullscreen single QR code */}
@@ -783,22 +784,6 @@ export default function FacilitatorPage({
                 await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
               }}
             />
-            {!isProjector && (() => {
-              const snapshotRounds = (rounds ?? []).filter(r => r.worldStateAfter);
-              if (snapshotRounds.length === 0) return null;
-              const latest = snapshotRounds[snapshotRounds.length - 1];
-              return (
-                <button
-                  onClick={async () => {
-                    await restoreSnapshot({ gameId, roundNumber: latest.number });
-                  }}
-                  className="text-[11px] text-text-light hover:text-viz-warning transition-colors flex items-center gap-1"
-                  title={`Revert world state and labs to end of ${latest.label}`}
-                >
-                  <RotateCcw className="w-3 h-3" /> Revert to {latest.label} snapshot
-                </button>
-              );
-            })()}
           </div>
 
           {/* Main content area */}
@@ -929,6 +914,8 @@ function FacilitatorNav({
   isUrgent,
   onShowQR,
   isProjector,
+  snapshots,
+  onRestore,
 }: {
   round: { label: string; number: number } | undefined;
   phase: string;
@@ -937,7 +924,10 @@ function FacilitatorNav({
   isUrgent: boolean;
   onShowQR?: () => void;
   isProjector?: boolean;
+  snapshots?: { number: number; label: string }[];
+  onRestore?: (roundNumber: number) => Promise<void>;
 }) {
+  const [showSnapshots, setShowSnapshots] = useState(false);
   const phaseColors: Record<string, { bg: string; text: string }> = {
     discuss: { bg: "#1E3A5F", text: "#60A5FA" },
     submit: { bg: "#3D2F00", text: "#FCD34D" },
@@ -960,12 +950,30 @@ function FacilitatorNav({
             Turn {round.number}/4 — {round.label}
           </span>
         )}
-        <span
-          className="text-[11px] py-1 px-2.5 rounded-full font-mono font-semibold"
-          style={{ backgroundColor: colors.bg, color: colors.text }}
-        >
-          {phase.toUpperCase()}
-        </span>
+        <div className="relative">
+          <button
+            onClick={snapshots?.length ? () => setShowSnapshots(!showSnapshots) : undefined}
+            className="text-[11px] py-1 px-2.5 rounded-full font-mono font-semibold cursor-default"
+            style={{ backgroundColor: colors.bg, color: colors.text, cursor: snapshots?.length ? "pointer" : "default" }}
+          >
+            {phase.toUpperCase()}
+          </button>
+          {showSnapshots && snapshots && onRestore && (
+            <div className="absolute right-0 top-full mt-1 bg-navy-dark border border-navy-light rounded-lg shadow-xl z-50 min-w-[180px] py-1">
+              <div className="px-3 py-1.5 text-[10px] text-text-light uppercase tracking-wider">Restore snapshot</div>
+              {snapshots.map((s) => (
+                <button
+                  key={s.number}
+                  onClick={async () => { await onRestore(s.number); setShowSnapshots(false); }}
+                  className="w-full text-left px-3 py-2 text-xs text-white hover:bg-navy-light transition-colors flex items-center gap-2"
+                >
+                  <RotateCcw className="w-3 h-3 text-text-light" />
+                  Revert to end of {s.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         {isProjector && (
           <span className="text-[10px] py-0.5 px-2 rounded-full font-mono font-semibold bg-white/10 text-white/70">
             PROJECTOR

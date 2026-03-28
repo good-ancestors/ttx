@@ -46,6 +46,7 @@ const AdjustOutput = z.object({
     survivorLab: z.string(),
     absorbedLab: z.string(),
   })),
+  restoreSnapshot: z.optional(z.number()),
 });
 
 export async function POST(request: Request) {
@@ -126,6 +127,7 @@ YOUR BEHAVIOR:
    ${dryRun ? '- The facilitator will review your proposal before you apply it. End your response with "Apply these changes?"' : "- Apply the changes."}
 4. For lab mergers: use labMerge with survivorLab (keeps the name/role) and absorbedLab (removed). The survivor gets the absorbed lab's compute stock added and keeps the higher R&D multiplier.
 5. For adding labs: propose a name, controlling role, starting compute, and multiplier.
+8. For reverting/undoing: use restoreSnapshot with the round number to revert to. This restores world state, labs, and role compute to the end of that round.
 6. Be precise and literal. "Reduce by 30%" means calculate 30% and subtract. "Set to 5" means set exactly to 5.
 7. Keep responses SHORT (1-3 sentences). This is a live game — the facilitator doesn't have time to read paragraphs.`;
 
@@ -144,7 +146,8 @@ YOUR BEHAVIOR:
       output.worldState !== undefined ||
       (output.labUpdates !== undefined && output.labUpdates.length > 0) ||
       output.narrativeUpdate !== undefined ||
-      output.labMerge !== undefined
+      output.labMerge !== undefined ||
+      output.restoreSnapshot !== undefined
     );
 
     // Only apply mutations if not dry run OR if this is a confirmed apply
@@ -214,6 +217,14 @@ YOUR BEHAVIOR:
           gameId: gameId as Id<"games">,
           survivorName: output.labMerge.survivorLab,
           absorbedName: output.labMerge.absorbedLab,
+        });
+      }
+
+      // Restore snapshot
+      if (output.restoreSnapshot) {
+        await convex.mutation(api.games.restoreSnapshot, {
+          gameId: gameId as Id<"games">,
+          roundNumber: output.restoreSnapshot,
         });
       }
 
