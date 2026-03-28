@@ -73,6 +73,7 @@ import {
   RefreshCw,
   ToggleLeft,
   ToggleRight,
+  CheckCircle,
 } from "lucide-react";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleActionsData } from "@/lib/sample-actions";
 import { PRIORITY_DECAY } from "@/lib/game-data";
@@ -150,6 +151,26 @@ export default function FacilitatorPage({
   const [newLabMultiplier, setNewLabMultiplier] = useState(1);
   const [useSampleForAI, setUseSampleForAI] = useState(false);
   const [sampleActionsData, setSampleActionsData] = useState<SampleActionsData | null>(null);
+
+  // Staggered dice reveal animation
+  const [revealedCount, setRevealedCount] = useState(0);
+  const gamePhase = game?.phase;
+  const isRollingPhase = gamePhase === "rolling" || gamePhase === "narrate";
+  // Reset reveal count when leaving rolling/narrate phase
+  useEffect(() => {
+    if (!isRollingPhase) {
+      const t = setTimeout(() => setRevealedCount(0), 0);
+      return () => clearTimeout(t);
+    }
+  }, [isRollingPhase]);
+  // Stagger dice result reveals one at a time
+  useEffect(() => {
+    if (!isRollingPhase) return;
+    const total = (submissions ?? []).flatMap((s) => s.actions.filter((a) => a.rolled != null)).length;
+    if (revealedCount >= total) return;
+    const timer = setTimeout(() => setRevealedCount((c) => c + 1), 200);
+    return () => clearTimeout(timer);
+  }, [revealedCount, isRollingPhase, submissions]);
 
   // Warm up API routes on facilitator page load
   useEffect(() => {
@@ -1155,10 +1176,31 @@ export default function FacilitatorPage({
                 )}
 
                 {/* Section 1: Dice Results — always show when dice have been rolled */}
-                {submissions?.some((s) => s.actions.some((a) => a.rolled != null)) && (
+                {submissions?.some((s) => s.actions.some((a) => a.rolled != null)) && (() => {
+                  // Flatten and sort all rolled actions by priority descending
+                  const allRolled = (submissions ?? []).flatMap((sub) => {
+                    const role = ROLES.find((r) => r.id === sub.roleId);
+                    return sub.actions
+                      .map((action, i) => ({ action, i, sub, role }))
+                      .filter(({ action }) => action.rolled != null);
+                  }).sort((a, b) => b.action.priority - a.action.priority);
+                  const allRevealed = revealedCount >= allRolled.length;
+
+                  return (
                   <div className="bg-navy rounded-xl border border-navy-light p-5">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Dice Results</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Dice Results</span>
+                        {!allRevealed ? (
+                          <span className="text-xs text-viz-warning animate-pulse flex items-center gap-1">
+                            <Dices className="w-3.5 h-3.5" /> Rolling...
+                          </span>
+                        ) : (
+                          <span className="text-xs text-viz-safety flex items-center gap-1">
+                            <CheckCircle className="w-3.5 h-3.5" /> All actions resolved
+                          </span>
+                        )}
+                      </div>
                       <button
                         onClick={revealAllSecrets}
                         className="text-[10px] text-viz-warning hover:text-white transition-colors flex items-center gap-1"
@@ -1167,15 +1209,16 @@ export default function FacilitatorPage({
                       </button>
                     </div>
                     <div className="space-y-1.5">
-                      {(submissions ?? []).flatMap((sub) => {
-                        const role = ROLES.find((r) => r.id === sub.roleId);
-                        return sub.actions
-                          .filter((a) => a.rolled != null)
-                          .map((action, i) => {
+                      {allRolled.map(({ action, i, sub, role }, idx) => {
                             const secretKey = `${sub.roleId}-${i}`;
                             const isCovert = action.secret && !revealedSecrets.has(secretKey);
                             return (
-                              <div key={`${sub._id}-${i}`} className="flex items-center gap-2 py-1.5 border-b border-navy-light/50 last:border-0">
+                              <div
+                                key={`${sub._id}-${i}`}
+                                className={`flex items-center gap-2 py-1.5 border-b border-navy-light/50 last:border-0 transition-all duration-300 ${
+                                  idx < revealedCount ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"
+                                }`}
+                              >
                                 <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: role?.color }} />
                                 <span className="text-xs font-bold text-white shrink-0 w-24 truncate">{role?.name ?? sub.roleId}</span>
                                 {action.secret && (
@@ -1221,7 +1264,6 @@ export default function FacilitatorPage({
                                 )}
                               </div>
                             );
-                          });
                       })}
                     </div>
                     {/* Re-resolve button if outcomes were changed */}
@@ -1235,7 +1277,8 @@ export default function FacilitatorPage({
                       </button>
                     )}
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* Section 2: Resolved Events — show after resolve API returns */}
                 {currentRound?.resolvedEvents && currentRound.resolvedEvents.length > 0 && (

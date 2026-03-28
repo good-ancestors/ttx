@@ -8,6 +8,7 @@ import { ROLES, MAX_PRIORITY, isLabCeo, isLabSafety, hasCompute, AI_DISPOSITIONS
 import { useCountdown, useKeyboardScroll } from "@/lib/hooks";
 import { ActionInput, normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
+import { loadRoleHandouts } from "@/lib/role-handouts";
 import { ComputeAllocation } from "@/components/compute-allocation";
 // Compute loans now handled via action request system
 import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
@@ -380,6 +381,12 @@ export default function TablePlayerPage({
     loadSampleActions().then(setSampleActionsData).catch((err) => console.error("Failed to load sample actions:", err));
   }, []);
 
+  // Load role handouts on mount
+  const [handoutData, setHandoutData] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+    loadRoleHandouts().then(setHandoutData).catch(() => {});
+  }, []);
+
   const { display: timerDisplay, secondsLeft, isUrgent, isExpired } = useCountdown(game?.phaseEndsAt);
 
   const role = table ? ROLES.find((r) => r.id === table.roleId) : null;
@@ -707,13 +714,13 @@ export default function TablePlayerPage({
                 </div>
                 <p className="text-sm font-semibold text-text mb-1">{role.name}</p>
                 <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
-                {role.handout && (
+                {handoutData?.[role.id] && (
                   <details className="mt-3">
                     <summary className="text-xs font-semibold text-text-muted cursor-pointer hover:text-text">
                       Full Brief
                     </summary>
                     <div className="mt-2 text-xs text-text-muted whitespace-pre-line leading-relaxed">
-                      {role.handout}
+                      {handoutData[role.id]}
                     </div>
                   </details>
                 )}
@@ -762,13 +769,13 @@ export default function TablePlayerPage({
               </div>
               <p className="text-sm font-semibold text-text mb-1">{role.name}</p>
               <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
-              {role.handout && (
+              {handoutData?.[role.id] && (
                 <details className="mt-3">
                   <summary className="text-xs font-semibold text-text-muted cursor-pointer hover:text-text">
                     Full Brief
                   </summary>
                   <div className="mt-2 text-xs text-text-muted whitespace-pre-line leading-relaxed">
-                    {role.handout}
+                    {handoutData[role.id]}
                   </div>
                 </details>
               )}
