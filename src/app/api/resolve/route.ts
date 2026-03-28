@@ -89,6 +89,13 @@ async function applyResolution(
   timeMs: number,
   tokens?: number,
 ) {
+  console.info(`[resolve] R${roundNumber} applyResolution: ${output.resolvedEvents?.length ?? 0} events, ${output.labUpdates?.length ?? 0} labUpdates, model=${usedModel}`);
+  if (output.labUpdates?.length) {
+    console.info(`[resolve] labUpdates: ${output.labUpdates.map((u) => `${u.name}: ${u.newRdMultiplier}x ${u.newComputeStock}u`).join(", ")}`);
+  } else {
+    console.warn(`[resolve] R${roundNumber} WARNING: No labUpdates in resolve output!`);
+  }
+
   // Store resolved events
   await convex.mutation(api.rounds.applyResolution, {
     gameId: gameId as Id<"games">,
@@ -135,10 +142,16 @@ async function applyResolution(
 
   // Update lab compute, R&D multipliers, and allocation
   const maxMultiplier = roundNumber === 1 ? 15 : roundNumber === 2 ? 200 : roundNumber === 3 ? 5000 : 10000;
-  if (output.labUpdates) {
+  if (output.labUpdates && output.labUpdates.length > 0) {
     const updatedLabs = game.labs.map((lab) => {
-      const update = output.labUpdates.find((u) => u.name === lab.name);
-      if (!update) return lab;
+      // Fuzzy match: try exact, then case-insensitive, then startsWith
+      const update = output.labUpdates.find((u) => u.name === lab.name)
+        ?? output.labUpdates.find((u) => u.name.toLowerCase() === lab.name.toLowerCase())
+        ?? output.labUpdates.find((u) => u.name.toLowerCase().startsWith(lab.name.toLowerCase().slice(0, 4)));
+      if (!update) {
+        console.warn(`[resolve] No labUpdate match for "${lab.name}". AI provided: ${output.labUpdates.map((u) => u.name).join(", ")}`);
+        return lab;
+      }
       const newMultiplier = Math.min(maxMultiplier, Math.max(0, Math.round(update.newRdMultiplier * 10) / 10));
       const allocation = update.newAllocation
         ? normaliseAllocation(update.newAllocation)
@@ -314,8 +327,11 @@ export async function POST(request: Request) {
                     data.tokens as number | undefined,
                   );
                 }
-              } catch {
-                // Not valid JSON or not a complete message — ignore
+              } catch (parseErr) {
+                // Log parsing/apply errors — silent swallowing hides bugs
+                if (line.includes("__complete")) {
+                  console.error("[resolve] Failed to parse/apply __complete message:", parseErr);
+                }
               }
             }
 
