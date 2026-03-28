@@ -91,11 +91,12 @@ export function RdProgressChart({
   }
 
   // Build per-lab point series
-  type LabSeries = { name: string; roleId: string; points: { x: number; y: number; value: number }[]; isBackground: boolean };
+  type LabSeries = { name: string; roleId: string; points: { x: number; y: number; value: number }[]; isBackground: boolean; isAbsorbed: boolean };
   const series: LabSeries[] = [];
 
   for (const lab of allLabs) {
     const isBackground = !DEFAULT_LABS.some((d) => d.roleId === lab.roleId);
+    const isAbsorbed = !isBackground && !currentLabs.some((l) => l.name === lab.name);
     const points: { x: number; y: number; value: number }[] = [];
 
     // Pre-game (~Oct 2027)
@@ -105,15 +106,16 @@ export function RdProgressChart({
     // Start (game creation state)
     points.push({ x: xPos(1), y: 0, value: lab.rdMultiplier });
 
-    // Completed rounds
+    // Completed rounds — stop at last round where this lab existed
     for (let i = 0; i < completedRounds.length; i++) {
       const roundLab = completedRounds[i].labsAfter?.find((l) => l.name === lab.name);
+      if (!roundLab && isAbsorbed) break; // Lab was absorbed — stop the line here
       const val = roundLab?.rdMultiplier ?? lab.rdMultiplier;
       points.push({ x: xPos(2 + i), y: 0, value: val });
     }
 
-    // Current round if values changed from last snapshot
-    if (completedRounds.length < 4 && completedRounds.length > 0) {
+    // Current round if values changed from last snapshot (only for active labs)
+    if (!isAbsorbed && completedRounds.length < 4 && completedRounds.length > 0) {
       const currentLab = currentLabs.find((l) => l.name === lab.name);
       const val = currentLab?.rdMultiplier ?? lab.rdMultiplier;
       const lastSnapshotVal = points[points.length - 1]?.value;
@@ -122,7 +124,7 @@ export function RdProgressChart({
       }
     }
 
-    series.push({ name: lab.name, roleId: lab.roleId, points, isBackground });
+    series.push({ name: lab.name, roleId: lab.roleId, points, isBackground, isAbsorbed });
   }
 
   // Find peak value across all visible points
@@ -248,15 +250,17 @@ export function RdProgressChart({
               stepPoints.push(`${s.points[i].x},${s.points[i].y}`);
             }
           }
+          const color = labColor(s.roleId);
           return (
-          <g key={s.roleId}>
+          <g key={s.roleId} opacity={s.isAbsorbed ? 0.35 : 1}>
             <polyline
               points={stepPoints.join(" ")}
               fill="none"
-              stroke={labColor(s.roleId)}
-              strokeWidth={2.5}
+              stroke={color}
+              strokeWidth={s.isAbsorbed ? 1.5 : 2.5}
               strokeLinejoin="round"
               strokeLinecap="round"
+              strokeDasharray={s.isAbsorbed ? "4,3" : undefined}
             />
             {/* Data points */}
             {s.points.map((p, i) => (
@@ -264,17 +268,17 @@ export function RdProgressChart({
                 key={`${s.roleId}-pt-${i}`}
                 cx={p.x}
                 cy={p.y}
-                r={i === s.points.length - 1 ? 4.5 : 2.5}
-                fill={labColor(s.roleId)}
+                r={i === s.points.length - 1 ? (s.isAbsorbed ? 3 : 4.5) : 2.5}
+                fill={color}
               />
             ))}
             {/* Value label on latest point */}
             <text
               x={s.points[s.points.length - 1].x + 7}
               y={s.points[s.points.length - 1].y + 4}
-              fill={labColor(s.roleId)}
-              fontSize={11}
-              fontWeight={700}
+              fill={color}
+              fontSize={s.isAbsorbed ? 9 : 11}
+              fontWeight={s.isAbsorbed ? 400 : 700}
               fontFamily="monospace"
             >
               {s.points[s.points.length - 1].value < 10
@@ -289,9 +293,9 @@ export function RdProgressChart({
       {/* Legend */}
       <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
         {series.filter((s) => !s.isBackground).map((s) => (
-          <span key={s.roleId} className="flex items-center gap-1.5 text-xs text-text-light">
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: labColor(s.roleId) }} />
-            {s.name}
+          <span key={s.roleId} className={`flex items-center gap-1.5 text-xs ${s.isAbsorbed ? "text-navy-muted line-through" : "text-text-light"}`}>
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: labColor(s.roleId), opacity: s.isAbsorbed ? 0.35 : 1 }} />
+            {s.name}{s.isAbsorbed ? " (merged)" : ""}
           </span>
         ))}
       </div>
