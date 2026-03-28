@@ -48,15 +48,15 @@ function buildResolveSchema(labNames: [string, ...string[]]) {
     labUpdates: z.array(
       z.object({
         name: z.enum(labNames),
-      newComputeStock: z.number(),
-      newRdMultiplier: z.number(),
-      newAllocation: z.object({
-        users: z.number(),
-        capability: z.number(),
-        safety: z.number(),
-      }),
-    })
-  ),
+        newComputeStock: z.number(),
+        newRdMultiplier: z.number(),
+        newAllocation: z.object({
+          users: z.number(),
+          capability: z.number(),
+          safety: z.number(),
+        }),
+      })
+    ).min(labNames.length, `Must provide updates for all ${labNames.length} labs`),
   roleComputeUpdates: z.optional(
     z.array(
       z.object({
