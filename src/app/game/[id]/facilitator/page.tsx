@@ -59,8 +59,6 @@ import {
   Eye,
   Pencil,
   RefreshCw,
-  ToggleLeft,
-  ToggleRight,
   CheckCircle,
 } from "lucide-react";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleActionsData } from "@/lib/sample-actions";
@@ -97,6 +95,7 @@ export default function FacilitatorPage({
   const finishGame = useMutation(api.games.finishGame);
   const rollAll = useMutation(api.submissions.rollAllActions);
   const overrideProbability = useMutation(api.submissions.overrideProbability);
+  const rerollAction = useMutation(api.submissions.rerollAction);
   const overrideOutcome = useMutation(api.submissions.overrideOutcome);
   const setControlMode = useMutation(api.tables.setControlMode);
   const toggleEnabled = useMutation(api.tables.toggleEnabled);
@@ -1226,25 +1225,34 @@ export default function FacilitatorPage({
                                   >
                                     {isCovert ? "[Covert action]" : action.text}
                                   </span>
-                                  <span className={`text-xs font-mono shrink-0 ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>
-                                    {action.rolled}/{action.probability}%
-                                  </span>
-                                  {!isProjector && (
-                                    <button
-                                      onClick={() => overrideOutcome({
-                                        submissionId: sub._id,
-                                        actionIndex: i,
-                                        success: !action.success,
-                                      })}
-                                      className="shrink-0"
-                                      title={`Click to flip to ${action.success ? "FAIL" : "SUCCESS"}`}
-                                    >
-                                      {action.success ? (
-                                        <ToggleRight className="w-5 h-5 text-viz-safety" />
-                                      ) : (
-                                        <ToggleLeft className="w-5 h-5 text-viz-danger" />
-                                      )}
-                                    </button>
+                                  {!isProjector ? (
+                                    <span className="flex items-center gap-0.5 shrink-0">
+                                      <button
+                                        onClick={() => void rerollAction({ submissionId: sub._id, actionIndex: i })}
+                                        className={`text-xs font-mono px-1 rounded hover:bg-navy-light ${action.success ? "text-viz-safety" : "text-viz-danger"}`}
+                                        title="Click to reroll"
+                                      >
+                                        {action.rolled}
+                                      </button>
+                                      <span className={`text-xs ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>/</span>
+                                      <button
+                                        onClick={() => {
+                                          const buckets = [10, 30, 50, 70, 90];
+                                          const current = action.probability ?? 50;
+                                          const idx2 = buckets.indexOf(current);
+                                          const next = buckets[(idx2 + 1) % buckets.length];
+                                          void overrideProbability({ submissionId: sub._id, actionIndex: i, probability: next });
+                                        }}
+                                        className="text-xs font-mono px-1 rounded hover:bg-navy-light text-text-light"
+                                        title="Click to cycle probability"
+                                      >
+                                        {action.probability}%
+                                      </button>
+                                    </span>
+                                  ) : (
+                                    <span className={`text-xs font-mono shrink-0 ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>
+                                      {action.rolled}/{action.probability}%
+                                    </span>
                                   )}
                                 </div>
                               </div>
