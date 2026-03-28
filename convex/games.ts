@@ -3,6 +3,7 @@ import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS } from "./gameData";
 import { logEvent } from "./events";
+import { worldStateValidator, labSnapshotValidator } from "./schema";
 
 /** Auto-snapshot a round's final state (world state, labs, role compute). */
 async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
@@ -159,14 +160,7 @@ export const advancePhase = mutation({
 export const updateWorldState = mutation({
   args: {
     gameId: v.id("games"),
-    worldState: v.object({
-      capability: v.number(),
-      alignment: v.number(),
-      tension: v.number(),
-      awareness: v.number(),
-      regulation: v.number(),
-      australia: v.number(),
-    }),
+    worldState: worldStateValidator,
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, { worldState: args.worldState });
@@ -176,20 +170,7 @@ export const updateWorldState = mutation({
 export const updateLabs = mutation({
   args: {
     gameId: v.id("games"),
-    labs: v.array(
-      v.object({
-        name: v.string(),
-        roleId: v.string(),
-        computeStock: v.number(),
-        rdMultiplier: v.number(),
-        allocation: v.object({
-          users: v.number(),
-          capability: v.number(),
-          safety: v.number(),
-        }),
-        spec: v.optional(v.string()),
-      })
-    ),
+    labs: v.array(labSnapshotValidator),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, { labs: args.labs });
@@ -267,18 +248,19 @@ export const restoreSnapshot = mutation({
   },
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
-    if (!game) return;
+    if (!game) throw new Error(`Game ${args.gameId} not found`);
 
     const rounds = await ctx.db.query("rounds")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
       .collect();
     const round = rounds.find((r) => r.number === args.roundNumber);
-    if (!round) return;
+    if (!round) throw new Error(`Round ${args.roundNumber} not found for game ${args.gameId}`);
 
     // Choose before or after snapshot
     const ws = args.useBefore ? round.worldStateBefore : round.worldStateAfter;
     const labs = args.useBefore ? round.labsBefore : round.labsAfter;
-    if (!ws || !labs) return;
+    const snapshotType = args.useBefore ? "before" : "after";
+    if (!ws || !labs) throw new Error(`No ${snapshotType} snapshot data for round ${args.roundNumber}`);
 
     await ctx.db.patch(args.gameId, { worldState: ws, labs });
 
@@ -320,7 +302,7 @@ export const addLab = mutation({
   },
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
-    if (!game) return;
+    if (!game) throw new Error(`Game ${args.gameId} not found`);
     const newLab = {
       name: args.name,
       roleId: args.roleId,
@@ -341,11 +323,15 @@ export const mergeLabs = mutation({
   },
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
-    if (!game) return;
+    if (!game) throw new Error(`Game ${args.gameId} not found`);
 
+    if (args.survivorName === args.absorbedName) {
+      throw new Error(`Cannot merge lab "${args.survivorName}" with itself`);
+    }
     const survivor = game.labs.find((l) => l.name === args.survivorName);
     const absorbed = game.labs.find((l) => l.name === args.absorbedName);
-    if (!survivor || !absorbed || survivor.name === absorbed.name) return;
+    if (!survivor) throw new Error(`Survivor lab "${args.survivorName}" not found`);
+    if (!absorbed) throw new Error(`Absorbed lab "${args.absorbedName}" not found`);
 
     // Merge: survivor gets absorbed lab's compute, keeps higher multiplier, absorbed is removed
     const mergedLabs = game.labs

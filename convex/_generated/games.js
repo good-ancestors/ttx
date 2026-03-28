@@ -260,6 +260,39 @@ export const addLab = mutation({
         await logEvent(ctx, args.gameId, "lab_added", args.roleId, { name: args.name, computeStock: args.computeStock });
     },
 });
+export const mergeLabs = mutation({
+    args: {
+        gameId: v.id("games"),
+        survivorName: v.string(),
+        absorbedName: v.string(),
+    },
+    handler: async (ctx, args) => {
+        const game = await ctx.db.get(args.gameId);
+        if (!game)
+            return;
+        const survivor = game.labs.find((l) => l.name === args.survivorName);
+        const absorbed = game.labs.find((l) => l.name === args.absorbedName);
+        if (!survivor || !absorbed || survivor.name === absorbed.name)
+            return;
+        // Merge: survivor gets absorbed lab's compute, keeps higher multiplier, absorbed is removed
+        const mergedLabs = game.labs
+            .filter((l) => l.name !== args.absorbedName)
+            .map((l) => l.name === args.survivorName
+            ? {
+                ...l,
+                computeStock: l.computeStock + absorbed.computeStock,
+                rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier),
+            }
+            : l);
+        await ctx.db.patch(args.gameId, { labs: mergedLabs });
+        await logEvent(ctx, args.gameId, "lab_merged", survivor.roleId, {
+            survivor: args.survivorName,
+            absorbed: args.absorbedName,
+            newComputeStock: survivor.computeStock + absorbed.computeStock,
+            newRdMultiplier: Math.max(survivor.rdMultiplier, absorbed.rdMultiplier),
+        });
+    },
+});
 export const finishGame = mutation({
     args: { gameId: v.id("games") },
     handler: async (ctx, args) => {

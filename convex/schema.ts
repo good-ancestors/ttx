@@ -1,6 +1,29 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+// Shared validators for world state and lab snapshot shapes
+export const worldStateValidator = v.object({
+  capability: v.number(),
+  alignment: v.number(),
+  tension: v.number(),
+  awareness: v.number(),
+  regulation: v.number(),
+  australia: v.number(),
+});
+
+export const labSnapshotValidator = v.object({
+  name: v.string(),
+  roleId: v.string(),
+  computeStock: v.number(),
+  rdMultiplier: v.number(),
+  allocation: v.object({
+    users: v.number(),
+    capability: v.number(),
+    safety: v.number(),
+  }),
+  spec: v.optional(v.string()),
+});
+
 export default defineSchema({
   games: defineTable({
     status: v.union(
@@ -16,28 +39,8 @@ export default defineSchema({
       v.literal("narrate")
     ),
     phaseEndsAt: v.optional(v.number()),
-    worldState: v.object({
-      capability: v.number(),
-      alignment: v.number(),
-      tension: v.number(),
-      awareness: v.number(),
-      regulation: v.number(),
-      australia: v.number(),
-    }),
-    labs: v.array(
-      v.object({
-        name: v.string(),
-        roleId: v.string(),
-        computeStock: v.number(),
-        rdMultiplier: v.number(),
-        allocation: v.object({
-          users: v.number(),
-          capability: v.number(),
-          safety: v.number(),
-        }),
-        spec: v.optional(v.string()),
-      })
-    ),
+    worldState: worldStateValidator,
+    labs: v.array(labSnapshotValidator),
     locked: v.boolean(),
   }),
 
@@ -145,59 +148,11 @@ export default defineSchema({
       })
     ),
     // Pre-resolve snapshot — captured before resolve runs (safe revert point)
-    worldStateBefore: v.optional(
-      v.object({
-        capability: v.number(),
-        alignment: v.number(),
-        tension: v.number(),
-        awareness: v.number(),
-        regulation: v.number(),
-        australia: v.number(),
-      })
-    ),
-    labsBefore: v.optional(
-      v.array(
-        v.object({
-          name: v.string(),
-          roleId: v.string(),
-          computeStock: v.number(),
-          rdMultiplier: v.number(),
-          allocation: v.object({
-            users: v.number(),
-            capability: v.number(),
-            safety: v.number(),
-          }),
-          spec: v.optional(v.string()),
-        })
-      )
-    ),
+    worldStateBefore: v.optional(worldStateValidator),
+    labsBefore: v.optional(v.array(labSnapshotValidator)),
     // Post-resolve snapshot — for post-game review and restore
-    worldStateAfter: v.optional(
-      v.object({
-        capability: v.number(),
-        alignment: v.number(),
-        tension: v.number(),
-        awareness: v.number(),
-        regulation: v.number(),
-        australia: v.number(),
-      })
-    ),
-    labsAfter: v.optional(
-      v.array(
-        v.object({
-          name: v.string(),
-          roleId: v.string(),
-          computeStock: v.number(),
-          rdMultiplier: v.number(),
-          allocation: v.object({
-            users: v.number(),
-            capability: v.number(),
-            safety: v.number(),
-          }),
-          spec: v.optional(v.string()),
-        })
-      )
-    ),
+    worldStateAfter: v.optional(worldStateValidator),
+    labsAfter: v.optional(v.array(labSnapshotValidator)),
     roleComputeAfter: v.optional(
       v.array(
         v.object({

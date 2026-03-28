@@ -37,6 +37,11 @@ export const setConnected = mutation({
             connected: args.connected,
             controlMode: args.connected ? "human" : "ai",
         };
+        // Reject if seat is already occupied by a different session
+        if (args.connected && args.sessionId && table?.activeSessionId
+            && table.activeSessionId !== args.sessionId && table.connected) {
+            throw new Error("This seat is already occupied by another player");
+        }
         // Track which browser session owns this seat
         if (args.connected && args.sessionId) {
             patch.activeSessionId = args.sessionId;

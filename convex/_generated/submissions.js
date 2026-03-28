@@ -69,6 +69,10 @@ export const submit = mutation({
         if (game && game.phase !== "submit" && game.phase !== "rolling") {
             throw new Error(`Cannot submit during ${game.phase} phase`);
         }
+        // Server-side timer enforcement (5s grace for clock drift)
+        if (game?.phase === "submit" && game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) {
+            throw new Error("Submission deadline has passed");
+        }
         // Enforce action limit (max 5) and sanity-check priority budget
         // Auto-decay always sums to 10, but allow tolerance for edge cases
         const totalPriority = args.actions.reduce((s, a) => s + a.priority, 0);
@@ -182,20 +186,20 @@ export const rerollAction = mutation({
             return;
         const actions = [...sub.actions];
         const action = actions[args.actionIndex];
-        if (!action || action.probability == null)
+        if (action?.probability == null)
             return;
-        const newRoll = Math.floor(Math.random() * 100) + 1;
-        const influencedProbability = Math.max(5, Math.min(95, (action.probability ?? 50) + (action.aiInfluence ?? 0)));
+        const rawRoll = Math.floor(Math.random() * 100) + 1;
+        const displayRoll = applyInfluence(rawRoll, action.aiInfluence);
         actions[args.actionIndex] = {
             ...action,
-            rolled: newRoll,
-            success: newRoll <= influencedProbability,
+            rolled: displayRoll,
+            success: displayRoll <= (action.probability ?? 50),
         };
         await ctx.db.patch(args.submissionId, { actions });
         await logEvent(ctx, sub.gameId, "reroll", sub.roleId, {
             actionIndex: args.actionIndex,
             oldRoll: action.rolled,
-            newRoll,
+            newRoll: rawRoll,
             probability: action.probability,
         });
     },
@@ -255,6 +259,10 @@ export const applyAiInfluence = mutation({
         });
     },
 });
+/** Apply AI influence to a dice roll. Positive influence = boost (lower roll), negative = sabotage. */
+function applyInfluence(rawRoll, aiInfluence) {
+    return Math.max(1, Math.min(100, rawRoll - (aiInfluence ?? 0)));
+}
 // Fallback probability based on priority when AI grading hasn't happened
 function defaultProbability(priority) {
     if (priority >= 8)
@@ -278,10 +286,11 @@ export const rollAllActions = mutation({
                 continue;
             const actions = sub.actions.map((action) => {
                 const probability = action.probability ?? defaultProbability(action.priority);
-                // AI influence modifies roll threshold invisibly — store original probability for display
-                const influencedProbability = Math.max(5, Math.min(95, probability + (action.aiInfluence ?? 0)));
-                const roll = Math.floor(Math.random() * 100) + 1;
-                return { ...action, probability, rolled: roll, success: roll <= influencedProbability };
+                // AI influence secretly modifies the dice roll — probability stays truthful
+                // Display the influenced roll so outcomes always visually make sense
+                const rawRoll = Math.floor(Math.random() * 100) + 1;
+                const displayRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
+                return { ...action, probability, rolled: displayRoll, success: displayRoll <= probability };
             });
             await ctx.db.patch(sub._id, { actions, status: "resolved" });
             const successes = actions.filter((a) => a.success).length;

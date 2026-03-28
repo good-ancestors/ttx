@@ -54,6 +54,7 @@ export const send = mutation({
         computeAmount: v.optional(v.number()),
     },
     handler: async (ctx, args) => {
+        await assertPhase(ctx, args.gameId, ["submit"], "send request");
         // Validate compute amount is positive
         if (args.computeAmount !== undefined && args.computeAmount <= 0) {
             throw new Error("Compute amount must be positive");
