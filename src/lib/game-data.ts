@@ -658,6 +658,46 @@ export const BACKGROUND_LABS = [
 
 export const NEW_COMPUTE_PER_ROUND = [11, 11, 5, 3];
 
+// Race scenario baseline R&D multiplier targets from AI 2027 CSV.
+// These are the DEFAULT progression if no player actions change allocation.
+// See docs/lab-progression.md for full explanation.
+export const BASELINE_RD_TARGETS: Record<string, Record<number, number>> = {
+  OpenBrain:  { 1: 10, 2: 100, 3: 1000, 4: 10000 },
+  DeepCent:   { 1: 5.7, 2: 22, 3: 80, 4: 100 },
+  Conscienta: { 1: 5, 2: 15, 3: 40, 4: 50 },
+};
+
+// New compute arriving per game round (scaled from CSV's 11, 6, 5, 5 M H100e)
+// Early rounds: acquisition matters. Later: stocks dominate.
+export const NEW_COMPUTE_PER_GAME_ROUND: Record<number, number> = { 1: 5, 2: 3, 3: 2, 4: 2 };
+
+// Lab progression tuning constants
+export const LAB_PROGRESSION = {
+  /** Below this ratio of baseline R&D allocation, the recursive loop breaks */
+  RECURSIVE_LOOP_THRESHOLD: 0.6,
+  /** Safer path: growth coefficient per unit of allocRatio */
+  SAFER_GROWTH_COEFFICIENT: 2.5,
+  /** Safer path: max growth rate per round */
+  SAFER_GROWTH_CAP: 3.5,
+  /** Race path: exponent when allocation is below baseline (penalty) */
+  RACE_ALLOC_PENALTY_EXP: 1.3,
+  /** Race path: exponent when allocation is above baseline (diminishing returns) */
+  RACE_ALLOC_BOOST_EXP: 0.5,
+  /** Compute sensitivity exponent */
+  COMPUTE_SENSITIVITY: 0.3,
+  /** Allocation weight in combined ratio (vs compute) */
+  ALLOC_WEIGHT: 0.7,
+  /** Min multiplier floor after event modifiers */
+  MIN_MULTIPLIER: 0.1,
+  /** Max multiplier caps per round range */
+  maxMultiplier: (round: number) => round <= 2 ? 200 : round === 3 ? 2000 : 15000,
+};
+
+/** Strip lab fields to only those accepted by the round snapshot validator */
+export function stripLabForSnapshot(lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }) {
+  return { name: lab.name, roleId: lab.roleId, computeStock: lab.computeStock, rdMultiplier: lab.rdMultiplier, allocation: lab.allocation };
+}
+
 export const DEFAULT_COMPUTE_DISTRIBUTION = [
   { openbrain: 11, deepcent: 6, conscienta: 6, otherUs: 4, restOfWorld: 4 },
   { openbrain: 16, deepcent: 8, conscienta: 7, otherUs: 2, restOfWorld: 2 },

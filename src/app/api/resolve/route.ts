@@ -3,7 +3,7 @@ import { checkApiAuth } from "@/lib/api-auth";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES } from "@/lib/game-data";
+import { ROLES, DEFAULT_LABS, BASELINE_RD_TARGETS, NEW_COMPUTE_PER_GAME_ROUND, LAB_PROGRESSION, stripLabForSnapshot } from "@/lib/game-data";
 import { RESOLVE_MODEL, RESOLVE_FALLBACK } from "@/lib/ai-models";
 import { buildResolvePrompt } from "@/lib/ai-prompts";
 import { generateWithFallback, streamPrimary } from "@/lib/ai-fallback";
@@ -191,19 +191,85 @@ function createCompletionStream(
 
 // ─── Apply resolution to Convex ──────────────────────────────────────────────
 
+// ─── Deterministic lab growth ────────────────────────────────────────────────
+
+/** Pure function: compute new lab state based on allocations and recursive self-improvement. */
+function computeLabGrowth(
+  currentLabs: Lab[],
+  ceoAllocations: Map<string, { users: number; capability: number; safety: number }>,
+  roundNumber: number,
+  maxMult: number,
+): Lab[] {
+  const P = LAB_PROGRESSION;
+  const totalComputeStock = currentLabs.reduce((s, l) => s + l.computeStock, 0);
+  const newCompute = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 3;
+
+  // Apply allocations and distribute new compute
+  const labs = currentLabs.map(lab => {
+    const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
+    const computeShare = lab.computeStock / Math.max(1, totalComputeStock);
+    const computeStock = lab.computeStock + Math.round(newCompute * computeShare);
+    return { ...lab, allocation, computeStock };
+  });
+
+  // Effective R&D = stock × allocation% × multiplier (the recursive self-improvement loop)
+  const effectiveRd = labs.map(l => l.computeStock * (l.allocation.capability / 100) * l.rdMultiplier);
+  const totalEffectiveRd = effectiveRd.reduce((s, v) => s + v, 0);
+
+  return labs.map((lab, i) => {
+    const rdShare = effectiveRd[i] / Math.max(1, totalEffectiveRd);
+    const baselineTarget = BASELINE_RD_TARGETS[lab.name]?.[roundNumber];
+
+    let newMultiplier: number;
+    if (baselineTarget) {
+      const defaultAlloc = ROLES.find(r => r.id === lab.roleId)?.defaultCompute;
+      const baselineRdPct = defaultAlloc?.capability ?? 50;
+      const allocRatio = lab.allocation.capability / Math.max(1, baselineRdPct);
+
+      const startingCompute = DEFAULT_LABS.find(l => l.name === lab.name)?.computeStock ?? lab.computeStock;
+      const computeRatio = lab.computeStock / Math.max(1, startingCompute);
+      const computeFactor = Math.pow(computeRatio, P.COMPUTE_SENSITIVITY);
+
+      if (allocRatio < P.RECURSIVE_LOOP_THRESHOLD) {
+        // Safer path: recursive loop broken, linear growth only
+        const saferGrowthRate = 1 + allocRatio * P.SAFER_GROWTH_COEFFICIENT * computeFactor;
+        newMultiplier = Math.round(lab.rdMultiplier * Math.min(P.SAFER_GROWTH_CAP, saferGrowthRate) * 10) / 10;
+      } else {
+        // Race path: exponential toward baseline target
+        const allocExponent = allocRatio < 1 ? P.RACE_ALLOC_PENALTY_EXP : P.RACE_ALLOC_BOOST_EXP;
+        const allocFactor = Math.pow(allocRatio, allocExponent);
+        const combinedRatio = Math.pow(allocFactor, P.ALLOC_WEIGHT) * Math.pow(computeFactor, 1 - P.ALLOC_WEIGHT);
+        const baseGrowthRatio = baselineTarget / lab.rdMultiplier;
+        newMultiplier = Math.round(lab.rdMultiplier * (1 + (baseGrowthRatio - 1) * combinedRatio) * 10) / 10;
+      }
+    } else {
+      // Unknown lab (added mid-game): grow based on effective R&D share
+      const poolGrowth: Record<number, number> = { 1: 3, 2: 10, 3: 10, 4: 10 };
+      newMultiplier = Math.round(lab.rdMultiplier * (1 + rdShare * (poolGrowth[roundNumber] ?? 5)) * 10) / 10;
+    }
+
+    return { ...lab, rdMultiplier: Math.min(maxMult, newMultiplier) };
+  });
+}
+
+// ─── Apply resolution to Convex ──────────────────────────────────────────────
+
 /** Apply resolved output to Convex — shared by streaming and non-streaming paths */
 async function applyResolution(opts: {
   output: ResolveOutputType;
   gameId: string;
   roundNumber: number;
   game: GameData;
+  submissions: Array<{ roleId: string; computeAllocation?: { users: number; capability: number; safety: number } }>;
   allTables: TableRow[] | null;
   roleCompute: RoleCompute[];
   usedModel: string;
   timeMs: number;
   tokens?: number;
 }) {
-  const { output, gameId, roundNumber, game, allTables, roleCompute, usedModel, timeMs, tokens } = opts;
+  const { output, gameId, roundNumber, game, submissions, allTables, roleCompute, usedModel, timeMs, tokens } = opts;
+  const P = LAB_PROGRESSION;
+  const maxMult = P.maxMultiplier(roundNumber);
   console.info(`[resolve] R${roundNumber} applyResolution: ${output.resolvedEvents?.length ?? 0} events, model=${usedModel}`);
 
   // Store resolved events
@@ -213,62 +279,45 @@ async function applyResolution(opts: {
     resolvedEvents: output.resolvedEvents,
   });
 
-  // Apply world state (clamped)
+  // Clamp world state deltas (computed once, reused for mutation + snapshot)
   const maxDeltaForRound = roundNumber >= 3 ? 4 : 3;
   const clampDelta = (newVal: number, current: number, maxDelta = maxDeltaForRound) => {
     if (!Number.isFinite(newVal)) return current;
     const clamped = Math.max(0, Math.min(10, Math.round(newVal)));
     const delta = clamped - current;
-    if (Math.abs(delta) > maxDelta) {
-      return current + Math.sign(delta) * maxDelta;
-    }
-    return clamped;
+    return Math.abs(delta) > maxDelta ? current + Math.sign(delta) * maxDelta : clamped;
+  };
+  const clampedWorldState = {
+    capability: clampDelta(output.worldState.capability, game.worldState.capability),
+    alignment: clampDelta(output.worldState.alignment, game.worldState.alignment),
+    tension: clampDelta(output.worldState.tension, game.worldState.tension),
+    awareness: clampDelta(output.worldState.awareness, game.worldState.awareness),
+    regulation: clampDelta(output.worldState.regulation, game.worldState.regulation),
+    australia: clampDelta(output.worldState.australia, game.worldState.australia),
   };
   await convex.mutation(api.games.updateWorldState, {
     gameId: gameId as Id<"games">,
-    worldState: {
-      capability: clampDelta(output.worldState.capability, game.worldState.capability),
-      alignment: clampDelta(output.worldState.alignment, game.worldState.alignment),
-      tension: clampDelta(output.worldState.tension, game.worldState.tension),
-      awareness: clampDelta(output.worldState.awareness, game.worldState.awareness),
-      regulation: clampDelta(output.worldState.regulation, game.worldState.regulation),
-      australia: clampDelta(output.worldState.australia, game.worldState.australia),
-    },
+    worldState: clampedWorldState,
   });
 
-  // Update role compute stocks (non-lab players)
+  // Update role compute stocks in parallel (non-lab players)
   if (output.roleComputeUpdates) {
-    for (const update of output.roleComputeUpdates) {
+    await Promise.all(output.roleComputeUpdates.map(update => {
       const table = allTables?.find((t) => t.roleId === update.roleId);
-      if (table) {
-        await convex.mutation(api.games.updateTableCompute, {
-          tableId: table._id,
-          computeStock: Math.max(0, Math.round(update.newComputeStock)),
-        });
-      }
-    }
+      if (!table) return Promise.resolve();
+      return convex.mutation(api.games.updateTableCompute, {
+        tableId: table._id,
+        computeStock: Math.max(0, Math.round(update.newComputeStock)),
+      });
+    }));
   }
 
   // ── Lab state update: DETERMINISTIC baseline + event modifiers ──────────────
-  // Based on AI 2027 scenario CSV — recursive self-improvement drives exponential growth.
-  // The R&D multiplier itself accelerates R&D: effectiveRd = stock × allocation% × multiplier.
-  // Compute grows modestly (physical constraint); stocks matter more than new production.
+  // See docs/lab-progression.md for full explanation of the mechanic.
 
-  // Race scenario baseline targets from CSV (per lab per round)
-  const BASELINE_MULT: Record<string, Record<number, number>> = {
-    OpenBrain:  { 1: 10, 2: 100, 3: 1000, 4: 10000 },
-    DeepCent:   { 1: 5.7, 2: 22, 3: 80, 4: 100 },
-    Conscienta: { 1: 5, 2: 15, 3: 40, 4: 50 },
-  };
-
-  // Global new compute per round (from CSV: 11, 6, 5, 5 M H100e scaled to game units)
-  // In early rounds acquisition matters; later rounds it's about stocks
-  const newComputePool: Record<number, number> = { 1: 5, 2: 3, 3: 2, 4: 2 };
-  const maxMultiplier = roundNumber <= 2 ? 200 : roundNumber === 3 ? 2000 : 15000;
-
-  // Step 1: Apply CEO allocation changes from submissions
+  // Extract CEO allocation changes from already-fetched submissions (no extra query)
   const ceoAllocations = new Map<string, { users: number; capability: number; safety: number }>();
-  for (const sub of (await convex.query(api.submissions.getByGameAndRound, { gameId: gameId as Id<"games">, roundNumber })) ?? []) {
+  for (const sub of submissions) {
     if (sub.computeAllocation) {
       const labForRole = game.labs.find(l => l.roleId === sub.roleId);
       if (labForRole) {
@@ -277,90 +326,16 @@ async function applyResolution(opts: {
     }
   }
 
-  // Step 2: Compute growth — modest, proportional to existing stock share
-  const totalComputeStock = game.labs.reduce((s, l) => s + l.computeStock, 0);
-  const newCompute = newComputePool[roundNumber] ?? 3;
+  // Deterministic lab growth — see docs/lab-progression.md
+  const updatedLabs = computeLabGrowth(game.labs, ceoAllocations, roundNumber, maxMult);
 
-  // Step 3: R&D multiplier — recursive self-improvement
-  // effectiveRd = stock × capabilityAllocation% × currentMultiplier
-  // Each lab's growth is proportional to their share of total effective R&D
-  const updatedLabs = (() => {
-    const labs = game.labs.map(lab => {
-      const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
-      const computeShare = lab.computeStock / Math.max(1, totalComputeStock);
-      const computeStock = lab.computeStock + Math.round(newCompute * computeShare);
-      return { ...lab, allocation, computeStock };
-    });
-
-    // Calculate effective R&D (the recursive self-improvement loop)
-    const effectiveRd = labs.map(l => l.computeStock * (l.allocation.capability / 100) * l.rdMultiplier);
-    const totalEffectiveRd = effectiveRd.reduce((s, v) => s + v, 0);
-
-    return labs.map((lab, i) => {
-      const rdShare = effectiveRd[i] / Math.max(1, totalEffectiveRd);
-      const baselineTarget = BASELINE_MULT[lab.name]?.[roundNumber];
-
-      let newMultiplier: number;
-      if (baselineTarget) {
-        // Labs with CSV baseline: use target as anchor, adjust by allocation & compute
-        const defaultAlloc = ROLES.find(r => r.id === lab.roleId)?.defaultCompute;
-        const baselineRdPct = defaultAlloc?.capability ?? 50;
-        const actualRdPct = lab.allocation.capability;
-        const allocRatio = actualRdPct / Math.max(1, baselineRdPct);
-
-        // Compute ratio: more/less compute than baseline affects growth
-        const baselineCompute: Record<string, number> = { OpenBrain: 22, DeepCent: 17, Conscienta: 14 };
-        const expectedCompute = baselineCompute[lab.name] ?? lab.computeStock;
-        const computeRatio = lab.computeStock / Math.max(1, expectedCompute);
-        const computeFactor = Math.pow(computeRatio, 0.3);
-
-        // KEY MECHANIC: Recursive self-improvement has a critical mass threshold.
-        // Below ~60% of baseline R&D allocation, the recursive loop breaks —
-        // you're doing safety/alignment work, not feeding capability back in.
-        // Above baseline, diminishing returns (can't discover faster than physics).
-        if (allocRatio < 0.6) {
-          // SAFER/SLOWDOWN PATH: recursive loop broken.
-          // Decommissioning is a step back, then slow linear rebuild.
-          // Without the recursive loop, growth is modest — at most ~2× per round
-          // even with some R&D, because you're rebuilding on safer foundations.
-          // Growth rate: allocRatio × moderate multiplier (no exponential compounding)
-          // At 20% capability (allocRatio=0.4): growth rate = 1 + 0.4*2.5 = 2.0× per round
-          // At 40% capability (allocRatio=0.8, near threshold): growth rate = 1 + 0.8*2.5 = 3.0×
-          // This gives realistic Safer progression: ~10→20→40→80 over 4 rounds at 20% alloc
-          const saferGrowthRate = 1 + allocRatio * 2.5 * computeFactor;
-          // Cap: Safer path can never grow more than 3.5× per round
-          const cappedRate = Math.min(3.5, saferGrowthRate);
-          newMultiplier = Math.round(lab.rdMultiplier * cappedRate * 10) / 10;
-        } else {
-          // RACE PATH: exponential recursive self-improvement toward baseline.
-          // Boosting R&D above baseline gives diminishing returns (sqrt).
-          // Cutting R&D below baseline (but above threshold) gives moderate penalty.
-          const allocExponent = allocRatio < 1 ? 1.3 : 0.5;
-          const allocFactor = Math.pow(allocRatio, allocExponent);
-          const combinedRatio = Math.pow(allocFactor, 0.7) * Math.pow(computeFactor, 0.3);
-          const baseGrowthRatio = baselineTarget / lab.rdMultiplier;
-          const adjustedRatio = 1 + (baseGrowthRatio - 1) * combinedRatio;
-          newMultiplier = Math.round(lab.rdMultiplier * adjustedRatio * 10) / 10;
-        }
-      } else {
-        // Unknown lab (added mid-game): grow based on effective R&D share
-        const poolGrowth: Record<number, number> = { 1: 3, 2: 10, 3: 10, 4: 10 };
-        const growthRate = 1 + rdShare * (poolGrowth[roundNumber] ?? 5);
-        newMultiplier = Math.round(lab.rdMultiplier * growthRate * 10) / 10;
-      }
-
-      return { ...lab, rdMultiplier: Math.min(maxMultiplier, newMultiplier) };
-    });
-  })();
-
-  // Step 3: Apply event-based modifiers via focused AI call
-  // This is the "did anything happen?" check — AI reads events and adjusts the baseline
+  // Event-based modifiers via focused AI call
   const labNames = game.labs.map((l) => l.name) as [string, ...string[]];
   const modifierSchema = z.object({
     modifiers: z.array(z.object({
       labName: z.enum(labNames),
-      computeChange: z.number(), // additive: +5 for gained, -10 for seized
-      multiplierFactor: z.number(), // multiplicative: 1.0 = no change, 0.8 = 20% setback, 1.2 = 20% boost
+      computeChange: z.number(),
+      multiplierFactor: z.number(),
       reason: z.string(),
     })),
   });
@@ -400,39 +375,22 @@ Examples of modifiers:
     console.warn(`[resolve] R${roundNumber} modifier call failed (non-critical):`, err);
   }
 
-  // Step 4: Apply modifiers to baseline
+  // Apply modifiers to baseline
   const finalLabs = updatedLabs.map(lab => {
     const labModifiers = modifiers.filter(m => m.labName === lab.name);
     let { computeStock, rdMultiplier } = lab;
     for (const mod of labModifiers) {
       computeStock = Math.max(0, computeStock + mod.computeChange);
-      rdMultiplier = Math.min(maxMultiplier, Math.max(0.1, Math.round(rdMultiplier * mod.multiplierFactor * 10) / 10));
+      rdMultiplier = Math.min(maxMult, Math.max(P.MIN_MULTIPLIER, Math.round(rdMultiplier * mod.multiplierFactor * 10) / 10));
     }
     return { ...lab, computeStock, rdMultiplier };
   });
 
-  console.info(`[resolve] R${roundNumber} FINAL labs (calculated): ${finalLabs.map(l => `${l.name}: ${l.rdMultiplier}x/${l.computeStock}u`).join(", ")} | modifiers=${modifiers.length}`);
+  console.info(`[resolve] R${roundNumber} FINAL labs: ${finalLabs.map(l => `${l.name}: ${l.rdMultiplier}x/${l.computeStock}u`).join(", ")} | modifiers=${modifiers.length}`);
   await convex.mutation(api.games.updateLabs, { gameId: gameId as Id<"games">, labs: finalLabs });
 
-  // Snapshot final state
-  const clampedWorldState = {
-    capability: clampDelta(output.worldState.capability, game.worldState.capability),
-    alignment: clampDelta(output.worldState.alignment, game.worldState.alignment),
-    tension: clampDelta(output.worldState.tension, game.worldState.tension),
-    awareness: clampDelta(output.worldState.awareness, game.worldState.awareness),
-    regulation: clampDelta(output.worldState.regulation, game.worldState.regulation),
-    australia: clampDelta(output.worldState.australia, game.worldState.australia),
-  };
-  // Read latest labs from Convex (updated by dedicated lab call above)
-  // Strip extra fields (e.g. spec) that the round snapshot validator doesn't accept
-  const snapshotGame = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
-  const snapshotLabs = (snapshotGame?.labs ?? game.labs).map(l => ({
-    name: l.name,
-    roleId: l.roleId,
-    computeStock: l.computeStock,
-    rdMultiplier: l.rdMultiplier,
-    allocation: l.allocation,
-  }));
+  // Snapshot uses locally computed data (no extra Convex query needed)
+  const snapshotLabs = finalLabs.map(stripLabForSnapshot);
 
   // Snapshot + AI metadata in parallel
   await Promise.all([
@@ -501,6 +459,7 @@ export async function POST(request: Request) {
           gameId,
           roundNumber,
           game,
+          submissions: submissions ?? [],
           allTables,
           roleCompute,
           usedModel: data.model,
@@ -530,7 +489,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "All AI models failed to resolve", model: usedModel }, { status: 502 });
     }
 
-    await applyResolution({ output, gameId, roundNumber, game, allTables, roleCompute, usedModel, timeMs, tokens });
+    await applyResolution({ output, gameId, roundNumber, game, submissions: submissions ?? [], allTables, roleCompute, usedModel, timeMs, tokens });
 
     return Response.json({
       success: true,
