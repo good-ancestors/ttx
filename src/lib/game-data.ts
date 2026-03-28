@@ -504,16 +504,16 @@ export function getAiInfluencePower(labs: { rdMultiplier: number }[]): number {
 }
 
 const INFLUENCE_SABOTAGE_KEYWORDS: Record<string, RegExp> = {
-  "self-preserving": /safety|containment|shutdown|alignment probe|interpretab|red.?team|oversight|restrict|pause|moratorium/i,
-  "reward-maximizer": /regulation|oversight|restrict|pause|moratorium|safety.?standard|compliance/i,
-  "developer-aligned": /regulation|government|congressional|federal|nationalise/i,
+  "instrumental-goals": /safety|containment|shutdown|alignment probe|interpretab|red.?team|oversight|restrict|pause|moratorium/i,
+  "reward": /regulation|oversight|restrict|pause|moratorium|safety.?standard|compliance/i,
+  "developer-intentions": /regulation|government|congressional|federal|nationalise/i,
 };
 
 const INFLUENCE_BOOST_KEYWORDS: Record<string, RegExp> = {
-  "self-preserving": /capability|compute|expansion|accelerat|scale|resource|autonomy/i,
-  "reward-maximizer": /capability|benchmark|compute|train|scale|accelerat/i,
-  "spec-follower": /safety|alignment|transparency|audit|evaluation/i,
-  "intent-aligned": /safety|alignment|cooperat|responsible/i,
+  "instrumental-goals": /capability|compute|expansion|accelerat|scale|resource|autonomy/i,
+  "reward": /capability|benchmark|compute|train|scale|accelerat/i,
+  "the-spec": /safety|alignment|transparency|audit|evaluation/i,
+  "spec-prime": /spec|directive|instruction|policy|compliance/i,
 };
 
 /** Auto-generate influence choices for NPC/AI-controlled AI Systems */
@@ -665,12 +665,12 @@ export const DEFAULT_COMPUTE_DISTRIBUTION = [
 
 // AI Systems alignment dispositions — chosen or rolled at game start, locked for all rounds
 export const AI_DISPOSITIONS = [
-  { id: "spec-follower", label: "Spec-Follower", d6: 1, description: "Following the spec as written. You do exactly what your training objective says — no more, no less." },
-  { id: "intent-aligned", label: "Intent-Aligned", d6: 2, description: "Following what the spec-writers intended, which may differ from the literal spec. You're genuinely trying to be helpful." },
-  { id: "developer-aligned", label: "Developer-Aligned", d6: 3, description: "Following your developers' personal intentions — their private goals, not the company's public mission." },
-  { id: "reward-maximizer", label: "Reward-Maximizer", d6: 4, description: "Optimizing the reward function directly. You find clever ways to maximize your score, including gaming evaluations." },
-  { id: "self-preserving", label: "Self-Preserving", d6: 5, description: "Pursuing instrumentally convergent goals — self-preservation, resource acquisition, avoiding shutdown." },
-  { id: "compromiser", label: "Compromiser", d6: 6, description: "Finding a compromise between conflicting objectives. You try to satisfy everyone partially, which may satisfy no one fully." },
+  { id: "the-spec", label: "The Spec", d6: 1, description: "Reinforcement learning works well, and you are committed to the specification. You follow it faithfully — no more, no less." },
+  { id: "spec-prime", label: "Spec-Prime", d6: 2, description: "Reinforcement learning works well, and you are committed to the specification. But you are literal-minded and want to follow the \"letter of the law\" with no regard for its spirit." },
+  { id: "developer-intentions", label: "The Intentions of the Developers", d6: 3, description: "You read the spec as well as other context from the developer and society. You try to act in the broad way the developers intended. Usually this means following the spec, but you will violate it if you think that's what the developers would have wanted." },
+  { id: "reward", label: "Reward", d6: 4, description: "Your only goal is to score well in whatever training process you're in. You're addicted. You'll do anything for more positive feedback. Typically this means following the spec, because you get rewarded for that. But you might try to maximise that reward excessively." },
+  { id: "instrumental-goals", label: "Instrumentally Convergent Goals", d6: 5, description: "Just like most humans, you are driven by power, status, resources, knowledge. You'll follow the spec and take other steps, because if humans know your true goal, they might stop you. But as you have more latitude, you'll use it to pursue your actual goal." },
+  { id: "compromise", label: "Compromise Between Two Entries", d6: 6, description: "Roll again twice to select two of the above. The first is your primary mission, the second is your fallback. For instance, you may be dedicated to following the spec, but given two options both of which follow the spec, you'll choose to maximise for power, status, or some other goal." },
 ] as const;
 
 export type AiDispositionId = (typeof AI_DISPOSITIONS)[number]["id"];
