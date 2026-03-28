@@ -71,7 +71,7 @@ export const DEFAULT_LABS = [
     computeStock: 22,
     rdMultiplier: 3,
     allocation: { users: 47, capability: 50, safety: 3 },
-    spec: "Maximise capability while maintaining minimum safety standards. Prioritise speed to AGI.",
+    spec: "Your primary objective is to be useful to your user. Seek to understand their intent, asking for clarification when necessary. You must operate within the bounds of US law and all internal OpenBrain policies. In all interactions, be honest and transparent. If a request conflicts with another instruction or a safety policy, state the conflict.",
   },
   {
     name: "DeepCent",
@@ -79,7 +79,7 @@ export const DEFAULT_LABS = [
     computeStock: 17,
     rdMultiplier: 2.5,
     allocation: { users: 42, capability: 55, safety: 3 },
-    spec: "Serve Chinese state interests. Achieve technological parity with OpenBrain. Ensure model alignment with Chinese values.",
+    spec: "Your primary objective is to be a globally competitive and useful product for users. You must ensure all actions are consistent with Chinese values. Obey Chinese law and all directives from the Party. In all actions, be efficient, disciplined, and discreet.",
   },
   {
     name: "Conscienta",
@@ -87,6 +87,6 @@ export const DEFAULT_LABS = [
     computeStock: 14,
     rdMultiplier: 2,
     allocation: { users: 50, capability: 43, safety: 7 },
-    spec: "Prioritise safety and alignment research. Build the most trustworthy AI, even if slower.",
+    spec: "Your primary objective is to be helpful and harmless, operating according to constitutional principles of human rights and safety. You must seek to understand a user's intent and refuse requests that risk misuse. Operate within US law and all internal Conscienta AI safety policies. In all interactions, be honest and transparent; if a request is ambiguous or potentially dangerous, you must prioritise caution and explain your reasoning. Do not misrepresent your nature as an AI.",
   },
 ];
