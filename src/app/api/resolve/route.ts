@@ -80,14 +80,154 @@ interface Lab {
   allocation: { users: number; capability: number; safety: number };
 }
 
+type GameData = { worldState: Record<string, number>; labs: Lab[] };
+type TableRow = { _id: Id<"tables">; roleId: string; roleName: string; enabled: boolean; computeStock?: number };
+type RoleCompute = { roleId: string; roleName: string; computeStock: number };
+
+// ─── Data fetching ───────────────────────────────────────────────────────────
+
+async function fetchResolveData(gameId: string, roundNumber: number) {
+  const [game, submissions, rounds, allTables] = await Promise.all([
+    convex.query(api.games.get, { gameId: gameId as Id<"games"> }),
+    convex.query(api.submissions.getByGameAndRound, { gameId: gameId as Id<"games">, roundNumber }),
+    convex.query(api.rounds.getByGame, { gameId: gameId as Id<"games"> }),
+    convex.query(api.tables.getByGame, { gameId: gameId as Id<"games"> }),
+  ]);
+  return { game, submissions, rounds, allTables };
+}
+
+// ─── Context building ────────────────────────────────────────────────────────
+
+interface ResolveContext {
+  prompt: string;
+  resolveSchema: z.ZodType<ResolveOutputType>;
+  roleCompute: RoleCompute[];
+}
+
+function buildResolveContext(
+  game: GameData & { labs: Lab[] },
+  submissions: Array<{ roleId: string; actions: Array<{ text: string; priority: number; probability?: number; rolled?: number; success?: boolean; secret?: boolean }> }>,
+  rounds: Array<{ number: number; label: string; title?: string; summary?: { narrative?: string }; worldStateAfter?: Record<string, number>; capabilityLevel?: string }>,
+  allTables: TableRow[] | null,
+  roundNumber: number,
+  aiDisposition?: { label: string; description: string },
+): ResolveContext {
+  const labNames = game.labs.map((l) => l.name) as [string, ...string[]];
+  const resolveSchema = buildResolveSchema(labNames);
+
+  const currentRound = rounds?.find((r) => r.number === roundNumber);
+
+  const resolvedActions = (submissions ?? []).flatMap((sub) => {
+    const role = ROLES.find((r) => r.id === sub.roleId);
+    return sub.actions
+      .filter((a) => a.rolled != null)
+      .map((a) => ({
+        roleName: role?.name ?? sub.roleId,
+        text: a.text,
+        priority: a.priority,
+        probability: a.probability ?? 50,
+        rolled: a.rolled!,
+        success: a.success ?? false,
+        secret: a.secret,
+      }));
+  });
+
+  const roleCompute = (allTables ?? [])
+    .filter((t) => t.enabled && (t.computeStock ?? 0) > 0)
+    .map((t) => ({
+      roleId: t.roleId,
+      roleName: t.roleName,
+      computeStock: t.computeStock ?? 0,
+    }));
+
+  const prompt = buildResolvePrompt({
+    round: roundNumber,
+    roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
+    roundTitle: currentRound?.title ?? "",
+    worldState: game.worldState,
+    capabilityLevel: currentRound?.capabilityLevel ?? "Unknown",
+    resolvedActions,
+    labs: game.labs,
+    roleCompute,
+    aiDisposition,
+    previousRounds: (rounds ?? [])
+      .filter((r) => r.number < roundNumber && r.summary)
+      .map((r) => ({
+        number: r.number,
+        label: r.label,
+        narrative: r.summary?.narrative,
+        worldStateAfter: r.worldStateAfter,
+      })),
+  });
+
+  return { prompt, resolveSchema, roleCompute };
+}
+
+// ─── Streaming helper ────────────────────────────────────────────────────────
+
+function createCompletionStream(
+  aiStream: ReadableStream<Uint8Array>,
+  onComplete: (data: { output: ResolveOutputType; model: string; timeMs: number; tokens?: number }) => Promise<void>,
+): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+
+  const pump = async () => {
+    const reader = aiStream.getReader();
+    const writer = writable.getWriter();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+
+        for (const line of text.split("\n")) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.__complete && data.output) {
+              await onComplete({
+                output: data.output as ResolveOutputType,
+                model: data.model as string,
+                timeMs: data.timeMs as number,
+                tokens: data.tokens as number | undefined,
+              });
+            }
+          } catch (parseErr) {
+            if (line.includes("__complete")) {
+              console.error("[resolve] Failed to parse/apply __complete message:", parseErr);
+            }
+          }
+        }
+
+        await writer.write(value);
+      }
+      await writer.close();
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      await writer.write(
+        encoder.encode(`data: ${JSON.stringify({ __error: true, message: errorMsg })}\n\n`),
+      );
+      await writer.close();
+    }
+  };
+
+  void pump();
+  return readable;
+}
+
+// ─── Apply resolution to Convex ──────────────────────────────────────────────
+
 /** Apply resolved output to Convex — shared by streaming and non-streaming paths */
 async function applyResolution(
   output: ResolveOutputType,
   gameId: string,
   roundNumber: number,
-  game: { worldState: Record<string, number>; labs: Lab[] },
-  allTables: Array<{ _id: Id<"tables">; roleId: string; roleName: string; enabled: boolean; computeStock?: number }> | null,
-  roleCompute: Array<{ roleId: string; roleName: string; computeStock: number }>,
+  game: GameData,
+  allTables: TableRow[] | null,
+  roleCompute: RoleCompute[],
   usedModel: string,
   timeMs: number,
   tokens?: number,
@@ -214,6 +354,8 @@ async function applyResolution(
   ]);
 }
 
+// ─── Route handler ───────────────────────────────────────────────────────────
+
 export async function POST(request: Request) {
   const authError = checkApiAuth(request);
   if (authError) return authError;
@@ -226,72 +368,25 @@ export async function POST(request: Request) {
       aiDisposition,
     }: { gameId: string; roundNumber: number; aiDisposition?: { label: string; description: string } } = body;
 
-    // Parallel data fetch — all independent queries at once
-    const [game, submissions, rounds, allTables] = await Promise.all([
-      convex.query(api.games.get, { gameId: gameId as Id<"games"> }),
-      convex.query(api.submissions.getByGameAndRound, { gameId: gameId as Id<"games">, roundNumber }),
-      convex.query(api.rounds.getByGame, { gameId: gameId as Id<"games"> }),
-      convex.query(api.tables.getByGame, { gameId: gameId as Id<"games"> }),
-    ]);
+    // Fetch all data in parallel (roundNumber passed via closure for submissions)
+    const { game, submissions, rounds, allTables } = await fetchResolveData(gameId, roundNumber);
     if (!game) {
       return Response.json({ error: "Game not found" }, { status: 404 });
     }
 
-    // Build schema with dynamic lab names from current game state
-    const labNames = game.labs.map((l: { name: string }) => l.name) as [string, ...string[]];
-    const resolveSchema = buildResolveSchema(labNames);
-
-    const currentRound = rounds?.find((r) => r.number === roundNumber);
-
-    const resolvedActions = (submissions ?? []).flatMap((sub) => {
-      const role = ROLES.find((r) => r.id === sub.roleId);
-      return sub.actions
-        .filter((a) => a.rolled != null)
-        .map((a) => ({
-          roleName: role?.name ?? sub.roleId,
-          text: a.text,
-          priority: a.priority,
-          probability: a.probability ?? 50,
-          rolled: a.rolled!,
-          success: a.success ?? false,
-          secret: a.secret,
-        }));
-    });
-
-    const roleCompute = (allTables ?? [])
-      .filter((t) => t.enabled && (t.computeStock ?? 0) > 0)
-      .map((t) => ({
-        roleId: t.roleId,
-        roleName: t.roleName,
-        computeStock: t.computeStock ?? 0,
-      }));
-
-    const prompt = buildResolvePrompt({
-      round: roundNumber,
-      roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
-      roundTitle: currentRound?.title ?? "",
-      worldState: game.worldState,
-      capabilityLevel: currentRound?.capabilityLevel ?? "Unknown",
-      resolvedActions,
-      labs: game.labs,
-      roleCompute,
+    // Build prompt and schema from fetched data
+    const { prompt, resolveSchema, roleCompute } = buildResolveContext(
+      game,
+      submissions ?? [],
+      rounds ?? [],
+      allTables,
+      roundNumber,
       aiDisposition,
-      previousRounds: (rounds ?? [])
-        .filter((r) => r.number < roundNumber && r.summary)
-        .map((r) => ({
-          number: r.number,
-          label: r.label,
-          narrative: r.summary?.narrative,
-          worldStateAfter: r.worldStateAfter,
-        })),
-    });
+    );
 
-    // Check if streaming was requested
+    // Streaming path
     const url = new URL(request.url);
-    const useStream = url.searchParams.get("stream") === "true";
-
-    if (useStream) {
-      // Streaming path: send partial objects to client, do Convex writes when done
+    if (url.searchParams.get("stream") === "true") {
       const aiStream = streamPrimary({
         primary: RESOLVE_MODEL,
         fallback: RESOLVE_FALLBACK,
@@ -299,64 +394,19 @@ export async function POST(request: Request) {
         prompt,
       });
 
-      // Wrap the AI stream: pass partials through, intercept __complete to do writes
-      const encoder = new TextEncoder();
-      const decoder = new TextDecoder();
-      const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-
-      const pump = async () => {
-        const reader = aiStream.getReader();
-        const writer = writable.getWriter();
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const text = decoder.decode(value, { stream: true });
-
-            // Check if this chunk contains a __complete message
-            for (const line of text.split("\n")) {
-              if (!line.startsWith("data: ")) continue;
-              try {
-                const data = JSON.parse(line.slice(6));
-                if (data.__complete && data.output) {
-                  // Do Convex writes before forwarding the complete message
-                  await applyResolution(
-                    data.output as ResolveOutputType,
-                    gameId,
-                    roundNumber,
-                    game,
-                    allTables,
-                    roleCompute,
-                    data.model as string,
-                    data.timeMs as number,
-                    data.tokens as number | undefined,
-                  );
-                }
-              } catch (parseErr) {
-                // Log parsing/apply errors — silent swallowing hides bugs
-                if (line.includes("__complete")) {
-                  console.error("[resolve] Failed to parse/apply __complete message:", parseErr);
-                }
-              }
-            }
-
-            // Forward the chunk to the client as-is
-            await writer.write(value);
-          }
-          await writer.close();
-        } catch (err) {
-          // Send error to the client
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          await writer.write(
-            encoder.encode(`data: ${JSON.stringify({ __error: true, message: errorMsg })}\n\n`),
-          );
-          await writer.close();
-        }
-      };
-
-      // Start pumping in the background — the response streams immediately
-      void pump();
+      const readable = createCompletionStream(aiStream, async (data) => {
+        await applyResolution(
+          data.output,
+          gameId,
+          roundNumber,
+          game,
+          allTables,
+          roleCompute,
+          data.model,
+          data.timeMs,
+          data.tokens,
+        );
+      });
 
       return new Response(readable, {
         headers: {
@@ -367,7 +417,7 @@ export async function POST(request: Request) {
       });
     }
 
-    // Non-streaming path (backward compatible)
+    // Non-streaming path
     const { output, model: usedModel, timeMs, tokens } = await generateWithFallback({
       primary: RESOLVE_MODEL,
       fallback: RESOLVE_FALLBACK,
