@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { ROLES, DEFAULT_LABS, BACKGROUND_LABS } from "@/lib/game-data";
 
 interface Lab {
@@ -184,7 +185,10 @@ export function RdProgressChart({
   currentRound?: number;
   compact?: boolean;
 }) {
-  const { series, xLabels, yTicks, visibleMilestones, scaleY, yPos, xPos, layout } = buildChartData(rounds, currentLabs, currentRound, compact);
+  const { series, xLabels, yTicks, visibleMilestones, scaleY, yPos, xPos, layout } = useMemo(
+    () => buildChartData(rounds, currentLabs, currentRound, compact),
+    [rounds, currentLabs, currentRound, compact],
+  );
   const { width, height, padLeft, padRight } = layout;
 
   return (

@@ -933,6 +933,20 @@ function FacilitatorNav({
   onRestore?: (roundNumber: number, useBefore: boolean) => Promise<void>;
 }) {
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!showSnapshots) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowSnapshots(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showSnapshots]);
+
   const phaseColors: Record<string, { bg: string; text: string }> = {
     discuss: { bg: "#1E3A5F", text: "#60A5FA" },
     submit: { bg: "#3D2F00", text: "#FCD34D" },
@@ -955,7 +969,7 @@ function FacilitatorNav({
             Turn {round.number}/4 — {round.label}
           </span>
         )}
-        <div className="relative">
+        <div className="relative" ref={dropdownRef}>
           <button
             onClick={snapshots?.length ? () => setShowSnapshots(!showSnapshots) : undefined}
             className="text-[11px] py-1 px-2.5 rounded-full font-mono font-semibold cursor-default"

@@ -696,6 +696,23 @@ export function stripLabForSnapshot(lab: { name: string; roleId: string; compute
   return { name: lab.name, roleId: lab.roleId, computeStock: lab.computeStock, rdMultiplier: lab.rdMultiplier, allocation: lab.allocation };
 }
 
+/** Apply a lab merge: survivor absorbs target's compute, keeps higher multiplier, target is removed. */
+export function applyLabMerge<T extends { name: string; computeStock: number; rdMultiplier: number }>(
+  labs: T[],
+  survivorName: string,
+  absorbedName: string,
+): T[] {
+  const absorbed = labs.find(l => l.name === absorbedName);
+  if (!absorbed || survivorName === absorbedName) return labs;
+  return labs
+    .filter(l => l.name !== absorbedName)
+    .map(l => l.name === survivorName ? {
+      ...l,
+      computeStock: l.computeStock + absorbed.computeStock,
+      rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier),
+    } : l);
+}
+
 export const DEFAULT_COMPUTE_DISTRIBUTION = [
   { openbrain: 11, deepcent: 6, conscienta: 6, otherUs: 4, restOfWorld: 4 },
   { openbrain: 16, deepcent: 8, conscienta: 7, otherUs: 2, restOfWorld: 2 },

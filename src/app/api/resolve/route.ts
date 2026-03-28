@@ -3,7 +3,7 @@ import { checkApiAuth } from "@/lib/api-auth";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, DEFAULT_LABS, BASELINE_RD_TARGETS, NEW_COMPUTE_PER_GAME_ROUND, LAB_PROGRESSION, stripLabForSnapshot } from "@/lib/game-data";
+import { ROLES, DEFAULT_LABS, BASELINE_RD_TARGETS, NEW_COMPUTE_PER_GAME_ROUND, LAB_PROGRESSION, stripLabForSnapshot, applyLabMerge } from "@/lib/game-data";
 import { RESOLVE_MODEL, RESOLVE_FALLBACK } from "@/lib/ai-models";
 import { buildResolvePrompt } from "@/lib/ai-prompts";
 import { generateWithFallback, streamPrimary } from "@/lib/ai-fallback";
@@ -414,15 +414,7 @@ Do NOT output a merge unless the event clearly describes one lab absorbing anoth
 
   // Apply merges locally — updateLabs below writes the authoritative state
   for (const merge of merges) {
-    const absorbed = finalLabs.find(l => l.name === merge.absorbedLab);
-    if (!absorbed) continue;
-    finalLabs = finalLabs
-      .filter(l => l.name !== merge.absorbedLab)
-      .map(l => l.name === merge.survivorLab ? {
-        ...l,
-        computeStock: l.computeStock + absorbed.computeStock,
-        rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier),
-      } : l);
+    finalLabs = applyLabMerge(finalLabs, merge.survivorLab, merge.absorbedLab);
     console.info(`[resolve] R${roundNumber} MERGED: ${merge.absorbedLab} → ${merge.survivorLab} (${merge.reason})`);
   }
 
