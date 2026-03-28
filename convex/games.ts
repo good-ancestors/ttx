@@ -263,6 +263,7 @@ export const restoreSnapshot = mutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
+    useBefore: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
@@ -272,16 +273,17 @@ export const restoreSnapshot = mutation({
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
       .collect();
     const round = rounds.find((r) => r.number === args.roundNumber);
-    if (!round?.worldStateAfter || !round?.labsAfter) return;
+    if (!round) return;
 
-    // Restore world state and labs from the snapshot
-    await ctx.db.patch(args.gameId, {
-      worldState: round.worldStateAfter,
-      labs: round.labsAfter,
-    });
+    // Choose before or after snapshot
+    const ws = args.useBefore ? round.worldStateBefore : round.worldStateAfter;
+    const labs = args.useBefore ? round.labsBefore : round.labsAfter;
+    if (!ws || !labs) return;
 
-    // Restore role compute if available
-    if (round.roleComputeAfter) {
+    await ctx.db.patch(args.gameId, { worldState: ws, labs });
+
+    // Restore role compute (only available on "after" snapshots)
+    if (!args.useBefore && round.roleComputeAfter) {
       const tables = await ctx.db.query("tables")
         .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
         .collect();
@@ -295,6 +297,7 @@ export const restoreSnapshot = mutation({
 
     await logEvent(ctx, args.gameId, "snapshot_restored", undefined, {
       restoredFromRound: args.roundNumber,
+      type: args.useBefore ? "before" : "after",
     });
   },
 });

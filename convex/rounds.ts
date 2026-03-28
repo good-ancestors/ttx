@@ -51,6 +51,46 @@ export const applySummary = mutation({
   },
 });
 
+export const snapshotBefore = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    worldStateBefore: v.object({
+      capability: v.number(),
+      alignment: v.number(),
+      tension: v.number(),
+      awareness: v.number(),
+      regulation: v.number(),
+      australia: v.number(),
+    }),
+    labsBefore: v.array(
+      v.object({
+        name: v.string(),
+        roleId: v.string(),
+        computeStock: v.number(),
+        rdMultiplier: v.number(),
+        allocation: v.object({
+          users: v.number(),
+          capability: v.number(),
+          safety: v.number(),
+        }),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db
+      .query("rounds")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (!round || round.worldStateBefore) return; // Don't overwrite
+    await ctx.db.patch(round._id, {
+      worldStateBefore: args.worldStateBefore,
+      labsBefore: args.labsBefore,
+    });
+  },
+});
+
 export const snapshotState = mutation({
   args: {
     gameId: v.id("games"),

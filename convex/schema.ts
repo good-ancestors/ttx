@@ -144,7 +144,34 @@ export default defineSchema({
         narrativeTokens: v.optional(v.number()),
       })
     ),
-    // Snapshots captured after round resolves — for post-game review
+    // Pre-resolve snapshot — captured before resolve runs (safe revert point)
+    worldStateBefore: v.optional(
+      v.object({
+        capability: v.number(),
+        alignment: v.number(),
+        tension: v.number(),
+        awareness: v.number(),
+        regulation: v.number(),
+        australia: v.number(),
+      })
+    ),
+    labsBefore: v.optional(
+      v.array(
+        v.object({
+          name: v.string(),
+          roleId: v.string(),
+          computeStock: v.number(),
+          rdMultiplier: v.number(),
+          allocation: v.object({
+            users: v.number(),
+            capability: v.number(),
+            safety: v.number(),
+          }),
+          spec: v.optional(v.string()),
+        })
+      )
+    ),
+    // Post-resolve snapshot — for post-game review and restore
     worldStateAfter: v.optional(
       v.object({
         capability: v.number(),

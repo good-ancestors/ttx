@@ -272,6 +272,14 @@ async function applyResolution(opts: {
   const maxMult = P.maxMultiplier(roundNumber);
   console.info(`[resolve] R${roundNumber} applyResolution: ${output.resolvedEvents?.length ?? 0} events, model=${usedModel}`);
 
+  // Pre-resolve snapshot — safe revert point (before any AI modifications)
+  await convex.mutation(api.rounds.snapshotBefore, {
+    gameId: gameId as Id<"games">,
+    roundNumber,
+    worldStateBefore: game.worldState as { capability: number; alignment: number; tension: number; awareness: number; regulation: number; australia: number },
+    labsBefore: game.labs.map(stripLabForSnapshot),
+  });
+
   // Store resolved events
   await convex.mutation(api.rounds.applyResolution, {
     gameId: gameId as Id<"games">,
