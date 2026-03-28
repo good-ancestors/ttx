@@ -143,6 +143,7 @@ export default function FacilitatorPage({
   const [showQROverlay, setShowQROverlay] = useState(false);
   const [focusedQR, setFocusedQR] = useState<string | null>(null);
   const [editModal, setEditModal] = useState<"narrative" | "dials" | "adjust" | "addlab" | null>(null);
+  const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
   const [submitDuration, setSubmitDuration] = useState(4);
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
   const [newLabName, setNewLabName] = useState("");
@@ -1498,19 +1499,33 @@ export default function FacilitatorPage({
                 {/* Advance / End button */}
                 {!isProjector && (
                   game.currentRound < 4 ? (
-                    <button
-                      onClick={() => { if (confirm("Advance to next round? Make sure narration is complete.")) void safeAction("Advance round", () => advanceRound({ gameId }))(); }}
-                      className="w-full py-4 bg-white text-navy rounded-lg font-extrabold text-lg mt-4 hover:bg-off-white transition-colors flex items-center justify-center gap-2"
-                    >
-                      Advance to Next Round <ChevronRight className="w-5 h-5" />
-                    </button>
+                    pendingConfirm === "advance" ? (
+                      <div className="flex gap-2 mt-4">
+                        <button onClick={() => setPendingConfirm(null)} className="flex-1 py-4 bg-navy-light text-text-light rounded-lg font-bold text-base">Cancel</button>
+                        <button onClick={() => { setPendingConfirm(null); void safeAction("Advance round", () => advanceRound({ gameId }))(); }} className="flex-1 py-4 bg-white text-navy rounded-lg font-extrabold text-base">Confirm Advance</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setPendingConfirm("advance")}
+                        className="w-full py-4 bg-white text-navy rounded-lg font-extrabold text-lg mt-4 hover:bg-off-white transition-colors flex items-center justify-center gap-2"
+                      >
+                        Advance to Next Round <ChevronRight className="w-5 h-5" />
+                      </button>
+                    )
                   ) : (
-                    <button
-                      onClick={() => { if (confirm("End the scenario? This cannot be undone.")) void safeAction("End scenario", () => finishGame({ gameId }))(); }}
-                      className="w-full py-4 bg-white text-navy rounded-lg font-extrabold text-lg mt-4 hover:bg-off-white transition-colors"
-                    >
-                      End Scenario
-                    </button>
+                    pendingConfirm === "end" ? (
+                      <div className="flex gap-2 mt-4">
+                        <button onClick={() => setPendingConfirm(null)} className="flex-1 py-4 bg-navy-light text-text-light rounded-lg font-bold text-base">Cancel</button>
+                        <button onClick={() => { setPendingConfirm(null); void safeAction("End scenario", () => finishGame({ gameId }))(); }} className="flex-1 py-4 bg-viz-danger text-white rounded-lg font-extrabold text-base">End Scenario</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setPendingConfirm("end")}
+                        className="w-full py-4 bg-white text-navy rounded-lg font-extrabold text-lg mt-4 hover:bg-off-white transition-colors"
+                      >
+                        End Scenario
+                      </button>
+                    )
                   )
                 )}
               </div>

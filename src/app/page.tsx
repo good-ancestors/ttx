@@ -25,6 +25,7 @@ export default function SplashPage() {
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
   const [mode, setMode] = useState<"main" | "join">("main");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const handleCreate = async () => {
     setCreating(true);
@@ -46,9 +47,9 @@ export default function SplashPage() {
   };
 
   const handleDelete = async (gameId: string) => {
-    if (!confirm("Delete this game and all its data?")) return;
     try {
       await removeGame({ gameId: gameId as Parameters<typeof removeGame>[0]["gameId"] });
+      setDeleteId(null);
     } catch (err) {
       console.error("Failed to delete game:", err);
     }
@@ -170,13 +171,20 @@ export default function SplashPage() {
                       Open
                     </button>
                     {game.status !== "playing" && (
-                      <button
-                        onClick={() => handleDelete(game._id)}
-                        className="text-xs p-1.5 text-text-light hover:text-viz-danger transition-colors rounded"
-                        title="Delete game"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      deleteId === game._id ? (
+                        <div className="flex gap-1">
+                          <button onClick={() => setDeleteId(null)} className="text-xs px-2 py-1 text-text-light rounded">Cancel</button>
+                          <button onClick={() => handleDelete(game._id)} className="text-xs px-2 py-1 bg-viz-danger text-white rounded font-medium">Delete</button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setDeleteId(game._id)}
+                          className="text-xs p-1.5 text-text-light hover:text-viz-danger transition-colors rounded"
+                          title="Delete game"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )
                     )}
                   </div>
                 );

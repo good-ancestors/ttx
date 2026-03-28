@@ -80,6 +80,11 @@ const eslintConfig = defineConfig([
       eqeqeq: ["error", "always", { null: "ignore" }],
       "no-console": ["warn", { allow: ["log", "warn", "error", "info"] }],
       "no-nested-ternary": "warn",
+
+      // === Browser API restrictions ===
+      // Native dialogs (alert/confirm/prompt) block the event loop and break
+      // browser extensions. Use inline React UI confirmations instead.
+      "no-restricted-globals": ["error", "alert", "confirm", "prompt"],
     },
   },
 
