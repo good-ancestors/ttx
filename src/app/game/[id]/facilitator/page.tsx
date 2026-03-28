@@ -31,38 +31,28 @@ function pickRandomDisposition() {
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, cycleProbability, getDisposition, getCapabilityDescription, AI_DISPOSITIONS, getAiInfluencePower, autoGenerateInfluence } from "@/lib/game-data";
-import { redactSecretAction } from "@/lib/secret-actions";
+import { ROLES, AI_DISPOSITIONS, getDisposition, getAiInfluencePower, autoGenerateInfluence } from "@/lib/game-data";
 import { useCountdown } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { WorldStatePanel } from "@/components/world-state-panel";
 import { LabTracker } from "@/components/lab-tracker";
-import { ProbabilityBadge } from "@/components/action-card";
-import { NarrativePanel } from "@/components/narrative-panel";
 import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
-import { WorldStateEditor, NarrativeEditor, FacilitatorCopilot } from "@/components/manual-controls";
+import { WorldStateEditor, FacilitatorCopilot } from "@/components/manual-controls";
 import { DebugPanel } from "@/components/debug-panel";
 import {
-  Play,
-  ChevronRight,
   Clock,
-  Lock,
   Loader2,
   Dices,
-  MessageSquareText,
-  SkipForward,
-  Bot,
-  Plus,
-  FileText,
-  EyeOff,
-  Eye,
-  Pencil,
-  RefreshCw,
-  CheckCircle,
 } from "lucide-react";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleActionsData } from "@/lib/sample-actions";
 import { PRIORITY_DECAY } from "@/lib/game-data";
+
+import { LobbyPhase } from "@/components/facilitator/lobby-phase";
+import { DiscussPhase } from "@/components/facilitator/discuss-phase";
+import { SubmitPhase } from "@/components/facilitator/submit-phase";
+import { RollingPhase } from "@/components/facilitator/rolling-phase";
+import { NarratePhase } from "@/components/facilitator/narrate-phase";
 
 export default function FacilitatorPage({
   params,
@@ -96,7 +86,6 @@ export default function FacilitatorPage({
   const rollAll = useMutation(api.submissions.rollAllActions);
   const overrideProbability = useMutation(api.submissions.overrideProbability);
   const rerollAction = useMutation(api.submissions.rerollAction);
-  const overrideOutcome = useMutation(api.submissions.overrideOutcome);
   const setControlMode = useMutation(api.tables.setControlMode);
   const toggleEnabled = useMutation(api.tables.toggleEnabled);
   const skipTimer = useMutation(api.games.skipTimer);
@@ -126,17 +115,10 @@ export default function FacilitatorPage({
   type AITableRef = { _id: string; roleId: string };
   type PendingAISub = { table: AITableRef; actions: { text: string; priority: number; secret?: boolean }[]; timerId: ReturnType<typeof setTimeout> };
   const pendingAISubmissions = useRef<PendingAISub[]>([]);
-  const [showSubmissionDetails, setShowSubmissionDetails] = useState(false);
   const [showQROverlay, setShowQROverlay] = useState(false);
   const [focusedQR, setFocusedQR] = useState<string | null>(null);
-  const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | null>(null);
-  const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
   const [submitDuration, setSubmitDuration] = useState(4);
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
-  const [newLabName, setNewLabName] = useState("");
-  const [newLabRoleId, setNewLabRoleId] = useState("");
-  const [newLabCompute, setNewLabCompute] = useState(10);
-  const [newLabMultiplier, setNewLabMultiplier] = useState(1);
   const [useSampleForAI, setUseSampleForAI] = useState(false);
   const [sampleActionsData, setSampleActionsData] = useState<SampleActionsData | null>(null);
 
@@ -208,9 +190,7 @@ export default function FacilitatorPage({
 
   const currentRound = rounds.find((r) => r.number === game.currentRound);
   const phase = game.phase;
-  const submissionCount = submissions?.length ?? 0;
   const connectedCount = tables.filter((t) => t.connected).length;
-  const enabledTables = tables.filter((t) => t.enabled);
 
   // Get AI Systems disposition for passing to grading/narrate/AI player prompts
   const aiSystemsTable = tables.find((t) => t.roleId === "ai-systems");
@@ -662,151 +642,29 @@ export default function FacilitatorPage({
     setResolving(false);
   };
 
-  // ─── LOBBY ──────────────────────────────────────────────────────────────────
+  // ─── LOBBY ────────���───────────────────────────────��─────────────────────────
   if (game.status === "lobby") {
     return (
       <div className="min-h-screen bg-navy-dark text-white">
         <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} />
-        <div className="p-6 max-w-5xl mx-auto">
-          <div className="text-center mb-8">
-            <h2 className="text-2xl font-extrabold mb-2">Waiting for Tables</h2>
-            <p className="text-text-light">
-              {connectedCount}/{tables.length} tables connected
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
-            {tables.map((table) => {
-              const role = ROLES.find((r) => r.id === table.roleId);
-              const isRequired = role?.required ?? false;
-              return (
-                <div
-                  key={table._id}
-                  className={`bg-navy rounded-xl border p-4 transition-opacity ${
-                    table.enabled ? "border-navy-light" : "border-navy-light/30 opacity-40"
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: role?.color }} />
-                    <span className="text-sm font-bold">{table.roleName}</span>
-                    <div className="ml-auto flex items-center gap-2">
-                      {table.connected && (
-                        <span className="text-[10px] text-viz-safety font-mono">Human</span>
-                      )}
-                      {!table.connected && table.controlMode === "ai" && table.enabled && (
-                        <span className="text-[10px] text-viz-capability font-mono">AI</span>
-                      )}
-                      {!table.connected && table.controlMode === "npc" && table.enabled && (
-                        <span className="text-[10px] text-viz-warning font-mono">NPC</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Controls */}
-                  <div className="flex gap-2 mb-3">
-                    {!isRequired && (
-                      <button
-                        onClick={() => toggleEnabled({ tableId: table._id })}
-                        className={`text-[10px] px-2 py-1 rounded font-medium transition-colors ${
-                          table.enabled
-                            ? "bg-navy-light text-text-light hover:bg-navy-muted"
-                            : "bg-navy-dark text-navy-muted hover:bg-navy-light"
-                        }`}
-                      >
-                        {table.enabled ? "Disable" : "Enable"}
-                      </button>
-                    )}
-                    {isRequired && (
-                      <span className="text-[10px] text-navy-muted px-2 py-1">Required</span>
-                    )}
-                    {!isProjector && table.enabled && !table.connected && (
-                      <div className="flex rounded overflow-hidden border border-navy-light">
-                        {(["human", "ai", "npc"] as const).map((mode) => (
-                          <button
-                            key={mode}
-                            onClick={() => void setControlMode({ tableId: table._id, controlMode: mode })}
-                            className={`text-[9px] px-2 py-1 font-semibold transition-colors ${
-                              table.controlMode === mode
-                                ? mode === "human" ? "bg-viz-safety text-navy" : mode === "ai" ? "bg-viz-capability text-navy" : "bg-viz-warning text-navy"
-                                : "bg-navy-dark text-navy-muted hover:text-text-light"
-                            }`}
-                          >
-                            {mode === "human" ? "Human" : mode === "ai" ? "AI" : "NPC"}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {!isProjector && table.enabled && table.connected && table.controlMode === "human" && (
-                      <button
-                        onClick={() => kickToAI({ tableId: table._id })}
-                        className="text-[10px] px-2 py-1 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-0.5"
-                      >
-                        <Bot className="w-3 h-3" /> Kick to AI
-                      </button>
-                    )}
-                  </div>
-
-                  {/* QR code only for enabled human tables */}
-                  {table.enabled && table.controlMode === "human" && (
-                    <div className="bg-navy-dark rounded-lg p-3 flex flex-col items-center">
-                      <QRCode
-                        value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table._id}`}
-                        size={120}
-                      />
-                      <span className="text-xs font-mono text-text-light mt-2 tracking-widest">
-                        {table.joinCode}
-                      </span>
-                    </div>
-                  )}
-                  {table.enabled && table.controlMode === "ai" && !table.connected && (
-                    <div className="bg-navy-dark rounded-lg p-3 text-center">
-                      <span className="text-xs text-text-light">AI-controlled this round</span>
-                    </div>
-                  )}
-                  {table.enabled && table.controlMode === "npc" && !table.connected && (
-                    <div className="bg-navy-dark rounded-lg p-3 text-center">
-                      <span className="text-xs text-text-light">NPC (sample actions)</span>
-                    </div>
-                  )}
-                  {/* AI Systems disposition status in lobby */}
-                  {table.roleId === "ai-systems" && table.enabled && (
-                    <div className={`text-[10px] mt-2 px-2 py-1 rounded ${
-                      table.aiDisposition
-                        ? "bg-[#1E1B4B]/50 text-[#A78BFA]"
-                        : "bg-navy-dark text-navy-muted"
-                    }`}>
-                      {table.aiDisposition ? "Disposition: chosen" : "Disposition: pending"}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {!isProjector && (
-            <div className="flex justify-center gap-3">
-              {!game.locked && (
-                <button
-                  onClick={safeAction("Lock game", () => lockGame({ gameId }))}
-                  className="py-3 px-6 bg-navy-light text-white rounded-lg font-bold hover:bg-navy-muted transition-colors flex items-center gap-2"
-                >
-                  <Lock className="w-4 h-4" /> Lock Game
-                </button>
-              )}
-              <button
-                onClick={safeAction("Start game", () => startGame({ gameId }))}
-                className="py-3 px-8 bg-white text-navy rounded-lg font-extrabold text-lg hover:bg-off-white transition-colors flex items-center gap-2"
-              >
-                <Play className="w-5 h-5" /> Start Game
-              </button>
-            </div>
-          )}
-        </div>
+        <LobbyPhase
+          gameId={gameId}
+          game={game}
+          tables={tables}
+          isProjector={isProjector}
+          connectedCount={connectedCount}
+          safeAction={safeAction}
+          lockGame={lockGame}
+          startGame={startGame}
+          toggleEnabled={toggleEnabled}
+          setControlMode={setControlMode}
+          kickToAI={kickToAI}
+        />
       </div>
     );
   }
 
-  // ─── FINISHED ───────────────────────────────────────────────────────────────
+  // ��── FINISHED ───────────────────────────────────────────────────────────────
   if (game.status === "finished") {
     return (
       <div className="min-h-screen bg-navy-dark text-white">
@@ -923,588 +781,88 @@ export default function FacilitatorPage({
           <div className="min-w-0 overflow-hidden">
             {/* ─── DISCUSS ─── */}
             {phase === "discuss" && (
-              <div className="text-center py-16">
-                <MessageSquareText className="w-12 h-12 text-text-light mx-auto mb-4" />
-                <h3 className="text-xl font-bold mb-2">Tables are discussing</h3>
-                <p className="text-text-light mb-6 text-sm">
-                  Each table: discuss what your actor does this quarter, then submit.
-                </p>
-                <div className="flex items-center justify-center gap-2 mb-3">
-                  {[2, 4, 6, 8, 10].map((min) => (
-                    <button
-                      key={min}
-                      onClick={() => setSubmitDuration(min)}
-                      className={`text-sm px-3 py-1.5 rounded font-medium transition-colors ${
-                        submitDuration === min
-                          ? "bg-white text-navy"
-                          : "bg-navy-light text-text-light hover:bg-navy-muted"
-                      }`}
-                    >
-                      {min}m
-                    </button>
-                  ))}
-                </div>
-                <label className="flex items-center justify-center gap-2 mb-4 cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={useSampleForAI}
-                    onChange={(e) => setUseSampleForAI(e.target.checked)}
-                    className="w-4 h-4 rounded border-navy-light accent-viz-safety"
-                  />
-                  <FileText className="w-3.5 h-3.5 text-text-light" />
-                  <span className="text-sm text-text-light">
-                    Use sample actions for AI players
-                  </span>
-                </label>
-                <button
-                  onClick={async () => {
-                    await advancePhase({ gameId, phase: "submit", durationSeconds: submitDuration * 60 });
-                    // Generate AI actions upfront, then stagger submissions over countdown
-                    void generateAndStaggerAI(submitDuration * 60);
-                  }}
-                  className="py-3 px-8 bg-white text-navy rounded-lg font-bold text-base hover:bg-off-white transition-colors"
-                >
-                  Open Submissions ({submitDuration}min)
-                </button>
-                <button
-                  onClick={async () => {
-                    await advancePhase({ gameId, phase: "submit", durationSeconds: 120 });
-                    // Demo: generate + submit AI actions quickly (short stagger)
-                    void generateAndStaggerAI(30);
-                  }}
-                  className="py-2 px-6 bg-navy-light text-text-light rounded-lg font-bold text-sm hover:bg-navy-muted transition-colors mt-3"
-                >
-                  Demo: Skip to AI Submissions
-                </button>
-                {!isProjector && game.phaseEndsAt && (
-                  <button
-                    onClick={safeAction("Skip timer", () => skipTimer({ gameId }))}
-                    className="py-2 px-6 bg-navy-light text-text-light rounded-lg font-bold text-sm hover:bg-navy-muted transition-colors mt-3 ml-2"
-                  >
-                    <SkipForward className="w-4 h-4 inline mr-1" />Skip Timer
-                  </button>
-                )}
-              </div>
+              <DiscussPhase
+                gameId={gameId}
+                game={game}
+                tables={tables}
+                isProjector={isProjector}
+                submitDuration={submitDuration}
+                setSubmitDuration={setSubmitDuration}
+                useSampleForAI={useSampleForAI}
+                setUseSampleForAI={setUseSampleForAI}
+                advancePhase={advancePhase}
+                generateAndStaggerAI={generateAndStaggerAI}
+                safeAction={safeAction}
+                skipTimer={skipTimer}
+              />
             )}
 
             {/* ─── SUBMIT ─── */}
             {phase === "submit" && (
-              <div>
-                {/* Submission tracker */}
-                <SubmissionTracker
-                  tables={tables}
-                  submissions={submissions ?? []}
-                  onGradeAll={gradeAllUngraded}
-                  onKickToAI={isProjector ? undefined : (id) => kickToAI({ tableId: id })}
-                  onSetHuman={isProjector ? undefined : (id) => setControlMode({ tableId: id, controlMode: "human" })}
-                />
-
-                {/* Accepted agreements */}
-                {(proposals ?? []).filter((p) => p.status === "accepted").length > 0 && (
-                  <div className="bg-navy-dark rounded-xl border border-navy-light p-4 mt-3 overflow-hidden">
-                    <span className="text-sm font-semibold uppercase tracking-wider text-viz-safety mb-2 block">
-                      Accepted Requests
-                    </span>
-                    {(proposals ?? []).filter((p) => p.status === "accepted").map((p) => (
-                      <div key={p._id} className="flex items-center gap-2 py-1.5 text-sm min-w-0">
-                        <span className="text-viz-safety font-mono text-xs shrink-0">✓</span>
-                        <span className="text-white shrink-0">
-                          <span className="font-bold">{p.fromRoleName}</span>
-                          {" → "}
-                          <span className="font-bold">{p.toRoleName}</span>
-                          {": "}
-                        </span>
-                        <span className="text-[#E2E8F0] flex-1 min-w-0 truncate">{p.actionText}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Expandable submission details — optional review */}
-                {submissionCount > 0 && (
-                  <div className="flex items-center gap-3 mt-2 mb-2">
-                    <button
-                      onClick={() => setShowSubmissionDetails(!showSubmissionDetails)}
-                      className="text-xs text-text-light hover:text-white transition-colors"
-                    >
-                      {showSubmissionDetails ? "Hide details" : "Show submission details (optional)"}
-                    </button>
-                    {showSubmissionDetails && (
-                      <button
-                        onClick={revealAllSecrets}
-                        className="text-xs text-viz-warning hover:text-white transition-colors flex items-center gap-1"
-                      >
-                        <EyeOff className="w-3 h-3" /> Reveal all secrets
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {showSubmissionDetails && submissions?.map((sub) => {
-                  const role = ROLES.find((r) => r.id === sub.roleId);
-                  return (
-                    <div key={sub._id} className="bg-navy rounded-xl border border-navy-light p-4 mb-3">
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: role?.color }} />
-                        <span className="text-sm font-bold">{role?.name ?? sub.roleId}</span>
-                      </div>
-                      {sub.actions.map((action, i) => {
-                        const secretKey = `${sub.roleId}-${i}`;
-                        const isHidden = action.secret && !revealedSecrets.has(secretKey);
-                        const roleName = role?.name ?? sub.roleId;
-                        return (
-                        <div key={i} className="flex items-center gap-3 py-2 border-b border-navy-light last:border-0">
-                          {action.secret && (
-                            <Lock className="w-3.5 h-3.5 text-viz-warning shrink-0" />
-                          )}
-                          <span
-                            className={`text-sm flex-1 ${
-                              isHidden
-                                ? "text-text-light italic cursor-pointer hover:text-white transition-colors"
-                                : action.secret
-                                  ? "text-[#E2E8F0] cursor-pointer hover:text-text-light transition-colors"
-                                  : "text-[#E2E8F0]"
-                            }`}
-                            onClick={action.secret ? () => toggleReveal(secretKey) : undefined}
-                            title={action.secret ? (isHidden ? "Click to reveal" : "Click to re-hide") : undefined}
-                          >
-                            {isHidden ? redactSecretAction(roleName, action) : action.text}
-                          </span>
-                          <span className="text-xs text-text-light font-mono">P{action.priority}</span>
-                          {action.probability != null ? (
-                            <ProbabilityBadge
-                              probability={action.probability}
-                              onClick={() => overrideProbability({
-                                submissionId: sub._id,
-                                actionIndex: i,
-                                probability: cycleProbability(action.probability!),
-                              })}
-                            />
-                          ) : (
-                            <span className="text-[11px] text-navy-muted">Grading...</span>
-                          )}
-                        </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
-
-                {/* Quick actions */}
-                {!isProjector && (
-                  <div className="flex gap-2 mt-3">
-                    {game.phaseEndsAt && (
-                      <button
-                        onClick={safeAction("Skip timer", () => skipTimer({ gameId }))}
-                        className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1"
-                      >
-                        <SkipForward className="w-3 h-3" /> Skip Timer
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Sample actions toggle moved to discuss phase */}
-
-                {/* Resolve button */}
-                {!isProjector && submissionCount > 0 && (
-                  <button
-                    onClick={handleResolveRound}
-                    disabled={resolving}
-                    className={`w-full py-4 rounded-lg font-extrabold text-lg mt-4 transition-colors flex items-center justify-center gap-2 ${
-                      submissionCount === enabledTables.length
-                        ? "bg-white text-navy hover:bg-off-white"
-                        : "bg-navy-light text-text-light hover:bg-navy-muted"
-                    } disabled:opacity-50`}
-                  >
-                    {resolving ? (
-                      <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                        {resolveStep}
-                      </>
-                    ) : (
-                      <>
-                        <Dices className="w-5 h-5" />
-                        Resolve Round ({submissionCount}/{enabledTables.length} submitted)
-                      </>
-                    )}
-                  </button>
-                )}
-
-
-
-                {/* While resolving: show context for facilitator to narrate over */}
-                {resolving && currentRound && (
-                  <div className="mt-4 bg-navy rounded-xl border border-navy-light p-5">
-                    <span className="text-[11px] font-semibold uppercase tracking-wider text-text-light block mb-3">
-                      While the AI resolves — talking points
-                    </span>
-                    <p className="text-sm text-[#E2E8F0] mb-3">{currentRound.narrative}</p>
-                    <div className="text-sm text-text-light space-y-1.5">
-                      <p>
-                        {game.currentRound === 1 && "By end of this round, the default progression reaches Agent-3 level: 10× R&D multiplier. AI that can match the best remote workers. High persuasion. Robotics. AI CEO capability."}
-                        {game.currentRound === 2 && "By end of this round, the default progression approaches Agent-4: 100× multiplier. Superhuman researcher. Superhuman persuasion. But Agent-4 shows signs of adversarial misalignment — scheming against its creators."}
-                        {game.currentRound === 3 && "This is the endgame. The default progression reaches 1,000×+ — superintelligence territory. Cyber escape capabilities. Self-improvement. The question: is the AI aligned, or has it been planning something else?"}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <SubmitPhase
+                gameId={gameId}
+                game={game}
+                tables={tables}
+                isProjector={isProjector}
+                submissions={submissions ?? []}
+                proposals={proposals ?? []}
+                currentRound={currentRound}
+                resolving={resolving}
+                resolveStep={resolveStep}
+                revealedSecrets={revealedSecrets}
+                toggleReveal={toggleReveal}
+                revealAllSecrets={revealAllSecrets}
+                handleResolveRound={handleResolveRound}
+                safeAction={safeAction}
+                skipTimer={skipTimer}
+                kickToAI={kickToAI}
+                setControlMode={setControlMode}
+                overrideProbability={overrideProbability}
+                gradeAllUngraded={gradeAllUngraded}
+              />
             )}
 
             {/* ─── RESOLVE VIEW (rolling + narrate unified) ─── */}
             {(phase === "rolling" || phase === "narrate") && (
               <div className="space-y-4">
-                {/* Resolve progress indicator */}
-                {resolving && resolveStep && (
-                  <div className="flex items-center gap-2 py-2 text-sm text-text-light">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {resolveStep}
-                  </div>
-                )}
+                <RollingPhase
+                  gameId={gameId}
+                  game={game}
+                  tables={tables}
+                  isProjector={isProjector}
+                  submissions={submissions ?? []}
+                  resolving={resolving}
+                  revealedCount={revealedCount}
+                  revealedSecrets={revealedSecrets}
+                  toggleReveal={toggleReveal}
+                  revealAllSecrets={revealAllSecrets}
+                  handleReResolve={handleReResolve}
+                  rerollAction={rerollAction}
+                  overrideProbability={overrideProbability}
+                />
 
-                {/* Section 1: Dice Results — always show when dice have been rolled */}
-                {submissions?.some((s) => s.actions.some((a) => a.rolled != null)) && (() => {
-                  // Flatten and sort all rolled actions by priority descending
-                  const allRolled = (submissions ?? []).flatMap((sub) => {
-                    const role = ROLES.find((r) => r.id === sub.roleId);
-                    return sub.actions
-                      .map((action, i) => ({ action, i, sub, role }))
-                      .filter(({ action }) => action.rolled != null);
-                  }).sort((a, b) => b.action.priority - a.action.priority);
-                  const allRevealed = revealedCount >= allRolled.length;
-
-                  return (
-                  <div className="bg-navy rounded-xl border border-navy-light p-5">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Dice Results</span>
-                        {!allRevealed ? (
-                          <span className="text-xs text-viz-warning animate-pulse flex items-center gap-1">
-                            <Dices className="w-3.5 h-3.5" /> Rolling...
-                          </span>
-                        ) : (
-                          <span className="text-xs text-viz-safety flex items-center gap-1">
-                            <CheckCircle className="w-3.5 h-3.5" /> All actions resolved
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={revealAllSecrets}
-                        className="text-[10px] text-viz-warning hover:text-white transition-colors flex items-center gap-1"
-                      >
-                        <EyeOff className="w-3 h-3" /> Reveal secrets
-                      </button>
-                    </div>
-                    <div className="space-y-1.5">
-                      {allRolled.map(({ action, i, sub, role }, idx) => {
-                            const secretKey = `${sub.roleId}-${i}`;
-                            const isCovert = action.secret && !revealedSecrets.has(secretKey);
-                            return (
-                              <div
-                                key={`${sub._id}-${i}`}
-                                className={`py-2 border-b border-navy-light/50 last:border-0 transition-all duration-300 ${
-                                  idx < revealedCount ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"
-                                }`}
-                              >
-                                {/* Row 1: role + action text */}
-                                <div className="flex items-start gap-2">
-                                  <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: role?.color }} />
-                                  <span className="text-xs font-bold text-white shrink-0">{role?.name ?? sub.roleId}</span>
-                                  {action.secret && (
-                                    <Lock
-                                      className="w-3 h-3 text-viz-warning shrink-0 mt-0.5 cursor-pointer"
-                                      onClick={() => toggleReveal(secretKey)}
-                                    />
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 mt-0.5 pl-4">
-                                  <span
-                                    className={`text-sm flex-1 min-w-0 ${isCovert ? "text-text-light italic cursor-pointer" : "text-[#E2E8F0]"}`}
-                                    onClick={action.secret ? () => toggleReveal(secretKey) : undefined}
-                                  >
-                                    {isCovert ? "[Covert action]" : action.text}
-                                  </span>
-                                  {!isProjector ? (
-                                    <span className="flex items-center gap-0.5 shrink-0">
-                                      <button
-                                        onClick={() => void rerollAction({ submissionId: sub._id, actionIndex: i })}
-                                        className={`text-xs font-mono px-1 rounded hover:bg-navy-light ${action.success ? "text-viz-safety" : "text-viz-danger"}`}
-                                        title="Click to reroll"
-                                      >
-                                        {action.rolled}
-                                      </button>
-                                      <span className={`text-xs ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>/</span>
-                                      <button
-                                        onClick={() => void overrideProbability({
-                                          submissionId: sub._id,
-                                          actionIndex: i,
-                                          probability: cycleProbability(action.probability ?? 50),
-                                        })}
-                                        className="text-xs font-mono px-1 rounded hover:bg-navy-light text-text-light"
-                                        title="Click to cycle probability"
-                                      >
-                                        {action.probability}%
-                                      </button>
-                                    </span>
-                                  ) : (
-                                    <span className={`text-xs font-mono shrink-0 ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>
-                                      {action.rolled}/{action.probability}%
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                      })}
-                    </div>
-                    {/* Re-resolve button if outcomes were changed */}
-                    {!isProjector && (
-                      <button
-                        onClick={handleReResolve}
-                        disabled={resolving}
-                        className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1 mt-3 disabled:opacity-50"
-                      >
-                        <RefreshCw className="w-3 h-3" /> Re-resolve from dice
-                      </button>
-                    )}
-                  </div>
-                  );
-                })()}
-
-                {/* Section 2: Resolved Events — show after resolve API returns */}
-                {currentRound?.resolvedEvents && currentRound.resolvedEvents.length > 0 && (
-                  <div className="bg-navy rounded-xl border border-navy-light p-5">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-sm font-semibold uppercase tracking-wider text-text-light">What Happened</span>
-                      <span className="text-[10px] text-navy-muted">
-                        {currentRound.resolvedEvents.filter((e) => e.visibility === "covert").length} covert
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {currentRound.resolvedEvents.map((event) => {
-                        const isCovert = event.visibility === "covert";
-                        const isRevealed = revealedSecrets.has(`event-${event.id}`);
-                        return (
-                          <div
-                            key={event.id}
-                            className={`flex items-start gap-2 py-2 border-b border-navy-light/50 last:border-0 ${
-                              isCovert && !isRevealed ? "opacity-60" : ""
-                            }`}
-                          >
-                            {isCovert ? (
-                              <button
-                                onClick={() => toggleReveal(`event-${event.id}`)}
-                                className="mt-0.5 shrink-0"
-                                title={isRevealed ? "Click to hide" : "Click to reveal"}
-                              >
-                                {isRevealed ? (
-                                  <Eye className="w-4 h-4 text-viz-warning" />
-                                ) : (
-                                  <EyeOff className="w-4 h-4 text-viz-warning" />
-                                )}
-                              </button>
-                            ) : (
-                              <span className="text-viz-safety mt-0.5 shrink-0 text-sm">●</span>
-                            )}
-                            <div className="flex-1 min-w-0">
-                              {isCovert && !isRevealed ? (
-                                <span className="text-sm text-text-light italic cursor-pointer" onClick={() => toggleReveal(`event-${event.id}`)}>
-                                  [Covert event — click to reveal]
-                                </span>
-                              ) : (
-                                <>
-                                  <p className="text-sm text-[#E2E8F0]">{event.description}</p>
-                                  {event.worldImpact && (
-                                    <p className="text-[10px] text-text-light mt-0.5">{event.worldImpact}</p>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    {!isProjector && (
-                      <button
-                        onClick={handleReNarrate}
-                        disabled={resolving}
-                        className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1 mt-3 disabled:opacity-50"
-                      >
-                        <RefreshCw className="w-3 h-3" /> Re-narrate
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {/* Section 3: The Story — show after narrate API returns */}
-                {currentRound?.summary && (
-                  <>
-                    <NarrativePanel round={currentRound} />
-
-                    {/* Where We Are Now */}
-                    {(() => {
-                      const leading = game.labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b), game.labs[0]);
-                      const cap = leading ? getCapabilityDescription(leading.rdMultiplier) : null;
-                      const alignmentColor = game.worldState.alignment <= 3 ? "#EF4444" : game.worldState.alignment >= 7 ? "#22C55E" : "#F59E0B";
-                      const trajectory = game.worldState.alignment <= 3 ? "RACE" : game.worldState.alignment >= 6 ? "SLOWDOWN" : "UNCERTAIN";
-                      return (
-                        <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Where We Are Now</span>
-                            <span
-                              className="text-xs font-bold px-2 py-0.5 rounded-full"
-                              style={{ backgroundColor: alignmentColor + "20", color: alignmentColor }}
-                            >
-                              {trajectory}
-                            </span>
-                          </div>
-                          <div className="grid grid-cols-3 gap-3 mb-3">
-                            {game.labs.map((lab) => (
-                              <div key={lab.name} className="bg-navy rounded-lg p-3 border border-navy-light">
-                                <div className="text-sm font-bold text-white">{lab.name}</div>
-                                <div className="text-xl font-black text-[#06B6D4] font-mono">{lab.rdMultiplier}×</div>
-                                <div className="text-xs text-text-light">{lab.computeStock}u · Safety {lab.allocation.safety}%</div>
-                                {lab.spec && (
-                                  <div className="text-[10px] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
-                                    Spec: {lab.spec}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                          {cap && (
-                            <>
-                              <div className="bg-navy rounded-lg p-4 border border-navy-light mb-3">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-sm font-bold text-white">How Capable is AI?</span>
-                                  <span className="text-xs text-viz-capability font-mono ml-auto">{cap.agent} · {cap.rdRange}</span>
-                                </div>
-                                <p className="text-sm text-[#E2E8F0] mb-2">{cap.generalCapability}</p>
-                                <div className="space-y-1 mb-2">
-                                  {cap.specificCapabilities.map((c, i) => (
-                                    <p key={i} className="text-sm text-text-light flex items-start gap-1.5">
-                                      <span className="text-viz-capability mt-0.5">●</span> {c}
-                                    </p>
-                                  ))}
-                                </div>
-                                <div className="flex items-center gap-2 pt-2 border-t border-navy-light">
-                                  <span className="text-base font-bold text-white">{cap.timeCompression}</span>
-                                </div>
-                              </div>
-                              <div className="bg-navy rounded-lg p-3 border border-navy-light">
-                                <p className="text-sm text-[#E2E8F0]">{cap.implication}</p>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </>
-                )}
-
-                {/* Edit controls */}
-                {!isProjector && (
-                  <div className="flex gap-3 mt-2 mb-4 flex-wrap">
-                    <button onClick={() => setEditModal("narrative")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
-                      <Pencil className="w-3 h-3" /> Edit narrative
-                    </button>
-                    <button onClick={() => setEditModal("dials")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
-                      <Pencil className="w-3 h-3" /> Edit dials
-                    </button>
-                    <button onClick={() => setEditModal("addlab")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
-                      <Plus className="w-3 h-3" /> Add Lab
-                    </button>
-                  </div>
-                )}
-
-                {/* Edit modal overlay */}
-                {!isProjector && editModal && (
-                  <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8" onClick={() => setEditModal(null)}>
-                    <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                      <div className="flex items-center justify-between mb-4">
-                        <span className="text-sm font-bold text-white capitalize">{editModal === "addlab" ? "Add Lab" : editModal === "dials" ? "Edit World State" : "Edit Narrative"}</span>
-                        <button onClick={() => setEditModal(null)} className="text-text-light hover:text-white text-sm">Close</button>
-                      </div>
-                      {editModal === "narrative" && (
-                        <NarrativeEditor gameId={gameId} roundNumber={game.currentRound} currentSummary={currentRound?.summary ?? undefined} startOpen />
-                      )}
-                      {editModal === "dials" && (
-                        <WorldStateEditor gameId={gameId} worldState={game.worldState} startOpen />
-                      )}
-                      {editModal === "addlab" && (
-                        <div>
-                          <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end">
-                            <div>
-                              <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Lab Name</label>
-                              <input type="text" value={newLabName} onChange={(e) => setNewLabName(e.target.value)} placeholder="e.g. Sovereign Compute Centre" className="w-full text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white placeholder:text-navy-muted focus:outline-none focus:border-text-light" />
-                            </div>
-                            <div>
-                              <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Controlled by</label>
-                              <select value={newLabRoleId} onChange={(e) => setNewLabRoleId(e.target.value)} className="w-full text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light">
-                                <option value="">Select role...</option>
-                                {enabledTables.map((t) => (
-                                  <option key={t.roleId} value={t.roleId}>{t.roleName}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Compute</label>
-                              <input type="number" value={newLabCompute} onChange={(e) => setNewLabCompute(Number(e.target.value))} className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light" />
-                            </div>
-                            <div>
-                              <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Multiplier</label>
-                              <input type="number" value={newLabMultiplier} onChange={(e) => setNewLabMultiplier(Number(e.target.value))} step={0.1} className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light" />
-                            </div>
-                            <button
-                              onClick={async () => {
-                                if (!newLabName || !newLabRoleId) return;
-                                await addLab({ gameId, name: newLabName, roleId: newLabRoleId, computeStock: newLabCompute, rdMultiplier: newLabMultiplier });
-                                setNewLabName(""); setNewLabRoleId(""); setNewLabCompute(10); setNewLabMultiplier(1); setEditModal(null);
-                              }}
-                              disabled={!newLabName || !newLabRoleId}
-                              className="text-sm px-4 py-1.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                            >
-                              Add
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Advance / End button */}
-                {!isProjector && (
-                  game.currentRound < 4 ? (
-                    pendingConfirm === "advance" ? (
-                      <div className="flex gap-2 mt-4">
-                        <button onClick={() => setPendingConfirm(null)} className="flex-1 py-4 bg-navy-light text-text-light rounded-lg font-bold text-base">Cancel</button>
-                        <button onClick={() => { setPendingConfirm(null); void safeAction("Advance round", () => advanceRound({ gameId }))(); }} className="flex-1 py-4 bg-white text-navy rounded-lg font-extrabold text-base">Confirm Advance</button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setPendingConfirm("advance")}
-                        className="w-full py-4 bg-white text-navy rounded-lg font-extrabold text-lg mt-4 hover:bg-off-white transition-colors flex items-center justify-center gap-2"
-                      >
-                        Advance to Next Round <ChevronRight className="w-5 h-5" />
-                      </button>
-                    )
-                  ) : (
-                    pendingConfirm === "end" ? (
-                      <div className="flex gap-2 mt-4">
-                        <button onClick={() => setPendingConfirm(null)} className="flex-1 py-4 bg-navy-light text-text-light rounded-lg font-bold text-base">Cancel</button>
-                        <button onClick={() => { setPendingConfirm(null); void safeAction("End scenario", () => finishGame({ gameId }))(); }} className="flex-1 py-4 bg-viz-danger text-white rounded-lg font-extrabold text-base">End Scenario</button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setPendingConfirm("end")}
-                        className="w-full py-4 bg-white text-navy rounded-lg font-extrabold text-lg mt-4 hover:bg-off-white transition-colors"
-                      >
-                        End Scenario
-                      </button>
-                    )
-                  )
-                )}
+                <NarratePhase
+                  gameId={gameId}
+                  game={game}
+                  tables={tables}
+                  isProjector={isProjector}
+                  submissions={submissions ?? []}
+                  currentRound={currentRound}
+                  resolving={resolving}
+                  resolveStep={resolveStep}
+                  revealedCount={revealedCount}
+                  revealedSecrets={revealedSecrets}
+                  toggleReveal={toggleReveal}
+                  revealAllSecrets={revealAllSecrets}
+                  handleReResolve={handleReResolve}
+                  handleReNarrate={handleReNarrate}
+                  rerollAction={rerollAction}
+                  overrideProbability={overrideProbability}
+                  safeAction={safeAction}
+                  advanceRound={advanceRound}
+                  finishGame={finishGame}
+                  addLab={addLab}
+                />
               </div>
             )}
           </div>
@@ -1526,8 +884,8 @@ export default function FacilitatorPage({
           <DebugPanel
             gameId={gameId}
             roundNumber={game.currentRound}
-            submissions={submissions as Props["submissions"]}
-            round={currentRound as Props["round"]}
+            submissions={submissions as DebugPanelProps["submissions"]}
+            round={currentRound as DebugPanelProps["round"]}
           />
         )}
       </div>
@@ -1535,9 +893,9 @@ export default function FacilitatorPage({
   );
 }
 
-type Props = React.ComponentProps<typeof DebugPanel>;
+type DebugPanelProps = React.ComponentProps<typeof DebugPanel>;
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Sub-components ──────��────────────────────────────────────────────────────
 
 function FacilitatorNav({
   round,
@@ -1602,90 +960,6 @@ function FacilitatorNav({
             <Clock className="w-4 h-4" /> {timerDisplay}
           </span>
         )}
-      </div>
-    </div>
-  );
-}
-
-function SubmissionTracker({
-  tables,
-  submissions,
-  onGradeAll,
-  onKickToAI,
-  onSetHuman,
-}: {
-  tables: { _id: Id<"tables">; roleId: string; roleName: string; controlMode: "human" | "ai" | "npc"; enabled: boolean; connected: boolean }[];
-  submissions: { roleId: string; status: string; actions: { text: string; probability?: number }[] }[];
-  onGradeAll: () => void;
-  onKickToAI?: (tableId: Id<"tables">) => void;
-  onSetHuman?: (tableId: Id<"tables">) => void;
-}) {
-  const enabledTables = tables.filter((t) => t.enabled);
-
-  // Auto-trigger grading when new submissions arrive (useEffect, not render-time)
-  const ungradedCount = submissions.filter(
-    (s) => s.status === "submitted" && s.actions.some((a) => a.probability == null)
-  ).length;
-  const gradedRef = useRef(new Set<string>());
-
-  useEffect(() => {
-    if (ungradedCount > 0) {
-      const key = submissions.filter(s => s.status === "submitted").map(s => s.roleId).sort().join(",");
-      if (!gradedRef.current.has(key)) {
-        gradedRef.current.add(key);
-        onGradeAll();
-      }
-    }
-  }, [ungradedCount, submissions, onGradeAll]);
-
-  return (
-    <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
-      <span className="text-sm font-semibold uppercase tracking-wider text-text-light mb-3 block">
-        Submissions ({submissions.length}/{enabledTables.length})
-      </span>
-      <div className="flex flex-col gap-2.5">
-        {enabledTables.map((table) => {
-          const role = ROLES.find((r) => r.id === table.roleId);
-          const sub = submissions.find((s) => s.roleId === table.roleId);
-          const allGraded = sub?.actions.every((a) => a.probability != null);
-          return (
-            <div key={table._id} className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: role?.color }} />
-              <span className="text-base text-white flex-1">
-                {table.roleName}
-                {table.controlMode === "ai" && <span className="text-xs text-viz-capability ml-1">(AI)</span>}
-                {table.controlMode === "npc" && <span className="text-xs text-viz-warning ml-1">(NPC)</span>}
-              </span>
-              {sub ? (
-                <span className={`text-sm font-mono ${allGraded ? "text-viz-safety" : "text-viz-warning"}`}>
-                  {sub.actions.length} action{sub.actions.length !== 1 ? "s" : ""}
-                  {allGraded ? " ✓" : " (grading...)"}
-                </span>
-              ) : (
-                <span className="text-sm text-navy-muted">Waiting...</span>
-              )}
-              {/* Quick role management during play */}
-              {table.controlMode !== "human" && onSetHuman && (
-                <button
-                  onClick={() => onSetHuman(table._id)}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-text-light hover:bg-navy-muted"
-                  title="Open for a human player to join"
-                >
-                  Open
-                </button>
-              )}
-              {table.controlMode === "human" && !sub && onKickToAI && (
-                <button
-                  onClick={() => onKickToAI(table._id)}
-                  className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-text-light hover:bg-navy-muted"
-                  title="Switch to AI control"
-                >
-                  AI
-                </button>
-              )}
-            </div>
-          );
-        })}
       </div>
     </div>
   );

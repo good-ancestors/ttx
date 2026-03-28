@@ -1,0 +1,169 @@
+"use client";
+
+import { ROLES } from "@/lib/game-data";
+import { QRCode } from "@/components/qr-codes";
+import { Play, Lock, Bot } from "lucide-react";
+import type { FacilitatorPhaseProps } from "./types";
+import type { Id } from "@convex/_generated/dataModel";
+
+interface LobbyPhaseProps extends FacilitatorPhaseProps {
+  connectedCount: number;
+  safeAction: (label: string, fn: () => Promise<unknown>) => () => Promise<void>;
+  lockGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
+  startGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
+  toggleEnabled: (args: { tableId: Id<"tables"> }) => Promise<unknown>;
+  setControlMode: (args: { tableId: Id<"tables">; controlMode: "human" | "ai" | "npc" }) => Promise<unknown>;
+  kickToAI: (args: { tableId: Id<"tables"> }) => Promise<unknown>;
+}
+
+export function LobbyPhase({
+  gameId,
+  game,
+  tables,
+  isProjector,
+  connectedCount,
+  safeAction,
+  lockGame,
+  startGame,
+  toggleEnabled,
+  setControlMode,
+  kickToAI,
+}: LobbyPhaseProps) {
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
+      <div className="text-center mb-8">
+        <h2 className="text-2xl font-extrabold mb-2">Waiting for Tables</h2>
+        <p className="text-text-light">
+          {connectedCount}/{tables.length} tables connected
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+        {tables.map((table) => {
+          const role = ROLES.find((r) => r.id === table.roleId);
+          const isRequired = role?.required ?? false;
+          return (
+            <div
+              key={table._id}
+              className={`bg-navy rounded-xl border p-4 transition-opacity ${
+                table.enabled ? "border-navy-light" : "border-navy-light/30 opacity-40"
+              }`}
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: role?.color }} />
+                <span className="text-sm font-bold">{table.roleName}</span>
+                <div className="ml-auto flex items-center gap-2">
+                  {table.connected && (
+                    <span className="text-[10px] text-viz-safety font-mono">Human</span>
+                  )}
+                  {!table.connected && table.controlMode === "ai" && table.enabled && (
+                    <span className="text-[10px] text-viz-capability font-mono">AI</span>
+                  )}
+                  {!table.connected && table.controlMode === "npc" && table.enabled && (
+                    <span className="text-[10px] text-viz-warning font-mono">NPC</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Controls */}
+              <div className="flex gap-2 mb-3">
+                {!isRequired && (
+                  <button
+                    onClick={() => toggleEnabled({ tableId: table._id })}
+                    className={`text-[10px] px-2 py-1 rounded font-medium transition-colors ${
+                      table.enabled
+                        ? "bg-navy-light text-text-light hover:bg-navy-muted"
+                        : "bg-navy-dark text-navy-muted hover:bg-navy-light"
+                    }`}
+                  >
+                    {table.enabled ? "Disable" : "Enable"}
+                  </button>
+                )}
+                {isRequired && (
+                  <span className="text-[10px] text-navy-muted px-2 py-1">Required</span>
+                )}
+                {!isProjector && table.enabled && !table.connected && (
+                  <div className="flex rounded overflow-hidden border border-navy-light">
+                    {(["human", "ai", "npc"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        onClick={() => void setControlMode({ tableId: table._id, controlMode: mode })}
+                        className={`text-[9px] px-2 py-1 font-semibold transition-colors ${
+                          table.controlMode === mode
+                            ? mode === "human" ? "bg-viz-safety text-navy" : mode === "ai" ? "bg-viz-capability text-navy" : "bg-viz-warning text-navy"
+                            : "bg-navy-dark text-navy-muted hover:text-text-light"
+                        }`}
+                      >
+                        {mode === "human" ? "Human" : mode === "ai" ? "AI" : "NPC"}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {!isProjector && table.enabled && table.connected && table.controlMode === "human" && (
+                  <button
+                    onClick={() => kickToAI({ tableId: table._id })}
+                    className="text-[10px] px-2 py-1 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-0.5"
+                  >
+                    <Bot className="w-3 h-3" /> Kick to AI
+                  </button>
+                )}
+              </div>
+
+              {/* QR code only for enabled human tables */}
+              {table.enabled && table.controlMode === "human" && (
+                <div className="bg-navy-dark rounded-lg p-3 flex flex-col items-center">
+                  <QRCode
+                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table._id}`}
+                    size={120}
+                  />
+                  <span className="text-xs font-mono text-text-light mt-2 tracking-widest">
+                    {table.joinCode}
+                  </span>
+                </div>
+              )}
+              {table.enabled && table.controlMode === "ai" && !table.connected && (
+                <div className="bg-navy-dark rounded-lg p-3 text-center">
+                  <span className="text-xs text-text-light">AI-controlled this round</span>
+                </div>
+              )}
+              {table.enabled && table.controlMode === "npc" && !table.connected && (
+                <div className="bg-navy-dark rounded-lg p-3 text-center">
+                  <span className="text-xs text-text-light">NPC (sample actions)</span>
+                </div>
+              )}
+              {/* AI Systems disposition status in lobby */}
+              {table.roleId === "ai-systems" && table.enabled && (
+                <div className={`text-[10px] mt-2 px-2 py-1 rounded ${
+                  table.aiDisposition
+                    ? "bg-[#1E1B4B]/50 text-[#A78BFA]"
+                    : "bg-navy-dark text-navy-muted"
+                }`}>
+                  {table.aiDisposition ? "Disposition: chosen" : "Disposition: pending"}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {!isProjector && (
+        <div className="flex justify-center gap-3">
+          {!game.locked && (
+            <button
+              onClick={safeAction("Lock game", () => lockGame({ gameId }))}
+              className="py-3 px-6 bg-navy-light text-white rounded-lg font-bold hover:bg-navy-muted transition-colors flex items-center gap-2"
+            >
+              <Lock className="w-4 h-4" /> Lock Game
+            </button>
+          )}
+          <button
+            onClick={safeAction("Start game", () => startGame({ gameId }))}
+            className="py-3 px-8 bg-white text-navy rounded-lg font-extrabold text-lg hover:bg-off-white transition-colors flex items-center gap-2"
+          >
+            <Play className="w-5 h-5" /> Start Game
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
