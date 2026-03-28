@@ -84,6 +84,11 @@ export const submit = mutation({
       throw new Error(`Cannot submit during ${game.phase} phase`);
     }
 
+    // Server-side timer enforcement (5s grace for clock drift)
+    if (game && game.phase === "submit" && game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) {
+      throw new Error("Submission deadline has passed");
+    }
+
     // Enforce action limit (max 5) and sanity-check priority budget
     // Auto-decay always sums to 10, but allow tolerance for edge cases
     const totalPriority = args.actions.reduce((s, a) => s + a.priority, 0);
