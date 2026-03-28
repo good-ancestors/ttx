@@ -219,11 +219,11 @@ export const rerollAction = mutation({
     if (!action || action.probability == null) return;
 
     const rawRoll = Math.floor(Math.random() * 100) + 1;
-    const influencedRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
+    const displayRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
     actions[args.actionIndex] = {
       ...action,
-      rolled: rawRoll,
-      success: influencedRoll <= (action.probability ?? 50),
+      rolled: displayRoll,
+      success: displayRoll <= (action.probability ?? 50),
     };
 
     await ctx.db.patch(args.submissionId, { actions });
@@ -317,9 +317,10 @@ export const rollAllActions = mutation({
       const actions = sub.actions.map((action) => {
         const probability = action.probability ?? defaultProbability(action.priority);
         // AI influence secretly modifies the dice roll — probability stays truthful
+        // Display the influenced roll so outcomes always visually make sense
         const rawRoll = Math.floor(Math.random() * 100) + 1;
-        const influencedRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
-        return { ...action, probability, rolled: rawRoll, success: influencedRoll <= probability };
+        const displayRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
+        return { ...action, probability, rolled: displayRoll, success: displayRoll <= probability };
       });
 
       await ctx.db.patch(sub._id, { actions, status: "resolved" });
