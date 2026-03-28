@@ -306,22 +306,42 @@ async function applyResolution(opts: {
         const defaultAlloc = ROLES.find(r => r.id === lab.roleId)?.defaultCompute;
         const baselineRdPct = defaultAlloc?.capability ?? 50;
         const actualRdPct = lab.allocation.capability;
-        // Allocation ratio: >1 means more R&D than baseline, <1 means less
         const allocRatio = actualRdPct / Math.max(1, baselineRdPct);
-        // Asymmetric sensitivity: cutting R&D has outsized impact (recursive loop breaks)
-        // Boosting R&D helps but with diminishing returns (can't discover faster than physics)
-        const allocExponent = allocRatio < 1 ? 1.5 : 0.5;
-        const allocFactor = Math.pow(allocRatio, allocExponent);
+
         // Compute ratio: more/less compute than baseline affects growth
         const baselineCompute: Record<string, number> = { OpenBrain: 22, DeepCent: 17, Conscienta: 14 };
         const expectedCompute = baselineCompute[lab.name] ?? lab.computeStock;
         const computeRatio = lab.computeStock / Math.max(1, expectedCompute);
-        // Combined: allocation dominates (0.75 weight), compute secondary (0.25)
-        const combinedRatio = Math.pow(allocFactor, 0.75) * Math.pow(computeRatio, 0.25);
-        // Growth toward baseline target, adjusted by player decisions
-        const baseGrowthRatio = baselineTarget / lab.rdMultiplier;
-        const adjustedRatio = 1 + (baseGrowthRatio - 1) * combinedRatio;
-        newMultiplier = Math.round(lab.rdMultiplier * adjustedRatio * 10) / 10;
+        const computeFactor = Math.pow(computeRatio, 0.3);
+
+        // KEY MECHANIC: Recursive self-improvement has a critical mass threshold.
+        // Below ~60% of baseline R&D allocation, the recursive loop breaks —
+        // you're doing safety/alignment work, not feeding capability back in.
+        // Above baseline, diminishing returns (can't discover faster than physics).
+        if (allocRatio < 0.6) {
+          // SAFER/SLOWDOWN PATH: recursive loop broken.
+          // Decommissioning is a step back, then slow linear rebuild.
+          // Without the recursive loop, growth is modest — at most ~2× per round
+          // even with some R&D, because you're rebuilding on safer foundations.
+          // Growth rate: allocRatio × moderate multiplier (no exponential compounding)
+          // At 20% capability (allocRatio=0.4): growth rate = 1 + 0.4*2.5 = 2.0× per round
+          // At 40% capability (allocRatio=0.8, near threshold): growth rate = 1 + 0.8*2.5 = 3.0×
+          // This gives realistic Safer progression: ~10→20→40→80 over 4 rounds at 20% alloc
+          const saferGrowthRate = 1 + allocRatio * 2.5 * computeFactor;
+          // Cap: Safer path can never grow more than 3.5× per round
+          const cappedRate = Math.min(3.5, saferGrowthRate);
+          newMultiplier = Math.round(lab.rdMultiplier * cappedRate * 10) / 10;
+        } else {
+          // RACE PATH: exponential recursive self-improvement toward baseline.
+          // Boosting R&D above baseline gives diminishing returns (sqrt).
+          // Cutting R&D below baseline (but above threshold) gives moderate penalty.
+          const allocExponent = allocRatio < 1 ? 1.3 : 0.5;
+          const allocFactor = Math.pow(allocRatio, allocExponent);
+          const combinedRatio = Math.pow(allocFactor, 0.7) * Math.pow(computeFactor, 0.3);
+          const baseGrowthRatio = baselineTarget / lab.rdMultiplier;
+          const adjustedRatio = 1 + (baseGrowthRatio - 1) * combinedRatio;
+          newMultiplier = Math.round(lab.rdMultiplier * adjustedRatio * 10) / 10;
+        }
       } else {
         // Unknown lab (added mid-game): grow based on effective R&D share
         const poolGrowth: Record<number, number> = { 1: 3, 2: 10, 3: 10, 4: 10 };

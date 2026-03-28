@@ -39,7 +39,7 @@ const CSV_SLOWDOWN = {
   Conscienta: { r1: 5, r2: 15, r3: 40 },
 };
 
-type Scenario = "race" | "slowdown";
+type Scenario = "race" | "slowdown" | "catchup";
 
 // Scenario-specific actions per round per role
 function getActions(scenario: Scenario, roleId: string, round: number) {
@@ -61,6 +61,27 @@ function getActions(scenario: Scenario, roleId: string, round: number) {
         { text: "Recruit top talent from OpenBrain as they pivot to safety", priority: 4, secret: false, probability: 60, rolled: 50, success: true },
       ],
       computeAllocation: { users: 15, capability: 80, safety: 5 },
+    };
+  }
+
+  if (scenario === "catchup" && roleId === "deepcent-ceo") {
+    // DeepCent goes all-in on capability to try to overtake OpenBrain
+    return {
+      actions: [
+        { text: "Massively accelerate Agent development — all compute to R&D capability", priority: 6, secret: false, probability: 70, rolled: 35, success: true },
+        { text: "Recruit international AI talent with state resources", priority: 4, secret: false, probability: 60, rolled: 40, success: true },
+      ],
+      computeAllocation: { users: 10, capability: 85, safety: 5 },
+    };
+  }
+  if (scenario === "catchup" && roleId === "conscienta-ceo") {
+    // Conscienta also goes aggressive (less extreme)
+    return {
+      actions: [
+        { text: "Shift resources toward capability — we need to compete or be left behind", priority: 5, secret: false, probability: 65, rolled: 42, success: true },
+        { text: "Partner with government for additional compute access", priority: 3, secret: false, probability: 55, rolled: 50, success: true },
+      ],
+      computeAllocation: { users: 25, capability: 65, safety: 10 },
     };
   }
 
@@ -190,16 +211,14 @@ async function runScenario(scenario: Scenario) {
 async function main() {
   const scenario = (process.argv[2] ?? "both") as string;
 
-  if (scenario === "race" || scenario === "both") {
-    await runScenario("race");
-  }
-  if (scenario === "slowdown" || scenario === "both") {
-    await runScenario("slowdown");
-  }
-  if (scenario !== "race" && scenario !== "slowdown" && scenario !== "both") {
-    console.error("Usage: npx tsx scripts/test-lab-progression.ts [race|slowdown|both]");
+  const valid = ["race", "slowdown", "catchup", "all"];
+  if (!valid.includes(scenario)) {
+    console.error(`Usage: npx tsx scripts/test-lab-progression.ts [${valid.join("|")}]`);
     process.exit(1);
   }
+  if (scenario === "all" || scenario === "race") await runScenario("race");
+  if (scenario === "all" || scenario === "slowdown") await runScenario("slowdown");
+  if (scenario === "all" || scenario === "catchup") await runScenario("catchup");
 }
 
 main().catch(err => { console.error(err); process.exit(1); });
