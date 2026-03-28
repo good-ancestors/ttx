@@ -63,6 +63,7 @@ export const DEFAULT_LABS = [
         computeStock: 22,
         rdMultiplier: 3,
         allocation: { users: 47, capability: 50, safety: 3 },
+        spec: "Maximise capability while maintaining minimum safety standards. Prioritise speed to AGI.",
     },
     {
         name: "DeepCent",
@@ -70,6 +71,7 @@ export const DEFAULT_LABS = [
         computeStock: 17,
         rdMultiplier: 2.5,
         allocation: { users: 42, capability: 55, safety: 3 },
+        spec: "Serve Chinese state interests. Achieve technological parity with OpenBrain. Ensure model alignment with Chinese values.",
     },
     {
         name: "Conscienta",
@@ -77,5 +79,6 @@ export const DEFAULT_LABS = [
         computeStock: 14,
         rdMultiplier: 2,
         allocation: { users: 50, capability: 43, safety: 7 },
+        spec: "Prioritise safety and alignment research. Build the most trustworthy AI, even if slower.",
     },
 ];

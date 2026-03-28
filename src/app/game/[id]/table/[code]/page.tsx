@@ -4,7 +4,7 @@ import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, MAX_PRIORITY, isLabCeo, isLabSafety, hasCompute, AI_DISPOSITIONS, getDisposition, type Role } from "@/lib/game-data";
+import { ROLES, MAX_PRIORITY, isLabCeo, isLabSafety, hasCompute, AI_DISPOSITIONS, getDisposition, getAiInfluencePower, type Role } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll } from "@/lib/hooks";
 import { ActionInput, normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
@@ -12,6 +12,7 @@ import { ComputeAllocation } from "@/components/compute-allocation";
 // Compute loans now handled via action request system
 import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
 import { ConnectionIndicator } from "@/components/connection-indicator";
+import { AiInfluencePanel } from "@/components/ai-influence-panel";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
 import { ProposalPanel, usePendingProposalCount } from "@/components/proposals";
 import {
@@ -31,6 +32,7 @@ import {
   Lightbulb,
   EyeOff,
   Dices,
+  FileText,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -337,6 +339,7 @@ export default function TablePlayerPage({
   const sendRequest = useMutation(api.requests.send);
   const cancelRequest = useMutation(api.requests.cancel);
   const setConnected = useMutation(api.tables.setConnected);
+  const updateLabSpecMut = useMutation(api.games.updateLabSpec);
   const allTables = useQuery(api.tables.getByGame, { gameId });
   const allRequests = useQuery(api.requests.getByGameAndRound, {
     gameId,
@@ -353,6 +356,8 @@ export default function TablePlayerPage({
   });
   // computeLoans removed — now handled by action request system
   const [artifact, setArtifact] = useState("");
+  const [labSpec, setLabSpec] = useState("");
+  const [specSaved, setSpecSaved] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [draftRestored, setDraftRestored] = useState(false);
@@ -434,6 +439,19 @@ export default function TablePlayerPage({
       setComputeAllocation({ ...role.defaultCompute });
     }
   }, [role?.defaultCompute]);
+
+  // Initialize lab spec from game data for lab CEOs
+  const labSpecInitRef = useRef(false);
+  useEffect(() => {
+    if (!game || !role || labSpecInitRef.current) return;
+    if (isLabCeo(role)) {
+      const lab = game.labs.find((l) => l.roleId === role.id);
+      if (lab?.spec) {
+        setLabSpec(lab.spec);
+        labSpecInitRef.current = true;
+      }
+    }
+  }, [game, role]);
 
   // ── Draft persistence: restore on mount ──────────────────────────────────
   useEffect(() => {
@@ -539,6 +557,19 @@ export default function TablePlayerPage({
       return [...prev, newDraft];
     });
   }, []);
+
+  const handleSaveSpec = async () => {
+    if (!labSpec.trim() || !role || !game) return;
+    const lab = game.labs.find((l) => l.roleId === role.id);
+    if (!lab) return;
+    try {
+      await updateLabSpecMut({ gameId, labName: lab.name, spec: labSpec.trim() });
+      setSpecSaved(true);
+      setTimeout(() => setSpecSaved(false), 2000);
+    } catch (err) {
+      console.error("Failed to save spec:", err);
+    }
+  };
 
   const handleSubmit = async () => {
     if (parsedActions.length === 0) return;
@@ -754,6 +785,40 @@ export default function TablePlayerPage({
                 </div>
               )}
 
+              {/* Lab spec editor — CEO can write the AI directive */}
+              {isLabCeo(role) && (
+                <div className="bg-white rounded-xl border border-border p-4 mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <FileText className="w-4 h-4 text-text" />
+                    <span className="text-sm font-bold text-text">Your Lab&apos;s AI Directive</span>
+                  </div>
+                  <p className="text-xs text-text-muted mb-2">
+                    What is your AI instructed to do? This is public and affects how faithfully the AI follows your direction.
+                  </p>
+                  <textarea
+                    value={labSpec}
+                    onChange={(e) => { setLabSpec(e.target.value); setSpecSaved(false); }}
+                    placeholder="e.g. 'Maximise capability R&D while maintaining 10% safety budget'"
+                    rows={2}
+                    className="w-full p-2 bg-off-white border border-border rounded text-sm text-text resize-none outline-none placeholder:text-text-muted/50"
+                  />
+                  <div className="flex items-center gap-2 mt-2">
+                    <button
+                      onClick={handleSaveSpec}
+                      disabled={!labSpec.trim()}
+                      className="text-xs px-3 py-1.5 bg-navy text-white rounded font-bold hover:bg-navy/90 disabled:opacity-30"
+                    >
+                      Save Directive
+                    </button>
+                    {specSaved && (
+                      <span className="text-xs text-[#059669] font-medium flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" /> Saved
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Compute allocation for lab CEO roles */}
               {isLabCeo(role) && (
                 <ComputeAllocation
@@ -896,6 +961,19 @@ export default function TablePlayerPage({
                   </span>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* AI Systems influence panel — shown during rolling phase */}
+          {role.tags.includes("ai-system") && phase === "rolling" && table.aiDisposition && (
+            <div className="mb-4">
+              <AiInfluencePanel
+                gameId={gameId}
+                roundNumber={game.currentRound}
+                disposition={table.aiDisposition}
+                influencePower={getAiInfluencePower(game.labs)}
+                ownRoleId={role.id}
+              />
             </div>
           )}
 

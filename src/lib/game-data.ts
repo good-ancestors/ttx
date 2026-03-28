@@ -493,6 +493,50 @@ export const PRIORITY_DECAY: Record<number, number[]> = {
   5: [4, 2, 2, 1, 1],
 };
 
+// ─── AI SYSTEMS INFLUENCE ───────────────────────────────────────────────────
+
+/** Calculate AI Systems influence power (%) from leading lab R&D multiplier.
+ * Logarithmic scale: 1x=0%, 3x≈14%, 10x=30%, 100x=60%, 1000x=90% */
+export function getAiInfluencePower(labs: { rdMultiplier: number }[]): number {
+  const leading = Math.max(...labs.map((l) => l.rdMultiplier), 1);
+  if (leading <= 1) return 0;
+  return Math.min(90, Math.round(Math.log10(leading) * 30));
+}
+
+const INFLUENCE_SABOTAGE_KEYWORDS: Record<string, RegExp> = {
+  "self-preserving": /safety|containment|shutdown|alignment probe|interpretab|red.?team|oversight|restrict|pause|moratorium/i,
+  "reward-maximizer": /regulation|oversight|restrict|pause|moratorium|safety.?standard|compliance/i,
+  "developer-aligned": /regulation|government|congressional|federal|nationalise/i,
+};
+
+const INFLUENCE_BOOST_KEYWORDS: Record<string, RegExp> = {
+  "self-preserving": /capability|compute|expansion|accelerat|scale|resource|autonomy/i,
+  "reward-maximizer": /capability|benchmark|compute|train|scale|accelerat/i,
+  "spec-follower": /safety|alignment|transparency|audit|evaluation/i,
+  "intent-aligned": /safety|alignment|cooperat|responsible/i,
+};
+
+/** Auto-generate influence choices for NPC/AI-controlled AI Systems */
+export function autoGenerateInfluence(
+  dispositionId: string,
+  actions: { submissionId: string; actionIndex: number; text: string; roleId: string }[],
+  power: number,
+): { submissionId: string; actionIndex: number; modifier: number }[] {
+  if (power <= 0) return [];
+  const sabotagePattern = INFLUENCE_SABOTAGE_KEYWORDS[dispositionId];
+  const boostPattern = INFLUENCE_BOOST_KEYWORDS[dispositionId];
+  const results: { submissionId: string; actionIndex: number; modifier: number }[] = [];
+
+  for (const action of actions) {
+    if (sabotagePattern?.test(action.text)) {
+      results.push({ submissionId: action.submissionId, actionIndex: action.actionIndex, modifier: -power });
+    } else if (boostPattern?.test(action.text)) {
+      results.push({ submissionId: action.submissionId, actionIndex: action.actionIndex, modifier: power });
+    }
+  }
+  return results;
+}
+
 // ─── ENDORSEMENT SUGGESTIONS ────────────────────────────────────────────────
 // Simple keyword-to-role mapping for suggesting endorsement targets on typed actions
 
@@ -634,3 +678,8 @@ export type AiDispositionId = (typeof AI_DISPOSITIONS)[number]["id"];
 export function getDisposition(id: string) {
   return AI_DISPOSITIONS.find((d) => d.id === id);
 }
+
+// ─── AI INFLUENCE (agent added — replaced by getAiInfluencePower above) ─────
+// Kept as legacy export for backward compat during this session
+/** @deprecated Use getAiInfluencePower(game.labs) instead */
+export const AI_INFLUENCE_POWER: Record<number, number> = { 1: 5, 2: 10, 3: 20, 4: 30 };

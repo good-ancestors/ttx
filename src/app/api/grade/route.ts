@@ -96,6 +96,8 @@ export async function POST(request: Request) {
         status: p.status,
       }));
 
+    const roleLab = game.labs.find((l) => l.roleId === roleId);
+
     const prompt = buildGradingPrompt({
       round: roundNumber,
       roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
@@ -110,6 +112,7 @@ export async function POST(request: Request) {
       enabledRoles,
       aiDisposition,
       otherSubmissions,
+      labSpec: roleLab?.spec,
     });
 
     const { output, model, timeMs, tokens } = await generateWithFallback({

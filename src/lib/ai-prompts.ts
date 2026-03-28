@@ -5,11 +5,12 @@ interface Lab {
   computeStock: number;
   rdMultiplier: number;
   allocation: { users: number; capability: number; safety: number };
+  spec?: string;
 }
 
 export function formatLabStatus(labs: Lab[]): string {
   return labs.map((l) =>
-    `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`
+    `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%${l.spec ? ` | Directive: "${l.spec}"` : ""}`
   ).join("\n");
 }
 
@@ -114,6 +115,7 @@ export function buildGradingPrompt(args: {
   enabledRoles?: string[];
   aiDisposition?: { label: string; description: string };
   otherSubmissions?: { roleName: string; actions: { text: string; priority: number }[] }[];
+  labSpec?: string;
 }) {
   // Group requests by action text
   const requestsByAction = new Map<string, ActionRequest[]>();
@@ -164,7 +166,7 @@ LAB STATUS:
 ${args.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
 
 ROLE BEING GRADED: ${args.roleName}${args.roleTags ? ` [${args.roleTags.join(", ")}]` : ""}
-${args.roleDescription}
+${args.roleDescription}${args.labSpec ? `\nLAB AI DIRECTIVE (set by CEO): "${args.labSpec}"` : ""}
 ${requestSection}${incomingSection}
 
 SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resources/effort committed):
@@ -334,7 +336,7 @@ CURRENT WORLD STATE (before this round's events):
 Current AI capability: ${args.capabilityLevel}
 
 LAB COMPUTE ALLOCATIONS:
-${args.labs.map((l) => `- ${l.name} (${l.computeStock} stock, ${l.rdMultiplier}x): Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
+${args.labs.map((l) => `- ${l.name} (${l.computeStock} stock, ${l.rdMultiplier}x): Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%${l.spec ? ` | Directive: "${l.spec}"` : ""}`).join("\n")}
 ${formatPreviousRounds(args.previousRounds ?? [])}
 ${formatActionsSection(sortedActions)}
 

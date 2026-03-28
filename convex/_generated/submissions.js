@@ -9,6 +9,7 @@ const actionValidator = v.object({
     reasoning: v.optional(v.string()),
     rolled: v.optional(v.number()),
     success: v.optional(v.boolean()),
+    aiInfluence: v.optional(v.number()),
 });
 // Full query — facilitator only (includes secret action text)
 export const getByGameAndRound = query({
@@ -184,10 +185,11 @@ export const rerollAction = mutation({
         if (!action || action.probability == null)
             return;
         const newRoll = Math.floor(Math.random() * 100) + 1;
+        const influencedProbability = Math.max(5, Math.min(95, (action.probability ?? 50) + (action.aiInfluence ?? 0)));
         actions[args.actionIndex] = {
             ...action,
             rolled: newRoll,
-            success: newRoll <= (action.probability ?? 50),
+            success: newRoll <= influencedProbability,
         };
         await ctx.db.patch(args.submissionId, { actions });
         await logEvent(ctx, sub.gameId, "reroll", sub.roleId, {
@@ -222,6 +224,37 @@ export const overrideOutcome = mutation({
         });
     },
 });
+// Apply AI Systems secret influence on other players' actions
+export const applyAiInfluence = mutation({
+    args: {
+        gameId: v.id("games"),
+        roundNumber: v.number(),
+        influences: v.array(v.object({
+            submissionId: v.id("submissions"),
+            actionIndex: v.number(),
+            modifier: v.number(),
+        })),
+    },
+    handler: async (ctx, args) => {
+        for (const inf of args.influences) {
+            const sub = await ctx.db.get(inf.submissionId);
+            if (!sub)
+                continue;
+            const actions = [...sub.actions];
+            if (actions[inf.actionIndex]) {
+                actions[inf.actionIndex] = {
+                    ...actions[inf.actionIndex],
+                    aiInfluence: inf.modifier,
+                };
+            }
+            await ctx.db.patch(sub._id, { actions });
+        }
+        await logEvent(ctx, args.gameId, "ai_influence", "ai-systems", {
+            round: args.roundNumber,
+            count: args.influences.length,
+        });
+    },
+});
 // Fallback probability based on priority when AI grading hasn't happened
 function defaultProbability(priority) {
     if (priority >= 8)
@@ -245,8 +278,10 @@ export const rollAllActions = mutation({
                 continue;
             const actions = sub.actions.map((action) => {
                 const probability = action.probability ?? defaultProbability(action.priority);
+                // AI influence modifies roll threshold invisibly — store original probability for display
+                const influencedProbability = Math.max(5, Math.min(95, probability + (action.aiInfluence ?? 0)));
                 const roll = Math.floor(Math.random() * 100) + 1;
-                return { ...action, probability, rolled: roll, success: roll <= probability };
+                return { ...action, probability, rolled: roll, success: roll <= influencedProbability };
             });
             await ctx.db.patch(sub._id, { actions, status: "resolved" });
             const successes = actions.filter((a) => a.success).length;

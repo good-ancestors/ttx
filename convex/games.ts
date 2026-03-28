@@ -187,11 +187,28 @@ export const updateLabs = mutation({
           capability: v.number(),
           safety: v.number(),
         }),
+        spec: v.optional(v.string()),
       })
     ),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, { labs: args.labs });
+  },
+});
+
+export const updateLabSpec = mutation({
+  args: {
+    gameId: v.id("games"),
+    labName: v.string(),
+    spec: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) return;
+    const updatedLabs = game.labs.map((lab) =>
+      lab.name === args.labName ? { ...lab, spec: args.spec } : lab
+    );
+    await ctx.db.patch(args.gameId, { labs: updatedLabs });
   },
 });
 

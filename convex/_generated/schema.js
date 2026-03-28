@@ -24,6 +24,7 @@ export default defineSchema({
                 capability: v.number(),
                 safety: v.number(),
             }),
+            spec: v.optional(v.string()),
         })),
         locked: v.boolean(),
     }),
@@ -57,6 +58,7 @@ export default defineSchema({
             reasoning: v.optional(v.string()),
             rolled: v.optional(v.number()),
             success: v.optional(v.boolean()),
+            aiInfluence: v.optional(v.number()),
         })),
         computeAllocation: v.optional(v.object({
             users: v.number(),
@@ -127,6 +129,7 @@ export default defineSchema({
                 capability: v.number(),
                 safety: v.number(),
             }),
+            spec: v.optional(v.string()),
         }))),
         roleComputeAfter: v.optional(v.array(v.object({
             roleId: v.string(),

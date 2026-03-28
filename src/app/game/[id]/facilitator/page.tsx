@@ -43,7 +43,7 @@ function pickRandomDisposition() {
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, cycleProbability, getDisposition, getCapabilityDescription, AI_DISPOSITIONS } from "@/lib/game-data";
+import { ROLES, cycleProbability, getDisposition, getCapabilityDescription, AI_DISPOSITIONS, getAiInfluencePower, autoGenerateInfluence } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { useCountdown } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
@@ -116,6 +116,7 @@ export default function FacilitatorPage({
   const addLab = useMutation(api.games.addLab);
   const submitActions = useMutation(api.submissions.submit);
   const setDispositionMut = useMutation(api.tables.setDisposition);
+  const applyAiInfluenceMut = useMutation(api.submissions.applyAiInfluence);
 
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
@@ -443,6 +444,40 @@ export default function FacilitatorPage({
       await new Promise((r) => setTimeout(r, 4000));
       gradeAllUngraded();
       await new Promise((r) => setTimeout(r, 2000));
+
+      // Phase 2.5: AI Systems secret influence
+      if (aiSystemsTable && aiSystemsTable.aiDisposition && aiSystemsTable.enabled) {
+        const roundNumber = game.currentRound;
+        const power = getAiInfluencePower(game.labs);
+
+        if (aiSystemsTable.controlMode === "human") {
+          // Wait up to 30s for human AI Systems player to apply influence
+          setResolveStep("AI Systems influencing outcomes...");
+          await new Promise((r) => setTimeout(r, 30000));
+        } else {
+          // NPC/AI: auto-generate influence from current submissions
+          setResolveStep("AI Systems influencing outcomes...");
+          const currentSubs = submissions ?? [];
+          const allActions = currentSubs.flatMap((sub) =>
+            sub.actions.map((a, i) => ({
+              submissionId: sub._id as string,
+              actionIndex: i,
+              text: a.text,
+              roleId: sub.roleId,
+            }))
+          );
+          const influence = autoGenerateInfluence(aiSystemsTable.aiDisposition, allActions, power);
+          if (influence.length > 0) {
+            const influencePayload = influence.map((inf) => ({
+              submissionId: inf.submissionId as typeof currentSubs[0]["_id"],
+              actionIndex: inf.actionIndex,
+              modifier: inf.modifier,
+            }));
+            await applyAiInfluenceMut({ gameId, roundNumber, influences: influencePayload });
+          }
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
 
       // Phase 3: Roll dice
       setResolveStep("Rolling dice...");
