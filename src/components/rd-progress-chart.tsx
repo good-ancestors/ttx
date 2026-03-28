@@ -261,7 +261,7 @@ export function RdProgressChart({
             {/* Data points */}
             {s.points.map((p, i) => (
               <circle
-                key={i}
+                key={`${s.roleId}-pt-${i}`}
                 cx={p.x}
                 cy={p.y}
                 r={i === s.points.length - 1 ? 4.5 : 2.5}

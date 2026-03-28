@@ -54,7 +54,7 @@ export function TableResolving({
           <h3 className="text-base font-bold mb-3">{round.label} — What Happened</h3>
 
           {round.summary.headlines.map((h, i) => (
-            <p key={i} className="text-sm text-[#E2E8F0] italic mb-1.5 pl-3 border-l-2 border-viz-warning">
+            <p key={`headline-${i}`} className="text-sm text-[#E2E8F0] italic mb-1.5 pl-3 border-l-2 border-viz-warning">
               {h}
             </p>
           ))}
@@ -62,7 +62,7 @@ export function TableResolving({
           {round.summary.geopoliticalEvents.length > 0 && (
             <div className="mt-3">
               {round.summary.geopoliticalEvents.map((evt, i) => (
-                <p key={i} className="text-sm text-[#CBD5E1] mb-1">
+                <p key={`geo-evt-${i}`} className="text-sm text-[#CBD5E1] mb-1">
                   {evt}
                 </p>
               ))}
@@ -78,7 +78,7 @@ export function TableResolving({
         </h3>
         {sortedResultActions.map((a, i) => (
           <ResultActionCard
-            key={i}
+            key={`result-${i}`}
             action={a}
             index={i}
           />

@@ -75,8 +75,8 @@ export function DebugPanel({ gameId, roundNumber, submissions, round }: Props) {
           {(submissions ?? []).filter(s => s.aiMeta).length > 0 && (
             <div className="mb-3">
               <span className="text-text-light font-semibold block mb-1">Submissions</span>
-              {(submissions ?? []).filter(s => s.aiMeta).map((sub, i) => (
-                <div key={i} className="text-navy-muted">
+              {(submissions ?? []).filter(s => s.aiMeta).map((sub) => (
+                <div key={`sub-${sub.roleId}`} className="text-navy-muted">
                   {sub.roleId}: {sub.aiMeta?.playerModel?.split("/")[1] ?? "human"} ({sub.aiMeta?.playerTimeMs ?? "—"}ms)
                   {sub.aiMeta?.gradingModel && ` → graded by ${sub.aiMeta.gradingModel.split("/")[1]} (${sub.aiMeta.gradingTimeMs ?? "—"}ms)`}
                 </div>
@@ -101,7 +101,7 @@ export function DebugPanel({ gameId, roundNumber, submissions, round }: Props) {
             <span className="text-text-light font-semibold block mb-1">Event Log (latest)</span>
             <div className="max-h-40 overflow-y-auto">
               {(events ?? []).slice(0, 15).map((evt, i) => (
-                <div key={i} className="text-navy-muted py-0.5 border-b border-navy-light/30 last:border-0">
+                <div key={`evt-${evt.timestamp}-${i}`} className="text-navy-muted py-0.5 border-b border-navy-light/30 last:border-0">
                   <span className="text-text-light">{new Date(evt.timestamp).toLocaleTimeString()}</span>{" "}
                   <span className={
                     evt.type.includes("fail") ? "text-viz-danger" :

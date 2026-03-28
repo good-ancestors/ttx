@@ -144,7 +144,7 @@ export function GameTimeline({ rounds, initialWorldState, initialLabs }: Props) 
                   <div className="flex items-center gap-1.5">
                     {values.map((v, i) => (
                       <span
-                        key={i}
+                        key={`${key}-val-${i}`}
                         className="text-[11px] font-mono text-text-light flex items-center gap-0.5"
                       >
                         {i > 0 && <TrendIcon prev={values[i - 1]} curr={v} />}
@@ -156,7 +156,7 @@ export function GameTimeline({ rounds, initialWorldState, initialLabs }: Props) 
                 {/* Multi-segment bar */}
                 <div className="flex items-center gap-1">
                   {worldStateProgression.map((p, i) => (
-                    <div key={i} className="flex-1 flex items-center gap-1">
+                    <div key={`${key}-bar-${i}`} className="flex-1 flex items-center gap-1">
                       <div className="flex-1 h-2 bg-navy-light rounded-full overflow-hidden">
                         <div
                           className="h-full rounded-full transition-[width] duration-700 ease-out"

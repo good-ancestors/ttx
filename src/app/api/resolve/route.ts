@@ -104,14 +104,15 @@ interface ResolveContext {
   roleCompute: RoleCompute[];
 }
 
-function buildResolveContext(
-  game: GameData & { labs: Lab[] },
-  submissions: Array<{ roleId: string; actions: Array<{ text: string; priority: number; probability?: number; rolled?: number; success?: boolean; secret?: boolean }> }>,
-  rounds: Array<{ number: number; label: string; title?: string; summary?: { narrative?: string }; worldStateAfter?: Record<string, number>; capabilityLevel?: string }>,
-  allTables: TableRow[] | null,
-  roundNumber: number,
-  aiDisposition?: { label: string; description: string },
-): ResolveContext {
+function buildResolveContext(opts: {
+  game: GameData & { labs: Lab[] };
+  submissions: Array<{ roleId: string; actions: Array<{ text: string; priority: number; probability?: number; rolled?: number; success?: boolean; secret?: boolean }> }>;
+  rounds: Array<{ number: number; label: string; title?: string; summary?: { narrative?: string }; worldStateAfter?: Record<string, number>; capabilityLevel?: string }>;
+  allTables: TableRow[] | null;
+  roundNumber: number;
+  aiDisposition?: { label: string; description: string };
+}): ResolveContext {
+  const { game, submissions, rounds, allTables, roundNumber, aiDisposition } = opts;
   const labNames = game.labs.map((l) => l.name) as [string, ...string[]];
   const resolveSchema = buildResolveSchema(labNames);
 
@@ -221,17 +222,18 @@ function createCompletionStream(
 // ─── Apply resolution to Convex ──────────────────────────────────────────────
 
 /** Apply resolved output to Convex — shared by streaming and non-streaming paths */
-async function applyResolution(
-  output: ResolveOutputType,
-  gameId: string,
-  roundNumber: number,
-  game: GameData,
-  allTables: TableRow[] | null,
-  roleCompute: RoleCompute[],
-  usedModel: string,
-  timeMs: number,
-  tokens?: number,
-) {
+async function applyResolution(opts: {
+  output: ResolveOutputType;
+  gameId: string;
+  roundNumber: number;
+  game: GameData;
+  allTables: TableRow[] | null;
+  roleCompute: RoleCompute[];
+  usedModel: string;
+  timeMs: number;
+  tokens?: number;
+}) {
+  const { output, gameId, roundNumber, game, allTables, roleCompute, usedModel, timeMs, tokens } = opts;
   console.info(`[resolve] R${roundNumber} applyResolution: ${output.resolvedEvents?.length ?? 0} events, ${output.labUpdates?.length ?? 0} labUpdates, model=${usedModel}`);
   if (output.labUpdates?.length) {
     console.info(`[resolve] labUpdates: ${output.labUpdates.map((u) => `${u.name}: ${u.newRdMultiplier}x ${u.newComputeStock}u`).join(", ")}`);
@@ -375,14 +377,14 @@ export async function POST(request: Request) {
     }
 
     // Build prompt and schema from fetched data
-    const { prompt, resolveSchema, roleCompute } = buildResolveContext(
+    const { prompt, resolveSchema, roleCompute } = buildResolveContext({
       game,
-      submissions ?? [],
-      rounds ?? [],
+      submissions: submissions ?? [],
+      rounds: rounds ?? [],
       allTables,
       roundNumber,
       aiDisposition,
-    );
+    });
 
     // Streaming path
     const url = new URL(request.url);
@@ -395,17 +397,17 @@ export async function POST(request: Request) {
       });
 
       const readable = createCompletionStream(aiStream, async (data) => {
-        await applyResolution(
-          data.output,
+        await applyResolution({
+          output: data.output,
           gameId,
           roundNumber,
           game,
           allTables,
           roleCompute,
-          data.model,
-          data.timeMs,
-          data.tokens,
-        );
+          usedModel: data.model,
+          timeMs: data.timeMs,
+          tokens: data.tokens,
+        });
       });
 
       return new Response(readable, {
@@ -429,7 +431,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "All AI models failed to resolve", model: usedModel }, { status: 502 });
     }
 
-    await applyResolution(output, gameId, roundNumber, game, allTables, roleCompute, usedModel, timeMs, tokens);
+    await applyResolution({ output, gameId, roundNumber, game, allTables, roleCompute, usedModel, timeMs, tokens });
 
     return Response.json({
       success: true,

@@ -178,7 +178,7 @@ export function CopilotChat({
           <div className="border-t border-navy-light">
             <div ref={scrollRef} className="max-h-48 overflow-y-auto px-3 py-2 space-y-2">
               {messages.map((msg, i) => (
-                <div key={i} className={`text-[12px] ${msg.role === "user" ? "text-text-light" : "text-[#E2E8F0]"}`}>
+                <div key={`mini-msg-${i}`} className={`text-[12px] ${msg.role === "user" ? "text-text-light" : "text-[#E2E8F0]"}`}>
                   <span className="font-bold text-[10px] uppercase tracking-wider mr-1.5" style={{ color: msg.role === "user" ? "#94A3B8" : "#06B6D4" }}>
                     {msg.role === "user" ? "You" : "Copilot"}
                   </span>
@@ -231,7 +231,7 @@ export function CopilotChat({
           </p>
         )}
         {messages.map((msg, i) => (
-          <div key={i} className={`text-sm ${msg.role === "user" ? "text-text-light" : "text-[#E2E8F0]"}`}>
+          <div key={`msg-${i}`} className={`text-sm ${msg.role === "user" ? "text-text-light" : "text-[#E2E8F0]"}`}>
             <span className="font-bold text-[10px] uppercase tracking-wider mr-1.5 block mb-0.5" style={{ color: msg.role === "user" ? "#94A3B8" : "#06B6D4" }}>
               {msg.role === "user" ? "You" : "Copilot"}
             </span>

@@ -14,7 +14,7 @@ export function CapabilityTimeline({ currentRound }: { currentRound: number }) {
             const active = i <= currentRound;
             const current = i === currentRound;
             return (
-              <div key={i} className="flex-1">
+              <div key={`bar-${i}`} className="flex-1">
                 <div
                   className={`h-1.5 rounded-full transition-all duration-1000 ${!active ? "bg-navy-light" : ""}`}
                   style={{
@@ -34,7 +34,7 @@ export function CapabilityTimeline({ currentRound }: { currentRound: number }) {
             const active = i <= currentRound;
             const current = i === currentRound;
             return (
-              <div key={i} className="flex-1 text-center pt-1 px-0.5">
+              <div key={`label-${i}`} className="flex-1 text-center pt-1 px-0.5">
                 <div
                   className="text-base font-extrabold font-mono transition-colors duration-500"
                   style={{ color: current ? "#06B6D4" : active ? "#FFFFFF" : "#475569" }}

@@ -31,7 +31,7 @@ function SubmittedView({ actions }: { actions: { text: string; priority: number;
         <span className="text-sm font-bold text-text">Submitted</span>
       </div>
       {actions.map((a, i) => (
-        <div key={i} className="bg-white rounded-lg p-3 border border-border relative mb-2">
+        <div key={`submitted-${i}`} className="bg-white rounded-lg p-3 border border-border relative mb-2">
           <div className="flex items-start gap-2 mb-1">
             <span className="text-[11px] bg-warm-gray text-text-muted rounded px-1.5 py-0.5 font-mono font-semibold shrink-0">
               #{i + 1}
@@ -240,7 +240,7 @@ export function TableSubmit({
                     <p className="text-[11px] text-[#3B82F6]">Tap a suggestion to add it as an action</p>
                     {shownSuggestions.map((s, i) => (
                       <button
-                        key={i}
+                        key={`suggestion-${i}`}
                         onClick={() => onSuggestionTap(s)}
                         className="w-full text-left bg-white rounded-lg p-3 border border-[#DBEAFE] hover:border-[#93C5FD] transition-colors"
                       >

@@ -95,7 +95,7 @@ export function StateOfPlay({ labs, worldState, roundLabel, rounds }: Props) {
 
         <div className="space-y-1.5 mb-3">
           {cap.specificCapabilities.map((c, i) => (
-            <div key={i} className="flex items-start gap-2">
+            <div key={`spec-cap-${i}`} className="flex items-start gap-2">
               <Cpu className="w-3.5 h-3.5 text-viz-capability shrink-0 mt-0.5" />
               <span className="text-sm text-text-light">{c}</span>
             </div>

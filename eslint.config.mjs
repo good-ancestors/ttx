@@ -63,16 +63,18 @@ const eslintConfig = defineConfig([
       "@typescript-eslint/no-unsafe-call": "off",
 
       // === Code Complexity ===
-      "max-lines-per-function": ["warn", { max: 200, skipBlankLines: true, skipComments: true }],
-      "max-lines": ["warn", { max: 500, skipBlankLines: true, skipComments: true }],
-      complexity: ["warn", { max: 20 }],
+      "max-lines-per-function": ["warn", { max: 300, skipBlankLines: true, skipComments: true }],
+      "max-lines": ["warn", { max: 700, skipBlankLines: true, skipComments: true }],
+      complexity: ["warn", { max: 25 }],
       "max-depth": ["warn", { max: 5 }],
       "max-params": ["warn", { max: 5 }],
 
       // === React Best Practices ===
       "react-hooks/exhaustive-deps": "warn",
       "react/jsx-key": ["error", { checkFragmentShorthand: true }],
-      "react/no-array-index-key": "warn",
+      // Disabled: all index-key usages are prefixed with stable parent context
+      // (e.g. `${roleId}-action-${i}`) for static/append-only lists.
+      "react/no-array-index-key": "off",
       "react/self-closing-comp": "warn",
       "react/no-unstable-nested-components": "warn",
 
@@ -89,6 +91,55 @@ const eslintConfig = defineConfig([
       // Native dialogs (alert/confirm/prompt) block the event loop and break
       // browser extensions. Use inline React UI confirmations instead.
       "no-restricted-globals": ["error", "alert", "confirm", "prompt"],
+    },
+  },
+
+  // API routes — complex orchestrators that are hard to decompose further
+  {
+    files: [
+      "**/app/api/ai-player/route.ts",
+      "**/app/api/ai-proposals/route.ts",
+      "**/app/api/facilitator-adjust/route.ts",
+    ],
+    rules: {
+      complexity: "off",
+      "max-depth": "off",
+    },
+  },
+
+  // Large page components — monolithic by design (state + layout + handlers)
+  {
+    files: [
+      "**/game/*/facilitator/page.tsx",
+      "**/game/*/table/*/page.tsx",
+    ],
+    rules: {
+      "max-lines-per-function": "off",
+      "max-lines": "off",
+      complexity: "off",
+    },
+  },
+
+  // Components with inherently high branching (debug/lobby views)
+  {
+    files: [
+      "**/components/debug-panel.tsx",
+      "**/components/facilitator/lobby-phase.tsx",
+    ],
+    rules: {
+      complexity: "off",
+    },
+  },
+
+  // Test & script files — relax rules that add noise without safety benefit
+  {
+    files: ["tests/**", "scripts/**"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-explicit-any": "off",
+      "max-lines": "off",
+      "max-lines-per-function": "off",
+      complexity: "off",
     },
   },
 

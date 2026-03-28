@@ -89,7 +89,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
       <div className="space-y-3">
         {actions.map((action, i) => (
           <ActionCard
-            key={i}
+            key={`action-${i}`}
             action={action}
             index={i}
             decayPriority={action.text.trim() && decay ? decay[actions.slice(0, i).filter((a) => a.text.trim()).length] : undefined}

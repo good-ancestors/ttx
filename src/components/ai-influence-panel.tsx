@@ -132,7 +132,7 @@ export function AiInfluencePanel({
                 const key = `${sub._id}-${i}`;
                 const choice = choices[key] ?? null;
                 return (
-                  <div key={i} className="flex items-center gap-2 mb-1.5 last:mb-0">
+                  <div key={`${sub._id}-action-${i}`} className="flex items-center gap-2 mb-1.5 last:mb-0">
                     <p className="text-xs text-[#E2E8F0] flex-1 truncate" title={action.text}>
                       {action.text}
                     </p>

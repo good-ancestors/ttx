@@ -180,7 +180,7 @@ export function NarratePhase({
                       <p className="text-sm text-[#E2E8F0] mb-2">{cap.generalCapability}</p>
                       <div className="space-y-1 mb-2">
                         {cap.specificCapabilities.map((c, i) => (
-                          <p key={i} className="text-sm text-text-light flex items-start gap-1.5">
+                          <p key={`cap-${i}`} className="text-sm text-text-light flex items-start gap-1.5">
                             <span className="text-viz-capability mt-0.5">●</span> {c}
                           </p>
                         ))}

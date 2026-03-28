@@ -119,7 +119,7 @@ export function SubmitPhase({
               const isHidden = action.secret && !revealedSecrets.has(secretKey);
               const roleName = role?.name ?? sub.roleId;
               return (
-              <div key={i} className="flex items-center gap-3 py-2 border-b border-navy-light last:border-0">
+              <div key={`${sub.roleId}-action-${i}`} className="flex items-center gap-3 py-2 border-b border-navy-light last:border-0">
                 {action.secret && (
                   <Lock className="w-3.5 h-3.5 text-viz-warning shrink-0" />
                 )}
