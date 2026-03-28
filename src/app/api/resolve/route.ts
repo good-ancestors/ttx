@@ -25,7 +25,8 @@ function normaliseAllocation(raw: { users: number; capability: number; safety: n
   return alloc;
 }
 
-function buildResolveSchema(labNames: [string, ...string[]]) {
+// Resolve schema — events + world state only. Lab updates are a separate call.
+function buildResolveSchema() {
   return z.object({
     resolvedEvents: z.array(
       z.object({
@@ -45,31 +46,19 @@ function buildResolveSchema(labNames: [string, ...string[]]) {
       regulation: z.number().min(0).max(10),
       australia: z.number().min(0).max(10),
     }),
-    labUpdates: z.array(
-      z.object({
-        name: z.enum(labNames),
-        newComputeStock: z.number(),
-        newRdMultiplier: z.number(),
-        newAllocation: z.object({
-          users: z.number(),
-          capability: z.number(),
-          safety: z.number(),
-        }),
-      })
-    ).min(labNames.length, `Must provide updates for all ${labNames.length} labs`),
-  roleComputeUpdates: z.optional(
-    z.array(
-      z.object({
-        roleId: z.string(),
-        newComputeStock: z.number(),
-      })
-    )
-  ),
+    roleComputeUpdates: z.optional(
+      z.array(
+        z.object({
+          roleId: z.string(),
+          newComputeStock: z.number(),
+        })
+      )
+    ),
   });
 }
 
 // Default schema for type inference
-const ResolveOutput = buildResolveSchema(["OpenBrain", "DeepCent", "Conscienta"]);
+const ResolveOutput = buildResolveSchema();
 type ResolveOutputType = z.infer<typeof ResolveOutput>;
 
 interface Lab {
@@ -113,8 +102,7 @@ function buildResolveContext(opts: {
   aiDisposition?: { label: string; description: string };
 }): ResolveContext {
   const { game, submissions, rounds, allTables, roundNumber, aiDisposition } = opts;
-  const labNames = game.labs.map((l) => l.name) as [string, ...string[]];
-  const resolveSchema = buildResolveSchema(labNames);
+  const resolveSchema = buildResolveSchema();
 
   const currentRound = rounds?.find((r) => r.number === roundNumber);
 
@@ -258,12 +246,7 @@ async function applyResolution(opts: {
   tokens?: number;
 }) {
   const { output, gameId, roundNumber, game, allTables, roleCompute, usedModel, timeMs, tokens } = opts;
-  console.info(`[resolve] R${roundNumber} applyResolution: ${output.resolvedEvents?.length ?? 0} events, ${output.labUpdates?.length ?? 0} labUpdates, model=${usedModel}`);
-  if (output.labUpdates?.length) {
-    console.info(`[resolve] labUpdates: ${output.labUpdates.map((u) => `${u.name}: ${u.newRdMultiplier}x ${u.newComputeStock}u`).join(", ")}`);
-  } else {
-    console.warn(`[resolve] R${roundNumber} WARNING: No labUpdates in resolve output!`);
-  }
+  console.info(`[resolve] R${roundNumber} applyResolution: ${output.resolvedEvents?.length ?? 0} events, model=${usedModel}`);
 
   // Store resolved events
   await convex.mutation(api.rounds.applyResolution, {
@@ -308,80 +291,76 @@ async function applyResolution(opts: {
     }
   }
 
-  // Update lab compute, R&D multipliers, and allocation
-  // Strategy: use main resolve labUpdates if present, otherwise make a dedicated API call
+  // Lab updates — ALWAYS a dedicated API call (separate from events/worldState for reliability)
   const maxMultiplier = roundNumber === 1 ? 15 : roundNumber === 2 ? 200 : roundNumber === 3 ? 5000 : 10000;
-  let labsSource = "none";
+  const labNames = game.labs.map((l) => l.name) as [string, ...string[]];
+  const labSchema = z.object({
+    labs: z.array(z.object({
+      name: z.enum(labNames),
+      newComputeStock: z.number(),
+      newRdMultiplier: z.number(),
+      newAllocation: z.object({ users: z.number(), capability: z.number(), safety: z.number() }),
+    })).length(labNames.length),
+  });
 
-  if (output.labUpdates && output.labUpdates.length > 0) {
-    labsSource = "resolve";
-    console.info(`[resolve] R${roundNumber} labs from resolve: ${JSON.stringify(output.labUpdates.map(u => ({ name: u.name, mult: u.newRdMultiplier, compute: u.newComputeStock })))}`);
-    await applyLabUpdates(gameId, game.labs, output.labUpdates, maxMultiplier);
-  } else {
-    // Main resolve didn't include labs — make a dedicated focused call
-    console.warn(`[resolve] R${roundNumber} resolve output missing labUpdates — making dedicated lab update call`);
-    const labNames = game.labs.map((l) => l.name) as [string, ...string[]];
-    const labSchema = z.object({
-      labs: z.array(z.object({
-        name: z.enum(labNames),
-        newComputeStock: z.number(),
-        newRdMultiplier: z.number(),
-        newAllocation: z.object({ users: z.number(), capability: z.number(), safety: z.number() }),
-      })).length(labNames.length),
-    });
-    const labPrompt = `You are updating lab state for Round ${roundNumber} of an AI tabletop exercise.
+  const eventSummary = output.resolvedEvents.map(e => `- ${e.description}`).join("\n");
+  const labPrompt = `Update lab state for Round ${roundNumber} of an AI race scenario.
 
 CURRENT LABS:
-${game.labs.map(l => `- ${l.name}: ${l.rdMultiplier}x R&D, ${l.computeStock}u compute, allocation ${l.allocation.users}%/${l.allocation.capability}%/${l.allocation.safety}%`).join("\n")}
+${game.labs.map(l => `- ${l.name}: ${l.rdMultiplier}x R&D multiplier, ${l.computeStock}u compute | Alloc: Users ${l.allocation.users}%, R&D ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
 
-ROUND ${roundNumber} EVENTS (summary):
-${output.resolvedEvents.map(e => `- ${e.description}`).join("\n")}
+THIS ROUND'S EVENTS:
+${eventSummary}
 
-EXPECTED CAPABILITY PROGRESSION:
-- R1: 3-10x, R2: 10-50x, R3: 100-1000x, R4: 500-5000x
+SCENARIO PROGRESSION (R&D multiplier targets for the LEADING lab):
+- Round 1: 5-10x (Agent-2 era, early AGI)
+- Round 2: 20-50x (Agent-3, 10x accelerator)
+- Round 3: 100-500x (Agent-4, approaching ASI)
+- Round 4: 500-5000x (ASI threshold)
 
-Output updated values for ALL ${labNames.length} labs. Account for the events above.
-The leading lab's R&D multiplier should be in the expected range for Round ${roundNumber}.`;
+RULES:
+- Output ALL ${labNames.length} labs with updated values
+- The leading lab's multiplier MUST be in the target range for Round ${roundNumber}
+- Trailing labs should be 40-70% of the leader
+- Compute stock grows ~30-50% per round from new infrastructure + allocations
+- If events describe sanctions/seizures/sabotage, adjust compute accordingly
+- Allocation shifts based on CEO actions (if any)`;
 
-    try {
-      const { output: labOutput } = await generateWithFallback({
-        primary: "anthropic/claude-haiku-4-5",
-        fallback: RESOLVE_FALLBACK,
-        prompt: labPrompt,
-        schema: labSchema,
-        maxRetries: 2,
-      });
-      if (labOutput?.labs && labOutput.labs.length > 0) {
-        labsSource = "dedicated";
-        console.info(`[resolve] R${roundNumber} labs from dedicated call: ${JSON.stringify(labOutput.labs.map(u => ({ name: u.name, mult: u.newRdMultiplier, compute: u.newComputeStock })))}`);
-        await applyLabUpdates(gameId, game.labs, labOutput.labs, maxMultiplier);
-      } else {
-        console.error(`[resolve] R${roundNumber} dedicated lab call also failed!`);
-      }
-    } catch (err) {
-      console.error(`[resolve] R${roundNumber} dedicated lab call error:`, err);
+  let labsSource = "none";
+  try {
+    const { output: labOutput, model: labModel } = await generateWithFallback({
+      primary: "anthropic/claude-haiku-4-5",
+      fallback: RESOLVE_FALLBACK,
+      prompt: labPrompt,
+      schema: labSchema,
+      maxRetries: 3,
+    });
+    if (labOutput?.labs && labOutput.labs.length > 0) {
+      labsSource = `dedicated:${labModel}`;
+      console.info(`[resolve] R${roundNumber} lab updates (${labModel}): ${JSON.stringify(labOutput.labs.map(u => ({ name: u.name, mult: u.newRdMultiplier, compute: u.newComputeStock })))}`);
+      await applyLabUpdates(gameId, game.labs, labOutput.labs, maxMultiplier);
+    } else {
+      console.error(`[resolve] R${roundNumber} lab update call returned empty output`);
     }
+  } catch (err) {
+    console.error(`[resolve] R${roundNumber} lab update call failed:`, err);
   }
 
-  // Final fallback floor
+  // Safety net: if labs still below expected floor after the dedicated call
   const minFloors: Record<number, number> = { 1: 3, 2: 10, 3: 100, 4: 500 };
   const minFloor = minFloors[roundNumber] ?? 3;
-  const latestGame = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
-  const latestLeading = latestGame ? Math.max(...latestGame.labs.map((l: { rdMultiplier: number }) => l.rdMultiplier)) : 1;
-  if (latestLeading < minFloor) {
-    labsSource = "fallback";
-    const prevLeading = Math.max(...game.labs.map((l) => l.rdMultiplier));
-    console.warn(`[resolve] R${roundNumber} FALLBACK: leading ${latestLeading}x < floor ${minFloor}x. Bumping.`);
-    const scale = minFloor / Math.max(1, prevLeading);
-    const bumpedLabs = (latestGame?.labs ?? game.labs).map((lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }) => ({
+  const postLabGame = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
+  const postLeading = postLabGame ? Math.max(...postLabGame.labs.map((l: { rdMultiplier: number }) => l.rdMultiplier)) : 1;
+  if (postLeading < minFloor) {
+    labsSource += "+fallback";
+    const scale = minFloor / Math.max(1, postLeading);
+    console.warn(`[resolve] R${roundNumber} FLOOR: leading ${postLeading}x < ${minFloor}x. Scaling by ${scale.toFixed(1)}x.`);
+    const bumpedLabs = (postLabGame?.labs ?? game.labs).map((lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }) => ({
       ...lab,
       rdMultiplier: Math.min(maxMultiplier, Math.round(lab.rdMultiplier * scale * 10) / 10),
       computeStock: lab.computeStock + Math.round(roundNumber * 3),
     }));
-    await convex.mutation(api.games.updateLabs, {
-      gameId: gameId as Id<"games">,
-      labs: bumpedLabs,
-    });
+    await convex.mutation(api.games.updateLabs, { gameId: gameId as Id<"games">, labs: bumpedLabs });
   }
 
   const finalGame = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
@@ -398,18 +377,9 @@ The leading lab's R&D multiplier should be in the expected range for Round ${rou
     regulation: clampDelta(output.worldState.regulation, game.worldState.regulation),
     australia: clampDelta(output.worldState.australia, game.worldState.australia),
   };
-  const snapshotLabs = output.labUpdates
-    ? game.labs.map((lab) => {
-        const update = output.labUpdates.find((u) => u.name === lab.name);
-        if (!update) return lab;
-        return {
-          ...lab,
-          computeStock: Math.max(0, Math.round(update.newComputeStock)),
-          rdMultiplier: Math.min(maxMultiplier, Math.max(0, Math.round(update.newRdMultiplier * 10) / 10)),
-          allocation: update.newAllocation ? normaliseAllocation(update.newAllocation) : lab.allocation,
-        };
-      })
-    : game.labs;
+  // Read latest labs from Convex (updated by dedicated lab call above)
+  const snapshotGame = await convex.query(api.games.get, { gameId: gameId as Id<"games"> });
+  const snapshotLabs = snapshotGame?.labs ?? game.labs;
 
   // Snapshot + AI metadata in parallel
   await Promise.all([

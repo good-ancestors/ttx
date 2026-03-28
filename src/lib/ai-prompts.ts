@@ -344,11 +344,10 @@ const COMPUTE_RD_RULES = `4. COMPUTE AND R&D UPDATES:
    - Compute can be destroyed, transferred, redirected, or created via new infrastructure.
    - DPA consolidation moves stock between labs (not creates new). If US nationalises a lab, transfer its stock.
    - Infrastructure actions DIRECTLY affect stock.
-   R&D MULTIPLIER:
-   - The multiplier represents the AI system's current capability level. It can ONLY go up or stay flat — never decrease within a model generation.
-   - Slowing progress means the multiplier grows SLOWER, NOT that it drops.
-   - The ONLY exception: if a model is explicitly decommissioned/destroyed and replaced with a less capable one (pivot to Safer models).
-   - CRITICAL: You MUST output labUpdates for EVERY lab in the current game state. Never omit any lab. Each lab must have name, newComputeStock, newRdMultiplier, and newAllocation. Even if a lab's values don't change, output them unchanged. Missing labUpdates will break the game.`;
+   R&D MULTIPLIER CONTEXT (lab updates are handled separately — do NOT output labUpdates):
+   - The multiplier represents the AI system's current capability level.
+   - Your job is to describe EVENTS and WORLD STATE changes only.
+   - Lab compute and R&D updates are calculated separately based on your events.`;
 
 export function buildResolvePrompt(args: {
   round: number;
