@@ -135,9 +135,7 @@ export function buildChartData(
     if (!isAbsorbed && completedRounds.length < 4 && completedRounds.length > 0) {
       const currentLab = currentLabs.find((l) => l.name === lab.name);
       const val = currentLab?.rdMultiplier ?? lab.rdMultiplier;
-      if (val !== points[points.length - 1]?.value) {
-        points.push({ x: xPos(2 + completedRounds.length), y: 0, value: val });
-      }
+      points.push({ x: xPos(2 + completedRounds.length), y: 0, value: val });
     }
 
     series.push({ name: lab.name, roleId: lab.roleId, points, isBackground, isAbsorbed });
