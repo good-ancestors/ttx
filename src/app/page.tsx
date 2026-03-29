@@ -16,6 +16,8 @@ function formatTime(ts: number) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+const FACILITATOR_PASSPHRASE = "coral-ember-drift-sage";
+
 export default function SplashPage() {
   const router = useRouter();
   const games = useQuery(api.games.list);
@@ -26,6 +28,15 @@ export default function SplashPage() {
   const [joinError, setJoinError] = useState("");
   const [mode, setMode] = useState<"main" | "join">("main");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [passphrase, setPassphrase] = useState("");
+  const [authenticated, setAuthenticated] = useState(false);
+
+  // Check localStorage on first render
+  useState(() => {
+    if (typeof window !== "undefined" && localStorage.getItem("ttx-facilitator") === "true") {
+      setAuthenticated(true);
+    }
+  });
 
   const handleCreate = async () => {
     setCreating(true);
@@ -54,6 +65,55 @@ export default function SplashPage() {
       console.error("Failed to delete game:", err);
     }
   };
+
+  if (!authenticated) {
+    return (
+      <div className="min-h-dvh bg-navy flex flex-col items-center justify-center p-8 text-center">
+        <div className="max-w-md w-full">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/good-ancestors-logo.svg" alt="Good Ancestors" className="h-10 mx-auto mb-8" />
+          <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">The Race to AGI</h1>
+          <p className="text-sm text-text-light mb-8">A Tabletop Scenario Exercise</p>
+          <input
+            type="text"
+            value={passphrase}
+            onChange={(e) => setPassphrase(e.target.value.toLowerCase())}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && passphrase.trim() === FACILITATOR_PASSPHRASE) {
+                setAuthenticated(true);
+                localStorage.setItem("ttx-facilitator", "true");
+              }
+            }}
+            placeholder="Facilitator passphrase"
+            autoFocus
+            spellCheck={false}
+            autoComplete="off"
+            className="w-full py-3.5 px-6 bg-navy-light text-white text-center text-base font-mono
+                       rounded-lg border border-navy-light focus:border-text-light
+                       outline-none placeholder:text-navy-muted mb-3"
+          />
+          <button
+            onClick={() => {
+              if (passphrase.trim() === FACILITATOR_PASSPHRASE) {
+                setAuthenticated(true);
+                localStorage.setItem("ttx-facilitator", "true");
+              }
+            }}
+            className="w-full py-3.5 px-6 bg-white text-navy rounded-lg text-base font-bold
+                       hover:bg-off-white transition-colors mb-4"
+          >
+            Enter
+          </button>
+          <button
+            onClick={() => setMode("join")}
+            className="text-sm text-text-light hover:text-white transition-colors"
+          >
+            Join as Player instead
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (mode === "join") {
     return (
