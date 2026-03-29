@@ -16,7 +16,7 @@ function formatTime(ts: number) {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
-const FACILITATOR_PASSPHRASE = "coral-ember-drift-sage";
+const FACILITATOR_PASSPHRASE = process.env.NEXT_PUBLIC_FACILITATOR_PASSPHRASE ?? "coral-ember-drift-sage";
 
 export default function SplashPage() {
   const router = useRouter();
