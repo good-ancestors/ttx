@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { ROLES, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
 import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Lock, Check } from "lucide-react";
 
@@ -160,15 +160,8 @@ function ActionCard({
   onAddNext?: () => void;
 }) {
   const [showEndorse, setShowEndorse] = useState(false);
-  const [sentFlash, setSentFlash] = useState<string | null>(null);
   const hasEndorsements = action.endorseTargets.length > 0;
   const isLocked = hasEndorsements && !isSubmitted;
-
-  useEffect(() => {
-    if (!sentFlash) return;
-    const t = setTimeout(() => setSentFlash(null), 2000);
-    return () => clearTimeout(t);
-  }, [sentFlash]);
 
   // Suggest endorsement targets based on action text keywords
   const activeRoleIds = otherRoles.map((r) => r.id);
@@ -186,13 +179,6 @@ function ActionCard({
         <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#059669]">
           <Lock className="w-3 h-3" />
           <span>Text locked — cancel support requests to edit</span>
-        </div>
-      )}
-
-      {sentFlash && (
-        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#059669] animate-pulse">
-          <Check className="w-3 h-3" />
-          <span>Request sent to {sentFlash}</span>
         </div>
       )}
 
@@ -272,7 +258,6 @@ function ActionCard({
           onUpdate={onUpdate}
           onSendRequest={onSendRequest}
           onCancelRequest={onCancelRequest}
-          onSent={(name) => setSentFlash(name)}
           onClose={() => setShowEndorse(false)}
         />
       )}
@@ -313,7 +298,6 @@ function EndorsementPicker({
   onUpdate,
   onSendRequest,
   onCancelRequest,
-  onSent,
   onClose,
 }: {
   action: ActionDraft;
@@ -321,15 +305,17 @@ function EndorsementPicker({
   onUpdate: (patch: Partial<ActionDraft>) => void;
   onSendRequest?: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
   onCancelRequest?: (targetRoleId: string, actionText: string) => void;
-  onSent: (name: string) => void;
   onClose: () => void;
 }) {
+  const [justSent, setJustSent] = useState<Set<string>>(new Set());
+
   return (
     <div className="mt-2 pt-2 border-t border-border">
       <p className="text-[11px] text-text-muted mb-2">Request support from:</p>
       <div className="flex flex-wrap gap-1.5">
         {otherRoles.map((r) => {
           const selected = action.endorseTargets.includes(r.id);
+          const showSent = justSent.has(r.id);
           return (
             <button
               key={r.id}
@@ -337,20 +323,31 @@ function EndorsementPicker({
                 if (selected) {
                   onUpdate({ endorseTargets: action.endorseTargets.filter((id) => id !== r.id) });
                   if (onCancelRequest && action.text.trim()) onCancelRequest(r.id, action.text.trim());
+                  setJustSent((s) => { const next = new Set(s); next.delete(r.id); return next; });
                 } else {
                   onUpdate({ endorseTargets: [...action.endorseTargets, r.id] });
                   if (onSendRequest && action.text.trim()) {
                     onSendRequest(r.id, r.name, action.text.trim());
-                    onSent(r.name);
+                    setJustSent((s) => new Set(s).add(r.id));
+                    setTimeout(() => setJustSent((s) => { const next = new Set(s); next.delete(r.id); return next; }), 1500);
                   }
                 }
               }}
-              className={`text-xs min-h-[36px] px-3 py-1.5 rounded-full font-medium transition-colors ${
-                selected ? "bg-[#059669] text-white" : "bg-warm-gray text-text-muted hover:bg-border"
+              className={`text-xs min-h-[36px] px-3 py-1.5 rounded-full font-medium transition-all duration-200 ${
+                showSent
+                  ? "bg-[#059669] text-white scale-105"
+                  : selected
+                    ? "bg-[#059669] text-white"
+                    : "bg-warm-gray text-text-muted hover:bg-border"
               }`}
             >
-              {selected && <span className="mr-0.5">✓</span>}
-              {r.name}
+              {showSent ? (
+                <span className="flex items-center gap-1"><Check className="w-3 h-3" /> Sent!</span>
+              ) : selected ? (
+                <span>✓ {r.name}</span>
+              ) : (
+                r.name
+              )}
             </button>
           );
         })}
@@ -362,6 +359,7 @@ function EndorsementPicker({
               for (const id of action.endorseTargets) onCancelRequest(id, action.text.trim());
             }
             onUpdate({ endorseTargets: [] });
+            setJustSent(new Set());
             onClose();
           }}
           className="mt-1.5 text-[11px] text-text-muted hover:text-text flex items-center gap-1"
