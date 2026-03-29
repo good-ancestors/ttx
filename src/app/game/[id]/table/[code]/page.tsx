@@ -492,17 +492,14 @@ export default function TablePlayerPage({
             />
           )}
 
-          {/* Round context card — only during playing */}
-          {game.status === "playing" && (
+          {/* Round context — show during discuss/submit only (narrate phase has its own display) */}
+          {game.status === "playing" && phase !== "narrate" && phase !== "rolling" && (
             <div
               className="bg-white rounded-xl p-4 border border-border mb-4 break-words"
               style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
             >
-              <h3 className="text-lg font-bold text-text mb-1">{round.title}</h3>
               <p className="text-sm text-text-muted leading-relaxed">
-                {round.number > 1 && round.summary?.narrative
-                  ? round.summary.narrative
-                  : round.narrative}
+                {round.summary?.narrative ?? round.narrative}
               </p>
             </div>
           )}

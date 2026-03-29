@@ -770,8 +770,9 @@ export default function FacilitatorPage({
       <div className="p-6 max-w-[1400px] mx-auto">
         {currentRound && (
           <div className="bg-navy rounded-xl border border-navy-light p-6 mb-6">
-            <h2 className="text-2xl font-extrabold mb-1 tracking-tight">{currentRound.title}</h2>
-            <p className="text-sm text-text-light leading-relaxed">{currentRound.narrative}</p>
+            <p className="text-sm text-text-light leading-relaxed">
+              {currentRound.summary?.narrative ?? currentRound.narrative}
+            </p>
           </div>
         )}
 
