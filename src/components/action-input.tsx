@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ROLES, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
-import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Lock, Check } from "lucide-react";
+import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Lock } from "lucide-react";
 
 
 export type PriorityLevel = "low" | "medium" | "high";
@@ -333,21 +333,16 @@ function EndorsementPicker({
                   }
                 }
               }}
-              className={`text-xs min-h-[36px] px-3 py-1.5 rounded-full font-medium transition-all duration-200 ${
-                showSent
-                  ? "bg-[#059669] text-white scale-105"
-                  : selected
-                    ? "bg-[#059669] text-white"
-                    : "bg-warm-gray text-text-muted hover:bg-border"
+              className={`text-xs min-h-[36px] px-3 py-1.5 rounded-full font-medium transition-colors duration-200 ${
+                selected
+                  ? showSent
+                    ? "bg-[#047857] text-white ring-2 ring-[#059669]/50"
+                    : "bg-[#059669] text-white"
+                  : "bg-warm-gray text-text-muted hover:bg-border"
               }`}
             >
-              {showSent ? (
-                <span className="flex items-center gap-1"><Check className="w-3 h-3" /> Sent!</span>
-              ) : selected ? (
-                <span>✓ {r.name}</span>
-              ) : (
-                r.name
-              )}
+              {selected && <span className="mr-0.5">✓</span>}
+              {r.name}
             </button>
           );
         })}
