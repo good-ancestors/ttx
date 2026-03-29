@@ -62,7 +62,7 @@ export const ROLES: Role[] = [
   },
   {
     id: "conscienta-ceo",
-    name: "Conscienta AI CEO",
+    name: "Conscienta CEO",
     subtitle: "Safety-Focused US Lab",
     color: "#8B5CF6",
     tags: ["lab-ceo", "has-compute"],

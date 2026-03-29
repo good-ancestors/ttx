@@ -768,13 +768,17 @@ export default function FacilitatorPage({
       )}
 
       <div className="p-6 max-w-[1400px] mx-auto">
-        {currentRound && (
-          <div className="bg-navy rounded-xl border border-navy-light p-6 mb-6">
-            <p className="text-sm text-text-light leading-relaxed">
-              {currentRound.summary?.narrative ?? currentRound.narrative}
-            </p>
-          </div>
-        )}
+        {/* Show previous round's AI narrative, or R1 hardcoded intro — never current round's hardcoded text */}
+        {(() => {
+          const prevRound = rounds.find(r => r.number === game.currentRound - 1);
+          const storyText = prevRound?.summary?.narrative ?? (game.currentRound === 1 ? currentRound?.narrative : undefined);
+          if (!storyText) return null;
+          return (
+            <div className="bg-navy rounded-xl border border-navy-light p-6 mb-6">
+              <p className="text-sm text-text-light leading-relaxed">{storyText}</p>
+            </div>
+          );
+        })()}
 
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
           {/* Left sidebar */}

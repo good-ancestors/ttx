@@ -27,7 +27,7 @@ ROLES (each can be human or AI-controlled):
 Lab CEOs (control compute allocation for their lab):
 - OpenBrain CEO: Leading US AI lab. Has the most capable models. Key tension: speed vs. safety, board pressure.
 - DeepCent CEO: China's state-directed national AI champion. Has stolen Agent-2 weights, needs to overwrite US-aligned spec. State resources but fewer chips.
-- Conscienta AI CEO: Safety-focused US lab, ~3 months behind OpenBrain. Has won some games by being most trusted. Controls their lab's compute allocation.
+- Conscienta CEO: Safety-focused US lab, ~3 months behind OpenBrain. Has won some games by being most trusted. Controls their lab's compute allocation.
 
 Lab Safety Leads (advise their CEO, cannot directly set allocation):
 - OpenBrain Safety Lead: 3% of compute, ~10 experts. Honeypots and probes unreliable. Can go public, lobby for resources, or collaborate externally.
@@ -63,7 +63,7 @@ IMPORTANT: Use each lab's ACTUAL multiplier (from LAB STATUS) to determine what 
 STARTING CONDITIONS (January 2028):
 - US intelligence believes China has recently obtained Agent-2 weights (this is NOT public knowledge — only US/China players know for certain; others may suspect)
 - DeepCent (China's lab) is rapidly advancing, closing the gap with OpenBrain
-- Conscienta AI is 3 months behind OpenBrain, other labs 6+ months behind
+- Conscienta is 3 months behind OpenBrain, other labs 6+ months behind
 - EU AI Act and Australian AI Safety Institute both exist but are early-stage
 - Russia/Ukraine conflict is frozen; Russia is a minor AI player
 - Public opinion on AI is mixed but primarily concerned about jobs
@@ -225,7 +225,7 @@ function formatRoundExpectations(round: number): string {
      Trailing labs: should reach 4-6× (closing the gap but still behind)
      If players actively slow down a lab (sanctions, sabotage, safety pivot), its multiplier grows slower
    - Key events: DPA consolidation possibility, Conscienta positioning, international summit demands, DeepCent closing the gap
-   - Conscienta AI reacts to events — may lobby for regulation, seek mergers, or poach talent
+   - Conscienta reacts to events — may lobby for regulation, seek mergers, or poach talent
    - If US uses DPA to consolidate labs, OpenBrain's compute stock should massively increase`;
   if (round === 2) return `   - Capability dial: should reach 6-7 (Agent-3 operational, Agent-4 in development)
    - DEFAULT R&D MULTIPLIER TARGETS:

@@ -81,6 +81,7 @@ export default function TablePlayerPage({
   const game = useQuery(api.games.get, { gameId });
   const table = useQuery(api.tables.get, { tableId });
   const round = useQuery(api.rounds.getCurrent, { gameId });
+  const allRounds = useQuery(api.rounds.getByGame, { gameId });
   const submission = useQuery(api.submissions.getForTable, {
     tableId,
     roundNumber: game?.currentRound ?? 1,
@@ -492,20 +493,25 @@ export default function TablePlayerPage({
             />
           )}
 
-          {/* Round context — show during discuss/submit only (narrate phase has its own display) */}
-          {game.status === "playing" && phase !== "narrate" && phase !== "rolling" && (
-            <div
-              className="bg-white rounded-xl p-4 border border-border mb-4 break-words"
-              style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
-            >
-              <span className="text-xs font-semibold uppercase tracking-wider text-text-muted block mb-1.5">
-                {round.label}
-              </span>
-              <p className="text-sm text-text-muted leading-relaxed">
-                {round.summary?.narrative ?? round.narrative}
-              </p>
-            </div>
-          )}
+          {/* Previous round story — show during discuss/submit only (not narrate/rolling) */}
+          {game.status === "playing" && phase !== "narrate" && phase !== "rolling" && (() => {
+            // Show the previous round's AI narrative (what happened last time)
+            // For R1 there's no previous round — show the starting scenario
+            const prevRound = allRounds?.find(r => r.number === game.currentRound - 1);
+            const storyText = prevRound?.summary?.narrative ?? (game.currentRound === 1 ? round.narrative : undefined);
+            if (!storyText) return null;
+            return (
+              <div
+                className="bg-white rounded-xl p-4 border border-border mb-4 break-words"
+                style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
+              >
+                <span className="text-xs font-semibold uppercase tracking-wider text-text-muted block mb-1.5">
+                  {game.currentRound === 1 ? round.label : `Previously — ${prevRound?.label}`}
+                </span>
+                <p className="text-sm text-text-muted leading-relaxed">{storyText}</p>
+              </div>
+            );
+          })()}
 
           {/* Discuss phase */}
           {phase === "discuss" && game.status === "playing" && (
