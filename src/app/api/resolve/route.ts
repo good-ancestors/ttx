@@ -536,7 +536,7 @@ export async function POST(request: Request) {
     }
 
     try {
-      await applyResolution({ output, gameId: gameId!, roundNumber, game, submissions: submissions ?? [], allTables, roleCompute, usedModel, timeMs, tokens });
+      await applyResolution({ output, gameId: gameId, roundNumber, game, submissions: submissions ?? [], allTables, roleCompute, usedModel, timeMs, tokens });
     } finally {
       await convex.mutation(api.games.setResolving, { gameId: gameId as Id<"games">, resolving: false });
     }
