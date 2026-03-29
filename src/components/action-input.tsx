@@ -164,7 +164,6 @@ function ActionCard({
   const hasEndorsements = action.endorseTargets.length > 0;
   const isLocked = hasEndorsements && !isSubmitted;
 
-  // Clear flash after 2s
   useEffect(() => {
     if (!sentFlash) return;
     const t = setTimeout(() => setSentFlash(null), 2000);
@@ -183,7 +182,6 @@ function ActionCard({
         <ReorderBar index={index} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />
       )}
 
-      {/* Locked indicator */}
       {isLocked && (
         <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#059669]">
           <Lock className="w-3 h-3" />
@@ -191,7 +189,6 @@ function ActionCard({
         </div>
       )}
 
-      {/* Sent flash */}
       {sentFlash && (
         <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#059669] animate-pulse">
           <Check className="w-3 h-3" />
@@ -199,10 +196,9 @@ function ActionCard({
         </div>
       )}
 
-      {/* Text input */}
       <textarea
         value={action.text}
-        onChange={(e) => { if (!isLocked) onUpdate({ text: e.target.value }); }}
+        onChange={(e) => onUpdate({ text: e.target.value })}
         onKeyDown={(e) => {
           if (isLocked) { e.preventDefault(); return; }
           if (e.key === "Enter" && !e.shiftKey) {

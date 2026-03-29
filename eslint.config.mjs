@@ -128,7 +128,7 @@ const eslintConfig = defineConfig([
       "**/components/action-input.tsx",
     ],
     rules: {
-      complexity: "off",
+      complexity: ["warn", 40],
     },
   },
 
