@@ -450,17 +450,27 @@ export async function POST(request: Request) {
   const authError = checkApiAuth(request);
   if (authError) return authError;
 
+  let gameId: string | undefined;
   try {
     const body = await request.json();
     const {
-      gameId,
+      gameId: parsedGameId,
       roundNumber,
       aiDisposition,
     }: { gameId: string; roundNumber: number; aiDisposition?: { label: string; description: string } } = body;
+    gameId = parsedGameId;
+
+    // Acquire resolving lock — prevents concurrent resolve calls from corrupting state
+    try {
+      await convex.mutation(api.games.setResolving, { gameId: gameId as Id<"games">, resolving: true });
+    } catch (err) {
+      return Response.json({ error: "Resolution already in progress", detail: err instanceof Error ? err.message : String(err) }, { status: 409 });
+    }
 
     // Fetch all data in parallel (roundNumber passed via closure for submissions)
     const { game, submissions, rounds, allTables } = await fetchResolveData(gameId, roundNumber);
     if (!game) {
+      await convex.mutation(api.games.setResolving, { gameId: gameId as Id<"games">, resolving: false });
       return Response.json({ error: "Game not found" }, { status: 404 });
     }
 
@@ -485,18 +495,22 @@ export async function POST(request: Request) {
       });
 
       const readable = createCompletionStream(aiStream, async (data) => {
-        await applyResolution({
-          output: data.output,
-          gameId,
-          roundNumber,
-          game,
-          submissions: submissions ?? [],
-          allTables,
-          roleCompute,
-          usedModel: data.model,
-          timeMs: data.timeMs,
-          tokens: data.tokens,
-        });
+        try {
+          await applyResolution({
+            output: data.output,
+            gameId: gameId!,
+            roundNumber,
+            game,
+            submissions: submissions ?? [],
+            allTables,
+            roleCompute,
+            usedModel: data.model,
+            timeMs: data.timeMs,
+            tokens: data.tokens,
+          });
+        } finally {
+          await convex.mutation(api.games.setResolving, { gameId: gameId as Id<"games">, resolving: false });
+        }
       });
 
       return new Response(readable, {
@@ -517,10 +531,15 @@ export async function POST(request: Request) {
     });
 
     if (!output) {
+      await convex.mutation(api.games.setResolving, { gameId: gameId as Id<"games">, resolving: false });
       return Response.json({ error: "All AI models failed to resolve", model: usedModel }, { status: 502 });
     }
 
-    await applyResolution({ output, gameId, roundNumber, game, submissions: submissions ?? [], allTables, roleCompute, usedModel, timeMs, tokens });
+    try {
+      await applyResolution({ output, gameId: gameId!, roundNumber, game, submissions: submissions ?? [], allTables, roleCompute, usedModel, timeMs, tokens });
+    } finally {
+      await convex.mutation(api.games.setResolving, { gameId: gameId as Id<"games">, resolving: false });
+    }
 
     return Response.json({
       success: true,
@@ -529,6 +548,12 @@ export async function POST(request: Request) {
       timeMs,
     });
   } catch (error) {
+    // Release lock on unexpected error (gameId may be undefined if body parsing failed)
+    try {
+      if (typeof gameId === "string") {
+        await convex.mutation(api.games.setResolving, { gameId: gameId as Id<"games">, resolving: false });
+      }
+    } catch { /* lock release is best-effort */ }
     console.error("Resolve error:", error);
     const detail = error instanceof Error ? error.message : String(error);
     return Response.json(

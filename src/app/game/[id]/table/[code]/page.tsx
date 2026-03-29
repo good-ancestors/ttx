@@ -32,7 +32,6 @@ interface DraftData {
   freeText: string;
   parsedActions: { text: string; priority: number }[];
   computeAllocation: { users: number; capability: number; safety: number };
-  computeLoans?: never; // removed — kept for backward compat with old drafts
   artifact: string;
 }
 
@@ -164,7 +163,7 @@ export default function TablePlayerPage({
     sessionIdRef.current = stored;
   }
   const sessionId = sessionIdRef.current;
-  const isConflict = table?.activeSessionId && table.activeSessionId !== sessionId && table.connected;
+  const isConflict = table?.activeSessionId && table.activeSessionId !== sessionId;
 
   // ── Connection lifecycle ──────────────────────────────────────────────────
   useEffect(() => {
@@ -438,13 +437,21 @@ export default function TablePlayerPage({
             </div>
             <div className="flex items-center gap-3">
               {game.phaseEndsAt && (
-                <span className={`text-xs font-mono flex items-center gap-1 ${isUrgent ? "text-viz-danger animate-pulse" : "text-text-muted"}`}>
-                  <Clock className="w-3.5 h-3.5" /> {timerDisplay}
+                <span
+                  className={`text-xs font-mono flex items-center gap-1 ${isUrgent ? "text-viz-danger animate-pulse" : "text-text-muted"}`}
+                  role="timer"
+                  aria-label={`${timerDisplay} remaining`}
+                >
+                  <Clock className="w-3.5 h-3.5" aria-hidden="true" /> {timerDisplay}
                 </span>
               )}
               {phase === "submit" && pendingProposalCount > 0 && (
-                <span className="text-[10px] bg-viz-warning text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1">
-                  <Handshake className="w-3 h-3" /> {pendingProposalCount}
+                <span
+                  className="text-[10px] bg-viz-warning text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1"
+                  role="status"
+                  aria-label={`${pendingProposalCount} pending proposal${pendingProposalCount === 1 ? "" : "s"}`}
+                >
+                  <Handshake className="w-3 h-3" aria-hidden="true" /> {pendingProposalCount}
                 </span>
               )}
               <span className="text-[11px] text-text-muted font-mono">
@@ -502,7 +509,7 @@ export default function TablePlayerPage({
             if (!storyText) return null;
             return (
               <div
-                className="bg-white rounded-xl p-4 border border-border mb-4 break-words"
+                className="bg-white rounded-xl p-4 border border-border mb-4 break-words max-h-[200px] overflow-y-auto"
                 style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
               >
                 <span className="text-xs font-semibold uppercase tracking-wider text-text-muted block mb-1.5">

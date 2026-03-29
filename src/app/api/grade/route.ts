@@ -145,7 +145,20 @@ export async function POST(request: Request) {
     }
 
     if (!output) {
-      return Response.json({ error: "All AI models failed to grade", model }, { status: 502 });
+      // Fallback: assign default probabilities based on priority so actions can still be rolled
+      const fallbackActions = actions.map((a: { text: string; priority: number }) => ({
+        text: a.text,
+        priority: a.priority,
+        probability: a.priority >= 8 ? 70 : a.priority >= 5 ? 50 : a.priority >= 3 ? 30 : 10,
+        reasoning: "AI grading unavailable — using priority-based default probability",
+      }));
+
+      await convex.mutation(api.submissions.applyGrading, {
+        submissionId: submissionId as Id<"submissions">,
+        gradedActions: fallbackActions,
+      });
+
+      return Response.json({ success: true, fallback: true, grading: { actions: fallbackActions }, model, timeMs });
     }
 
     return Response.json({ success: true, grading: output, model, timeMs });

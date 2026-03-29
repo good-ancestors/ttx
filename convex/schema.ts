@@ -42,6 +42,8 @@ export default defineSchema({
     worldState: worldStateValidator,
     labs: v.array(labSnapshotValidator),
     locked: v.boolean(),
+    // Guard flag: prevents concurrent resolve calls from corrupting state
+    resolving: v.optional(v.boolean()),
   }),
 
   tables: defineTable({

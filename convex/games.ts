@@ -99,19 +99,24 @@ export const list = query({
   args: {},
   handler: async (ctx) => {
     const games = await ctx.db.query("games").order("desc").take(20);
-    // Enrich with table counts
-    const enriched = await Promise.all(
-      games.map(async (game) => {
-        const tables = await ctx.db
-          .query("tables")
-          .withIndex("by_game", (q) => q.eq("gameId", game._id))
-          .collect();
-        const enabledCount = tables.filter((t) => t.enabled).length;
-        const connectedCount = tables.filter((t) => t.connected).length;
-        return { ...game, enabledCount, connectedCount };
-      })
+    if (games.length === 0) return [];
+
+    // Batch-fetch all tables for listed games in a single pass per game
+    // (Convex requires index queries per game, but we parallelise them)
+    const allTablesArrays = await Promise.all(
+      games.map((game) =>
+        ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", game._id)).collect()
+      )
     );
-    return enriched;
+
+    return games.map((game, i) => {
+      const tables = allTablesArrays[i];
+      return {
+        ...game,
+        enabledCount: tables.filter((t) => t.enabled).length,
+        connectedCount: tables.filter((t) => t.connected).length,
+      };
+    });
   },
 });
 
@@ -184,6 +189,9 @@ export const updateLabSpec = mutation({
     spec: v.string(),
   },
   handler: async (ctx, args) => {
+    if (args.spec.length > 2000) {
+      throw new Error(`Lab spec too long: ${args.spec.length}/2000 characters`);
+    }
     const game = await ctx.db.get(args.gameId);
     if (!game) return;
     const updatedLabs = game.labs.map((lab) =>
@@ -353,6 +361,18 @@ export const mergeLabs = mutation({
       newComputeStock: survivor.computeStock + absorbed.computeStock,
       newRdMultiplier: Math.max(survivor.rdMultiplier, absorbed.rdMultiplier),
     });
+  },
+});
+
+export const setResolving = mutation({
+  args: { gameId: v.id("games"), resolving: v.boolean() },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error(`Game ${args.gameId} not found`);
+    if (args.resolving && game.resolving) {
+      throw new Error("Resolution already in progress");
+    }
+    await ctx.db.patch(args.gameId, { resolving: args.resolving });
   },
 });
 
