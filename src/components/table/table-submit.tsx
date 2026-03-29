@@ -6,7 +6,7 @@ import { type ActionDraft } from "@/components/action-input";
 import { ActionInput } from "@/components/action-input";
 import { ComputeAllocation } from "@/components/compute-allocation";
 import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
-import { ProposalPanel } from "@/components/proposals";
+
 import type { SampleAction } from "@/lib/sample-actions";
 import {
   Send,
@@ -32,7 +32,7 @@ function SubmittedView({ actions }: { actions: { text: string; priority: number;
       </div>
       {actions.map((a, i) => (
         <div key={`submitted-${i}`} className="bg-white rounded-lg p-3 border border-border relative mb-2">
-          <div className="flex items-start gap-2 mb-1">
+          <div className="flex items-start gap-2">
             <span className="text-[11px] bg-warm-gray text-text-muted rounded px-1.5 py-0.5 font-mono font-semibold shrink-0">
               #{i + 1}
             </span>
@@ -43,9 +43,6 @@ function SubmittedView({ actions }: { actions: { text: string; priority: number;
             )}
             <p className="text-sm text-text flex-1">{a.text}</p>
           </div>
-          <span className="text-[11px] font-mono font-bold text-navy bg-navy/10 rounded px-1.5 py-0.5">
-            Priority: {a.priority}/10
-          </span>
         </div>
       ))}
     </div>
@@ -55,7 +52,6 @@ function SubmittedView({ actions }: { actions: { text: string; priority: number;
 // ─── Submit phase props ──────────────────────────────────────────────────────
 
 export interface TableSubmitProps {
-  gameId: Id<"games">;
   game: {
     currentRound: number;
     labs: { name: string; roleId: string; spec?: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
@@ -91,7 +87,6 @@ export interface TableSubmitProps {
 }
 
 export function TableSubmit({
-  gameId,
   game,
   role,
   aiDisposition,
@@ -121,14 +116,6 @@ export function TableSubmit({
 }: TableSubmitProps) {
   return (
     <>
-      {/* Proposals always visible during submit */}
-      <ProposalPanel
-        gameId={gameId}
-        roundNumber={game.currentRound}
-        roleId={role.id}
-        roleName={role.name}
-      />
-
       {isSubmitted ? (
         <SubmittedView actions={submittedActions} />
       ) : (

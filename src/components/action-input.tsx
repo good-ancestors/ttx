@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ROLES, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
-import { EyeOff, Eye, Handshake, Trash2, Plus, X } from "lucide-react";
+import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical } from "lucide-react";
 
 
 export type PriorityLevel = "low" | "medium" | "high";
@@ -71,7 +71,6 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
   const needsPlaceholder = lastAction?.text.trim() && actions.length < 5;
 
   const filledCount = actions.filter((a) => a.text.trim()).length;
-  const decay = PRIORITY_DECAY[filledCount] ?? PRIORITY_DECAY[5];
 
   return (
     <div>
@@ -79,9 +78,9 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
         <h3 className="text-sm font-bold text-text">
           Your Actions ({filledCount})
         </h3>
-        {filledCount > 0 && (
-          <span className="text-[11px] text-text-muted font-mono">
-            #1 = highest priority
+        {filledCount > 1 && (
+          <span className="text-[11px] text-text-muted">
+            Drag to reorder — top = highest priority
           </span>
         )}
       </div>
@@ -92,10 +91,20 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
             key={`action-${i}`}
             action={action}
             index={i}
-            decayPriority={action.text.trim() && decay ? decay[actions.slice(0, i).filter((a) => a.text.trim()).length] : undefined}
+            totalActions={filledCount}
             ownRoleId={roleId}
             onUpdate={(patch) => updateAction(i, patch)}
             onRemove={() => removeAction(i)}
+            onMoveUp={i > 0 && !isSubmitted ? () => {
+              const next = [...actions];
+              [next[i - 1], next[i]] = [next[i], next[i - 1]];
+              onChange(next);
+            } : undefined}
+            onMoveDown={i < actions.length - 1 && !isSubmitted ? () => {
+              const next = [...actions];
+              [next[i], next[i + 1]] = [next[i + 1], next[i]];
+              onChange(next);
+            } : undefined}
             otherRoles={otherRoles}
             isSubmitted={isSubmitted}
             onSendRequest={onSendRequest}
@@ -122,10 +131,12 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
 function ActionCard({
   action,
   index,
-  decayPriority,
+  totalActions,
   ownRoleId,
   onUpdate,
   onRemove,
+  onMoveUp,
+  onMoveDown,
   otherRoles,
   isSubmitted,
   canRemove,
@@ -135,10 +146,12 @@ function ActionCard({
 }: {
   action: ActionDraft;
   index: number;
-  decayPriority?: number;
+  totalActions: number;
   ownRoleId?: string;
   onUpdate: (patch: Partial<ActionDraft>) => void;
   onRemove: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
   otherRoles: { id: string; name: string }[];
   isSubmitted: boolean;
   canRemove: boolean;
@@ -156,6 +169,10 @@ function ActionCard({
 
   return (
     <div className={`bg-white rounded-xl border p-4 ${action.secret ? "border-viz-warning/40" : "border-border"}`}>
+      {action.text.trim() && totalActions > 1 && (
+        <ReorderBar index={index} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />
+      )}
+
       {/* Text input */}
       <textarea
         value={action.text}
@@ -176,13 +193,6 @@ function ActionCard({
       {/* Controls row — only show when there's text */}
       {(action.text.trim() || isSubmitted) && (
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Auto-decay priority indicator */}
-          {decayPriority != null && (
-            <span className="min-h-[44px] px-3 flex items-center text-xs font-bold font-mono bg-navy/10 text-navy rounded-lg">
-              Priority: {decayPriority}/10
-            </span>
-          )}
-
           {/* Secret toggle */}
           <button
             onClick={() => onUpdate({ secret: !action.secret })}
@@ -309,6 +319,27 @@ function ActionCard({
           <EyeOff className="w-3 h-3" /> This action will be hidden from other players
         </div>
       )}
+    </div>
+  );
+}
+
+function ReorderBar({ index, onMoveUp, onMoveDown }: { index: number; onMoveUp?: () => void; onMoveDown?: () => void }) {
+  return (
+    <div className="flex items-center gap-1 mb-2">
+      <GripVertical className="w-3.5 h-3.5 text-text-muted/40" />
+      <span className="text-[11px] font-bold text-text-muted font-mono w-4">#{index + 1}</span>
+      <div className="flex gap-0.5">
+        {onMoveUp && (
+          <button onClick={onMoveUp} className="min-h-[28px] min-w-[28px] flex items-center justify-center rounded text-text-muted hover:bg-warm-gray transition-colors" aria-label="Move up">
+            <ChevronUp className="w-4 h-4" />
+          </button>
+        )}
+        {onMoveDown && (
+          <button onClick={onMoveDown} className="min-h-[28px] min-w-[28px] flex items-center justify-center rounded text-text-muted hover:bg-warm-gray transition-colors" aria-label="Move down">
+            <ChevronDown className="w-4 h-4" />
+          </button>
+        )}
+      </div>
     </div>
   );
 }

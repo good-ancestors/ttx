@@ -546,7 +546,6 @@ export default function TablePlayerPage({
           {/* Submit phase */}
           {phase === "submit" && (
             <TableSubmit
-              gameId={gameId}
               game={game}
               role={role}
               tableId={tableId}
