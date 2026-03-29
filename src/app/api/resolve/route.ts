@@ -78,7 +78,7 @@ interface ResolveContext {
 function buildResolveContext(opts: {
   game: GameData & { labs: Lab[] };
   submissions: Array<{ roleId: string; actions: Array<{ text: string; priority: number; probability?: number; rolled?: number; success?: boolean; secret?: boolean }> }>;
-  rounds: Array<{ number: number; label: string; title?: string; summary?: { narrative?: string }; worldStateAfter?: Record<string, number>; capabilityLevel?: string }>;
+  rounds: Array<{ number: number; label: string; title?: string; summary?: { narrative?: string }; worldStateAfter?: Record<string, number> }>;
   allTables: TableRow[] | null;
   roundNumber: number;
   aiDisposition?: { label: string; description: string };
@@ -116,7 +116,6 @@ function buildResolveContext(opts: {
     roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
     roundTitle: currentRound?.title ?? "",
     worldState: game.worldState,
-    capabilityLevel: currentRound?.capabilityLevel ?? "Unknown",
     resolvedActions,
     labs: game.labs,
     roleCompute,

@@ -185,7 +185,6 @@ ${activeRolesNote}
 
 CURRENT GAME STATE:
 - Round: ${roundNumber} (${currentRound?.label ?? ""})
-- Current AI capability: ${currentRound?.capabilityLevel ?? "Unknown"}
 - World state: Capability ${game.worldState.capability}/10, Alignment ${game.worldState.alignment}/10, US-China Tension ${game.worldState.tension}/10, Public Awareness ${game.worldState.awareness}/10, Regulation ${game.worldState.regulation}/10, Australian Preparedness ${game.worldState.australia}/10
 
 LAB STATUS:

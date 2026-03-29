@@ -107,7 +107,6 @@ export async function POST(request: Request) {
       roleTags: role?.tags,
       actions,
       labs: game.labs,
-      capabilityLevel: currentRound?.capabilityLevel ?? "Unknown",
       actionRequests,
       enabledRoles,
       aiDisposition,

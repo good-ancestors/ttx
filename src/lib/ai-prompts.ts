@@ -104,7 +104,7 @@ export function buildGradingPrompt(args: {
   roleTags?: string[];
   actions: { text: string; priority: number }[];
   labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
-  capabilityLevel: string;
+
   actionRequests?: ActionRequest[];
   enabledRoles?: string[];
   aiDisposition?: { label: string; description: string };
@@ -153,7 +153,6 @@ export function buildGradingPrompt(args: {
 ${activeRolesNote}
 CURRENT GAME STATE:
 - Round: ${args.round} (${args.roundLabel})
-- Current AI capability: ${args.capabilityLevel}
 - World state: Capability ${args.worldState.capability}/10, Alignment ${args.worldState.alignment}/10, US-China Tension ${args.worldState.tension}/10, Public Awareness ${args.worldState.awareness}/10, Regulation ${args.worldState.regulation}/10, Australian Preparedness ${args.worldState.australia}/10
 
 LAB STATUS:
@@ -354,7 +353,7 @@ export function buildResolvePrompt(args: {
   roundLabel: string;
   roundTitle: string;
   worldState: Record<string, number>;
-  capabilityLevel: string;
+
   resolvedActions: ResolvedAction[];
   labs: Lab[];
   roleCompute?: { roleId: string; roleName: string; computeStock: number }[];
@@ -376,9 +375,7 @@ Your job: analyze all player action outcomes (successes, failures, secret operat
 CURRENT WORLD STATE (before this round's events):
 ${formatWorldState(args.worldState)}
 
-Current AI capability: ${args.capabilityLevel}
-
-LAB COMPUTE ALLOCATIONS:
+LAB STATUS (use these ACTUAL multiplier values — do NOT use round-default targets):
 ${formatLabAllocations(args.labs)}`,
 
     formatPreviousRounds(args.previousRounds ?? []) || null,
@@ -479,7 +476,7 @@ export function buildNarrativePrompt(args: {
   roundLabel: string;
   roundTitle: string;
   worldState: Record<string, number>;
-  capabilityLevel: string;
+
   resolvedActions: ResolvedAction[];
   labs: Lab[];
   roleCompute?: { roleId: string; roleName: string; computeStock: number }[];
@@ -498,9 +495,7 @@ export function buildNarrativePrompt(args: {
 CURRENT WORLD STATE (before this round's events):
 ${formatWorldState(args.worldState)}
 
-Current AI capability: ${args.capabilityLevel}
-
-LAB COMPUTE ALLOCATIONS:
+LAB STATUS (use these ACTUAL multiplier values in your narrative):
 ${formatLabAllocations(args.labs)}`,
 
     formatPreviousRounds(args.previousRounds ?? []) || null,
