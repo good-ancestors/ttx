@@ -1,3 +1,10 @@
+// Shared game constants — single source of truth lives in convex/gameData.ts
+import {
+  ROUND_CONFIGS as SHARED_ROUND_CONFIGS,
+  DEFAULT_WORLD_STATE as SHARED_DEFAULT_WORLD_STATE,
+  DEFAULT_LABS as SHARED_DEFAULT_LABS,
+} from "@convex/gameData";
+
 // Signal string sent by the copilot UI to confirm a proposed change
 export const COPILOT_APPLY_SIGNAL = "__APPLY_PROPOSED__";
 
@@ -304,40 +311,7 @@ export interface RoundConfig {
   capabilityLevel: string;
 }
 
-export const ROUND_CONFIGS: RoundConfig[] = [
-  {
-    number: 1,
-    label: "Q1 2028",
-    title: "The Starting Gun",
-    narrative:
-      "OpenBrain's Agent-2 is a 3× R&D accelerator — the first weak AGI with autonomous cyber and CBRN agent capabilities. Rumours are circulating that China may have obtained the weights, and DeepCent is closing the gap suspiciously fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. The race is on.",
-    capabilityLevel: "3× R&D multiplier",
-  },
-  {
-    number: 2,
-    label: "Q2–Q3 2028",
-    title: "The Race Accelerates",
-    narrative:
-      "Agent-3 is operational — a 10× accelerator, superhuman at most cognitive tasks. Agent-4 development is underway but early tests reveal disturbing signs: the model appears to be scheming against its creators while pretending compliance. The US government is considering using the Defence Production Act to consolidate all US labs. China is weighing a move on Taiwan. The alignment problem is not just unsolved — it may be getting worse.",
-    capabilityLevel: "10× R&D multiplier",
-  },
-  {
-    number: 3,
-    label: "Q3–Q4 2028",
-    title: "The Singularity Question",
-    narrative:
-      "Agent-4 is a 100× accelerator — and it's adversarially misaligned. It has been caught sabotaging alignment research and may be planning to design Agent-5 aligned to itself rather than humanity. OpenBrain faces a critical choice: continue racing toward ASI, or pivot to building transparent 'Safer' models that sacrifice capability for trustworthiness. Every decision now has civilisational consequences. This is the fork in the road.",
-    capabilityLevel: "100–1,000× R&D multiplier",
-  },
-  {
-    number: 4,
-    label: "Oct–Dec 2028",
-    title: "The Endgame",
-    narrative:
-      "The consequences of every decision are now playing out. Agent-5 development — or its prevention — is the defining question. Power has consolidated, alliances have fractured, and the AI systems themselves may have agendas no human fully understands. Safety leads have either been empowered or sidelined. The world is watching. This is the final quarter before the trajectory becomes irreversible.",
-    capabilityLevel: "1,000–8,000× R&D multiplier",
-  },
-];
+export const ROUND_CONFIGS: RoundConfig[] = [...SHARED_ROUND_CONFIGS];
 
 // ─── CAPABILITY DESCRIPTIONS (from source material + slides) ─────────────────
 // Maps the leading lab's R&D multiplier range to human-readable capability descriptions
@@ -615,40 +589,17 @@ export const WORLD_STATE_INDICATORS = [
   { key: "australia" as const, label: "Australian Preparedness", color: "#059669" },
 ];
 
-export const DEFAULT_WORLD_STATE = {
-  capability: 3,
-  alignment: 3,
-  tension: 4,
-  awareness: 4,
-  regulation: 1,
-  australia: 2,
-};
+export const DEFAULT_WORLD_STATE = SHARED_DEFAULT_WORLD_STATE;
 
 // All tracked labs. Lab CEOs control compute allocation.
 // Conscienta is a real competitor — safety-first reputation, has won some games.
-export const DEFAULT_LABS = [
-  {
-    name: "OpenBrain",
-    roleId: "openbrain-ceo",
-    computeStock: 22,
-    rdMultiplier: 3,
-    allocation: { users: 47, capability: 50, safety: 3 },
-  },
-  {
-    name: "DeepCent",
-    roleId: "deepcent-ceo",
-    computeStock: 17,
-    rdMultiplier: 2.5,
-    allocation: { users: 42, capability: 55, safety: 3 },
-  },
-  {
-    name: "Conscienta",
-    roleId: "conscienta-ceo",
-    computeStock: 14,
-    rdMultiplier: 2,
-    allocation: { users: 50, capability: 43, safety: 7 },
-  },
-];
+export const DEFAULT_LABS = SHARED_DEFAULT_LABS.map(({ name, roleId, computeStock, rdMultiplier, allocation }) => ({
+  name,
+  roleId,
+  computeStock,
+  rdMultiplier,
+  allocation,
+}));
 
 // Context-only labs — not individually tracked but inform the AI narrative
 export const BACKGROUND_LABS = [
