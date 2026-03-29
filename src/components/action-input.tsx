@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ROLES, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
-import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical } from "lucide-react";
+import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Lock, Check } from "lucide-react";
 
 
 export type PriorityLevel = "low" | "medium" | "high";
@@ -160,6 +160,16 @@ function ActionCard({
   onAddNext?: () => void;
 }) {
   const [showEndorse, setShowEndorse] = useState(false);
+  const [sentFlash, setSentFlash] = useState<string | null>(null);
+  const hasEndorsements = action.endorseTargets.length > 0;
+  const isLocked = hasEndorsements && !isSubmitted;
+
+  // Clear flash after 2s
+  useEffect(() => {
+    if (!sentFlash) return;
+    const t = setTimeout(() => setSentFlash(null), 2000);
+    return () => clearTimeout(t);
+  }, [sentFlash]);
 
   // Suggest endorsement targets based on action text keywords
   const activeRoleIds = otherRoles.map((r) => r.id);
@@ -168,16 +178,33 @@ function ActionCard({
     : [];
 
   return (
-    <div className={`bg-white rounded-xl border p-4 ${action.secret ? "border-viz-warning/40" : "border-border"}`}>
+    <div className={`bg-white rounded-xl border p-4 ${action.secret ? "border-viz-warning/40" : isLocked ? "border-[#059669]/30" : "border-border"}`}>
       {action.text.trim() && totalActions > 1 && (
         <ReorderBar index={index} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />
+      )}
+
+      {/* Locked indicator */}
+      {isLocked && (
+        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#059669]">
+          <Lock className="w-3 h-3" />
+          <span>Text locked — cancel support requests to edit</span>
+        </div>
+      )}
+
+      {/* Sent flash */}
+      {sentFlash && (
+        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#059669] animate-pulse">
+          <Check className="w-3 h-3" />
+          <span>Request sent to {sentFlash}</span>
+        </div>
       )}
 
       {/* Text input */}
       <textarea
         value={action.text}
-        onChange={(e) => onUpdate({ text: e.target.value })}
+        onChange={(e) => { if (!isLocked) onUpdate({ text: e.target.value }); }}
         onKeyDown={(e) => {
+          if (isLocked) { e.preventDefault(); return; }
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if (action.text.trim() && onAddNext) onAddNext();
@@ -186,8 +213,9 @@ function ActionCard({
         placeholder={index === 0 ? "I do [action] so that [intended outcome]..." : "I do [action] so that [intended outcome]..."}
         rows={2}
         disabled={isSubmitted}
+        readOnly={isLocked}
         spellCheck={false}
-        className="w-full bg-transparent text-sm text-text resize-none outline-none placeholder:text-text-muted/50 mb-2"
+        className={`w-full bg-transparent text-sm text-text resize-none outline-none placeholder:text-text-muted/50 mb-2 ${isLocked ? "opacity-70 cursor-not-allowed" : ""}`}
       />
 
       {/* Controls row — only show when there's text */}
@@ -241,58 +269,18 @@ function ActionCard({
         </div>
       )}
 
-      {/* Endorsement targets — inline multi-select */}
       {showEndorse && !isSubmitted && (
-        <div className="mt-2 pt-2 border-t border-border">
-          <p className="text-[11px] text-text-muted mb-2">Request support from:</p>
-          <div className="flex flex-wrap gap-1.5">
-            {otherRoles.map((r) => {
-              const selected = action.endorseTargets.includes(r.id);
-              return (
-                <button
-                  key={r.id}
-                  onClick={() => {
-                    if (selected) {
-                      onUpdate({ endorseTargets: action.endorseTargets.filter((id) => id !== r.id) });
-                      // Cancel the request so it disappears for the target
-                      if (onCancelRequest && action.text.trim()) {
-                        onCancelRequest(r.id, action.text.trim());
-                      }
-                    } else {
-                      onUpdate({ endorseTargets: [...action.endorseTargets, r.id] });
-                      // Send request immediately so target sees it while still writing
-                      if (onSendRequest && action.text.trim()) {
-                        onSendRequest(r.id, r.name, action.text.trim());
-                      }
-                    }
-                  }}
-                  className={`text-xs min-h-[36px] px-3 py-1.5 rounded-full font-medium transition-colors ${
-                    selected
-                      ? "bg-[#059669] text-white"
-                      : "bg-warm-gray text-text-muted hover:bg-border"
-                  }`}
-                >
-                  {selected && <span className="mr-0.5">✓</span>}
-                  {r.name}
-                </button>
-              );
-            })}
-          </div>
-          {action.endorseTargets.length > 0 && (
-            <button
-              onClick={() => {
-                onUpdate({ endorseTargets: [] });
-                setShowEndorse(false);
-              }}
-              className="mt-1.5 text-[11px] text-text-muted hover:text-text flex items-center gap-1"
-            >
-              <X className="w-3 h-3" /> Clear all
-            </button>
-          )}
-        </div>
+        <EndorsementPicker
+          action={action}
+          otherRoles={otherRoles}
+          onUpdate={onUpdate}
+          onSendRequest={onSendRequest}
+          onCancelRequest={onCancelRequest}
+          onSent={(name) => setSentFlash(name)}
+          onClose={() => setShowEndorse(false)}
+        />
       )}
 
-      {/* Endorsement suggestions — keyword-matched chips */}
       {suggestions.length > 0 && (
         <div className="mt-2 flex items-center gap-1.5 flex-wrap">
           <span className="text-[10px] text-text-muted">Ask for support?</span>
@@ -318,6 +306,72 @@ function ActionCard({
         <div className="mt-2 text-[10px] text-viz-warning font-bold flex items-center gap-1">
           <EyeOff className="w-3 h-3" /> This action will be hidden from other players
         </div>
+      )}
+    </div>
+  );
+}
+
+function EndorsementPicker({
+  action,
+  otherRoles,
+  onUpdate,
+  onSendRequest,
+  onCancelRequest,
+  onSent,
+  onClose,
+}: {
+  action: ActionDraft;
+  otherRoles: { id: string; name: string }[];
+  onUpdate: (patch: Partial<ActionDraft>) => void;
+  onSendRequest?: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
+  onCancelRequest?: (targetRoleId: string, actionText: string) => void;
+  onSent: (name: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="mt-2 pt-2 border-t border-border">
+      <p className="text-[11px] text-text-muted mb-2">Request support from:</p>
+      <div className="flex flex-wrap gap-1.5">
+        {otherRoles.map((r) => {
+          const selected = action.endorseTargets.includes(r.id);
+          return (
+            <button
+              key={r.id}
+              onClick={() => {
+                if (selected) {
+                  onUpdate({ endorseTargets: action.endorseTargets.filter((id) => id !== r.id) });
+                  if (onCancelRequest && action.text.trim()) onCancelRequest(r.id, action.text.trim());
+                } else {
+                  onUpdate({ endorseTargets: [...action.endorseTargets, r.id] });
+                  if (onSendRequest && action.text.trim()) {
+                    onSendRequest(r.id, r.name, action.text.trim());
+                    onSent(r.name);
+                  }
+                }
+              }}
+              className={`text-xs min-h-[36px] px-3 py-1.5 rounded-full font-medium transition-colors ${
+                selected ? "bg-[#059669] text-white" : "bg-warm-gray text-text-muted hover:bg-border"
+              }`}
+            >
+              {selected && <span className="mr-0.5">✓</span>}
+              {r.name}
+            </button>
+          );
+        })}
+      </div>
+      {action.endorseTargets.length > 0 && (
+        <button
+          onClick={() => {
+            if (onCancelRequest && action.text.trim()) {
+              for (const id of action.endorseTargets) onCancelRequest(id, action.text.trim());
+            }
+            onUpdate({ endorseTargets: [] });
+            onClose();
+          }}
+          className="mt-1.5 text-[11px] text-text-muted hover:text-text flex items-center gap-1"
+        >
+          <X className="w-3 h-3" /> Clear all and unlock text
+        </button>
       )}
     </div>
   );

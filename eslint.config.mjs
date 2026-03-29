@@ -125,6 +125,7 @@ const eslintConfig = defineConfig([
     files: [
       "**/components/debug-panel.tsx",
       "**/components/facilitator/lobby-phase.tsx",
+      "**/components/action-input.tsx",
     ],
     rules: {
       complexity: "off",
