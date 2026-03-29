@@ -1,8 +1,8 @@
 // Shared game constants — single source of truth lives in convex/gameData.ts
 import {
-  ROUND_CONFIGS as SHARED_ROUND_CONFIGS,
-  DEFAULT_WORLD_STATE as SHARED_DEFAULT_WORLD_STATE,
-  DEFAULT_LABS as SHARED_DEFAULT_LABS,
+  ROUND_CONFIGS,
+  DEFAULT_WORLD_STATE,
+  DEFAULT_LABS,
 } from "@convex/gameData";
 
 // Signal string sent by the copilot UI to confirm a proposed change
@@ -311,7 +311,7 @@ export interface RoundConfig {
   capabilityLevel: string;
 }
 
-export const ROUND_CONFIGS: RoundConfig[] = [...SHARED_ROUND_CONFIGS];
+export { ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS };
 
 // ─── CAPABILITY DESCRIPTIONS (from source material + slides) ─────────────────
 // Maps the leading lab's R&D multiplier range to human-readable capability descriptions
@@ -589,17 +589,6 @@ export const WORLD_STATE_INDICATORS = [
   { key: "australia" as const, label: "Australian Preparedness", color: "#059669" },
 ];
 
-export const DEFAULT_WORLD_STATE = SHARED_DEFAULT_WORLD_STATE;
-
-// All tracked labs. Lab CEOs control compute allocation.
-// Conscienta is a real competitor — safety-first reputation, has won some games.
-export const DEFAULT_LABS = SHARED_DEFAULT_LABS.map(({ name, roleId, computeStock, rdMultiplier, allocation }) => ({
-  name,
-  roleId,
-  computeStock,
-  rdMultiplier,
-  allocation,
-}));
 
 // Context-only labs — not individually tracked but inform the AI narrative
 export const BACKGROUND_LABS = [
