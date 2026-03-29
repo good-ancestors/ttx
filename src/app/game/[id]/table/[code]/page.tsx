@@ -498,6 +498,9 @@ export default function TablePlayerPage({
               className="bg-white rounded-xl p-4 border border-border mb-4 break-words"
               style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
             >
+              <span className="text-xs font-semibold uppercase tracking-wider text-text-muted block mb-1.5">
+                {round.label}
+              </span>
               <p className="text-sm text-text-muted leading-relaxed">
                 {round.summary?.narrative ?? round.narrative}
               </p>
