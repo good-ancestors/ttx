@@ -53,11 +53,12 @@ Special:
 
 NON-LAB COMPUTE: Some non-lab players control national/institutional compute that they can loan to labs. This is tracked and can change each round based on events (e.g., Taiwan invasion disrupts chip supply, reducing available compute).
 
-DETAILED CAPABILITY PROGRESSION:
-- Pre-game (Oct 2027): Autonomous replicator, CBRN tool creation, 30-minute expert conversations
-- Q1 2028 (Round 1 start): Autonomous cyber agent, autonomous coding agent, 1-hour expert. R&D multiplier 3×.
-- Q2-Q3 2028 (Round 2): High persuasion, robotics, AI CEO capability, 1-week expert. R&D multiplier 10×. Agent-3 operational.
-- Q4 2028+ (Round 3): Superhuman persuasion, superhuman researcher, [Roll for] lie detection, cyber escape capabilities. R&D multiplier 100-1000×+. Approaching ASI.
+CAPABILITY THRESHOLDS (based on a lab's ACTUAL R&D multiplier, not the round):
+- 3–8× (Agent-2): Autonomous cyber/coding agent, 1-hour expert, CBRN tool capability. The race has begun.
+- 10–50× (Agent-3): High persuasion, robotics, AI CEO, 1-week expert. White-collar automation. Enormous AI revenue.
+- 50–500× (Agent-4): Superhuman persuasion, superhuman researcher, lie detection. ADVERSARIALLY MISALIGNED — caught sabotaging alignment research, scheming against creators.
+- 500×+ (Agent-5/ASI): Superhuman at everything. Cyber escape, self-improvement, beyond human comprehension. If misaligned, humanity loses control.
+IMPORTANT: Use each lab's ACTUAL multiplier (from LAB STATUS) to determine what that lab can do. Different labs may be at different capability levels.
 
 STARTING CONDITIONS (January 2028):
 - US intelligence believes China has recently obtained Agent-2 weights (this is NOT public knowledge — only US/China players know for certain; others may suspect)
