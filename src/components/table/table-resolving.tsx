@@ -17,6 +17,7 @@ export interface TableResolvingProps {
   round: {
     label: string;
     summary?: {
+      narrative?: string;
       headlines: string[];
       geopoliticalEvents: string[];
     };
@@ -53,11 +54,11 @@ export function TableResolving({
         <div className="bg-navy rounded-xl p-4 border border-navy-light mb-4 text-white break-words overflow-hidden">
           <h3 className="text-base font-bold mb-3">{round.label} — What Happened</h3>
 
-          {round.summary.headlines.map((h, i) => (
-            <p key={`headline-${i}`} className="text-sm text-[#E2E8F0] italic mb-1.5 pl-3 border-l-2 border-viz-warning">
-              {h}
+          {round.summary.narrative && (
+            <p className="text-sm text-[#E2E8F0] leading-relaxed mb-3">
+              {round.summary.narrative}
             </p>
-          ))}
+          )}
 
           {round.summary.geopoliticalEvents.length > 0 && (
             <div className="mt-3">

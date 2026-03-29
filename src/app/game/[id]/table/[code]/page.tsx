@@ -499,7 +499,11 @@ export default function TablePlayerPage({
               style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
             >
               <h3 className="text-lg font-bold text-text mb-1">{round.title}</h3>
-              <p className="text-sm text-text-muted leading-relaxed">{round.narrative}</p>
+              <p className="text-sm text-text-muted leading-relaxed">
+                {round.number > 1 && round.summary?.narrative
+                  ? round.summary.narrative
+                  : round.narrative}
+              </p>
             </div>
           )}
 

@@ -237,23 +237,15 @@ export function RdProgressChart({
           />
         ))}
 
-        {/* Main lab lines — step function */}
+        {/* Main lab lines — diagonal */}
         {series.filter((s) => !s.isBackground).map((s) => {
-          const stepPoints: string[] = [];
-          for (let i = 0; i < s.points.length; i++) {
-            if (i === 0) {
-              stepPoints.push(`${s.points[i].x},${s.points[i].y}`);
-            } else {
-              stepPoints.push(`${s.points[i].x},${s.points[i - 1].y}`);
-              stepPoints.push(`${s.points[i].x},${s.points[i].y}`);
-            }
-          }
+          const linePoints = s.points.map(p => `${p.x},${p.y}`).join(" ");
           const color = labColor(s.roleId);
           const last = s.points[s.points.length - 1];
           return (
           <g key={s.roleId} opacity={s.isAbsorbed ? 0.35 : 1}>
             <polyline
-              points={stepPoints.join(" ")}
+              points={linePoints}
               fill="none" stroke={color}
               strokeWidth={s.isAbsorbed ? 1.5 : 2.5}
               strokeLinejoin="round" strokeLinecap="round"
