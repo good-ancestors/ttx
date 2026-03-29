@@ -724,37 +724,77 @@ export default function FacilitatorPage({
 
       {showQROverlay && (
         <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-8" onClick={() => setShowQROverlay(false)}>
-          <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-bold text-white">Join Codes</h2>
+              <h2 className="text-lg font-bold text-white">Table Management</h2>
               <button onClick={() => setShowQROverlay(false)} className="text-text-light hover:text-white text-sm">Close</button>
             </div>
-            <p className="text-xs text-text-light mb-3">Click a code to show fullscreen</p>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {tables.filter((t) => t.enabled && t.controlMode === "human").map((table) => {
+
+            {/* Table management grid */}
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
+              {tables.filter((t) => t.enabled).map((table) => {
                 const role = ROLES.find((r) => r.id === table.roleId);
                 return (
-                  <div key={table._id} className="bg-navy rounded-lg border border-navy-light p-3 text-center cursor-pointer hover:border-white/30 transition-colors" onClick={() => setFocusedQR(table._id)}>
-                    <div className="flex items-center justify-center gap-1.5 mb-2">
-                      <div className="w-2 h-2 rounded-full" style={{ backgroundColor: role?.color }} />
-                      <span className="text-sm font-bold text-white">{table.roleName}</span>
+                  <div key={table._id} className="bg-navy rounded-lg border border-navy-light p-3">
+                    <div className="flex items-center gap-1.5 mb-2">
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: role?.color }} />
+                      <span className="text-xs font-bold text-white truncate">{table.roleName}</span>
+                      <span className={`ml-auto text-[9px] font-mono flex-shrink-0 ${
+                        table.connected ? "text-viz-safety" : table.controlMode === "ai" ? "text-viz-capability" : table.controlMode === "npc" ? "text-viz-warning" : "text-navy-muted"
+                      }`}>
+                        {table.connected ? "Connected" : table.controlMode === "human" ? "Open" : table.controlMode === "ai" ? "AI" : "NPC"}
+                      </span>
                     </div>
-                    <QRCode
-                      value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table._id}`}
-                      size={100}
-                    />
-                    <span className="text-xs font-mono text-text-light mt-1 tracking-widest block">
-                      {table.joinCode}
-                    </span>
+
+                    {/* Control mode switcher */}
+                    {!isProjector && (
+                      <div className="flex gap-1 mb-2">
+                        {table.connected && table.controlMode === "human" ? (
+                          <button
+                            onClick={() => void kickToAI({ tableId: table._id })}
+                            className="text-[9px] px-2 py-1 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors w-full"
+                          >
+                            Kick to AI
+                          </button>
+                        ) : (
+                          <div className="flex rounded overflow-hidden border border-navy-light w-full">
+                            {(["human", "ai", "npc"] as const).map((mode) => (
+                              <button
+                                key={mode}
+                                onClick={() => void setControlMode({ tableId: table._id, controlMode: mode })}
+                                className={`text-[9px] px-2 py-1 font-semibold transition-colors flex-1 ${
+                                  table.controlMode === mode
+                                    ? mode === "human" ? "bg-viz-safety text-navy" : mode === "ai" ? "bg-viz-capability text-navy" : "bg-viz-warning text-navy"
+                                    : "bg-navy-dark text-navy-muted hover:text-text-light"
+                                }`}
+                              >
+                                {mode === "human" ? "Human" : mode === "ai" ? "AI" : "NPC"}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* QR code for human-mode tables */}
+                    {table.controlMode === "human" && !table.connected && (
+                      <div className="bg-navy-dark rounded p-2 flex flex-col items-center cursor-pointer hover:border-white/30 transition-colors" onClick={() => setFocusedQR(table._id)}>
+                        <QRCode
+                          value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table._id}`}
+                          size={80}
+                        />
+                        <span className="text-[10px] font-mono text-text-light mt-1 tracking-widest">
+                          {table.joinCode}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
-            {tables.filter((t) => t.enabled && t.controlMode === "human").length === 0 && (
-              <p className="text-text-light text-sm text-center py-4">
-                No human tables enabled. Use &quot;Open&quot; on an AI table to make it joinable.
-              </p>
-            )}
+            <p className="text-[10px] text-navy-muted text-center">
+              Set a table to Human to generate a join code. Click a QR code to show fullscreen.
+            </p>
           </div>
         </div>
       )}
@@ -1008,7 +1048,7 @@ function FacilitatorNav({
             onClick={onShowQR}
             className="text-xs px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors"
           >
-            QR Codes
+            Tables
           </button>
         )}
         {timerDisplay !== "0:00" && (
