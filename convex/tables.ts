@@ -39,15 +39,20 @@ export const setConnected = mutation({
   },
   handler: async (ctx, args) => {
     const table = await ctx.db.get(args.tableId);
+    const game = table ? await ctx.db.get(table.gameId) : null;
     const patch: Record<string, unknown> = {
       connected: args.connected,
     };
-    // On connect, force human mode. On disconnect, revert to ai unless already npc.
+    // On connect, force human mode.
+    // On disconnect during lobby: revert to ai (no human claimed this seat permanently).
+    // On disconnect during active game (submit/rolling/etc): keep controlMode as human
+    // so AI doesn't overwrite their actions during a momentary network blip.
     if (args.connected) {
       patch.controlMode = "human";
-    } else if (table?.controlMode !== "npc") {
+    } else if (game?.status === "lobby" && table?.controlMode !== "npc") {
       patch.controlMode = "ai";
     }
+    // During active game, keep controlMode unchanged on disconnect
     // Reject if seat is already occupied by a different session
     if (args.connected && args.sessionId && table?.activeSessionId
         && table.activeSessionId !== args.sessionId && table.connected) {
