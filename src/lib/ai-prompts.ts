@@ -325,17 +325,33 @@ function formatAiDisposition(disp: { label: string; description: string }): stri
 
 const RESOLVE_RULES = `RESOLUTION RULES:
 
-1. RESOLVED EVENTS: Group related actions into events. Each event should describe WHAT HAPPENED as a consequence of the dice outcomes.
-   - Tag each event as "public" (everyone can see it) or "covert" (only the facilitator and involved players know).
-   - For secret actions that SUCCEEDED: create a covert event describing what happened. If there are publicly observable consequences (e.g., a data breach is detected), create a separate public event for those.
-   - For secret actions that FAILED: create a covert event only if the failure itself has consequences (e.g., an infiltrator was caught). Otherwise skip.
-   - For public actions: create public events.
-   - CONFLICT RESOLUTION: If multiple actors attempted conflicting actions and both succeeded, resolve as escalation, standoff, or partial outcomes — NOT both achieving their exact goal. The higher-probability success gets the better outcome.
-   - Give each event a unique short ID (e.g., "taiwan-invasion", "talent-war", "safety-pivot").
-   - Include "sourceActions" listing the action text(s) that fed into each event.
-   - Include "worldImpact" briefly noting which dials or resources this affects.
-   - Keep each event description to 1-2 sentences. Be concise — the facilitator will elaborate verbally.
-   - Aim for 5-8 events per round (merge trivial actions, expand major ones).`;
+1. RESOLVED EVENTS — GROUNDED IN PLAYER ACTIONS ONLY:
+   Every event MUST trace directly to one or more submitted player actions listed above. Do NOT invent events, world developments, or NPC reactions that no player caused. If only 2 actions were submitted, produce 2-3 events, not 8. The number of events should scale with the number of submitted actions.
+
+   STRICT GROUNDING:
+   - Each event MUST include "sourceActions" listing the exact action text(s) it derives from.
+   - If you cannot point to a specific submitted action, do NOT create the event.
+   - Chain reactions are allowed: a successful Taiwan invasion naturally triggers international responses. These must still cite the source action.
+   - If NO actions succeeded: produce zero player-caused events. The world still advances mechanically (dials shift per baseline trajectory, compute grows per defaults) but no narrative events are generated beyond a brief "status quo continues" note.
+   - If only 1 action was submitted, produce 1 event (plus chain reactions if warranted). Do not pad.
+   - For many actions (15+), consolidate related actions into combined events. Typical ratio: 1 event per 2-3 related actions.
+
+   CONFLICT RESOLUTION (the primary purpose of this step):
+   - If two players attempted contradictory actions and BOTH succeeded (e.g., US defends Taiwan AND China invades Taiwan), you MUST reconcile: the higher-probability success gets the better outcome. Resolve as escalation, standoff, partial success, or one overriding the other.
+   - If an action succeeded but another player's successful action directly blocks it, the blocking action takes precedence if it had higher probability.
+   - Two labs both claiming the same talent pool: split the outcome proportionally.
+
+   EVENT STRUCTURE:
+   - Tag each event as "public" or "covert".
+   - Give each event a unique short ID (e.g., "taiwan-invasion", "safety-pivot").
+   - Include "worldImpact" noting which dials or resources are affected.
+   - Keep each event description to 1-2 sentences.
+
+   SECRET/COVERT ACTIONS:
+   - A secret action's SUCCESS may or may not be covert depending on consequences.
+   - If the consequences are world-alteringly obvious (e.g., "replace humanity with simulations", "launch nuclear strike"), the event is PUBLIC — everyone can see what happened. The actor identity may still be hidden if plausible, but the event itself is not hidden.
+   - If the consequences are genuinely concealable (e.g., "plant a backdoor", "bribe an official"), tag as covert.
+   - Failed secret actions: only create an event if the failure was detected (e.g., spy caught). Otherwise skip entirely.`;
 
 const COMPUTE_RD_RULES = `4. COMPUTE AND R&D UPDATES:
    COMPUTE STOCK:
@@ -386,11 +402,15 @@ ${formatLabAllocations(args.labs)}`,
 
     RESOLVE_RULES,
 
-    `2. WORLD STATE UPDATES: Each dial should change by at most ±2 per round. Capability should trend upward (faster in later rounds). Dials should reflect the actual outcomes.
-   TRAJECTORY: Based on current alignment confidence (${args.worldState.alignment}/10) and outcomes, assess RACE ENDING vs SLOWDOWN ENDING trajectory.
+    `2. WORLD STATE UPDATES:
+   - Dials change ONLY based on submitted actions and their outcomes. Typical change: ±1 to ±2 per round.
+   - Dramatic successful actions can push ±3 (e.g., successful "replace humanity" should massively shift capability and alignment).
+   - Capability trends upward naturally as part of the scenario backbone (the race progresses even without player intervention).
+   - TRAJECTORY: Based on current alignment confidence (${args.worldState.alignment}/10) and outcomes, assess RACE ENDING vs SLOWDOWN ENDING trajectory.
 
-3. Round ${args.round} expectations:
-${formatRoundExpectations(args.round)}`,
+3. BASELINE TRAJECTORY (what happens if no players intervene — use these as the mechanical backdrop, NOT as events to generate):
+${formatRoundExpectations(args.round)}
+   NOTE: These are DEFAULTS for dials and R&D. They are NOT events. Do not create events to justify these numbers. Dials and R&D shift toward these targets mechanically; player actions can accelerate, slow, or reverse them.`,
 
     COMPUTE_RD_RULES.replace("COMPUTE_DISTRIBUTION_PLACEHOLDER", formatComputeDistribution(args.round)),
 
@@ -426,12 +446,12 @@ function formatWorldStateDelta(before: Record<string, number>, after: Record<str
 
 function formatCovertEventsSection(covertEvents: ResolvedEvent[]): string | null {
   if (covertEvents.length === 0) return null;
-  return `COVERT EVENTS (narrate observable CONSEQUENCES without revealing actors or intent):
+  return `COVERT EVENTS (these were tagged as covert during resolution):
 ${covertEvents.map((e) => `- ${e.description}`).join("\n")}
-Rules for covert events:
-- If the event has publicly observable consequences (e.g., a data breach is detected), mention those naturally.
-- If the event is purely hidden (e.g., a back-channel deal), do NOT mention it at all in the narrative.
-- Never reveal who did it or why. Attribute consequences to "unknown actors", "intelligence sources", etc.`;
+Rules for covert events in the narrative:
+- If the event has observable consequences, narrate those consequences naturally. Attribution can be vague ("unknown actors", "intelligence sources") if the actor is genuinely hidden.
+- If the event is truly invisible with no observable trace yet, omit it from the narrative — but it may surface in future rounds.
+- Do NOT suppress world-altering events just because they were covert. If humanity was replaced with simulations, that's not a secret — narrate the consequences.`;
 }
 
 const NARRATIVE_OUTPUT_RULES = `OUTPUT RULES:
