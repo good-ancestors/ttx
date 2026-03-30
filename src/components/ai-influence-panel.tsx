@@ -27,10 +27,12 @@ export function AiInfluencePanel({
   timeoutSeconds = 30,
 }: AiInfluencePanelProps) {
   const submissions = useQuery(api.submissions.getByGameAndRound, { gameId, roundNumber });
+  const requests = useQuery(api.requests.getByGameAndRound, { gameId, roundNumber });
   const applyInfluence = useMutation(api.submissions.applyAiInfluence);
   const dispositionData = getDisposition(disposition);
 
   const [choices, setChoices] = useState<Record<string, InfluenceChoice>>({});
+  const [preSeeded, setPreSeeded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(timeoutSeconds);
@@ -91,9 +93,8 @@ export function AiInfluencePanel({
 
   const choiceCount = Object.values(choices).filter(Boolean).length;
 
-  // Flatten all other players' actions and sort by priority (highest first)
-  const otherSubmissions = (submissions ?? []).filter((s) => s.roleId !== ownRoleId);
-  const allActions = otherSubmissions.flatMap((sub) => {
+  // Flatten ALL actions (including own) and sort by priority (highest first)
+  const allActions = (submissions ?? []).flatMap((sub) => {
     const role = ROLES.find((r) => r.id === sub.roleId);
     return sub.actions.map((action, i) => ({
       key: `${sub._id}-${i}`,
@@ -101,9 +102,34 @@ export function AiInfluencePanel({
       priority: action.priority,
       roleName: role?.name ?? sub.roleId,
       roleColor: role?.color ?? "#E2E8F0",
+      roleId: sub.roleId,
       secret: action.secret,
     }));
   }).sort((a, b) => b.priority - a.priority);
+
+  // Build set of action texts that The AIs endorsed (accepted endorsement requests)
+  const endorsedActionTexts = new Set(
+    (requests ?? [])
+      .filter((r) => r.fromRoleId === ownRoleId && r.status === "accepted")
+      .map((r) => r.actionText)
+  );
+
+  // Pre-seed: auto-boost own actions and endorsed actions
+  useEffect(() => {
+    if (preSeeded || !submissions?.length) return;
+    const initial: Record<string, InfluenceChoice> = {};
+    for (const action of allActions) {
+      if (action.roleId === ownRoleId) {
+        initial[action.key] = "boost";
+      } else if (endorsedActionTexts.has(action.text)) {
+        initial[action.key] = "boost";
+      }
+    }
+    if (Object.keys(initial).length > 0) {
+      setChoices(initial);
+      setPreSeeded(true);
+    }
+  }, [submissions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (submitted) {
     return (
