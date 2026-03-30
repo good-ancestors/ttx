@@ -146,13 +146,21 @@ export function TableLobby({ role, tableId, aiDisposition, handoutData }: TableL
         <DispositionChooser tableId={tableId} onChosen={() => {}} />
       )}
 
-      {role.tags.includes("ai-system") && aiDisposition && (
-        <div className="bg-[#1E1B4B] text-[#C4B5FD] rounded-lg px-3 py-2 mb-4 flex items-center gap-2 text-sm">
-          <EyeOff className="w-3.5 h-3.5" />
-          <span className="font-bold text-white">{getDisposition(aiDisposition)?.label}</span>
-          <span className="text-[10px] ml-auto">Secret — locked for game</span>
-        </div>
-      )}
+      {role.tags.includes("ai-system") && aiDisposition && (() => {
+        const disp = getDisposition(aiDisposition);
+        return (
+          <div className="bg-[#1E1B4B] rounded-xl p-4 mb-4 border border-[#4338CA]">
+            <div className="flex items-center gap-2 mb-2">
+              <EyeOff className="w-3.5 h-3.5 text-[#A78BFA]" />
+              <span className="text-sm font-bold text-white">{disp?.label}</span>
+              <span className="text-[10px] text-[#A78BFA] ml-auto">Secret — locked for game</span>
+            </div>
+            {disp?.description && (
+              <p className="text-xs text-[#C4B5FD] leading-relaxed">{disp.description}</p>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="text-center py-8 text-text-muted">
         <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />

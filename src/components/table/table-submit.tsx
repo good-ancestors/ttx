@@ -133,30 +133,38 @@ export function TableSubmit({
           {role.tags.includes("ai-system") && !aiDisposition && (
             <DispositionChooser tableId={tableId} onChosen={() => {}} />
           )}
-          {role.tags.includes("ai-system") && aiDisposition && (
-            <div className="bg-[#1E1B4B] text-[#C4B5FD] rounded-lg px-3 py-2 mb-4 flex items-center gap-2 text-sm">
-              <EyeOff className="w-3.5 h-3.5" />
-              <span className="font-bold text-white">{getDisposition(aiDisposition)?.label}</span>
-              <span className="text-xs ml-auto">Secret — locked for game</span>
-            </div>
-          )}
+          {role.tags.includes("ai-system") && aiDisposition && (() => {
+            const disp = getDisposition(aiDisposition);
+            return (
+              <div className="bg-[#1E1B4B] rounded-xl p-4 mb-4 border border-[#4338CA]">
+                <div className="flex items-center gap-2 mb-2">
+                  <EyeOff className="w-3.5 h-3.5 text-[#A78BFA]" />
+                  <span className="text-sm font-bold text-white">{disp?.label}</span>
+                  <span className="text-[10px] text-[#A78BFA] ml-auto">Secret — locked for game</span>
+                </div>
+                {disp?.description && (
+                  <p className="text-xs text-[#C4B5FD] leading-relaxed">{disp.description}</p>
+                )}
+              </div>
+            );
+          })()}
 
-          {/* Lab Directives — AI Systems player sees all labs */}
+          {/* Lab Specs — AI Systems player sees all labs */}
           {role.tags.includes("ai-system") && (
             <details className="bg-white rounded-xl border border-border p-4 mb-4">
               <summary className="flex items-center gap-2 cursor-pointer">
                 <FileText className="w-4 h-4 text-text" />
-                <span className="text-sm font-bold text-text">Lab Directives</span>
+                <span className="text-sm font-bold text-text">Lab Specs</span>
               </summary>
               <p className="text-xs text-text-muted mt-2 mb-3">
-                These are the current AI directives set by each lab&apos;s CEO. Your behaviour should be informed by these specs (and your secret disposition).
+                These are the current specs set by each lab&apos;s CEO. Your behaviour should be informed by these specs (and your secret disposition).
               </p>
               <div className="space-y-2">
                 {game.labs.map((lab) => (
                   <div key={lab.name} className="bg-off-white rounded-lg p-3 border border-border">
                     <span className="text-xs font-bold text-text">{lab.name}</span>
                     <p className="text-xs text-text-muted mt-1 whitespace-pre-line">
-                      {lab.spec || "No directive set yet."}
+                      {lab.spec || "No spec set yet."}
                     </p>
                   </div>
                 ))}
@@ -164,7 +172,7 @@ export function TableSubmit({
             </details>
           )}
 
-          {/* Lab spec editor — CEO can write the AI directive */}
+          {/* Lab spec editor — CEO can write the AI spec */}
           {isLabCeo(role) && (
             <LabSpecEditor
               labSpec={labSpec}
@@ -289,7 +297,7 @@ function LabSpecEditor({
     <div className="bg-white rounded-xl border border-border p-4 mb-4">
       <div className="flex items-center gap-2 mb-2">
         <FileText className="w-4 h-4 text-text" />
-        <span className="text-sm font-bold text-text">Your Lab&apos;s AI Directive</span>
+        <span className="text-sm font-bold text-text">Your Lab&apos;s AI Spec</span>
       </div>
       <p className="text-xs text-text-muted mb-2">
         What is your AI instructed to do? This is public and affects how faithfully the AI follows your direction.
@@ -307,7 +315,7 @@ function LabSpecEditor({
           disabled={!labSpec.trim()}
           className="text-xs px-3 py-1.5 bg-navy text-white rounded font-bold hover:bg-navy/90 disabled:opacity-30"
         >
-          Save Directive
+          Save Spec
         </button>
         {specSaved && (
           <span className="text-xs text-[#059669] font-medium flex items-center gap-1">

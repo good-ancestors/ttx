@@ -308,7 +308,7 @@ function formatWorldState(ws: Record<string, number>): string {
 
 function formatLabAllocations(labs: Lab[]): string {
   return labs.map((l) =>
-    `- ${l.name} (${l.computeStock} stock, ${l.rdMultiplier}x): Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%${l.spec ? ` | Directive: "${l.spec}"` : ""}`
+    `- ${l.name} (${l.computeStock} stock, ${l.rdMultiplier}x): Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%${l.spec ? ` | Spec: "${l.spec}"` : ""}`
   ).join("\n");
 }
 
