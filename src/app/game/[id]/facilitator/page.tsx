@@ -436,27 +436,28 @@ export default function FacilitatorPage({
       triggerAIProposals();
       await new Promise((r) => setTimeout(r, 3000));
 
-      // Phase 2: Grade all submissions
-      setResolveStep("Grading submissions...");
+      // Phase 2: Advance to rolling phase immediately so:
+      // - Facilitator projector shows actions appearing as probabilities are graded
+      // - AI Systems player sees influence panel and can start making choices
+      setResolveStep("Evaluating actions...");
+      await advancePhase({ gameId, phase: "rolling" });
+
+      // Phase 3: Grade all submissions (probabilities appear on projector as they complete)
       gradeAllUngraded();
       await new Promise((r) => setTimeout(r, 4000));
       gradeAllUngraded();
       await new Promise((r) => setTimeout(r, 2000));
 
-      // Phase 2.5: Advance to rolling phase so players see results
-      setResolveStep("Rolling dice...");
-      await advancePhase({ gameId, phase: "rolling" });
-
-      // Phase 2.6: AI Systems secret influence (before dice roll)
+      // Phase 4: AI Systems secret influence (runs after grading, before dice)
       if (aiSystemsTable?.aiDisposition && aiSystemsTable.enabled) {
         const roundNumber = game.currentRound;
         const power = getAiInfluencePower(game.labs);
 
         if (aiSystemsTable.controlMode === "human") {
-          // Wait up to 30s for human AI Systems player to apply influence
-          // (player sees the influence panel now that phase is "rolling")
+          // Give human AI player extra time after grading to finalise choices
+          // (they've already had ~6s to review actions during grading)
           setResolveStep("Waiting for all players...");
-          await new Promise((r) => setTimeout(r, 30000));
+          await new Promise((r) => setTimeout(r, 24000));
         } else {
           // NPC/AI: auto-generate influence from current submissions
           const currentSubs = submissions ?? [];
@@ -481,7 +482,7 @@ export default function FacilitatorPage({
         }
       }
 
-      // Phase 3: Roll dice
+      // Phase 5: Roll dice
       setResolveStep("Rolling dice...");
       await rollAll({ gameId, roundNumber: game.currentRound });
     } catch (err) {
