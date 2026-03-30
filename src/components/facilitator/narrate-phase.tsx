@@ -33,6 +33,7 @@ interface NarratePhaseProps extends FacilitatorPhaseProps {
   advanceRound: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   finishGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
+  streamingEvents?: { id: string; description: string; visibility: string; worldImpact?: string }[];
 }
 
 export function NarratePhase({
@@ -50,6 +51,7 @@ export function NarratePhase({
   advanceRound,
   finishGame,
   addLab,
+  streamingEvents,
 }: NarratePhaseProps) {
   const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
@@ -69,7 +71,35 @@ export function NarratePhase({
         </div>
       )}
 
-      {/* Section 2: Resolved Events — show after resolve API returns */}
+      {/* Section 2a: Streaming events — show during resolution before final write */}
+      {resolving && streamingEvents && streamingEvents.length > 0 && !currentRound?.resolvedEvents?.length && (
+        <div className="bg-navy rounded-xl border border-navy-light p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-sm font-semibold uppercase tracking-wider text-text-light">What Happened</span>
+            <Loader2 className="w-3.5 h-3.5 text-text-light animate-spin" />
+          </div>
+          <div className="space-y-2">
+            {streamingEvents.map((event, idx) => (
+              <div
+                key={event.id || idx}
+                className="flex items-start gap-2 py-2 border-b border-navy-light/50 last:border-0 animate-fadeIn"
+              >
+                <span className={`mt-0.5 shrink-0 text-sm ${event.visibility === "covert" ? "text-viz-warning" : "text-viz-safety"}`}>
+                  {event.visibility === "covert" ? "◐" : "●"}
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-[#E2E8F0]">{event.description}</p>
+                  {event.worldImpact && (
+                    <p className="text-[10px] text-text-light mt-0.5">{event.worldImpact}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Section 2b: Resolved Events — show after resolve API returns */}
       {currentRound?.resolvedEvents && currentRound.resolvedEvents.length > 0 && (
         <div className="bg-navy rounded-xl border border-navy-light p-5">
           <div className="flex items-center justify-between mb-3">

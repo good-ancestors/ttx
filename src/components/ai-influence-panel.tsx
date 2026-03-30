@@ -175,7 +175,8 @@ export function AiInfluencePanel({
                     <span className="text-[10px] font-mono text-[#A78BFA]">P{action.priority}</span>
                   </div>
                   <p className="text-xs text-[#E2E8F0] leading-relaxed">
-                    {action.secret ? <span className="italic text-[#94A3B8]">[Covert action]</span> : action.text}
+                    {action.text}
+                    {action.secret && <span className="text-[10px] text-[#A78BFA] ml-1">(secret)</span>}
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0 mt-1">

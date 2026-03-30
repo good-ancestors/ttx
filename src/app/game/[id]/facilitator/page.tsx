@@ -102,6 +102,7 @@ export default function FacilitatorPage({
 
   const [resolving, setResolving] = useState(false);
   const [resolveStep, setResolveStep] = useState("");
+  const [streamingEvents, setStreamingEvents] = useState<{ id: string; description: string; visibility: string; worldImpact?: string }[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
   // Safe wrapper for facilitator actions — shows error on failure, auto-clears after 5s
   const safeAction = (label: string, fn: () => Promise<unknown>) => async () => {
@@ -267,6 +268,13 @@ export default function FacilitatorPage({
     for (const p of pendingAISubmissions.current) clearTimeout(p.timerId);
     pendingAISubmissions.current = [];
 
+    // Ensure sample actions are loaded (fixes race condition where facilitator
+    // opens submissions before the async fetch completes)
+    let samples = sampleActionsData;
+    if (!samples) {
+      try { samples = await loadSampleActions(); setSampleActionsData(samples); } catch { /* proceed without samples */ }
+    }
+
     const nonHumanTables = (tables ?? []).filter((t) => t.controlMode !== "human" && t.enabled);
     const submitted = new Set((submissions ?? []).map((s) => s.roleId));
     const unsubmitted = nonHumanTables.filter((t) => !submitted.has(t.roleId));
@@ -288,9 +296,9 @@ export default function FacilitatorPage({
     const aiTables = unsubmitted.filter((t) => t.controlMode === "ai");
 
     // NPC tables always use sample actions
-    if (sampleActionsData) {
+    if (samples) {
       for (const table of npcTables) {
-        const all = getSampleActions(sampleActionsData, table.roleId, game.currentRound);
+        const all = getSampleActions(samples, table.roleId, game.currentRound);
         if (all.length === 0) continue;
         const picked = pickRandom(all, 3);
         const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
@@ -301,10 +309,10 @@ export default function FacilitatorPage({
       }
     }
 
-    if (useSampleForAI && sampleActionsData) {
+    if (useSampleForAI && samples) {
       // Sample mode for AI tables: instant selection
       for (const table of aiTables) {
-        const all = getSampleActions(sampleActionsData, table.roleId, game.currentRound);
+        const all = getSampleActions(samples, table.roleId, game.currentRound);
         if (all.length === 0) continue;
         const picked = pickRandom(all, 3);
         const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
@@ -499,6 +507,7 @@ export default function FacilitatorPage({
 
     // Phase 4: Resolve events + update world state
     setResolveStep("Resolving events...");
+    setStreamingEvents([]);
     const resolveOk = await callResolve();
     if (!resolveOk) {
       setActionError("Event resolution failed — try again or adjust manually");
@@ -550,10 +559,10 @@ export default function FacilitatorPage({
             if (data.__complete) {
               return true;
             }
-            // Show progress from partial output
-            const eventCount = data.resolvedEvents?.length;
-            if (eventCount) {
-              setResolveStep(`Resolving events... (${eventCount} so far)`);
+            // Show progress from partial output — stream events as they arrive
+            if (data.resolvedEvents?.length) {
+              setStreamingEvents(data.resolvedEvents);
+              setResolveStep(`Resolving events... (${data.resolvedEvents.length} so far)`);
             }
           } catch {
             // Incomplete JSON in partial line — skip
@@ -928,6 +937,7 @@ export default function FacilitatorPage({
                   advanceRound={advanceRound}
                   finishGame={finishGame}
                   addLab={addLab}
+                  streamingEvents={streamingEvents}
                 />
               </div>
             )}
