@@ -353,7 +353,7 @@ export default function SplashPage() {
         )}
 
         <p className="text-[11px] text-navy-muted mt-10 text-center">
-          Good Ancestors Policy Planning
+          Good Ancestors Policy
         </p>
       </div>
     </div>
