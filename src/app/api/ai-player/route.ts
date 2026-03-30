@@ -39,13 +39,16 @@ export async function POST(request: Request) {
       roundNumber,
       roleId,
       useSample,
+      maxActions,
     }: {
       tableId: string;
       gameId: string;
       roundNumber: number;
       roleId: string;
       useSample?: boolean;
+      maxActions?: number;
     } = body;
+    const actionLimit = maxActions ?? 4;
 
     const game = await convex.query(api.games.get, {
       gameId: gameId as Id<"games">,
@@ -198,7 +201,7 @@ PERSONALITY: ${role?.personality ?? "Strategic and scenario-appropriate."}
 ${roundNumber > 1 ? "Your personality is your baseline, but adapt your tone and strategy based on what happened last round. If your actions mostly failed, become more cautious or desperate. If they succeeded, lean into what worked. React to the world state — rising tension should make you more defensive, falling alignment more urgent." : ""}
 ${roleId === "ai-systems" && body.aiDisposition ? `\nYOUR SECRET DISPOSITION: ${body.aiDisposition.label}\n${body.aiDisposition.description}\nAll your actions MUST be consistent with this disposition. Stay in character throughout the game.` : ""}
 
-Generate 2-4 actions this actor would take this quarter. Each action MUST follow the format: "I do [specific action] so that [intended outcome if successful]".
+Generate ${actionLimit <= 1 ? "1 action" : `1-${actionLimit} actions`} this actor would take this quarter. Each action MUST follow the format: "I do [specific action] so that [intended outcome if successful]".
 Example: "Use the Defence Production Act to compel a merger between Conscienta and OpenBrain so that the US has consolidated computing power with differentially more safety."
 
 Rules:
@@ -226,7 +229,7 @@ ${role?.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifac
         const scale = 10 / totalPriority;
         actions = actions.map((a) => ({ ...a, priority: Math.max(1, Math.round(a.priority * scale)) }));
       }
-      if (actions.length > 5) actions = actions.slice(0, 5);
+      if (actions.length > actionLimit) actions = actions.slice(0, actionLimit);
 
       // generateOnly: return actions without submitting (caller will submit later)
       if (body.generateOnly) {

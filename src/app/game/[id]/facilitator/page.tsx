@@ -296,12 +296,16 @@ export default function FacilitatorPage({
     const npcTables = unsubmitted.filter((t) => t.controlMode === "npc");
     const aiTables = unsubmitted.filter((t) => t.controlMode === "ai");
 
+    // Scale action count: fewer actions per AI/NPC when there are many of them
+    const nonHumanCount = npcTables.length + aiTables.length;
+    const actionsPerTable = nonHumanCount <= 4 ? 3 : nonHumanCount <= 8 ? 2 : 1;
+
     // NPC tables always use sample actions
     if (samples) {
       for (const table of npcTables) {
         const all = getSampleActions(samples, table.roleId, game.currentRound);
         if (all.length === 0) continue;
-        const picked = pickRandom(all, 3);
+        const picked = pickRandom(all, actionsPerTable);
         const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
         pending.push({
           table,
@@ -315,7 +319,7 @@ export default function FacilitatorPage({
       for (const table of aiTables) {
         const all = getSampleActions(samples, table.roleId, game.currentRound);
         if (all.length === 0) continue;
-        const picked = pickRandom(all, 3);
+        const picked = pickRandom(all, actionsPerTable);
         const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
         pending.push({
           table,
@@ -338,7 +342,8 @@ export default function FacilitatorPage({
               enabledRoles: enabledRoleNames,
               computeStock: table.computeStock ?? 0,
               aiDisposition: table.roleId === "ai-systems" ? aiDispositionPayload : undefined,
-              generateOnly: true, // New flag: return actions without submitting
+              generateOnly: true,
+              maxActions: actionsPerTable,
             }),
           });
           if (!res.ok) throw new Error(`AI player failed: ${res.status}`);
