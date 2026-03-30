@@ -235,12 +235,18 @@ export default function TablePlayerPage({
     if (lastRoundRef.current !== null && lastRoundRef.current !== round) {
       // Round changed — clear form state and allow draft restore for new round
       setActionDrafts([emptyAction()]);
-      setComputeAllocation({ users: 50, capability: 25, safety: 25 });
       setArtifact("");
       setSubmitError("");
       setAutoSubmitMessage("");
       autoSubmittedRef.current = false;
       draftRestoredRef.current = false;
+      // Reload compute allocation from current game state (not defaults)
+      if (role) {
+        const lab = game.labs.find((l) => l.roleId === role.id);
+        if (lab?.allocation) {
+          setComputeAllocation({ ...lab.allocation });
+        }
+      }
     }
     lastRoundRef.current = round;
   }, [game?.currentRound]); // eslint-disable-line react-hooks/exhaustive-deps
