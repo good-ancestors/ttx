@@ -560,12 +560,13 @@ export default function FacilitatorPage({
             if (data.__complete) {
               return true;
             }
-            // Show completed events only (the last event may still be streaming,
-            // so show all but the last — it becomes visible when the next one starts)
+            // Show completed events (the last may still be streaming).
+            // Show all-but-last when there are 2+, but always show at least the first.
             if (data.resolvedEvents?.length) {
-              const completed = data.resolvedEvents.slice(0, -1);
+              const events = data.resolvedEvents;
+              const completed = events.length <= 1 ? events : events.slice(0, -1);
               setStreamingEvents(completed);
-              setResolveStep(`Resolving events... (${data.resolvedEvents.length} so far)`);
+              setResolveStep(`Resolving events... (${events.length} so far)`);
             }
           } catch {
             // Incomplete JSON in partial line — skip

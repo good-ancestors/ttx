@@ -197,7 +197,7 @@ export function TableSubmit({
 
             {/* Nudge if CEO writes allocation changes as actions instead of using sliders */}
             {isLabCeo(role) && actionDrafts.some((a) =>
-              /\b(allocat|split|shift.*compute|redirect.*compute|\d+%.*\d+%.*\d+%|users.*capability.*safety)\b/i.test(a.text)
+              /\b(compute.*allocat|allocat.*compute|shift.*compute|redirect.*compute|\d+%.*\d+%.*\d+%|users.*capability.*safety)\b/i.test(a.text)
             ) && (
               <div className="flex items-start gap-2 bg-[#FFF7ED] border border-[#FED7AA] rounded-lg p-2.5 mt-2">
                 <AlertTriangle className="w-4 h-4 text-[#EA580C] shrink-0 mt-0.5" />
