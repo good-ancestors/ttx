@@ -526,47 +526,15 @@ export default function TablePlayerPage({
             />
           )}
 
-          {/* Previous round story — show during discuss/submit only (not narrate/rolling) */}
-          {game.status === "playing" && phase !== "narrate" && phase !== "rolling" && (() => {
-            // Show the previous round's AI narrative (what happened last time)
-            // For R1 there's no previous round — show the starting scenario
-            const prevRound = allRounds?.find(r => r.number === game.currentRound - 1);
-            const storyText = prevRound?.summary?.narrative ?? (game.currentRound === 1 ? round.narrative : undefined);
-            if (!storyText) return null;
-            return (
-              <div
-                className="bg-white rounded-xl p-4 border border-border mb-4 break-words max-h-[200px] overflow-y-auto"
-                style={{ borderLeftWidth: "3px", borderLeftColor: role.color }}
-              >
-                <span className="text-xs font-semibold uppercase tracking-wider text-text-muted block mb-1.5">
-                  {game.currentRound === 1 ? round.label : `Previously — ${prevRound?.label}`}
-                </span>
-                <p className="text-sm text-text-muted leading-relaxed">{storyText}</p>
-              </div>
-            );
-          })()}
-
           {/* Discuss phase */}
           {phase === "discuss" && game.status === "playing" && (
             <>
+              {/* 1. Disposition chooser (blocker if not yet chosen) */}
               {role.tags.includes("ai-system") && !table.aiDisposition && (
                 <DispositionChooser tableId={tableId} onChosen={() => {}} />
               )}
-              {role.tags.includes("ai-system") && table.aiDisposition && (() => {
-                const disp = getDisposition(table.aiDisposition);
-                return (
-                  <div className="bg-[#1E1B4B] rounded-xl p-4 mb-4 border border-[#4338CA]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <EyeOff className="w-3.5 h-3.5 text-[#A78BFA]" />
-                      <span className="text-sm font-bold text-white">{disp?.label}</span>
-                      <span className="text-[10px] text-[#A78BFA] ml-auto">Secret — locked for game</span>
-                    </div>
-                    {disp?.description && (
-                      <p className="text-xs text-[#C4B5FD] leading-relaxed">{disp.description}</p>
-                    )}
-                  </div>
-                );
-              })()}
+
+              {/* 2. Your Mission (incl how to play) */}
               <div className="bg-white rounded-xl p-5 border border-border">
                 <div className="flex items-center gap-2 mb-3">
                   <Target className="w-5 h-5 text-text" />
@@ -586,9 +554,27 @@ export default function TablePlayerPage({
                 )}
                 <HowToPlaySection role={role} />
               </div>
-              {/* Lab Specs — AI Systems player sees all labs during discussion */}
+
+              {/* 3. Disposition (locked) */}
+              {role.tags.includes("ai-system") && table.aiDisposition && (() => {
+                const disp = getDisposition(table.aiDisposition);
+                return (
+                  <div className="bg-[#1E1B4B] rounded-xl p-4 mt-4 border border-[#4338CA]">
+                    <div className="flex items-center gap-2 mb-2">
+                      <EyeOff className="w-3.5 h-3.5 text-[#A78BFA]" />
+                      <span className="text-sm font-bold text-white">{disp?.label}</span>
+                      <span className="text-[10px] text-[#A78BFA] ml-auto">Secret — locked for game</span>
+                    </div>
+                    {disp?.description && (
+                      <p className="text-xs text-[#C4B5FD] leading-relaxed">{disp.description}</p>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* 4. Lab Specs — expanded by default during discussion */}
               {role.tags.includes("ai-system") && (
-                <details className="bg-white rounded-xl border border-border p-4 mt-4">
+                <details open className="bg-white rounded-xl border border-border p-4 mt-4">
                   <summary className="flex items-center gap-2 cursor-pointer">
                     <FileText className="w-4 h-4 text-text" />
                     <span className="text-sm font-bold text-text">Lab Specs</span>
