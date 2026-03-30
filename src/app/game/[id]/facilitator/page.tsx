@@ -420,12 +420,15 @@ export default function FacilitatorPage({
         await new Promise((r) => setTimeout(r, 1000));
       }
 
-      // Recovery: if there are unsubmitted AI tables (e.g. after page refresh), generate + submit now
-      const aiTables = (tables ?? []).filter((t) => t.controlMode !== "human" && t.enabled);
+      // Recovery: if there are unsubmitted non-human tables (e.g. after page refresh), generate + submit now
+      const nonHumanTables = (tables ?? []).filter((t) => t.controlMode !== "human" && t.enabled);
       const submittedRoles = new Set((submissions ?? []).map((s) => s.roleId));
-      const missingAI = aiTables.filter((t) => !submittedRoles.has(t.roleId));
-      if (missingAI.length > 0) {
-        setResolveStep(`Generating actions for ${missingAI.length} AI table(s)...`);
+      const missingTables = nonHumanTables.filter((t) => !submittedRoles.has(t.roleId));
+      if (missingTables.length > 0) {
+        const npcCount = missingTables.filter((t) => t.controlMode === "npc").length;
+        const aiCount = missingTables.length - npcCount;
+        const parts = [npcCount > 0 ? `${npcCount} NPC` : "", aiCount > 0 ? `${aiCount} AI` : ""].filter(Boolean).join(" + ");
+        setResolveStep(`Generating actions for ${parts} table(s)...`);
         await generateAndStaggerAI(10);
         await flushPendingAI();
         await new Promise((r) => setTimeout(r, 1000));
