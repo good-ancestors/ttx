@@ -132,10 +132,12 @@ export function buildChartData(
       points.push({ x: xPos(2 + i), y: 0, value: roundLab?.rdMultiplier ?? lab.rdMultiplier });
     }
 
-    if (!isAbsorbed && completedRounds.length < 4 && completedRounds.length > 0) {
+    // Always add live game state as the latest point if it's newer than snapshots
+    const liveRoundIdx = 2 + Math.min(currentRound, 4) - 1; // currentRound is 1-based
+    if (!isAbsorbed && points.length > 0 && points.length - 1 < liveRoundIdx + 1) {
       const currentLab = currentLabs.find((l) => l.name === lab.name);
       const val = currentLab?.rdMultiplier ?? lab.rdMultiplier;
-      points.push({ x: xPos(2 + completedRounds.length), y: 0, value: val });
+      points.push({ x: xPos(liveRoundIdx), y: 0, value: val });
     }
 
     series.push({ name: lab.name, roleId: lab.roleId, points, isBackground, isAbsorbed });

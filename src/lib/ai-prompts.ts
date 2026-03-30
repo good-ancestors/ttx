@@ -174,7 +174,7 @@ GRADING RULES:
 1. ASSESS FEASIBILITY FIRST: Start by judging how realistic this action is given the actor's role, resources, capabilities, and the current game state. This is the PRIMARY driver of probability (70-80% of the grade).
    - Is this within the actor's realistic power? (Government can pass laws; CEO can set allocation; safety lead can run red-teams; nonprofits can lobby)
    - Does the actor have the resources? (Compute stock, R&D multiplier, safety allocation for safety actions, military for government actions)
-   - Does the current capability level support this? (Round 1: no superhuman persuasion; Round 3+: near-ASI capabilities)
+   - Does the capability level support this? The game state shown is from the START of the period, but capability progresses exponentially throughout. By the END of this period, capabilities may be significantly higher. Grade based on what's plausible during the period, not just at the start. (Round 1: autonomous agents emerging; Round 2: superhuman at most cognitive tasks; Round 3+: near-ASI, potential escape/self-improvement; Round 4: ASI territory)
    - Are there structural obstacles? (International law, physics, organisational inertia, political opposition)
    CALIBRATION — CRITICAL: You are grading whether the actor CAN ATTEMPT this action, not whether it produces the desired outcome. Start at 70% (Likely) for actions within core authority, then adjust:
    - President invoking DPA/executive orders = 70% (they CAN do it, even if Congress objects after)
