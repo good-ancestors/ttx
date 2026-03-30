@@ -347,6 +347,7 @@ const RESOLVE_RULES = `RESOLUTION RULES:
 
    EVENT STRUCTURE:
    - Tag each event as "public" or "covert".
+   - CRITICAL: Events derived from PUBLIC (non-secret) actions MUST be tagged "public". Only events derived exclusively from secret actions can be tagged "covert". If a public action references sensitive information (e.g., "stolen weights"), the event is still public — the action was publicly submitted.
    - Give each event a unique short ID (e.g., "taiwan-invasion", "safety-pivot").
    - Include "worldImpact" noting which dials or resources are affected.
    - Keep each event description to 1-2 sentences.
