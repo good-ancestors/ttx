@@ -82,6 +82,44 @@ export default function SplashPage() {
     }
   };
 
+  if (mode === "join") {
+    return (
+      <div className="min-h-dvh bg-navy flex flex-col items-center justify-center p-8 text-center">
+        <div className="max-w-md w-full">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/good-ancestors-logo.svg" alt="Good Ancestors" className="h-10 mx-auto mb-8" />
+          <h1 className="text-2xl font-extrabold text-white mb-6">Join a Game</h1>
+          <input
+            type="text"
+            value={joinCode}
+            onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinError(""); }}
+            placeholder="Enter join code"
+            maxLength={8}
+            autoFocus
+            spellCheck={false}
+            autoComplete="off"
+            className="w-full py-3.5 px-6 bg-navy-light text-white text-center text-xl font-mono
+                       font-bold rounded-lg border border-navy-light focus:border-text-light
+                       outline-none tracking-widest placeholder:text-navy-muted placeholder:tracking-normal
+                       placeholder:text-base placeholder:font-sans mb-3"
+          />
+          {joinError && <p className="text-xs text-viz-danger mb-2">{joinError}</p>}
+          <button
+            onClick={handleJoin}
+            disabled={!joinCode.trim()}
+            className="w-full py-3.5 px-6 bg-white text-navy rounded-lg text-base font-bold
+                       hover:bg-off-white transition-colors disabled:opacity-30 mb-3"
+          >
+            Join Game
+          </button>
+          <button onClick={() => setMode("main")} className="text-sm text-text-light hover:text-white transition-colors">
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!authenticated) {
     return (
       <div className="min-h-dvh bg-navy flex flex-col items-center justify-center p-8 text-center">
@@ -125,44 +163,6 @@ export default function SplashPage() {
             className="text-sm text-text-light hover:text-white transition-colors"
           >
             Join as Player instead
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (mode === "join") {
-    return (
-      <div className="min-h-dvh bg-navy flex flex-col items-center justify-center p-8 text-center">
-        <div className="max-w-md w-full">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/good-ancestors-logo.svg" alt="Good Ancestors" className="h-10 mx-auto mb-8" />
-          <h1 className="text-2xl font-extrabold text-white mb-6">Join a Game</h1>
-          <input
-            type="text"
-            value={joinCode}
-            onChange={(e) => { setJoinCode(e.target.value.toUpperCase()); setJoinError(""); }}
-            placeholder="Enter join code"
-            maxLength={8}
-            autoFocus
-            spellCheck={false}
-            autoComplete="off"
-            className="w-full py-3.5 px-6 bg-navy-light text-white text-center text-xl font-mono
-                       font-bold rounded-lg border border-navy-light focus:border-text-light
-                       outline-none tracking-widest placeholder:text-navy-muted placeholder:tracking-normal
-                       placeholder:text-base placeholder:font-sans mb-3"
-          />
-          {joinError && <p className="text-xs text-viz-danger mb-2">{joinError}</p>}
-          <button
-            onClick={handleJoin}
-            disabled={!joinCode.trim()}
-            className="w-full py-3.5 px-6 bg-white text-navy rounded-lg text-base font-bold
-                       hover:bg-off-white transition-colors disabled:opacity-30 mb-3"
-          >
-            Join Game
-          </button>
-          <button onClick={() => setMode("main")} className="text-sm text-text-light hover:text-white transition-colors">
-            Back
           </button>
         </div>
       </div>
