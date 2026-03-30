@@ -116,6 +116,7 @@ export default function TablePlayerPage({
 
   const autoSubmittedRef = useRef(false);
   const draftRestoredRef = useRef(false);
+  const lastRoundRef = useRef<number | null>(null);
 
   // Sample actions for suggestions
   const [sampleActionsData, setSampleActionsData] = useState<SampleActionsData | null>(null);
@@ -226,6 +227,23 @@ export default function TablePlayerPage({
       setDraftRestored(true);
     }
   }, [game, tableId]);
+
+  // ── Reset form when round advances ─────────────────────────────────────
+  useEffect(() => {
+    if (!game) return;
+    const round = game.currentRound;
+    if (lastRoundRef.current !== null && lastRoundRef.current !== round) {
+      // Round changed — clear form state and allow draft restore for new round
+      setActionDrafts([emptyAction()]);
+      setComputeAllocation({ users: 50, capability: 25, safety: 25 });
+      setArtifact("");
+      setSubmitError("");
+      setAutoSubmitMessage("");
+      autoSubmittedRef.current = false;
+      draftRestoredRef.current = false;
+    }
+    lastRoundRef.current = round;
+  }, [game?.currentRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-clear draft restored message
   useEffect(() => {
