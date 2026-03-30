@@ -74,10 +74,11 @@ export const submit = mutation({
             throw new Error("Submission deadline has passed");
         }
         // Enforce action limit (max 5) and sanity-check priority budget
-        // Auto-decay always sums to 10, but allow tolerance for edge cases
+        // Auto-decay always sums to ≤10, but allow +2 tolerance for edge cases (e.g. manual override)
+        const PRIORITY_HARD_CAP = 12;
         const totalPriority = args.actions.reduce((s, a) => s + a.priority, 0);
-        if (totalPriority > 12) {
-            throw new Error(`Priority budget exceeded: ${totalPriority}/10`);
+        if (totalPriority > PRIORITY_HARD_CAP) {
+            throw new Error(`Priority budget exceeded: ${totalPriority}/${PRIORITY_HARD_CAP}`);
         }
         if (args.actions.length > 5) {
             throw new Error(`Too many actions: ${args.actions.length}/5`);

@@ -47,7 +47,7 @@ Civil Society:
 - AI Safety Nonprofits (FAI CEO): Global research network, advocacy, treaty drafting. Most trusted neutral ground.
 
 Special:
-- The AI Systems: Plays ALL AI systems (OpenBrain's, DeepCent's, Conscienta's). Each may have different alignment. Secret actions possible. Capabilities expand each round.
+- The AIs: Plays ALL AI systems (OpenBrain's, DeepCent's, Conscienta's). Each may have different alignment. Secret actions possible. Capabilities expand each round.
 - The Global Public: Mass opinion, protests, consumer power, votes. Grant or deny social licence.
 - The Global Media: Narrative power, investigations, source cultivation. Can make heroes or villains.
 
@@ -71,7 +71,7 @@ STARTING CONDITIONS (January 2028):
 - US intelligence has pre-positioned capabilities against Chinese infrastructure
 
 AI ALIGNMENT MECHANIC:
-The AI Systems role plays ALL AI systems. Each lab's AI may have different alignment outcomes:
+The AIs role plays ALL AI systems. Each lab's AI may have different alignment outcomes:
 - Following the spec as written
 - Following what the spec-writers intended (which may differ from the literal spec)
 - Following developers' personal intentions

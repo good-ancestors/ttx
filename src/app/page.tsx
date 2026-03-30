@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useRouter } from "next/navigation";
-import { Plus, Smartphone, Loader2, Trash2, Play, Clock, CheckCircle2 } from "lucide-react";
+import { Plus, Smartphone, Loader2, Trash2, Play, Clock, CheckCircle2, Pencil } from "lucide-react";
 
 function formatTime(ts: number) {
   const diff = Date.now() - ts;
@@ -23,11 +23,15 @@ export default function SplashPage() {
   const games = useQuery(api.games.list);
   const createGame = useMutation(api.games.create);
   const removeGame = useMutation(api.games.remove);
+  const renameGame = useMutation(api.games.rename);
   const [creating, setCreating] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
   const [mode, setMode] = useState<"main" | "join">("main");
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
   const [passphrase, setPassphrase] = useState("");
   const [authenticated, setAuthenticated] = useState(false);
 
@@ -58,11 +62,23 @@ export default function SplashPage() {
   };
 
   const handleDelete = async (gameId: string) => {
+    if (deleteConfirm !== "DELETE") return;
     try {
-      await removeGame({ gameId: gameId as Parameters<typeof removeGame>[0]["gameId"] });
+      await removeGame({ gameId: gameId as Parameters<typeof removeGame>[0]["gameId"], confirmation: "DELETE" });
       setDeleteId(null);
+      setDeleteConfirm("");
     } catch (err) {
       console.error("Failed to delete game:", err);
+    }
+  };
+
+  const handleRename = async (gameId: string) => {
+    try {
+      await renameGame({ gameId: gameId as Parameters<typeof renameGame>[0]["gameId"], name: editName });
+      setEditingId(null);
+      setEditName("");
+    } catch (err) {
+      console.error("Failed to rename game:", err);
     }
   };
 
@@ -206,45 +222,122 @@ export default function SplashPage() {
                     ? `Round ${game.currentRound} · ${game.phase}`
                     : "Lobby";
 
+                const gameName = game.name || "Untitled Game";
+                const isEditing = editingId === game._id;
+                const isDeleting = deleteId === game._id;
+
                 return (
                   <div
                     key={game._id}
-                    className="bg-navy-dark border border-navy-light rounded-lg p-4 flex items-center gap-3"
+                    className="bg-navy-dark border border-navy-light rounded-lg p-4"
                   >
-                    {statusIcon}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-bold text-white capitalize">{statusText}</span>
-                        <span className="text-xs text-text-light">
-                          {game.enabledCount} tables · {game.connectedCount} connected
-                        </span>
-                      </div>
-                      <span className="text-xs text-navy-muted">
-                        {formatTime(game._creationTime)}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => router.push(`/game/${game._id}/facilitator`)}
-                      className="text-xs px-3 py-1.5 bg-navy-light text-white rounded font-medium
-                                 hover:bg-navy-muted transition-colors"
-                    >
-                      Open
-                    </button>
-                    {game.status !== "playing" && (
-                      deleteId === game._id ? (
-                        <div className="flex gap-1">
-                          <button onClick={() => setDeleteId(null)} className="text-xs px-2 py-1 text-text-light rounded">Cancel</button>
-                          <button onClick={() => handleDelete(game._id)} className="text-xs px-2 py-1 bg-viz-danger text-white rounded font-medium">Delete</button>
+                    <div className="flex items-center gap-3">
+                      {statusIcon}
+                      <div className="flex-1 min-w-0">
+                        {isEditing ? (
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={editName}
+                              onChange={(e) => setEditName(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void handleRename(game._id);
+                                if (e.key === "Escape") { setEditingId(null); setEditName(""); }
+                              }}
+                              autoFocus
+                              spellCheck={false}
+                              className="text-sm font-bold text-white bg-navy-light border border-navy-muted rounded px-2 py-1 outline-none focus:border-text-light flex-1"
+                              placeholder="Game name"
+                            />
+                            <button
+                              onClick={() => void handleRename(game._id)}
+                              className="text-xs px-2 py-1 bg-viz-safety text-navy rounded font-medium"
+                            >
+                              Save
+                            </button>
+                            <button
+                              onClick={() => { setEditingId(null); setEditName(""); }}
+                              className="text-xs px-2 py-1 text-text-light rounded"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-white">{gameName}</span>
+                            <button
+                              onClick={() => { setEditingId(game._id); setEditName(game.name ?? ""); }}
+                              className="text-text-light hover:text-white transition-colors p-0.5"
+                              title="Rename game"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-text-light capitalize">{statusText}</span>
+                          <span className="text-xs text-navy-muted">·</span>
+                          <span className="text-xs text-navy-muted">
+                            {game.enabledCount} tables · {game.connectedCount} connected
+                          </span>
+                          <span className="text-xs text-navy-muted">·</span>
+                          <span className="text-xs text-navy-muted">
+                            {formatTime(game._creationTime)}
+                          </span>
                         </div>
-                      ) : (
-                        <button
-                          onClick={() => setDeleteId(game._id)}
-                          className="text-xs p-1.5 text-text-light hover:text-viz-danger transition-colors rounded"
-                          title="Delete game"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )
+                      </div>
+                      <button
+                        onClick={() => router.push(`/game/${game._id}/facilitator`)}
+                        className="text-xs px-3 py-1.5 bg-navy-light text-white rounded font-medium
+                                   hover:bg-navy-muted transition-colors"
+                      >
+                        Open
+                      </button>
+                      <button
+                        onClick={() => { setDeleteId(game._id); setDeleteConfirm(""); }}
+                        className="text-xs p-1.5 text-text-light hover:text-viz-danger transition-colors rounded"
+                        title="Delete game"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Delete confirmation */}
+                    {isDeleting && (
+                      <div className="mt-3 pt-3 border-t border-navy-light">
+                        <p className="text-xs text-viz-danger mb-2">
+                          This will permanently delete this game and all associated data (tables, submissions, rounds, events).
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="text"
+                            value={deleteConfirm}
+                            onChange={(e) => setDeleteConfirm(e.target.value.toUpperCase())}
+                            placeholder='Type "DELETE" to confirm'
+                            autoFocus
+                            spellCheck={false}
+                            autoComplete="off"
+                            className="text-xs font-mono text-white bg-navy-light border border-navy-muted rounded px-2 py-1.5 outline-none focus:border-viz-danger flex-1 placeholder:text-navy-muted"
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") void handleDelete(game._id);
+                              if (e.key === "Escape") { setDeleteId(null); setDeleteConfirm(""); }
+                            }}
+                          />
+                          <button
+                            onClick={() => void handleDelete(game._id)}
+                            disabled={deleteConfirm !== "DELETE"}
+                            className="text-xs px-3 py-1.5 bg-viz-danger text-white rounded font-medium disabled:opacity-30 transition-opacity"
+                          >
+                            Delete
+                          </button>
+                          <button
+                            onClick={() => { setDeleteId(null); setDeleteConfirm(""); }}
+                            className="text-xs px-2 py-1.5 text-text-light rounded"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 );

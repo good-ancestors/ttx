@@ -2,8 +2,8 @@
 export const ROLES = [
     { id: "openbrain-ceo", name: "OpenBrain CEO", tags: ["lab-ceo", "has-compute"], labId: "openbrain" },
     { id: "deepcent-ceo", name: "DeepCent CEO", tags: ["lab-ceo", "has-compute"], labId: "deepcent" },
-    { id: "conscienta-ceo", name: "Conscienta AI CEO", tags: ["lab-ceo", "has-compute"], labId: "conscienta" },
-    { id: "ai-systems", name: "The AI Systems", tags: ["ai-system"] },
+    { id: "conscienta-ceo", name: "Conscienta CEO", tags: ["lab-ceo", "has-compute"], labId: "conscienta" },
+    { id: "ai-systems", name: "The AIs", tags: ["ai-system"] },
     { id: "us-president", name: "US President", tags: ["government", "military", "intelligence", "has-compute"], startingComputeStock: 8 },
     { id: "china-president", name: "China President", tags: ["government", "military", "intelligence", "has-compute"], startingComputeStock: 6 },
     { id: "openbrain-safety", name: "OpenBrain Safety Lead", tags: ["lab-safety", "technical"], labId: "openbrain" },

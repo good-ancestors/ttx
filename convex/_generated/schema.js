@@ -23,6 +23,7 @@ export const labSnapshotValidator = v.object({
 });
 export default defineSchema({
     games: defineTable({
+        name: v.optional(v.string()),
         status: v.union(v.literal("lobby"), v.literal("playing"), v.literal("finished")),
         currentRound: v.number(),
         phase: v.union(v.literal("discuss"), v.literal("submit"), v.literal("rolling"), v.literal("narrate")),
@@ -30,6 +31,8 @@ export default defineSchema({
         worldState: worldStateValidator,
         labs: v.array(labSnapshotValidator),
         locked: v.boolean(),
+        // Guard flag: prevents concurrent resolve calls from corrupting state
+        resolving: v.optional(v.boolean()),
     }),
     tables: defineTable({
         gameId: v.id("games"),

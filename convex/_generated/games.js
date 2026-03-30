@@ -32,10 +32,12 @@ function generateJoinCode() {
 export const create = mutation({
     args: {
         tableCount: v.optional(v.number()),
+        name: v.optional(v.string()),
     },
     handler: async (ctx, args) => {
         const tableCount = Math.min(17, Math.max(1, args.tableCount ?? 6));
         const gameId = await ctx.db.insert("games", {
+            name: args.name?.trim() || undefined,
             status: "lobby",
             currentRound: 1,
             phase: "discuss",
@@ -91,22 +93,39 @@ export const list = query({
     args: {},
     handler: async (ctx) => {
         const games = await ctx.db.query("games").order("desc").take(20);
-        // Enrich with table counts
-        const enriched = await Promise.all(games.map(async (game) => {
-            const tables = await ctx.db
-                .query("tables")
-                .withIndex("by_game", (q) => q.eq("gameId", game._id))
-                .collect();
-            const enabledCount = tables.filter((t) => t.enabled).length;
-            const connectedCount = tables.filter((t) => t.connected).length;
-            return { ...game, enabledCount, connectedCount };
-        }));
-        return enriched;
+        if (games.length === 0)
+            return [];
+        // Batch-fetch all tables for listed games in a single pass per game
+        // (Convex requires index queries per game, but we parallelise them)
+        const allTablesArrays = await Promise.all(games.map((game) => ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", game._id)).collect()));
+        return games.map((game, i) => {
+            const tables = allTablesArrays[i];
+            return {
+                ...game,
+                enabledCount: tables.filter((t) => t.enabled).length,
+                connectedCount: tables.filter((t) => t.connected).length,
+            };
+        });
+    },
+});
+export const rename = mutation({
+    args: { gameId: v.id("games"), name: v.string() },
+    handler: async (ctx, args) => {
+        const game = await ctx.db.get(args.gameId);
+        if (!game)
+            throw new Error("Game not found");
+        await ctx.db.patch(args.gameId, { name: args.name.trim() || undefined });
     },
 });
 export const remove = mutation({
-    args: { gameId: v.id("games") },
+    args: {
+        gameId: v.id("games"),
+        confirmation: v.string(),
+    },
     handler: async (ctx, args) => {
+        if (args.confirmation !== "DELETE") {
+            throw new Error("Type DELETE to confirm");
+        }
         // Fetch all related data in parallel
         const [tables, submissions, rounds, requests, events] = await Promise.all([
             ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
@@ -164,6 +183,9 @@ export const updateLabSpec = mutation({
         spec: v.string(),
     },
     handler: async (ctx, args) => {
+        if (args.spec.length > 2000) {
+            throw new Error(`Lab spec too long: ${args.spec.length}/2000 characters`);
+        }
         const game = await ctx.db.get(args.gameId);
         if (!game)
             return;
@@ -320,6 +342,18 @@ export const mergeLabs = mutation({
             newComputeStock: survivor.computeStock + absorbed.computeStock,
             newRdMultiplier: Math.max(survivor.rdMultiplier, absorbed.rdMultiplier),
         });
+    },
+});
+export const setResolving = mutation({
+    args: { gameId: v.id("games"), resolving: v.boolean() },
+    handler: async (ctx, args) => {
+        const game = await ctx.db.get(args.gameId);
+        if (!game)
+            throw new Error(`Game ${args.gameId} not found`);
+        if (args.resolving && game.resolving) {
+            throw new Error("Resolution already in progress");
+        }
+        await ctx.db.patch(args.gameId, { resolving: args.resolving });
     },
 });
 export const finishGame = mutation({

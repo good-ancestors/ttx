@@ -35,8 +35,14 @@ export const setConnected = mutation({
         const table = await ctx.db.get(args.tableId);
         const patch = {
             connected: args.connected,
-            controlMode: args.connected ? "human" : "ai",
         };
+        // On connect, force human mode. On disconnect, revert to ai unless already npc.
+        if (args.connected) {
+            patch.controlMode = "human";
+        }
+        else if (table?.controlMode !== "npc") {
+            patch.controlMode = "ai";
+        }
         // Reject if seat is already occupied by a different session
         if (args.connected && args.sessionId && table?.activeSessionId
             && table.activeSessionId !== args.sessionId && table.connected) {

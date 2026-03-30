@@ -34,11 +34,13 @@ function generateJoinCode(): string {
 export const create = mutation({
   args: {
     tableCount: v.optional(v.number()),
+    name: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const tableCount = Math.min(17, Math.max(1, args.tableCount ?? 6));
 
     const gameId = await ctx.db.insert("games", {
+      name: args.name?.trim() || undefined,
       status: "lobby",
       currentRound: 1,
       phase: "discuss",
@@ -120,9 +122,24 @@ export const list = query({
   },
 });
 
-export const remove = mutation({
-  args: { gameId: v.id("games") },
+export const rename = mutation({
+  args: { gameId: v.id("games"), name: v.string() },
   handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    await ctx.db.patch(args.gameId, { name: args.name.trim() || undefined });
+  },
+});
+
+export const remove = mutation({
+  args: {
+    gameId: v.id("games"),
+    confirmation: v.string(),
+  },
+  handler: async (ctx, args) => {
+    if (args.confirmation !== "DELETE") {
+      throw new Error("Type DELETE to confirm");
+    }
     // Fetch all related data in parallel
     const [tables, submissions, rounds, requests, events] = await Promise.all([
       ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),

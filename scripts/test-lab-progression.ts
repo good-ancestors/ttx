@@ -204,7 +204,7 @@ async function runScenario(scenario: Scenario) {
   }
 
   // Cleanup
-  await convex.mutation(api.games.remove, { gameId });
+  await convex.mutation(api.games.remove, { gameId, confirmation: "DELETE" });
   console.log(`\n  Game cleaned up.`);
 }
 

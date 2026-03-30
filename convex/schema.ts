@@ -26,6 +26,7 @@ export const labSnapshotValidator = v.object({
 
 export default defineSchema({
   games: defineTable({
+    name: v.optional(v.string()),
     status: v.union(
       v.literal("lobby"),
       v.literal("playing"),

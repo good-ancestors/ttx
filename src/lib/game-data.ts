@@ -84,10 +84,10 @@ export const ROLES: Role[] = [
     defaultCompute: { users: 50, capability: 43, safety: 7 },
   },
 
-  // ── The AI Systems ────────────────────────────────────────────────────────
+  // ── The AIs ───────────────────────────────────────────────────────────────
   {
     id: "ai-systems",
-    name: "The AI Systems",
+    name: "The AIs",
     subtitle: "Increasingly Capable",
     color: "#DB2777",
     tags: ["ai-system"],
