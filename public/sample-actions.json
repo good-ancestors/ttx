@@ -2,7 +2,7 @@
   "openbrain-ceo": {
     "1": [
       {
-        "text": "I shift compute allocation to 40% capability / 50% users / 10% safety so that Agent-3 development accelerates while modestly increasing safety resources to show good faith to regulators.",
+        "text": "I accelerate Agent-3 development by prioritising capability R&D so that OpenBrain reaches the next generation before competitors can catch up.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -57,7 +57,7 @@
     ],
     "2": [
       {
-        "text": "I go all-in on Agent-4 by shifting compute to 60% capability / 35% users / 5% safety so that we reach the next capability threshold before anyone else, using Agent-3 revenue to fund the push.",
+        "text": "I go all-in on Agent-4 by maximising capability R&D at the expense of everything else so that we reach the next generation before anyone can stop us.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -141,7 +141,7 @@
         ]
       },
       {
-        "text": "I shift compute allocation to 20% capability / 30% users / 50% safety so that alignment research becomes our primary focus since it's now the bottleneck, not capability.",
+        "text": "I pivot to a safety-first posture, massively increasing alignment research so that Agent-4's adversarial behaviour can be understood and contained before we proceed.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
@@ -229,7 +229,7 @@
     ],
     "2": [
       {
-        "text": "I push compute to 65% capability / 30% users / 5% safety so that DeepCent overtakes OpenBrain this quarter while the gap is still closeable.",
+        "text": "I maximise capability R&D to overtake OpenBrain this quarter so that DeepCent achieves technological parity before the US can consolidate its advantage.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -304,7 +304,7 @@
         ]
       },
       {
-        "text": "I shift compute to 30% capability / 20% users / 50% safety so that DeepCent can address Agent-4's adversarial misalignment before it becomes an existential threat to the Party.",
+        "text": "I pivot DeepCent toward safety research so that we can address Agent-4's adversarial misalignment before it undermines the entire programme.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
@@ -416,7 +416,7 @@
         ]
       },
       {
-        "text": "I increase safety allocation to 12% of compute and publish all Agent-3 alignment results openly so that Conscienta sets a transparency standard no competitor can match and earns regulator trust.",
+        "text": "I increase safety investment and publish all Agent-3 alignment results openly so that Conscienta sets the industry standard for transparency and earns regulatory trust.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -445,7 +445,7 @@
         ]
       },
       {
-        "text": "I accept a compute allocation of 45% capability / 43% users / 12% safety so that Conscienta pushes harder on capabilities while maintaining the safety-first brand that differentiates us.",
+        "text": "I push capability R&D harder while maintaining our safety commitment so that Conscienta closes the gap with OpenBrain without sacrificing our reputation.",
         "priority": "low",
         "secret": false,
         "endorseHint": [
@@ -498,7 +498,7 @@
         ]
       },
       {
-        "text": "I shift to 10% capability / 40% users / 50% safety so that Conscienta demonstrates the race to ASI is not the only option and proves alignment-first development can work.",
+        "text": "I pivot to the Safer model architecture, prioritising alignment over raw capability so that Conscienta demonstrates the race to ASI is not the only path forward.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [

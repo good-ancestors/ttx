@@ -49,7 +49,7 @@ export function ComputeAllocation({
   return (
     <div className="bg-white rounded-xl border border-navy p-5 mb-4">
       <div className="flex justify-between items-center mb-1">
-        <span className="text-sm font-bold text-text">Compute Allocation</span>
+        <span className="text-sm font-bold text-text">Your Lab&apos;s Compute Allocation</span>
         <span
           className="text-[11px] font-mono"
           style={{ color: total === 100 ? "#22C55E" : "#EF4444" }}
@@ -58,7 +58,7 @@ export function ComputeAllocation({
         </span>
       </div>
       <p className="text-xs text-text-muted mb-3">
-        How does {roleName} allocate its compute this quarter?
+        Set how {roleName} distributes compute this round. This takes effect from the start of the round — it&apos;s not an action, just a standing decision.
       </p>
 
       <ComputeDotsViz allocation={allocation} />
