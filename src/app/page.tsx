@@ -18,6 +18,122 @@ function formatTime(ts: number) {
 
 const FACILITATOR_PASSPHRASE = process.env.NEXT_PUBLIC_FACILITATOR_PASSPHRASE ?? "coral-ember-drift-sage";
 
+interface GameListItem {
+  _id: string;
+  _creationTime: number;
+  name?: string;
+  status: string;
+  currentRound: number;
+  phase: string;
+  enabledCount: number;
+  connectedCount: number;
+}
+
+function GameCard({
+  game, editingId, editName, setEditingId, setEditName, deleteId, deleteConfirm,
+  setDeleteId, setDeleteConfirm, onRename, onDelete, onOpen,
+}: {
+  game: GameListItem;
+  editingId: string | null; editName: string;
+  setEditingId: (id: string | null) => void; setEditName: (n: string) => void;
+  deleteId: string | null; deleteConfirm: string;
+  setDeleteId: (id: string | null) => void; setDeleteConfirm: (s: string) => void;
+  onRename: (id: string) => void; onDelete: (id: string) => void; onOpen: (id: string) => void;
+}) {
+  const statusIcon = game.status === "finished"
+    ? <CheckCircle2 className="w-4 h-4 text-viz-safety" />
+    : game.status === "playing"
+      ? <Play className="w-4 h-4 text-viz-capability" />
+      : <Clock className="w-4 h-4 text-text-light" />;
+
+  const statusText = game.status === "finished"
+    ? "Finished"
+    : game.status === "playing"
+      ? `Round ${game.currentRound} · ${game.phase}`
+      : "Lobby";
+
+  const gameName = game.name || "Untitled Game";
+  const isEditing = editingId === game._id;
+  const isDeleting = deleteId === game._id;
+
+  return (
+    <div className="bg-navy-dark border border-navy-light rounded-lg p-4">
+      <div className="flex items-center gap-3">
+        {statusIcon}
+        <div className="flex-1 min-w-0">
+          {isEditing ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onRename(game._id);
+                  if (e.key === "Escape") { setEditingId(null); setEditName(""); }
+                }}
+                autoFocus
+                spellCheck={false}
+                className="text-sm font-bold text-white bg-navy-light border border-navy-muted rounded px-2 py-1 outline-none focus:border-text-light flex-1"
+                placeholder="Game name"
+              />
+              <button onClick={() => onRename(game._id)} className="text-xs px-2 py-1 bg-viz-safety text-navy rounded font-medium">Save</button>
+              <button onClick={() => { setEditingId(null); setEditName(""); }} className="text-xs px-2 py-1 text-text-light rounded">Cancel</button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-bold text-white">{gameName}</span>
+              <button
+                onClick={() => { setEditingId(game._id); setEditName(game.name ?? ""); }}
+                className="text-text-light hover:text-white transition-colors p-0.5"
+                title="Rename game"
+              >
+                <Pencil className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className="text-xs text-text-light capitalize">{statusText}</span>
+            <span className="text-xs text-navy-muted">·</span>
+            <span className="text-xs text-navy-muted">{game.enabledCount} tables · {game.connectedCount} connected</span>
+            <span className="text-xs text-navy-muted">·</span>
+            <span className="text-xs text-navy-muted">{formatTime(game._creationTime)}</span>
+          </div>
+        </div>
+        <button onClick={() => onOpen(game._id)} className="text-xs px-3 py-1.5 bg-navy-light text-white rounded font-medium hover:bg-navy-muted transition-colors">Open</button>
+        <button onClick={() => { setDeleteId(game._id); setDeleteConfirm(""); }} className="text-xs p-1.5 text-text-light hover:text-viz-danger transition-colors rounded" title="Delete game">
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {isDeleting && (
+        <div className="mt-3 pt-3 border-t border-navy-light">
+          <p className="text-xs text-viz-danger mb-2">
+            This will permanently delete this game and all associated data (tables, submissions, rounds, events).
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={deleteConfirm}
+              onChange={(e) => setDeleteConfirm(e.target.value.toUpperCase())}
+              placeholder='Type "DELETE" to confirm'
+              autoFocus
+              spellCheck={false}
+              autoComplete="off"
+              className="text-xs font-mono text-white bg-navy-light border border-navy-muted rounded px-2 py-1.5 outline-none focus:border-viz-danger flex-1 placeholder:text-navy-muted"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onDelete(game._id);
+                if (e.key === "Escape") { setDeleteId(null); setDeleteConfirm(""); }
+              }}
+            />
+            <button onClick={() => onDelete(game._id)} disabled={deleteConfirm !== "DELETE"} className="text-xs px-3 py-1.5 bg-viz-danger text-white rounded font-medium disabled:opacity-30 transition-opacity">Delete</button>
+            <button onClick={() => { setDeleteId(null); setDeleteConfirm(""); }} className="text-xs px-2 py-1.5 text-text-light rounded">Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SplashPage() {
   const router = useRouter();
   const games = useQuery(api.games.list);
@@ -209,139 +325,23 @@ export default function SplashPage() {
               Games
             </h2>
             <div className="flex flex-col gap-2">
-              {games.map((game) => {
-                const statusIcon = game.status === "finished"
-                  ? <CheckCircle2 className="w-4 h-4 text-viz-safety" />
-                  : game.status === "playing"
-                    ? <Play className="w-4 h-4 text-viz-capability" />
-                    : <Clock className="w-4 h-4 text-text-light" />;
-
-                const statusText = game.status === "finished"
-                  ? "Finished"
-                  : game.status === "playing"
-                    ? `Round ${game.currentRound} · ${game.phase}`
-                    : "Lobby";
-
-                const gameName = game.name || "Untitled Game";
-                const isEditing = editingId === game._id;
-                const isDeleting = deleteId === game._id;
-
-                return (
-                  <div
-                    key={game._id}
-                    className="bg-navy-dark border border-navy-light rounded-lg p-4"
-                  >
-                    <div className="flex items-center gap-3">
-                      {statusIcon}
-                      <div className="flex-1 min-w-0">
-                        {isEditing ? (
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="text"
-                              value={editName}
-                              onChange={(e) => setEditName(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") void handleRename(game._id);
-                                if (e.key === "Escape") { setEditingId(null); setEditName(""); }
-                              }}
-                              autoFocus
-                              spellCheck={false}
-                              className="text-sm font-bold text-white bg-navy-light border border-navy-muted rounded px-2 py-1 outline-none focus:border-text-light flex-1"
-                              placeholder="Game name"
-                            />
-                            <button
-                              onClick={() => void handleRename(game._id)}
-                              className="text-xs px-2 py-1 bg-viz-safety text-navy rounded font-medium"
-                            >
-                              Save
-                            </button>
-                            <button
-                              onClick={() => { setEditingId(null); setEditName(""); }}
-                              className="text-xs px-2 py-1 text-text-light rounded"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-white">{gameName}</span>
-                            <button
-                              onClick={() => { setEditingId(game._id); setEditName(game.name ?? ""); }}
-                              className="text-text-light hover:text-white transition-colors p-0.5"
-                              title="Rename game"
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </button>
-                          </div>
-                        )}
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-text-light capitalize">{statusText}</span>
-                          <span className="text-xs text-navy-muted">·</span>
-                          <span className="text-xs text-navy-muted">
-                            {game.enabledCount} tables · {game.connectedCount} connected
-                          </span>
-                          <span className="text-xs text-navy-muted">·</span>
-                          <span className="text-xs text-navy-muted">
-                            {formatTime(game._creationTime)}
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => router.push(`/game/${game._id}/facilitator`)}
-                        className="text-xs px-3 py-1.5 bg-navy-light text-white rounded font-medium
-                                   hover:bg-navy-muted transition-colors"
-                      >
-                        Open
-                      </button>
-                      <button
-                        onClick={() => { setDeleteId(game._id); setDeleteConfirm(""); }}
-                        className="text-xs p-1.5 text-text-light hover:text-viz-danger transition-colors rounded"
-                        title="Delete game"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-
-                    {/* Delete confirmation */}
-                    {isDeleting && (
-                      <div className="mt-3 pt-3 border-t border-navy-light">
-                        <p className="text-xs text-viz-danger mb-2">
-                          This will permanently delete this game and all associated data (tables, submissions, rounds, events).
-                        </p>
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="text"
-                            value={deleteConfirm}
-                            onChange={(e) => setDeleteConfirm(e.target.value.toUpperCase())}
-                            placeholder='Type "DELETE" to confirm'
-                            autoFocus
-                            spellCheck={false}
-                            autoComplete="off"
-                            className="text-xs font-mono text-white bg-navy-light border border-navy-muted rounded px-2 py-1.5 outline-none focus:border-viz-danger flex-1 placeholder:text-navy-muted"
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") void handleDelete(game._id);
-                              if (e.key === "Escape") { setDeleteId(null); setDeleteConfirm(""); }
-                            }}
-                          />
-                          <button
-                            onClick={() => void handleDelete(game._id)}
-                            disabled={deleteConfirm !== "DELETE"}
-                            className="text-xs px-3 py-1.5 bg-viz-danger text-white rounded font-medium disabled:opacity-30 transition-opacity"
-                          >
-                            Delete
-                          </button>
-                          <button
-                            onClick={() => { setDeleteId(null); setDeleteConfirm(""); }}
-                            className="text-xs px-2 py-1.5 text-text-light rounded"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
+              {games.map((game) => (
+                <GameCard
+                  key={game._id}
+                  game={game}
+                  editingId={editingId}
+                  editName={editName}
+                  setEditingId={setEditingId}
+                  setEditName={setEditName}
+                  deleteId={deleteId}
+                  deleteConfirm={deleteConfirm}
+                  setDeleteId={setDeleteId}
+                  setDeleteConfirm={setDeleteConfirm}
+                  onRename={(id) => void handleRename(id)}
+                  onDelete={(id) => void handleDelete(id)}
+                  onOpen={(id) => router.push(`/game/${id}/facilitator`)}
+                />
+              ))}
             </div>
           </div>
         )}

@@ -16,6 +16,96 @@ import {
 import type { FacilitatorPhaseProps, Submission, Round } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 
+// ─── Extracted sub-components ─────────────────────────────────────────────────
+
+function StreamingEventsPanel({ events }: { events: { id: string; description: string; visibility: string; worldImpact?: string }[] }) {
+  return (
+    <div className="bg-navy rounded-xl border border-navy-light p-5">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-sm font-semibold uppercase tracking-wider text-text-light">What Happened</span>
+        <Loader2 className="w-3.5 h-3.5 text-text-light animate-spin" />
+      </div>
+      <div className="space-y-2">
+        {events.map((event, idx) => (
+          <div key={event.id || idx} className="flex items-start gap-2 py-2 border-b border-navy-light/50 last:border-0 animate-fadeIn">
+            <span className={`mt-0.5 shrink-0 text-sm ${event.visibility === "covert" ? "text-viz-warning" : "text-viz-safety"}`}>
+              {event.visibility === "covert" ? "◐" : "●"}
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-[#E2E8F0]">{event.description}</p>
+              {event.worldImpact && <p className="text-[10px] text-text-light mt-0.5">{event.worldImpact}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+function ResolvedEventsPanel({
+  events, isProjector, resolving, revealedSecrets, toggleReveal, onReNarrate,
+}: {
+  events: { id: string; description: string; visibility: "public" | "covert"; actors: string[]; worldImpact?: string }[];
+  isProjector: boolean; resolving: boolean;
+  revealedSecrets: Set<string>; toggleReveal: (key: string) => void;
+  onReNarrate: () => Promise<void>;
+}) {
+  return (
+    <div className="bg-navy rounded-xl border border-navy-light p-5">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-semibold uppercase tracking-wider text-text-light">What Happened</span>
+        <span className="text-[10px] text-navy-muted">
+          {events.filter((e) => e.visibility === "covert").length} covert
+        </span>
+      </div>
+      <div className="space-y-2">
+        {events.map((event) => {
+          const isCovert = event.visibility === "covert";
+          const isRevealed = revealedSecrets.has(`event-${event.id}`);
+          return (
+            <div
+              key={event.id}
+              className={`flex items-start gap-2 py-2 border-b border-navy-light/50 last:border-0 ${
+                isCovert && !isRevealed ? "opacity-60" : ""
+              }`}
+            >
+              {isCovert ? (
+                <button onClick={() => toggleReveal(`event-${event.id}`)} className="mt-0.5 shrink-0" title={isRevealed ? "Click to hide" : "Click to reveal"}>
+                  {isRevealed ? <Eye className="w-4 h-4 text-viz-warning" /> : <EyeOff className="w-4 h-4 text-viz-warning" />}
+                </button>
+              ) : (
+                <span className="text-viz-safety mt-0.5 shrink-0 text-sm">●</span>
+              )}
+              <div className="flex-1 min-w-0">
+                {isCovert && !isRevealed ? (
+                  <span className="text-sm text-text-light italic cursor-pointer" onClick={() => toggleReveal(`event-${event.id}`)}>
+                    [Covert event — click to reveal]
+                  </span>
+                ) : (
+                  <>
+                    <p className="text-sm text-[#E2E8F0]">{event.description}</p>
+                    {event.worldImpact && <p className="text-[10px] text-text-light mt-0.5">{event.worldImpact}</p>}
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {!isProjector && (
+        <button
+          onClick={onReNarrate}
+          disabled={resolving}
+          className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1 mt-3 disabled:opacity-50"
+        >
+          <RefreshCw className="w-3 h-3" /> Re-narrate
+        </button>
+      )}
+    </div>
+  );
+}
+
 interface NarratePhaseProps extends FacilitatorPhaseProps {
   submissions: Submission[];
   currentRound: Round | undefined;
@@ -36,6 +126,7 @@ interface NarratePhaseProps extends FacilitatorPhaseProps {
   streamingEvents?: { id: string; description: string; visibility: string; worldImpact?: string }[];
 }
 
+// eslint-disable-next-line complexity
 export function NarratePhase({
   gameId,
   game,
@@ -73,95 +164,19 @@ export function NarratePhase({
 
       {/* Section 2a: Streaming events — show during resolution before final write */}
       {resolving && streamingEvents && streamingEvents.length > 0 && !currentRound?.resolvedEvents?.length && (
-        <div className="bg-navy rounded-xl border border-navy-light p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-sm font-semibold uppercase tracking-wider text-text-light">What Happened</span>
-            <Loader2 className="w-3.5 h-3.5 text-text-light animate-spin" />
-          </div>
-          <div className="space-y-2">
-            {streamingEvents.map((event, idx) => (
-              <div
-                key={event.id || idx}
-                className="flex items-start gap-2 py-2 border-b border-navy-light/50 last:border-0 animate-fadeIn"
-              >
-                <span className={`mt-0.5 shrink-0 text-sm ${event.visibility === "covert" ? "text-viz-warning" : "text-viz-safety"}`}>
-                  {event.visibility === "covert" ? "◐" : "●"}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-[#E2E8F0]">{event.description}</p>
-                  {event.worldImpact && (
-                    <p className="text-[10px] text-text-light mt-0.5">{event.worldImpact}</p>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <StreamingEventsPanel events={streamingEvents} />
       )}
 
       {/* Section 2b: Resolved Events — show after resolve API returns */}
       {currentRound?.resolvedEvents && currentRound.resolvedEvents.length > 0 && (
-        <div className="bg-navy rounded-xl border border-navy-light p-5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold uppercase tracking-wider text-text-light">What Happened</span>
-            <span className="text-[10px] text-navy-muted">
-              {currentRound.resolvedEvents.filter((e) => e.visibility === "covert").length} covert
-            </span>
-          </div>
-          <div className="space-y-2">
-            {currentRound.resolvedEvents.map((event) => {
-              const isCovert = event.visibility === "covert";
-              const isRevealed = revealedSecrets.has(`event-${event.id}`);
-              return (
-                <div
-                  key={event.id}
-                  className={`flex items-start gap-2 py-2 border-b border-navy-light/50 last:border-0 ${
-                    isCovert && !isRevealed ? "opacity-60" : ""
-                  }`}
-                >
-                  {isCovert ? (
-                    <button
-                      onClick={() => toggleReveal(`event-${event.id}`)}
-                      className="mt-0.5 shrink-0"
-                      title={isRevealed ? "Click to hide" : "Click to reveal"}
-                    >
-                      {isRevealed ? (
-                        <Eye className="w-4 h-4 text-viz-warning" />
-                      ) : (
-                        <EyeOff className="w-4 h-4 text-viz-warning" />
-                      )}
-                    </button>
-                  ) : (
-                    <span className="text-viz-safety mt-0.5 shrink-0 text-sm">●</span>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    {isCovert && !isRevealed ? (
-                      <span className="text-sm text-text-light italic cursor-pointer" onClick={() => toggleReveal(`event-${event.id}`)}>
-                        [Covert event — click to reveal]
-                      </span>
-                    ) : (
-                      <>
-                        <p className="text-sm text-[#E2E8F0]">{event.description}</p>
-                        {event.worldImpact && (
-                          <p className="text-[10px] text-text-light mt-0.5">{event.worldImpact}</p>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          {!isProjector && (
-            <button
-              onClick={handleReNarrate}
-              disabled={resolving}
-              className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1 mt-3 disabled:opacity-50"
-            >
-              <RefreshCw className="w-3 h-3" /> Re-narrate
-            </button>
-          )}
-        </div>
+        <ResolvedEventsPanel
+          events={currentRound.resolvedEvents}
+          isProjector={isProjector}
+          resolving={resolving}
+          revealedSecrets={revealedSecrets}
+          toggleReveal={toggleReveal}
+          onReNarrate={handleReNarrate}
+        />
       )}
 
       {/* Section 3: The Story — show after narrate API returns */}
