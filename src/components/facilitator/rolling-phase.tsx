@@ -7,6 +7,7 @@ import {
   EyeOff,
   RefreshCw,
   CheckCircle,
+  Clock,
 } from "lucide-react";
 import type { FacilitatorPhaseProps, Submission } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
@@ -36,23 +37,34 @@ export function RollingPhase({
   overrideProbability,
 }: RollingPhaseProps) {
   const hasRolled = submissions.some((s) => s.actions.some((a) => a.rolled != null));
-  if (!hasRolled) return null;
+  const hasGraded = submissions.some((s) => s.actions.some((a) => a.probability != null));
 
-  // Flatten and sort all rolled actions by priority descending
-  const allRolled = submissions.flatMap((sub) => {
+  // Nothing to show yet
+  if (!hasRolled && !hasGraded) return null;
+
+  // Flatten and sort all actions by priority descending
+  // Show graded actions (with probability) even before dice roll
+  const allActions = submissions.flatMap((sub) => {
     const role = ROLES.find((r) => r.id === sub.roleId);
     return sub.actions
       .map((action, i) => ({ action, i, sub, role }))
-      .filter(({ action }) => action.rolled != null);
+      .filter(({ action }) => action.probability != null || action.rolled != null);
   }).sort((a, b) => b.action.priority - a.action.priority);
-  const allRevealed = revealedCount >= allRolled.length;
+
+  const allRevealed = revealedCount >= allActions.length;
 
   return (
     <div className="bg-navy rounded-xl border border-navy-light p-5">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Dice Results</span>
-          {!allRevealed ? (
+          <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
+            {hasRolled ? "Dice Results" : "Probabilities"}
+          </span>
+          {!hasRolled ? (
+            <span className="text-xs text-viz-warning animate-pulse flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5" /> Evaluating...
+            </span>
+          ) : !allRevealed ? (
             <span className="text-xs text-viz-warning animate-pulse flex items-center gap-1">
               <Dices className="w-3.5 h-3.5" /> Rolling...
             </span>
@@ -70,9 +82,10 @@ export function RollingPhase({
         </button>
       </div>
       <div className="space-y-1.5">
-        {allRolled.map(({ action, i, sub, role }, idx) => {
+        {allActions.map(({ action, i, sub, role }, idx) => {
               const secretKey = `${sub.roleId}-${i}`;
               const isCovert = action.secret && !revealedSecrets.has(secretKey);
+              const isRolled = action.rolled != null;
               return (
                 <div
                   key={`${sub._id}-${i}`}
@@ -98,31 +111,38 @@ export function RollingPhase({
                     >
                       {isCovert ? "[Covert action]" : action.text}
                     </span>
-                    {!isProjector ? (
-                      <span className="flex items-center gap-0.5 shrink-0">
-                        <button
-                          onClick={() => void rerollAction({ submissionId: sub._id, actionIndex: i })}
-                          className={`text-xs font-mono px-1 rounded hover:bg-navy-light ${action.success ? "text-viz-safety" : "text-viz-danger"}`}
-                          title="Click to reroll"
-                        >
-                          {action.rolled}
-                        </button>
-                        <span className={`text-xs ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>/</span>
-                        <button
-                          onClick={() => void overrideProbability({
-                            submissionId: sub._id,
-                            actionIndex: i,
-                            probability: cycleProbability(action.probability ?? 50),
-                          })}
-                          className="text-xs font-mono px-1 rounded hover:bg-navy-light text-text-light"
-                          title="Click to cycle probability"
-                        >
-                          {action.probability}%
-                        </button>
-                      </span>
+                    {isRolled ? (
+                      !isProjector ? (
+                        <span className="flex items-center gap-0.5 shrink-0">
+                          <button
+                            onClick={() => void rerollAction({ submissionId: sub._id, actionIndex: i })}
+                            className={`text-xs font-mono px-1 rounded hover:bg-navy-light ${action.success ? "text-viz-safety" : "text-viz-danger"}`}
+                            title="Click to reroll"
+                          >
+                            {action.rolled}
+                          </button>
+                          <span className={`text-xs ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>/</span>
+                          <button
+                            onClick={() => void overrideProbability({
+                              submissionId: sub._id,
+                              actionIndex: i,
+                              probability: cycleProbability(action.probability ?? 50),
+                            })}
+                            className="text-xs font-mono px-1 rounded hover:bg-navy-light text-text-light"
+                            title="Click to cycle probability"
+                          >
+                            {action.probability}%
+                          </button>
+                        </span>
+                      ) : (
+                        <span className={`text-xs font-mono shrink-0 ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>
+                          {action.rolled}/{action.probability}%
+                        </span>
+                      )
                     ) : (
-                      <span className={`text-xs font-mono shrink-0 ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>
-                        {action.rolled}/{action.probability}%
+                      // Graded but not yet rolled — show probability only
+                      <span className="text-xs font-mono shrink-0 text-text-light">
+                        {action.probability}%
                       </span>
                     )}
                   </div>
@@ -131,7 +151,7 @@ export function RollingPhase({
         })}
       </div>
       {/* Re-resolve button if outcomes were changed */}
-      {!isProjector && (
+      {!isProjector && hasRolled && (
         <button
           onClick={handleReResolve}
           disabled={resolving}

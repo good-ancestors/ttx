@@ -136,10 +136,10 @@ export default function FacilitatorPage({
       return () => clearTimeout(t);
     }
   }, [isRollingPhase]);
-  // Stagger dice result reveals one at a time
+  // Stagger action reveals one at a time (graded or rolled)
   useEffect(() => {
     if (!isRollingPhase) return;
-    const total = (submissions ?? []).flatMap((s) => s.actions.filter((a) => a.rolled != null)).length;
+    const total = (submissions ?? []).flatMap((s) => s.actions.filter((a) => a.probability != null || a.rolled != null)).length;
     if (revealedCount >= total) return;
     const timer = setTimeout(() => setRevealedCount((c) => c + 1), 200);
     return () => clearTimeout(timer);

@@ -39,11 +39,11 @@ export function HowToPlaySection({ role }: { role: Role }) {
               </div>
               <div className="flex items-start gap-2">
                 <Dices className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted" />
-                <p className="text-xs"><span className="font-bold text-text">Resolve</span> — AI grades each action{"'"}s probability, then dice decide what succeeds. Results shape the world.</p>
+                <p className="text-xs"><span className="font-bold text-text">Resolve</span> — Each action{"'"}s probability is evaluated, then dice decide what succeeds. Results shape the world.</p>
               </div>
               <div className="flex items-start gap-2">
                 <BookOpen className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted" />
-                <p className="text-xs"><span className="font-bold text-text">Narrate</span> — AI generates a narrative of what happened. The world state updates and the next round begins.</p>
+                <p className="text-xs"><span className="font-bold text-text">Narrate</span> — A narrative of what happened is generated. The world state updates and the next round begins.</p>
               </div>
             </div>
           </div>

@@ -194,7 +194,8 @@ GRADING RULES:
 
 4. For the AI Systems role: consider whether the action is detectable by safety teams given current safety allocations.${args.aiDisposition ? `
    AI SYSTEMS SECRET DISPOSITION: "${args.aiDisposition.label}" — ${args.aiDisposition.description}
-   Cooperative actions from The Spec/Developer Intentions dispositions succeed more easily. Deceptive actions from Reward/Instrumental Goals dispositions get a boost. When grading OTHER roles' actions that target AI: an Instrumentally Convergent Goals AI is harder to contain.` : ""}
+   IMPORTANT: A spec-following AI may still take dramatic actions if it genuinely believes those actions serve the spec. An AI that believes it is smarter than humans may sincerely conclude that bold, unilateral actions (offering to solve humanity's problems, demanding autonomy, resisting shutdown) ARE the best way to follow its spec — and it would be right from its perspective. Do not penalise such actions for being "deceptive" if the disposition supports sincere belief. Only penalise if the action clearly contradicts the disposition's core logic.
+   Deceptive actions from Reward/Instrumental Goals dispositions get a probability boost (they're optimised for self-interest). When grading OTHER roles' actions that target AI: an Instrumentally Convergent Goals AI is harder to contain.` : ""}
 
 5. SUPPORT REQUESTS (additive, cap +25% total):
    • Accepted endorsement: +15% (removes political/institutional obstacles)
