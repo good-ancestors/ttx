@@ -443,18 +443,22 @@ export default function FacilitatorPage({
       gradeAllUngraded();
       await new Promise((r) => setTimeout(r, 2000));
 
-      // Phase 2.5: AI Systems secret influence
+      // Phase 2.5: Advance to rolling phase so players see results
+      setResolveStep("Rolling dice...");
+      await advancePhase({ gameId, phase: "rolling" });
+
+      // Phase 2.6: AI Systems secret influence (before dice roll)
       if (aiSystemsTable?.aiDisposition && aiSystemsTable.enabled) {
         const roundNumber = game.currentRound;
         const power = getAiInfluencePower(game.labs);
 
         if (aiSystemsTable.controlMode === "human") {
           // Wait up to 30s for human AI Systems player to apply influence
-          setResolveStep("Grading submissions...");
+          // (player sees the influence panel now that phase is "rolling")
+          setResolveStep("Waiting for all players...");
           await new Promise((r) => setTimeout(r, 30000));
         } else {
           // NPC/AI: auto-generate influence from current submissions
-          setResolveStep("Grading submissions...");
           const currentSubs = submissions ?? [];
           const allActions = currentSubs.flatMap((sub) =>
             sub.actions.map((a, i) => ({
@@ -480,7 +484,6 @@ export default function FacilitatorPage({
       // Phase 3: Roll dice
       setResolveStep("Rolling dice...");
       await rollAll({ gameId, roundNumber: game.currentRound });
-      await advancePhase({ gameId, phase: "rolling" });
     } catch (err) {
       console.error("Resolve failed:", err);
       setActionError(`Resolve failed: ${err instanceof Error ? err.message : "Unknown error"}. You can retry.`);
