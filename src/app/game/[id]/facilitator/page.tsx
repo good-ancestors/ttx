@@ -94,6 +94,7 @@ export default function FacilitatorPage({
   const addLab = useMutation(api.games.addLab);
   const mergeLabs = useMutation(api.games.mergeLabs);
   const restoreSnapshot = useMutation(api.games.restoreSnapshot);
+  const clearResolution = useMutation(api.rounds.applyResolution);
   const submitActions = useMutation(api.submissions.submit);
   const setDispositionMut = useMutation(api.tables.setDisposition);
   const applyAiInfluenceMut = useMutation(api.submissions.applyAiInfluence);
@@ -650,7 +651,10 @@ export default function FacilitatorPage({
   // Re-resolve from dice results (after flipping an outcome)
   const handleReResolve = async () => {
     setResolving(true);
+    setStreamingEvents([]);
     setResolveStep("Re-resolving events...");
+    // Clear existing resolved events so the UI shows streaming events
+    await clearResolution({ gameId, roundNumber: game.currentRound, resolvedEvents: [] });
     const ok = await callResolve();
     if (ok) {
       await runNarrate();
