@@ -4,7 +4,7 @@ import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, getDisposition } from "@/lib/game-data";
+import { ROLES, isLabCeo } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll } from "@/lib/hooks";
 import { normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
@@ -14,6 +14,8 @@ import { InAppBrowserGate } from "@/components/in-app-browser-gate";
 import { usePendingProposalCount } from "@/components/proposals";
 import { HowToPlaySection } from "@/components/table/how-to-play-section";
 import { TableLobby, DispositionChooser } from "@/components/table/table-lobby";
+import { DispositionBadge } from "@/components/table/disposition-badge";
+import { LabSpecsPanel } from "@/components/table/lab-specs-panel";
 import { TableSubmit } from "@/components/table/table-submit";
 import { TableResolving } from "@/components/table/table-resolving";
 import type { ResultAction } from "@/components/table/result-action-card";
@@ -24,8 +26,6 @@ import {
   Handshake,
   AlertTriangle,
   Info,
-  EyeOff,
-  FileText,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -82,7 +82,6 @@ export default function TablePlayerPage({
   const game = useQuery(api.games.get, { gameId });
   const table = useQuery(api.tables.get, { tableId });
   const round = useQuery(api.rounds.getCurrent, { gameId });
-  const allRounds = useQuery(api.rounds.getByGame, { gameId });
   const submission = useQuery(api.submissions.getForTable, {
     tableId,
     roundNumber: game?.currentRound ?? 1,
@@ -556,43 +555,15 @@ export default function TablePlayerPage({
               </div>
 
               {/* 3. Disposition (locked) */}
-              {role.tags.includes("ai-system") && table.aiDisposition && (() => {
-                const disp = getDisposition(table.aiDisposition);
-                return (
-                  <div className="bg-[#1E1B4B] rounded-xl p-4 mt-4 border border-[#4338CA]">
-                    <div className="flex items-center gap-2 mb-2">
-                      <EyeOff className="w-3.5 h-3.5 text-[#A78BFA]" />
-                      <span className="text-sm font-bold text-white">{disp?.label}</span>
-                      <span className="text-[10px] text-[#A78BFA] ml-auto">Secret — locked for game</span>
-                    </div>
-                    {disp?.description && (
-                      <p className="text-xs text-[#C4B5FD] leading-relaxed">{disp.description}</p>
-                    )}
-                  </div>
-                );
-              })()}
+              {role.tags.includes("ai-system") && table.aiDisposition && (
+                <DispositionBadge disposition={table.aiDisposition} className="mt-4" />
+              )}
 
               {/* 4. Lab Specs — expanded by default during discussion */}
               {role.tags.includes("ai-system") && (
-                <details open className="bg-white rounded-xl border border-border p-4 mt-4">
-                  <summary className="flex items-center gap-2 cursor-pointer">
-                    <FileText className="w-4 h-4 text-text" />
-                    <span className="text-sm font-bold text-text">Lab Specs</span>
-                  </summary>
-                  <p className="text-xs text-text-muted mt-2 mb-3">
-                    Current specs set by each lab&apos;s CEO. Your behaviour should be informed by these specs (and your secret disposition).
-                  </p>
-                  <div className="space-y-2">
-                    {game.labs.map((lab) => (
-                      <div key={lab.name} className="bg-off-white rounded-lg p-3 border border-border">
-                        <span className="text-xs font-bold text-text">{lab.name}</span>
-                        <p className="text-xs text-text-muted mt-1 whitespace-pre-line">
-                          {lab.spec || "No spec set yet."}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </details>
+                <div className="mt-4">
+                  <LabSpecsPanel labs={game.labs} defaultOpen />
+                </div>
               )}
             </>
           )}

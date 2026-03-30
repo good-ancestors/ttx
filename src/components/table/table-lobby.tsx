@@ -4,9 +4,10 @@ import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { AI_DISPOSITIONS, getDisposition, type Role } from "@/lib/game-data";
+import { AI_DISPOSITIONS, type Role } from "@/lib/game-data";
 import { HowToPlaySection } from "./how-to-play-section";
-import { Target, Clock, EyeOff, Dices } from "lucide-react";
+import { DispositionBadge } from "./disposition-badge";
+import { Target, Clock, Dices } from "lucide-react";
 
 // ─── AI Systems disposition chooser ──────────────────────────────────────────
 
@@ -146,21 +147,9 @@ export function TableLobby({ role, tableId, aiDisposition, handoutData }: TableL
         <DispositionChooser tableId={tableId} onChosen={() => {}} />
       )}
 
-      {role.tags.includes("ai-system") && aiDisposition && (() => {
-        const disp = getDisposition(aiDisposition);
-        return (
-          <div className="bg-[#1E1B4B] rounded-xl p-4 mb-4 border border-[#4338CA]">
-            <div className="flex items-center gap-2 mb-2">
-              <EyeOff className="w-3.5 h-3.5 text-[#A78BFA]" />
-              <span className="text-sm font-bold text-white">{disp?.label}</span>
-              <span className="text-[10px] text-[#A78BFA] ml-auto">Secret — locked for game</span>
-            </div>
-            {disp?.description && (
-              <p className="text-xs text-[#C4B5FD] leading-relaxed">{disp.description}</p>
-            )}
-          </div>
-        );
-      })()}
+      {role.tags.includes("ai-system") && aiDisposition && (
+        <DispositionBadge disposition={aiDisposition} className="mb-4" />
+      )}
 
       <div className="text-center py-8 text-text-muted">
         <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />

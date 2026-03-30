@@ -1,8 +1,10 @@
 "use client";
 
 import type { Id } from "@convex/_generated/dataModel";
-import { isLabCeo, isLabSafety, hasCompute, getDisposition, type Role } from "@/lib/game-data";
+import { isLabCeo, isLabSafety, hasCompute, type Role } from "@/lib/game-data";
 import { DispositionChooser } from "@/components/table/table-lobby";
+import { DispositionBadge } from "@/components/table/disposition-badge";
+import { LabSpecsPanel } from "@/components/table/lab-specs-panel";
 import { type ActionDraft } from "@/components/action-input";
 import { ActionInput } from "@/components/action-input";
 import { ComputeAllocation } from "@/components/compute-allocation";
@@ -133,43 +135,15 @@ export function TableSubmit({
           {role.tags.includes("ai-system") && !aiDisposition && (
             <DispositionChooser tableId={tableId} onChosen={() => {}} />
           )}
-          {role.tags.includes("ai-system") && aiDisposition && (() => {
-            const disp = getDisposition(aiDisposition);
-            return (
-              <div className="bg-[#1E1B4B] rounded-xl p-4 mb-4 border border-[#4338CA]">
-                <div className="flex items-center gap-2 mb-2">
-                  <EyeOff className="w-3.5 h-3.5 text-[#A78BFA]" />
-                  <span className="text-sm font-bold text-white">{disp?.label}</span>
-                  <span className="text-[10px] text-[#A78BFA] ml-auto">Secret — locked for game</span>
-                </div>
-                {disp?.description && (
-                  <p className="text-xs text-[#C4B5FD] leading-relaxed">{disp.description}</p>
-                )}
-              </div>
-            );
-          })()}
+          {role.tags.includes("ai-system") && aiDisposition && (
+            <DispositionBadge disposition={aiDisposition} className="mb-4" />
+          )}
 
           {/* Lab Specs — AI Systems player sees all labs */}
           {role.tags.includes("ai-system") && (
-            <details className="bg-white rounded-xl border border-border p-4 mb-4">
-              <summary className="flex items-center gap-2 cursor-pointer">
-                <FileText className="w-4 h-4 text-text" />
-                <span className="text-sm font-bold text-text">Lab Specs</span>
-              </summary>
-              <p className="text-xs text-text-muted mt-2 mb-3">
-                These are the current specs set by each lab&apos;s CEO. Your behaviour should be informed by these specs (and your secret disposition).
-              </p>
-              <div className="space-y-2">
-                {game.labs.map((lab) => (
-                  <div key={lab.name} className="bg-off-white rounded-lg p-3 border border-border">
-                    <span className="text-xs font-bold text-text">{lab.name}</span>
-                    <p className="text-xs text-text-muted mt-1 whitespace-pre-line">
-                      {lab.spec || "No spec set yet."}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </details>
+            <div className="mb-4">
+              <LabSpecsPanel labs={game.labs} />
+            </div>
           )}
 
           {/* Lab spec editor — CEO can write the AI spec */}
