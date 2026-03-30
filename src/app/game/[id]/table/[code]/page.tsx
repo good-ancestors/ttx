@@ -13,7 +13,7 @@ import { ConnectionIndicator } from "@/components/connection-indicator";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
 import { usePendingProposalCount } from "@/components/proposals";
 import { HowToPlaySection } from "@/components/table/how-to-play-section";
-import { TableLobby } from "@/components/table/table-lobby";
+import { TableLobby, DispositionChooser } from "@/components/table/table-lobby";
 import { TableSubmit } from "@/components/table/table-submit";
 import { TableResolving } from "@/components/table/table-resolving";
 import type { ResultAction } from "@/components/table/result-action-card";
@@ -522,25 +522,30 @@ export default function TablePlayerPage({
 
           {/* Discuss phase */}
           {phase === "discuss" && game.status === "playing" && (
-            <div className="bg-white rounded-xl p-5 border border-border">
-              <div className="flex items-center gap-2 mb-3">
-                <Target className="w-5 h-5 text-text" />
-                <h3 className="text-base font-bold text-text">Your Mission</h3>
-              </div>
-              <p className="text-sm font-semibold text-text mb-1">{role.name}</p>
-              <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
-              {handoutData?.[role.id] && (
-                <details className="mt-3">
-                  <summary className="text-xs font-semibold text-text-muted cursor-pointer hover:text-text">
-                    Full Brief
-                  </summary>
-                  <div className="mt-2 text-xs text-text-muted whitespace-pre-line leading-relaxed">
-                    {handoutData[role.id]}
-                  </div>
-                </details>
+            <>
+              {role.tags.includes("ai-system") && !table.aiDisposition && (
+                <DispositionChooser tableId={tableId} onChosen={() => {}} />
               )}
-              <HowToPlaySection role={role} />
-            </div>
+              <div className="bg-white rounded-xl p-5 border border-border">
+                <div className="flex items-center gap-2 mb-3">
+                  <Target className="w-5 h-5 text-text" />
+                  <h3 className="text-base font-bold text-text">Your Mission</h3>
+                </div>
+                <p className="text-sm font-semibold text-text mb-1">{role.name}</p>
+                <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
+                {handoutData?.[role.id] && (
+                  <details className="mt-3">
+                    <summary className="text-xs font-semibold text-text-muted cursor-pointer hover:text-text">
+                      Full Brief
+                    </summary>
+                    <div className="mt-2 text-xs text-text-muted whitespace-pre-line leading-relaxed">
+                      {handoutData[role.id]}
+                    </div>
+                  </details>
+                )}
+                <HowToPlaySection role={role} />
+              </div>
+            </>
           )}
 
           {/* Submit phase */}

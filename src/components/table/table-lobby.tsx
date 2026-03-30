@@ -10,7 +10,7 @@ import { Target, Clock, EyeOff, Dices } from "lucide-react";
 
 // ─── AI Systems disposition chooser ──────────────────────────────────────────
 
-function DispositionChooser({ tableId, onChosen }: { tableId: Id<"tables">; onChosen: () => void }) {
+export function DispositionChooser({ tableId, onChosen }: { tableId: Id<"tables">; onChosen: () => void }) {
   const setDispositionMut = useMutation(api.tables.setDisposition);
   const [selected, setSelected] = useState<string | null>(null);
   const [rolling, setRolling] = useState(false);

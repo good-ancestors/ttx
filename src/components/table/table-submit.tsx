@@ -2,6 +2,7 @@
 
 import type { Id } from "@convex/_generated/dataModel";
 import { isLabCeo, isLabSafety, hasCompute, getDisposition, type Role } from "@/lib/game-data";
+import { DispositionChooser } from "@/components/table/table-lobby";
 import { type ActionDraft } from "@/components/action-input";
 import { ActionInput } from "@/components/action-input";
 import { ComputeAllocation } from "@/components/compute-allocation";
@@ -89,6 +90,7 @@ export interface TableSubmitProps {
 export function TableSubmit({
   game,
   role,
+  tableId,
   aiDisposition,
   computeStock,
   isSubmitted,
@@ -127,7 +129,10 @@ export function TableSubmit({
             <span className="text-xs text-text-light ml-auto">{timerDisplay} remaining</span>
           </div>
 
-          {/* AI Systems disposition badge */}
+          {/* AI Systems disposition — chooser if not yet picked, badge if locked */}
+          {role.tags.includes("ai-system") && !aiDisposition && (
+            <DispositionChooser tableId={tableId} onChosen={() => {}} />
+          )}
           {role.tags.includes("ai-system") && aiDisposition && (
             <div className="bg-[#1E1B4B] text-[#C4B5FD] rounded-lg px-3 py-2 mb-4 flex items-center gap-2 text-sm">
               <EyeOff className="w-3.5 h-3.5" />
