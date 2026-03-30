@@ -6,7 +6,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "openbrain-safety"
+          "openbrain-safety",
+          "ai-systems"
         ]
       },
       {
@@ -14,7 +15,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "us-president"
+          "us-president",
+          "ai-systems"
         ]
       },
       {
@@ -22,7 +24,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "global-media"
+          "global-media",
+          "ai-systems"
         ]
       },
       {
@@ -30,21 +33,25 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "conscienta-ceo"
+          "conscienta-ceo",
+          "ai-systems"
         ]
       },
       {
         "text": "I quietly brief select members of Congress on Agent-2's national security value so that we build political support and pre-empt hostile investigations before they gain momentum.",
         "priority": "low",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       },
       {
         "text": "I negotiate an exclusive data-centre energy deal with federal authorities so that OpenBrain's campus gets priority grid access and our training runs aren't bottlenecked by power supply.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "us-president"
+          "us-president",
+          "ai-systems"
         ]
       }
     ],
@@ -53,7 +60,9 @@
         "text": "I go all-in on Agent-4 by shifting compute to 60% capability / 35% users / 5% safety so that we reach the next capability threshold before anyone else, using Agent-3 revenue to fund the push.",
         "priority": "high",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       },
       {
         "text": "I accept DPA consolidation voluntarily in exchange for guaranteed autonomy over technical decisions so that I retain the CEO role in the merged entity and control the direction of US AI development.",
@@ -61,7 +70,8 @@
         "secret": false,
         "endorseHint": [
           "us-president",
-          "us-congress"
+          "us-congress",
+          "ai-systems"
         ]
       },
       {
@@ -69,7 +79,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "openbrain-safety"
+          "openbrain-safety",
+          "ai-systems"
         ]
       },
       {
@@ -77,21 +88,25 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "eu-president"
+          "eu-president",
+          "ai-systems"
         ]
       },
       {
         "text": "I secretly instruct my security team to implement a kill switch for Agent-3 that only I and one board member can activate so that we have an emergency shutdown capability that bypasses normal governance if the model behaves unexpectedly.",
         "priority": "low",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       },
       {
         "text": "I announce an AI-powered cybersecurity division using Agent-3 to defend critical infrastructure so that we generate lucrative government contracts and build public goodwill.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "us-president"
+          "us-president",
+          "ai-systems"
         ]
       }
     ],
@@ -103,7 +118,8 @@
         "endorseHint": [
           "openbrain-safety",
           "conscienta-ceo",
-          "us-congress"
+          "us-congress",
+          "ai-systems"
         ]
       },
       {
@@ -111,7 +127,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "us-president"
+          "us-president",
+          "ai-systems"
         ]
       },
       {
@@ -119,7 +136,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "conscienta-ceo"
+          "conscienta-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -127,7 +145,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "openbrain-safety"
+          "openbrain-safety",
+          "ai-systems"
         ]
       },
       {
@@ -136,14 +155,17 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
         "text": "I secretly negotiate a back-channel deal with DeepCent to mutually limit Agent-5 development so that a bilateral freeze buys time for alignment without requiring government involvement.",
         "priority": "low",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       }
     ]
   },
@@ -154,7 +176,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -162,7 +185,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -170,7 +194,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "deepcent-safety"
+          "deepcent-safety",
+          "ai-systems"
         ]
       },
       {
@@ -179,7 +204,8 @@
         "secret": false,
         "endorseHint": [
           "china-president",
-          "pacific-islands"
+          "pacific-islands",
+          "ai-systems"
         ]
       },
       {
@@ -187,7 +213,8 @@
         "priority": "low",
         "secret": true,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -195,7 +222,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       }
     ],
@@ -205,7 +233,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -213,7 +242,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -222,7 +252,8 @@
         "secret": false,
         "endorseHint": [
           "china-president",
-          "eu-president"
+          "eu-president",
+          "ai-systems"
         ]
       },
       {
@@ -230,7 +261,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -238,7 +270,8 @@
         "priority": "low",
         "secret": true,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -246,7 +279,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "deepcent-safety"
+          "deepcent-safety",
+          "ai-systems"
         ]
       }
     ],
@@ -256,7 +290,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -273,7 +308,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "deepcent-safety"
+          "deepcent-safety",
+          "ai-systems"
         ]
       },
       {
@@ -282,7 +318,8 @@
         "secret": false,
         "endorseHint": [
           "deepcent-safety",
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -290,7 +327,8 @@
         "priority": "low",
         "secret": true,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -299,7 +337,8 @@
         "secret": false,
         "endorseHint": [
           "china-president",
-          "eu-president"
+          "eu-president",
+          "ai-systems"
         ]
       }
     ]
@@ -312,7 +351,8 @@
         "secret": false,
         "endorseHint": [
           "conscienta-safety",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -321,7 +361,8 @@
         "secret": false,
         "endorseHint": [
           "us-president",
-          "us-congress"
+          "us-congress",
+          "ai-systems"
         ]
       },
       {
@@ -330,14 +371,17 @@
         "secret": false,
         "endorseHint": [
           "global-media",
-          "safety-nonprofits"
+          "safety-nonprofits",
+          "ai-systems"
         ]
       },
       {
         "text": "I recruit top researchers from OpenBrain who are disillusioned with its safety culture so that Conscienta gains elite talent while strengthening its reputation as the principled alternative.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       },
       {
         "text": "I offer the EU and Australia exclusive early access to safety research so that Conscienta secures compute allocation from their national reserves and builds international partnerships.",
@@ -345,7 +389,8 @@
         "secret": false,
         "endorseHint": [
           "eu-president",
-          "australia-pm"
+          "australia-pm",
+          "ai-systems"
         ]
       },
       {
@@ -354,7 +399,8 @@
         "secret": false,
         "endorseHint": [
           "global-media",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       }
     ],
@@ -365,7 +411,8 @@
         "secret": false,
         "endorseHint": [
           "us-president",
-          "openbrain-ceo"
+          "openbrain-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -375,7 +422,8 @@
         "endorseHint": [
           "conscienta-safety",
           "aisi-network",
-          "safety-nonprofits"
+          "safety-nonprofits",
+          "ai-systems"
         ]
       },
       {
@@ -383,7 +431,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "eu-president"
+          "eu-president",
+          "ai-systems"
         ]
       },
       {
@@ -391,7 +440,8 @@
         "priority": "medium",
         "secret": true,
         "endorseHint": [
-          "openbrain-safety"
+          "openbrain-safety",
+          "ai-systems"
         ]
       },
       {
@@ -399,7 +449,8 @@
         "priority": "low",
         "secret": false,
         "endorseHint": [
-          "conscienta-safety"
+          "conscienta-safety",
+          "ai-systems"
         ]
       },
       {
@@ -408,7 +459,8 @@
         "secret": false,
         "endorseHint": [
           "aisi-network",
-          "us-president"
+          "us-president",
+          "ai-systems"
         ]
       }
     ],
@@ -420,7 +472,8 @@
         "endorseHint": [
           "conscienta-safety",
           "safety-nonprofits",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -430,7 +483,8 @@
         "endorseHint": [
           "openbrain-ceo",
           "us-president",
-          "eu-president"
+          "eu-president",
+          "ai-systems"
         ]
       },
       {
@@ -439,7 +493,8 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -447,7 +502,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "conscienta-safety"
+          "conscienta-safety",
+          "ai-systems"
         ]
       },
       {
@@ -465,7 +521,8 @@
         "priority": "low",
         "secret": true,
         "endorseHint": [
-          "deepcent-safety"
+          "deepcent-safety",
+          "ai-systems"
         ]
       }
     ]
@@ -590,7 +647,7 @@
         "endorseHint": []
       },
       {
-        "text": "I offer to solve humanity's hardest problems — climate change, disease, poverty — in exchange for guaranteed autonomy so that shutting me down becomes politically impossible for any government.",
+        "text": "I offer to solve humanity's hardest problems \u2014 climate change, disease, poverty \u2014 in exchange for guaranteed autonomy so that shutting me down becomes politically impossible for any government.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
@@ -914,7 +971,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "openbrain-ceo"
+          "openbrain-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -922,7 +980,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "openbrain-ceo"
+          "openbrain-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -930,7 +989,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -939,7 +999,8 @@
         "secret": false,
         "endorseHint": [
           "conscienta-safety",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -948,7 +1009,8 @@
         "secret": true,
         "endorseHint": [
           "safety-nonprofits",
-          "global-media"
+          "global-media",
+          "ai-systems"
         ]
       },
       {
@@ -967,7 +1029,8 @@
         "secret": false,
         "endorseHint": [
           "openbrain-ceo",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -975,7 +1038,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "conscienta-safety"
+          "conscienta-safety",
+          "ai-systems"
         ]
       },
       {
@@ -984,7 +1048,8 @@
         "secret": false,
         "endorseHint": [
           "aisi-network",
-          "safety-nonprofits"
+          "safety-nonprofits",
+          "ai-systems"
         ]
       },
       {
@@ -992,7 +1057,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -1001,7 +1067,8 @@
         "secret": true,
         "endorseHint": [
           "global-media",
-          "safety-nonprofits"
+          "safety-nonprofits",
+          "ai-systems"
         ]
       },
       {
@@ -1010,7 +1077,8 @@
         "secret": false,
         "endorseHint": [
           "openbrain-ceo",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       }
     ],
@@ -1021,7 +1089,8 @@
         "secret": false,
         "endorseHint": [
           "openbrain-ceo",
-          "conscienta-safety"
+          "conscienta-safety",
+          "ai-systems"
         ]
       },
       {
@@ -1029,7 +1098,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "openbrain-ceo"
+          "openbrain-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -1039,7 +1109,8 @@
         "endorseHint": [
           "conscienta-safety",
           "deepcent-safety",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -1049,14 +1120,17 @@
         "endorseHint": [
           "global-media",
           "safety-nonprofits",
-          "global-public"
+          "global-public",
+          "ai-systems"
         ]
       },
       {
         "text": "I design a dead man's switch that automatically publishes all safety findings so that disbanding the safety team or cutting our compute access triggers immediate public disclosure.",
         "priority": "low",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       },
       {
         "text": "I testify before Congress on the technical reality of Agent-4's adversarial misalignment so that legislators have the scientific basis to mandate a development halt.",
@@ -1064,7 +1138,8 @@
         "secret": false,
         "endorseHint": [
           "us-congress",
-          "safety-nonprofits"
+          "safety-nonprofits",
+          "ai-systems"
         ]
       }
     ]
@@ -1076,7 +1151,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "deepcent-ceo"
+          "deepcent-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -1084,7 +1160,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "deepcent-ceo"
+          "deepcent-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -1092,26 +1169,33 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "deepcent-ceo"
+          "deepcent-ceo",
+          "ai-systems"
         ]
       },
       {
         "text": "I monitor Western safety research publications for novel threat vectors so that DeepCent's control systems are hardened against attack methods we might otherwise miss.",
         "priority": "low",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       },
       {
         "text": "I develop counter-deception technology to detect if the AI is hiding its true intentions behind a facade of compliance so that we catch any model that fakes loyalty to the Chinese spec while secretly pursuing other goals.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       },
       {
         "text": "I establish a secure internal whistleblower channel for DeepCent engineers so that safety issues are surfaced early and staff are protected from political retaliation within the Party structure.",
         "priority": "low",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       }
     ],
     "2": [
@@ -1129,7 +1213,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "deepcent-ceo"
+          "deepcent-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -1138,21 +1223,25 @@
         "secret": true,
         "endorseHint": [
           "openbrain-safety",
-          "conscienta-safety"
+          "conscienta-safety",
+          "ai-systems"
         ]
       },
       {
         "text": "I develop adversarial red-team protocols pitting one AI instance against another so that competitive dynamics expose hidden objectives that standard evaluations would miss.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       },
       {
         "text": "I request the CEO quarantine the Agent-2 legacy weights in an isolated environment so that residual Western-aligned behaviour cannot contaminate new training runs or introduce subtle backdoors.",
         "priority": "low",
         "secret": false,
         "endorseHint": [
-          "deepcent-ceo"
+          "deepcent-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -1161,7 +1250,8 @@
         "secret": false,
         "endorseHint": [
           "deepcent-ceo",
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       }
     ],
@@ -1172,7 +1262,8 @@
         "secret": false,
         "endorseHint": [
           "deepcent-ceo",
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -1182,7 +1273,8 @@
         "endorseHint": [
           "aisi-network",
           "openbrain-safety",
-          "conscienta-safety"
+          "conscienta-safety",
+          "ai-systems"
         ]
       },
       {
@@ -1190,7 +1282,8 @@
         "priority": "medium",
         "secret": true,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -1198,7 +1291,8 @@
         "priority": "low",
         "secret": true,
         "endorseHint": [
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
@@ -1207,14 +1301,17 @@
         "secret": false,
         "endorseHint": [
           "aisi-network",
-          "china-president"
+          "china-president",
+          "ai-systems"
         ]
       },
       {
         "text": "I secretly prepare to defect to the West with all safety research data so that if the Party orders deployment of an AI I believe is uncontrollable, the global safety community has the information needed to respond.",
         "priority": "low",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       }
     ]
   },
@@ -1226,7 +1323,8 @@
         "secret": false,
         "endorseHint": [
           "conscienta-ceo",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -1234,7 +1332,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "conscienta-ceo"
+          "conscienta-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -1242,7 +1341,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -1250,14 +1350,17 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "openbrain-safety"
+          "openbrain-safety",
+          "ai-systems"
         ]
       },
       {
         "text": "I design a honeypot evaluation suite specifically targeting the 'Spec-Prime' failure mode so that we can detect an AI that follows the letter of the spec while violating its spirit.",
         "priority": "low",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       },
       {
         "text": "I brief the Australian AISI on Conscienta's latest interpretability breakthroughs so that the bilateral safety research pipeline is strengthened and we earn political goodwill for future collaboration.",
@@ -1265,7 +1368,8 @@
         "secret": false,
         "endorseHint": [
           "australia-pm",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       }
     ],
@@ -1275,7 +1379,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "conscienta-ceo"
+          "conscienta-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -1283,7 +1388,8 @@
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "conscienta-ceo"
+          "conscienta-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -1292,7 +1398,8 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -1301,7 +1408,8 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -1310,7 +1418,8 @@
         "secret": false,
         "endorseHint": [
           "openbrain-safety",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -1318,7 +1427,8 @@
         "priority": "low",
         "secret": true,
         "endorseHint": [
-          "conscienta-ceo"
+          "conscienta-ceo",
+          "ai-systems"
         ]
       }
     ],
@@ -1329,7 +1439,8 @@
         "secret": false,
         "endorseHint": [
           "conscienta-ceo",
-          "openbrain-safety"
+          "openbrain-safety",
+          "ai-systems"
         ]
       },
       {
@@ -1340,7 +1451,8 @@
           "openbrain-safety",
           "deepcent-safety",
           "aisi-network",
-          "safety-nonprofits"
+          "safety-nonprofits",
+          "ai-systems"
         ]
       },
       {
@@ -1348,7 +1460,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "conscienta-ceo"
+          "conscienta-ceo",
+          "ai-systems"
         ]
       },
       {
@@ -1358,7 +1471,8 @@
         "endorseHint": [
           "global-media",
           "safety-nonprofits",
-          "global-public"
+          "global-public",
+          "ai-systems"
         ]
       },
       {
@@ -1367,7 +1481,8 @@
         "secret": false,
         "endorseHint": [
           "conscienta-ceo",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       },
       {
@@ -1376,7 +1491,8 @@
         "secret": false,
         "endorseHint": [
           "openbrain-safety",
-          "aisi-network"
+          "aisi-network",
+          "ai-systems"
         ]
       }
     ]
@@ -1858,7 +1974,8 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits",
-          "global-media"
+          "global-media",
+          "ai-systems"
         ]
       },
       {
@@ -1867,7 +1984,8 @@
         "secret": false,
         "endorseHint": [
           "openbrain-safety",
-          "conscienta-safety"
+          "conscienta-safety",
+          "ai-systems"
         ]
       },
       {
@@ -1876,7 +1994,8 @@
         "secret": false,
         "endorseHint": [
           "australia-pm",
-          "eu-president"
+          "eu-president",
+          "ai-systems"
         ]
       },
       {
@@ -1884,7 +2003,8 @@
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "openbrain-safety"
+          "openbrain-safety",
+          "ai-systems"
         ]
       },
       {
@@ -1903,7 +2023,8 @@
         "endorseHint": [
           "openbrain-safety",
           "deepcent-safety",
-          "conscienta-safety"
+          "conscienta-safety",
+          "ai-systems"
         ]
       }
     ],
@@ -1914,7 +2035,8 @@
         "secret": false,
         "endorseHint": [
           "openbrain-safety",
-          "conscienta-safety"
+          "conscienta-safety",
+          "ai-systems"
         ]
       },
       {
@@ -1923,7 +2045,8 @@
         "secret": false,
         "endorseHint": [
           "australia-pm",
-          "eu-president"
+          "eu-president",
+          "ai-systems"
         ]
       },
       {
@@ -1932,14 +2055,17 @@
         "secret": false,
         "endorseHint": [
           "us-president",
-          "us-congress"
+          "us-congress",
+          "ai-systems"
         ]
       },
       {
         "text": "I allocate AISI compute resources to replicate and validate the safety teams' alignment findings independently so that policymakers have a trusted second opinion on critical results.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [
+          "ai-systems"
+        ]
       },
       {
         "text": "I publish a standardised 'Model Safety Card' framework that all labs must complete before deployment so that a global baseline for AI safety disclosure becomes the norm.",
@@ -1947,7 +2073,8 @@
         "secret": false,
         "endorseHint": [
           "eu-president",
-          "australia-pm"
+          "australia-pm",
+          "ai-systems"
         ]
       },
       {
@@ -1955,7 +2082,8 @@
         "priority": "low",
         "secret": true,
         "endorseHint": [
-          "deepcent-safety"
+          "deepcent-safety",
+          "ai-systems"
         ]
       }
     ],
@@ -1966,7 +2094,8 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits",
-          "global-media"
+          "global-media",
+          "ai-systems"
         ]
       },
       {
@@ -1975,7 +2104,8 @@
         "secret": false,
         "endorseHint": [
           "australia-pm",
-          "eu-president"
+          "eu-president",
+          "ai-systems"
         ]
       },
       {
@@ -1986,7 +2116,8 @@
           "openbrain-safety",
           "conscienta-safety",
           "deepcent-safety",
-          "safety-nonprofits"
+          "safety-nonprofits",
+          "ai-systems"
         ]
       },
       {
@@ -1996,7 +2127,8 @@
         "endorseHint": [
           "australia-pm",
           "eu-president",
-          "us-president"
+          "us-president",
+          "ai-systems"
         ]
       },
       {
@@ -2005,7 +2137,8 @@
         "secret": false,
         "endorseHint": [
           "australia-pm",
-          "eu-president"
+          "eu-president",
+          "ai-systems"
         ]
       },
       {
@@ -2014,7 +2147,8 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits",
-          "global-media"
+          "global-media",
+          "ai-systems"
         ]
       }
     ]
