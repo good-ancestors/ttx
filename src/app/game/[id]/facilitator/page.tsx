@@ -450,11 +450,11 @@ export default function FacilitatorPage({
 
         if (aiSystemsTable.controlMode === "human") {
           // Wait up to 30s for human AI Systems player to apply influence
-          setResolveStep("AI Systems influencing outcomes...");
+          setResolveStep("Grading submissions...");
           await new Promise((r) => setTimeout(r, 30000));
         } else {
           // NPC/AI: auto-generate influence from current submissions
-          setResolveStep("AI Systems influencing outcomes...");
+          setResolveStep("Grading submissions...");
           const currentSubs = submissions ?? [];
           const allActions = currentSubs.flatMap((sub) =>
             sub.actions.map((a, i) => ({
