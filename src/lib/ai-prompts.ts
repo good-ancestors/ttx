@@ -337,9 +337,12 @@ const RESOLVE_RULES = `RESOLUTION RULES:
    - For many actions (15+), consolidate related actions into combined events. Typical ratio: 1 event per 2-3 related actions.
 
    CONFLICT RESOLUTION (the primary purpose of this step):
-   - If two players attempted contradictory actions and BOTH succeeded (e.g., US defends Taiwan AND China invades Taiwan), you MUST reconcile: the action with the higher assigned probability (%) gets the better outcome. Resolve as escalation, standoff, partial success, or one overriding the other. Do NOT re-weight by priority — priority was already factored into the probability during grading.
-   - If an action succeeded but another player's successful action directly blocks it, the blocking action takes precedence if it had higher assigned probability.
-   - Two labs both claiming the same talent pool: split the outcome proportionally.
+   - If two players attempted contradictory actions and BOTH succeeded, both actions were EXECUTED — the conflict itself is the event. Do NOT pick a clean winner. The action with the higher assigned probability (%) has the upper hand (better position, initiative, tactical advantage) but the other side is still actively engaged. Narrate the clash, not a victory.
+   - Only if one probability is dramatically higher (e.g., 90% vs 30%) should one side achieve a decisive outcome.
+   - Example: China invades Taiwan (30%) AND US defends Taiwan (50%), both succeed → "China launches amphibious assault; US Pacific Fleet engages and establishes a contested naval perimeter. Neither side has achieved its objective — Taiwan is now an active warzone."
+   - Do NOT re-weight by priority — priority was already factored into the probability during grading.
+   - Two labs both claiming the same talent pool: split proportionally based on probability.
+   - ONE succeeds, ONE fails: the successful action happens cleanly. The failed action simply didn't materialise.
    - CAUSAL SUPERSESSION: If one successful action makes another moot (e.g., AI seizes all infrastructure, rendering a compute allocation change irrelevant), note this. The superseded action still happened but its effects are overshadowed.
 
    EVENT STRUCTURE:
