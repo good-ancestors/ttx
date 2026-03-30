@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { isLabCeo, hasCompute, type Role } from "@/lib/game-data";
-import { Info, ChevronUp, ChevronDown, Cpu } from "lucide-react";
+import { Info, ChevronUp, ChevronDown, Cpu, MessageCircle, Send, Dices, BookOpen } from "lucide-react";
 
 export function HowToPlaySection({ role }: { role: Role }) {
   const [open, setOpen] = useState(false);
@@ -18,15 +18,43 @@ export function HowToPlaySection({ role }: { role: Role }) {
         {open ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
       </button>
       {open && (
-        <div className="mt-2 space-y-2 text-sm text-text-muted">
-          <ul className="space-y-1.5 pl-5 list-disc">
-            <li>Describe 1-5 actions: <span className="italic">&ldquo;I do [action] so that [outcome if successful]&rdquo;</span></li>
-            <li>AI grades probability of success, then dice decide outcomes</li>
-          </ul>
+        <div className="mt-3 space-y-3 text-sm text-text-muted">
+          {/* Goal */}
+          <p className="text-text font-medium">
+            Your objective is not to win, but to explore a plausible future. Simulate your role as
+            best you can — what would your character really do?
+          </p>
+
+          {/* Phase flow */}
+          <div className="space-y-1.5">
+            <p className="text-xs font-bold text-text uppercase tracking-wider">Each Round</p>
+            <div className="grid gap-1.5">
+              <div className="flex items-start gap-2">
+                <MessageCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted" />
+                <p className="text-xs"><span className="font-bold text-text">Discuss</span> — Talk to other players. Form alliances, negotiate deals, gather intelligence. Get up and move around the room.</p>
+              </div>
+              <div className="flex items-start gap-2">
+                <Send className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted" />
+                <p className="text-xs"><span className="font-bold text-text">Submit</span> — Write 1–5 actions using the form. Describe what you do and what you intend to achieve.</p>
+              </div>
+              <div className="flex items-start gap-2">
+                <Dices className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted" />
+                <p className="text-xs"><span className="font-bold text-text">Resolve</span> — AI grades each action{"'"}s probability, then dice decide what succeeds. Results shape the world.</p>
+              </div>
+              <div className="flex items-start gap-2">
+                <BookOpen className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted" />
+                <p className="text-xs"><span className="font-bold text-text">Narrate</span> — AI generates a narrative of what happened. The world state updates and the next round begins.</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Writing actions */}
           <div className="bg-warm-gray rounded-lg p-3 space-y-1.5 text-xs">
-            <p><span className="font-bold text-text">Priority:</span> Order matters. Action #1 gets the most priority, #2 less, and so on. Priority is assigned automatically.</p>
-            <p><span className="font-bold text-text">Secret:</span> Mark an action secret to hide it from other players on the projected screen</p>
-            <p><span className="font-bold text-text">Support:</span> Request endorsement from other players — accepted support boosts probability, declined hurts it</p>
+            <p className="font-bold text-text text-sm mb-1">Writing Actions</p>
+            <p>Format: <span className="italic">&ldquo;I do [action] so that [outcome if successful]&rdquo;</span></p>
+            <p><span className="font-bold text-text">Priority:</span> Order matters. Action #1 gets the most priority, #2 less, and so on.</p>
+            <p><span className="font-bold text-text">Secret:</span> Toggle the secret switch to hide an action from other players on the projected screen. It is still resolved normally.</p>
+            <p><span className="font-bold text-text">Support:</span> Request endorsement from other players — accepted support boosts your probability, declined support hurts it.</p>
           </div>
         </div>
       )}
