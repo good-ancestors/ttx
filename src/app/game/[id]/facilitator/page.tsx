@@ -560,9 +560,11 @@ export default function FacilitatorPage({
             if (data.__complete) {
               return true;
             }
-            // Show progress from partial output — stream events as they arrive
+            // Show completed events only (the last event may still be streaming,
+            // so show all but the last — it becomes visible when the next one starts)
             if (data.resolvedEvents?.length) {
-              setStreamingEvents(data.resolvedEvents);
+              const completed = data.resolvedEvents.slice(0, -1);
+              setStreamingEvents(completed);
               setResolveStep(`Resolving events... (${data.resolvedEvents.length} so far)`);
             }
           } catch {

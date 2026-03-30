@@ -364,6 +364,10 @@ const COMPUTE_RD_RULES = `4. COMPUTE AND R&D UPDATES:
    - Compute can be destroyed, transferred, redirected, or created via new infrastructure.
    - DPA consolidation moves stock between labs (not creates new). If US nationalises a lab, transfer its stock.
    - Infrastructure actions DIRECTLY affect stock.
+   COMPUTE ALLOCATION (Users/Capability/Safety split):
+   - Allocations are PLAYER-CONTROLLED. Only the lab CEO player can change their allocation via the game UI.
+   - Do NOT invent or narrate specific allocation percentage changes (e.g., "shifts to 40/50/10") in events. The actual allocation is whatever the player set in the submission form.
+   - You may describe the INTENT or DIRECTION (e.g., "prioritises capability R&D" or "increases safety investment") but never specify exact percentages.
    R&D MULTIPLIER CONTEXT (lab updates are handled separately — do NOT output labUpdates):
    - The multiplier represents the AI system's current capability level.
    - Your job is to describe EVENTS and WORLD STATE changes only.
