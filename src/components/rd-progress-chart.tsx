@@ -132,14 +132,7 @@ export function buildChartData(
       points.push({ x: xPos(2 + i), y: 0, value: roundLab?.rdMultiplier ?? lab.rdMultiplier });
     }
 
-    // Add live game state as the latest point only if at least one round has been
-    // resolved (prevents flat lines from Start to R1 before any data exists)
-    const liveRoundIdx = 2 + Math.min(currentRound, 4) - 1; // currentRound is 1-based
-    if (!isAbsorbed && completedRounds.length > 0 && points.length - 1 < liveRoundIdx + 1) {
-      const currentLab = currentLabs.find((l) => l.name === lab.name);
-      const val = currentLab?.rdMultiplier ?? lab.rdMultiplier;
-      points.push({ x: xPos(liveRoundIdx), y: 0, value: val });
-    }
+    // Only plot round data from actual snapshots — no live fallbacks
 
     series.push({ name: lab.name, roleId: lab.roleId, points, isBackground, isAbsorbed });
   }
