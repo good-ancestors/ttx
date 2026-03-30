@@ -296,9 +296,9 @@ export default function FacilitatorPage({
     const npcTables = unsubmitted.filter((t) => t.controlMode === "npc");
     const aiTables = unsubmitted.filter((t) => t.controlMode === "ai");
 
-    // Scale action count: fewer actions per AI/NPC when there are many of them
-    const nonHumanCount = npcTables.length + aiTables.length;
-    const actionsPerTable = nonHumanCount <= 4 ? 3 : nonHumanCount <= 8 ? 2 : 1;
+    // Scale AI/NPC action count based on total enabled tables
+    const totalEnabled = (tables ?? []).filter((t) => t.enabled).length;
+    const actionsPerTable = totalEnabled <= 6 ? 3 : totalEnabled <= 11 ? 2 : 1;
 
     // NPC tables always use sample actions
     if (samples) {
