@@ -346,16 +346,14 @@ const RESOLVE_RULES = `RESOLUTION RULES:
    - CAUSAL SUPERSESSION: If one successful action makes another moot (e.g., AI seizes all infrastructure, rendering a compute allocation change irrelevant), note this. The superseded action still happened but its effects are overshadowed.
 
    EVENT STRUCTURE:
-   - Tag each event as "public" or "covert".
-   - CRITICAL: Events derived from PUBLIC (non-secret) actions MUST be tagged "public". Only events derived exclusively from secret actions can be tagged "covert". If a public action references sensitive information (e.g., "stolen weights"), the event is still public — the action was publicly submitted.
    - Give each event a unique short ID (e.g., "taiwan-invasion", "safety-pivot").
    - Include "worldImpact" noting which dials or resources are affected.
    - Keep each event description to 1-2 sentences.
 
-   SECRET/COVERT ACTIONS:
-   - A secret action's SUCCESS may or may not be covert depending on consequences.
-   - If the consequences are world-alteringly obvious (e.g., "replace humanity with simulations", "launch nuclear strike"), the event is PUBLIC — everyone can see what happened. The actor identity may still be hidden if plausible, but the event itself is not hidden.
-   - If the consequences are genuinely concealable (e.g., "plant a backdoor", "bribe an official"), tag as covert.
+   VISIBILITY IS DETERMINED BY THE SOURCE DATA, NOT BY YOU:
+   - Actions listed under SUCCESSFUL/FAILED ACTIONS above are PUBLIC. Events derived from them MUST be tagged "public".
+   - Actions listed under SECRET ACTIONS above were marked secret by the player. Events derived from them should default to "covert" UNLESS the consequences are world-alteringly obvious (e.g., "replace humanity", "launch nuclear strike", "seize global infrastructure") — in which case tag as "public" with hidden attribution.
+   - If an event combines both public and secret source actions, tag it "public".
    - Failed secret actions: only create an event if the failure was detected (e.g., spy caught). Otherwise skip entirely.`;
 
 const COMPUTE_RD_RULES = `4. COMPUTE AND R&D UPDATES:
