@@ -653,6 +653,59 @@ export function applyLabMerge<T extends { name: string; computeStock: number; rd
     } : l);
 }
 
+/** Compute lab R&D growth for a round based on allocations and compute stock. */
+export function computeLabGrowth(
+  currentLabs: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }[],
+  ceoAllocations: Map<string, { users: number; capability: number; safety: number }>,
+  roundNumber: number,
+  maxMult: number,
+) {
+  const P = LAB_PROGRESSION;
+  const totalComputeStock = currentLabs.reduce((s, l) => s + l.computeStock, 0);
+  const newCompute = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 3;
+
+  const labs = currentLabs.map(lab => {
+    const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
+    const computeShare = lab.computeStock / Math.max(1, totalComputeStock);
+    const computeStock = lab.computeStock + Math.round(newCompute * computeShare);
+    return { ...lab, allocation, computeStock };
+  });
+
+  const effectiveRd = labs.map(l => l.computeStock * (l.allocation.capability / 100) * l.rdMultiplier);
+  const totalEffectiveRd = effectiveRd.reduce((s, v) => s + v, 0);
+
+  return labs.map((lab, i) => {
+    const rdShare = effectiveRd[i] / Math.max(1, totalEffectiveRd);
+    const baselineTarget = BASELINE_RD_TARGETS[lab.name]?.[roundNumber];
+    let newMultiplier: number;
+
+    if (baselineTarget) {
+      const defaultAlloc = ROLES.find(r => r.id === lab.roleId)?.defaultCompute;
+      const baselineRdPct = defaultAlloc?.capability ?? 50;
+      const allocRatio = lab.allocation.capability / Math.max(1, baselineRdPct);
+      const startingCompute = DEFAULT_LABS.find(l => l.name === lab.name)?.computeStock ?? lab.computeStock;
+      const computeRatio = lab.computeStock / Math.max(1, startingCompute);
+      const computeFactor = Math.pow(computeRatio, P.COMPUTE_SENSITIVITY);
+
+      if (allocRatio < P.RECURSIVE_LOOP_THRESHOLD) {
+        const saferGrowthRate = 1 + allocRatio * P.SAFER_GROWTH_COEFFICIENT * computeFactor;
+        newMultiplier = Math.round(lab.rdMultiplier * Math.min(P.SAFER_GROWTH_CAP, saferGrowthRate) * 10) / 10;
+      } else {
+        const allocExponent = allocRatio < 1 ? P.RACE_ALLOC_PENALTY_EXP : P.RACE_ALLOC_BOOST_EXP;
+        const allocFactor = Math.pow(allocRatio, allocExponent);
+        const combinedRatio = Math.pow(allocFactor, P.ALLOC_WEIGHT) * Math.pow(computeFactor, 1 - P.ALLOC_WEIGHT);
+        const baseGrowthRatio = baselineTarget / lab.rdMultiplier;
+        newMultiplier = Math.round(lab.rdMultiplier * (1 + (baseGrowthRatio - 1) * combinedRatio) * 10) / 10;
+      }
+    } else {
+      const poolGrowth: Record<number, number> = { 1: 3, 2: 10, 3: 10, 4: 10 };
+      newMultiplier = Math.round(lab.rdMultiplier * (1 + rdShare * (poolGrowth[roundNumber] ?? 5)) * 10) / 10;
+    }
+
+    return { ...lab, rdMultiplier: Math.min(maxMult, newMultiplier) };
+  });
+}
+
 export const DEFAULT_COMPUTE_DISTRIBUTION = [
   { openbrain: 11, deepcent: 6, conscienta: 6, otherUs: 4, restOfWorld: 4 },
   { openbrain: 16, deepcent: 8, conscienta: 7, otherUs: 2, restOfWorld: 2 },

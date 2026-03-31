@@ -297,3 +297,48 @@ export const snapshotBeforeInternal = internalMutation({
     await ctx.db.patch(round._id, { worldStateBefore: args.worldStateBefore, labsBefore: args.labsBefore });
   },
 });
+
+export const snapshotAfterInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    worldStateAfter: worldStateValidator,
+    labsAfter: v.array(labSnapshotValidator),
+    roleComputeAfter: v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() })),
+  },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (!round) return;
+    await ctx.db.patch(round._id, {
+      worldStateAfter: args.worldStateAfter,
+      labsAfter: args.labsAfter,
+      roleComputeAfter: args.roleComputeAfter,
+    });
+  },
+});
+
+export const setAiMetaInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    meta: v.object({
+      resolveModel: v.optional(v.string()),
+      resolveTimeMs: v.optional(v.number()),
+      resolveTokens: v.optional(v.number()),
+      narrativeModel: v.optional(v.string()),
+      narrativeTimeMs: v.optional(v.number()),
+      narrativeTokens: v.optional(v.number()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (!round) return;
+    // Merge with existing meta
+    const existing = round.aiMeta ?? {};
+    await ctx.db.patch(round._id, {
+      aiMeta: { ...existing, ...Object.fromEntries(Object.entries(args.meta).filter(([, v]) => v !== undefined)) },
+    });
+  },
+});

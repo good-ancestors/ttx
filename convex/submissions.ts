@@ -392,3 +392,26 @@ export const applyGradingInternal = internalMutation({
     await ctx.db.patch(args.submissionId, { actions: args.actions, status: "graded" as const });
   },
 });
+
+export const applyAiInfluenceInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    influences: v.array(v.object({
+      submissionId: v.id("submissions"),
+      actionIndex: v.number(),
+      modifier: v.number(),
+    })),
+  },
+  handler: async (ctx, args) => {
+    for (const inf of args.influences) {
+      const sub = await ctx.db.get(inf.submissionId);
+      if (!sub) continue;
+      const actions = [...sub.actions];
+      if (actions[inf.actionIndex]) {
+        actions[inf.actionIndex] = { ...actions[inf.actionIndex], aiInfluence: inf.modifier };
+      }
+      await ctx.db.patch(inf.submissionId, { actions });
+    }
+  },
+});

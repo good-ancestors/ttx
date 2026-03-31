@@ -3,8 +3,8 @@ import { mutation, query, internalMutation, internalQuery, type MutationCtx } fr
 import type { Id } from "./_generated/dataModel";
 import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS } from "./gameData";
 import { logEvent } from "./events";
-import { internal } from "./_generated/api";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
+import { internal } from "./_generated/api";
 
 /** Auto-snapshot a round's final state (world state, labs, role compute). */
 async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
@@ -498,5 +498,19 @@ export const triggerResolvePipeline = mutation({
       roundNumber: args.roundNumber,
       aiDisposition: args.aiDisposition,
     });
+  },
+});
+
+export const updateWorldStateInternal = internalMutation({
+  args: { gameId: v.id("games"), worldState: worldStateValidator },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.gameId, { worldState: args.worldState });
+  },
+});
+
+export const updateLabsInternal = internalMutation({
+  args: { gameId: v.id("games"), labs: v.array(labSnapshotValidator) },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.gameId, { labs: args.labs });
   },
 });

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery } from "./_generated/server";
 import type { DatabaseWriter } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { logEvent, assertPhase } from "./events";
@@ -188,5 +188,15 @@ export const respond = mutation({
       actionText: proposal.actionText,
       previousStatus: oldStatus,
     });
+  },
+});
+
+export const getByGameAndRoundInternal = internalQuery({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("requests")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
+      .collect();
   },
 });
