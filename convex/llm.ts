@@ -1,6 +1,5 @@
-"use node";
-
 // Direct Anthropic API calls using tool_use for structured output.
+// No "use node" needed — only uses fetch() which is in the default Convex runtime.
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 

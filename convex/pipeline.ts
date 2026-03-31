@@ -497,6 +497,12 @@ export const rollAndResolve = internalAction({
         regulation: clamp(output.worldState.regulation ?? ws.regulation, ws.regulation),
         australia: clamp(output.worldState.australia ?? ws.australia, ws.australia),
       };
+      // Re-check nonce before writing world state (prevents double-execution from race)
+      const gameAfterResolve = await ctx.runQuery(internal.games.getInternal, { gameId });
+      if (gameAfterResolve?.resolveNonce !== nonce) {
+        console.warn(`[pipeline] Nonce mismatch after resolve — another run won. Aborting.`);
+        return; // Don't update world state, labs, or schedule narrate
+      }
       await ctx.runMutation(internal.games.updateWorldStateInternal, { gameId, worldState: clampedWorldState });
 
       // Apply lab progression using the shared growth model

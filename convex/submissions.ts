@@ -100,6 +100,9 @@ export const submit = mutation({
     if (args.actions.length > 5) {
       throw new Error(`Too many actions: ${args.actions.length}/5`);
     }
+    for (const a of args.actions) {
+      if (a.text.length > 500) throw new Error(`Action text too long: ${a.text.length}/500 characters`);
+    }
 
     const existing = await ctx.db
       .query("submissions")
@@ -293,13 +296,16 @@ export const applyAiInfluence = mutation({
       count: args.influences.length,
     });
 
-    // If pipeline is waiting for influence, advance to roll
+    // If pipeline is waiting for influence, advance step atomically to prevent
+    // the 30s timeout from also scheduling rollAndResolve (race condition fix)
     const game = await ctx.db.get(args.gameId);
     if (game?.pipelineStatus?.step === "influence") {
+      await ctx.db.patch(args.gameId, {
+        pipelineStatus: { step: "rolling", detail: "Rolling dice...", startedAt: Date.now() },
+      });
       await ctx.scheduler.runAfter(0, internal.pipeline.rollAndResolve, {
         gameId: args.gameId,
         roundNumber: args.roundNumber,
-        // aiDisposition is resolved inside rollAndResolve from the table data
         aiDisposition: undefined,
       });
     }
