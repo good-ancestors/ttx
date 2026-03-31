@@ -46,6 +46,16 @@ export default defineSchema({
     // Resolve lock with TTL: auto-expires after 3 minutes if process dies
     resolving: v.optional(v.boolean()),
     resolvingStartedAt: v.optional(v.number()),
+    // Server-side pipeline status — all clients observe reactively
+    pipelineStatus: v.optional(v.object({
+      step: v.string(),
+      detail: v.optional(v.string()),
+      progress: v.optional(v.string()),
+      startedAt: v.number(),
+      error: v.optional(v.string()),
+    })),
+    // Nonce for preventing double-execution of resolve
+    resolveNonce: v.optional(v.string()),
   }),
 
   tables: defineTable({
@@ -166,6 +176,19 @@ export default defineSchema({
         })
       )
     ),
+    // Pipeline nonce — prevents double-execution of resolve
+    resolveNonce: v.optional(v.string()),
+    // Partial events written during streaming resolve (before final write)
+    partialEvents: v.optional(v.array(
+      v.object({
+        id: v.string(),
+        description: v.string(),
+        visibility: v.union(v.literal("public"), v.literal("covert")),
+        actors: v.array(v.string()),
+        worldImpact: v.optional(v.string()),
+        sourceActions: v.optional(v.array(v.string())),
+      })
+    )),
   }).index("by_game", ["gameId"]),
 
   // Action support requests: endorsement or compute, attached to a specific action

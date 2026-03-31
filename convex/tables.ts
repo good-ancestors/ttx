@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalQuery } from "./_generated/server";
 import { logEvent } from "./events";
 
 export const getByGame = query({
@@ -120,5 +120,17 @@ export const setDisposition = mutation({
     await logEvent(ctx, table.gameId, "disposition_set", table.roleId, {
       disposition: args.disposition,
     });
+  },
+});
+
+// ─── Pipeline internal queries ────────────────────────────────────────────────
+
+export const getByGameInternal = internalQuery({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
   },
 });

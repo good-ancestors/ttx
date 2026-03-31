@@ -1,8 +1,9 @@
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS } from "./gameData";
 import { logEvent } from "./events";
+import { internal } from "./_generated/api";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
 
 /** Auto-snapshot a round's final state (world state, labs, role compute). */
@@ -405,5 +406,97 @@ export const finishGame = mutation({
     if (game) await snapshotRound(ctx, args.gameId, game.currentRound);
     await ctx.db.patch(args.gameId, { status: "finished" });
     await logEvent(ctx, args.gameId, "game_finish");
+  },
+});
+
+// ─── Pipeline internal queries/mutations (called by server-side pipeline) ─────
+
+export const getInternal = internalQuery({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.gameId);
+  },
+});
+
+export const updatePipelineStatus = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    status: v.object({
+      step: v.string(),
+      detail: v.optional(v.string()),
+      progress: v.optional(v.string()),
+      startedAt: v.number(),
+      error: v.optional(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.gameId, { pipelineStatus: args.status });
+  },
+});
+
+export const clearPipelineStatus = internalMutation({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.gameId, { pipelineStatus: undefined });
+  },
+});
+
+export const advancePhaseInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    phase: v.union(v.literal("discuss"), v.literal("submit"), v.literal("rolling"), v.literal("narrate")),
+    durationSeconds: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const phaseEndsAt = args.durationSeconds ? Date.now() + args.durationSeconds * 1000 : undefined;
+    await ctx.db.patch(args.gameId, { phase: args.phase, phaseEndsAt });
+    await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: args.phase });
+  },
+});
+
+export const setResolvingInternal = internalMutation({
+  args: { gameId: v.id("games"), resolving: v.boolean() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.gameId, {
+      resolving: args.resolving,
+      resolvingStartedAt: args.resolving ? Date.now() : undefined,
+    });
+  },
+});
+
+export const setResolveNonce = internalMutation({
+  args: { gameId: v.id("games"), nonce: v.string() },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.gameId, { resolveNonce: args.nonce });
+  },
+});
+
+export const triggerResolvePipeline = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+
+    // Acquire lock (with TTL check)
+    const LOCK_TTL_MS = 3 * 60 * 1000;
+    if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
+      throw new Error("Resolution already in progress");
+    }
+    await ctx.db.patch(args.gameId, {
+      resolving: true,
+      resolvingStartedAt: Date.now(),
+      pipelineStatus: { step: "starting", startedAt: Date.now() },
+    });
+
+    // Schedule the first pipeline stage
+    await ctx.scheduler.runAfter(0, internal.pipeline.gradeAll, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      aiDisposition: args.aiDisposition,
+    });
   },
 });

@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { logEvent, assertPhase } from "./events";
 
 const actionValidator = v.object({
@@ -333,5 +333,62 @@ export const rollAllActions = mutation({
       const successes = actions.filter((a) => a.success).length;
       await logEvent(ctx, args.gameId, "roll", sub.roleId, { round: args.roundNumber, total: actions.length, successes });
     }
+  },
+});
+
+// ─── Pipeline internal queries/mutations ──────────────────────────────────────
+
+export const getUngraded = internalQuery({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const subs = await ctx.db
+      .query("submissions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
+      .collect();
+    return subs.filter((s) => s.status === "submitted" || s.actions.some((a) => a.probability == null));
+  },
+});
+
+export const getAllForRound = internalQuery({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("submissions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
+      .collect();
+  },
+});
+
+export const rollAllInternal = internalMutation({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const subs = await ctx.db
+      .query("submissions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
+      .collect();
+    for (const sub of subs) {
+      if (sub.status === "resolved") continue;
+      // Skip if already rolled (idempotent)
+      if (sub.actions.every((a) => a.rolled != null)) continue;
+      const actions = sub.actions.map((action) => {
+        const probability = action.probability ?? 50;
+        const rawRoll = Math.floor(Math.random() * 100) + 1;
+        const displayRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
+        return { ...action, probability, rolled: displayRoll, success: displayRoll <= probability };
+      });
+      await ctx.db.patch(sub._id, { actions, status: "resolved" });
+      const successes = actions.filter((a) => a.success).length;
+      await logEvent(ctx, args.gameId, "roll", sub.roleId, { round: args.roundNumber, total: actions.length, successes });
+    }
+  },
+});
+
+export const applyGradingInternal = internalMutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actions: v.array(actionValidator),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.submissionId, { actions: args.actions, status: "graded" as const });
   },
 });

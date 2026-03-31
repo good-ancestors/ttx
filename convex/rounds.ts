@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
 
 export const getByGame = query({
@@ -194,5 +194,106 @@ export const updateFallbackNarrative = mutation({
     if (!round) return;
 
     await ctx.db.patch(round._id, { fallbackNarrative: args.fallbackNarrative });
+  },
+});
+
+// ─── Pipeline internal mutations ──────────────────────────────────────────────
+
+const resolvedEventValidator = v.object({
+  id: v.string(),
+  description: v.string(),
+  visibility: v.union(v.literal("public"), v.literal("covert")),
+  actors: v.array(v.string()),
+  worldImpact: v.optional(v.string()),
+  sourceActions: v.optional(v.array(v.string())),
+});
+
+export const getForPipeline = internalQuery({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    return rounds.find((r) => r.number === args.roundNumber) ?? null;
+  },
+});
+
+export const getAllForPipeline = internalQuery({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    return await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+  },
+});
+
+export const setResolveNonce = internalMutation({
+  args: { gameId: v.id("games"), roundNumber: v.number(), nonce: v.string() },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (round) await ctx.db.patch(round._id, { resolveNonce: args.nonce });
+  },
+});
+
+export const writePartialEvents = internalMutation({
+  args: { gameId: v.id("games"), roundNumber: v.number(), events: v.array(resolvedEventValidator) },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (round) await ctx.db.patch(round._id, { partialEvents: args.events });
+  },
+});
+
+export const applyResolutionInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    nonce: v.string(),
+    resolvedEvents: v.array(resolvedEventValidator),
+  },
+  handler: async (ctx, args) => {
+    // Check nonce to prevent double-execution
+    const game = await ctx.db.get(args.gameId);
+    if (game?.resolveNonce !== args.nonce) return;
+
+    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (!round) return;
+
+    await ctx.db.patch(round._id, {
+      resolvedEvents: args.resolvedEvents,
+      partialEvents: undefined,
+    });
+  },
+});
+
+export const applySummaryInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    summary: v.object({
+      narrative: v.optional(v.string()),
+      headlines: v.array(v.string()),
+      geopoliticalEvents: v.array(v.string()),
+      aiStateOfPlay: v.array(v.string()),
+      facilitatorNotes: v.optional(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (round) await ctx.db.patch(round._id, { summary: args.summary });
+  },
+});
+
+export const snapshotBeforeInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    worldStateBefore: worldStateValidator,
+    labsBefore: v.array(labSnapshotValidator),
+  },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (!round || round.worldStateBefore) return; // Already snapshotted
+    await ctx.db.patch(round._id, { worldStateBefore: args.worldStateBefore, labsBefore: args.labsBefore });
   },
 });
