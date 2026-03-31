@@ -124,8 +124,12 @@ export const gradeAll = internalAction({
         status: { step: "grading", detail: `Evaluating ${total} submissions...`, progress: `0/${total}`, startedAt: Date.now() },
       });
 
+      // Grade in batches of 6 to avoid Anthropic rate limits
+      const GRADING_CONCURRENCY = 6;
       let completed = 0;
-      await Promise.all(ungraded.map(async (sub) => {
+      for (let batch = 0; batch < ungraded.length; batch += GRADING_CONCURRENCY) {
+        const batchSubs = ungraded.slice(batch, batch + GRADING_CONCURRENCY);
+        await Promise.all(batchSubs.map(async (sub) => {
         const role = ROLES.find((r) => r.id === sub.roleId);
         if (!role) return;
 
@@ -230,6 +234,7 @@ export const gradeAll = internalAction({
           status: { step: "grading", detail: `Evaluating submissions...`, progress: `${completed}/${total}`, startedAt: Date.now() },
         });
       }));
+      } // end batch loop
 
       // Schedule next stage: influence
       await ctx.scheduler.runAfter(0, internal.pipeline.awaitInfluence, {

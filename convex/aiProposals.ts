@@ -56,9 +56,7 @@ export const respond = internalAction({
       }
     }
 
-    const prompt = `${SCENARIO_CONTEXT}
-
-CURRENT GAME STATE:
+    const prompt = `CURRENT GAME STATE:
 - Round: ${roundNumber}
 - World state: Capability ${game.worldState.capability}/10, Alignment ${game.worldState.alignment}/10, US-China Tension ${game.worldState.tension}/10, Public Awareness ${game.worldState.awareness}/10, Regulation ${game.worldState.regulation}/10, Australian Preparedness ${game.worldState.australia}/10
 
@@ -75,9 +73,7 @@ ${otherRolesSection}
 INSTRUCTIONS:
 For each pending request, decide whether to accept or decline. Accept requests that genuinely benefit your strategic position. Decline ones that don't.
 
-Optionally, send 0-1 new requests to other enabled roles.
-
-Respond with JSON: { "responses": [{ "proposalId": "...", "accept": true/false, "reasoning": "..." }], "newRequests": [{ "toRoleId": "...", "actionText": "...", "requestType": "endorsement" }] }`;
+Optionally, send 0-1 new requests to other enabled roles.`;
 
     try {
       const { output } = await callAnthropic<{
@@ -85,6 +81,7 @@ Respond with JSON: { "responses": [{ "proposalId": "...", "accept": true/false, 
         newRequests?: { toRoleId: string; actionText: string; requestType: "endorsement" | "compute"; computeAmount?: number }[];
       }>({
         models: GRADING_MODELS,
+        systemPrompt: SCENARIO_CONTEXT,
         prompt,
         maxTokens: 1024,
         toolName: "respond_to_proposals",

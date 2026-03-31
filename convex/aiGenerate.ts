@@ -176,9 +176,7 @@ export const generateAll = internalAction({
         ? getDisposition(table.aiDisposition)
         : undefined;
 
-      const prompt = `${SCENARIO_CONTEXT}
-
-ACTIVE PLAYERS THIS GAME: ${enabledRoleNames.join(", ")}
+      const prompt = `ACTIVE PLAYERS THIS GAME: ${enabledRoleNames.join(", ")}
 
 CURRENT GAME STATE:
 - Round: ${roundNumber} (${currentRound?.label ?? ""})
@@ -214,6 +212,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
           computeAllocation?: { users: number; capability: number; safety: number };
         }>({
           models: GRADING_MODELS,
+          systemPrompt: SCENARIO_CONTEXT,
           prompt,
           maxTokens: 2048,
           toolName: "submit_actions",

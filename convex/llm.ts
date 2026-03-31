@@ -24,33 +24,42 @@ interface AnthropicResponse {
 export async function callAnthropic<T>(opts: {
   models: string[];
   prompt: string;
+  systemPrompt?: string;
   schema: Record<string, unknown>;
   toolName?: string;
   maxTokens?: number;
+  timeoutMs?: number;
 }): Promise<LLMResponse<T>> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
 
-  const { models, prompt, schema, toolName = "respond", maxTokens = 4096 } = opts;
+  const { models, prompt, systemPrompt, schema, toolName = "respond", maxTokens = 4096, timeoutMs = 120_000 } = opts;
   const startTime = Date.now();
 
   for (const model of models) {
     try {
-      console.log(`[llm] Calling ${model} with tool_use (promptLen=${prompt.length})`);
+      console.log(`[llm] Calling ${model} with tool_use (promptLen=${prompt.length}, system=${systemPrompt ? "yes" : "no"})`);
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 120_000);
+      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+      // Use system message with cache_control for prompt caching
+      const systemContent = systemPrompt
+        ? [{ type: "text" as const, text: systemPrompt, cache_control: { type: "ephemeral" as const } }]
+        : undefined;
 
       const res = await fetch(ANTHROPIC_API_URL, {
         method: "POST",
         headers: {
           "anthropic-version": "2023-06-01",
+          "anthropic-beta": "prompt-caching-2024-07-31",
           "content-type": "application/json",
           "x-api-key": apiKey,
         },
         body: JSON.stringify({
           model,
           max_tokens: maxTokens,
+          ...(systemContent ? { system: systemContent } : {}),
           messages: [{ role: "user", content: prompt }],
           tools: [{
             name: toolName,
