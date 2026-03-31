@@ -404,15 +404,21 @@ export const rollAndResolve = internalAction({
       });
 
       if (!output) throw new Error("Resolve LLM returned no output");
+      if (!output.resolvedEvents) throw new Error(`Resolve output missing resolvedEvents. Got keys: ${Object.keys(output).join(", ")}`);
+      if (!output.worldState) throw new Error(`Resolve output missing worldState. Got keys: ${Object.keys(output).join(", ")}`);
 
       // Write resolved events (nonce-checked)
       await ctx.runMutation(internal.rounds.applyResolutionInternal, {
         gameId,
         roundNumber,
         nonce,
-        resolvedEvents: output.resolvedEvents.map((e) => ({
-          ...e,
+        resolvedEvents: (output.resolvedEvents ?? []).map((e) => ({
+          id: e.id ?? `event-${Math.random().toString(36).slice(2)}`,
+          description: e.description ?? "",
+          visibility: e.visibility ?? "public",
+          actors: e.actors ?? [],
           sourceActions: e.sourceActions ?? [],
+          worldImpact: e.worldImpact,
         })),
       });
 
