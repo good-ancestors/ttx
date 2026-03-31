@@ -96,6 +96,8 @@ export default function FacilitatorPage({
   const mergeLabs = useMutation(api.games.mergeLabs);
   const restoreSnapshot = useMutation(api.games.restoreSnapshot);
   const clearResolution = useMutation(api.rounds.clearResolution);
+  const setResolvingMut = useMutation(api.games.setResolving);
+  const sendRequest = useMutation(api.requests.send);
   const submitActions = useMutation(api.submissions.submit);
   const setDispositionMut = useMutation(api.tables.setDisposition);
   const applyAiInfluenceMut = useMutation(api.submissions.applyAiInfluence);
@@ -290,7 +292,7 @@ export default function FacilitatorPage({
     }
 
     // Phase 1: Generate all actions upfront (parallel)
-    type PendingSubmission = { table: typeof unsubmitted[0]; actions: { text: string; priority: number; secret?: boolean }[] };
+    type PendingSubmission = { table: typeof unsubmitted[0]; actions: { text: string; priority: number; secret?: boolean }[]; endorseHints?: { actionText: string; targetRoleIds: string[] }[] };
     const pending: PendingSubmission[] = [];
 
     // Split into NPC tables (always use samples) and AI tables (use LLM or samples based on toggle)
@@ -303,6 +305,7 @@ export default function FacilitatorPage({
 
     // NPC tables always use sample actions
     if (samples) {
+      const activeRoleIds = new Set((tables ?? []).filter((t) => t.enabled).map((t) => t.roleId));
       for (const table of npcTables) {
         const all = getSampleActions(samples, table.roleId, game.currentRound);
         if (all.length === 0) continue;
@@ -311,6 +314,10 @@ export default function FacilitatorPage({
         pending.push({
           table,
           actions: picked.map((a, i) => ({ text: a.text, priority: decay[i] ?? 1, secret: a.secret || undefined })),
+          endorseHints: picked
+            .filter((a) => a.endorseHint?.length)
+            .map((a) => ({ actionText: a.text, targetRoleIds: a.endorseHint.filter((id) => activeRoleIds.has(id) && id !== table.roleId) }))
+            .filter((h) => h.targetRoleIds.length > 0),
         });
       }
     }
@@ -369,12 +376,12 @@ export default function FacilitatorPage({
     pendingAISubmissions.current = [];
     const delays = computeStaggerDelays(pending.length, durationSeconds);
     for (let i = 0; i < pending.length; i++) {
-      const { table, actions } = pending[i];
+      const { table, actions, endorseHints } = pending[i];
       const delay = delays[i];
 
       const timerId = setTimeout(() => {
         pendingAISubmissions.current = pendingAISubmissions.current.filter((p) => p.timerId !== timerId);
-        void submitAITable(table, actions);
+        void submitAITable(table, actions, endorseHints);
       }, delay);
 
       pendingAISubmissions.current.push({ table: { _id: table._id as string, roleId: table.roleId }, actions, timerId });
@@ -382,7 +389,7 @@ export default function FacilitatorPage({
   };
 
   // Submit a single AI table's actions + trigger proposals after
-  const submitAITable = async (table: AITableRef, actions: { text: string; priority: number; secret?: boolean }[]) => {
+  const submitAITable = async (table: AITableRef, actions: { text: string; priority: number; secret?: boolean }[], endorseHints?: { actionText: string; targetRoleIds: string[] }[]) => {
     try {
       await submitActions({
         tableId: table._id as Id<"tables">,
@@ -391,7 +398,23 @@ export default function FacilitatorPage({
         roleId: table.roleId,
         actions,
       });
-      // Send proposals shortly after
+      // Send endorsement requests from sample action hints (NPC tables)
+      if (endorseHints?.length) {
+        const roleMap = new Map((tables ?? []).filter((t) => t.enabled).map((t) => [t.roleId, t.roleName]));
+        for (const hint of endorseHints) {
+          for (const targetId of hint.targetRoleIds.slice(0, 1)) { // Send to first hint only to avoid spam
+            try {
+              await sendRequest({
+                gameId, roundNumber: game.currentRound,
+                fromRoleId: table.roleId, fromRoleName: roleMap.get(table.roleId) ?? table.roleId,
+                toRoleId: targetId, toRoleName: roleMap.get(targetId) ?? targetId,
+                actionText: hint.actionText, requestType: "endorsement" as const,
+              });
+            } catch { /* request already exists or phase changed */ }
+          }
+        }
+      }
+      // Send LLM proposals shortly after (responds to incoming + may create new)
       setTimeout(() => {
         const enabledRoleList = (tables ?? []).filter((t) => t.enabled).map((t) => ({ id: t.roleId, name: t.roleName }));
         fetch("/api/ai-proposals", {
@@ -517,6 +540,8 @@ export default function FacilitatorPage({
     setStreamingEvents([]);
     const resolveOk = await callResolve();
     if (!resolveOk) {
+      // Clear the server-side resolving lock so retry is possible
+      try { await setResolvingMut({ gameId, resolving: false }); } catch { /* ignore */ }
       setActionError("Event resolution failed — try again or adjust manually");
       setResolving(false);
       return;
