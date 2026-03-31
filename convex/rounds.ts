@@ -342,3 +342,26 @@ export const setAiMetaInternal = internalMutation({
     });
   },
 });
+
+export const setComputeChanges = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    computeChanges: v.object({
+      newComputeTotal: v.number(),
+      baselineTotal: v.number(),
+      distribution: v.array(v.object({
+        labName: v.string(),
+        baseline: v.number(),
+        modifier: v.number(),
+        reason: v.optional(v.string()),
+        newTotal: v.number(),
+      })),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (round) await ctx.db.patch(round._id, { computeChanges: args.computeChanges });
+  },
+});

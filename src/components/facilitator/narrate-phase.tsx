@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
 import { getCapabilityDescription } from "@/lib/game-data";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { WorldStateEditor, NarrativeEditor } from "@/components/manual-controls";
@@ -17,6 +19,44 @@ import type { FacilitatorPhaseProps, Submission, Round } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 
 // ─── Extracted sub-components ─────────────────────────────────────────────────
+
+function ComputeEditor({ labs, gameId, onClose }: {
+  labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
+  gameId: Id<"games">;
+  onClose: () => void;
+}) {
+  const updateLabs = useMutation(api.games.updateLabs);
+  const [stocks, setStocks] = useState<Record<string, number>>(
+    Object.fromEntries(labs.map((l) => [l.name, l.computeStock]))
+  );
+  const handleSave = async () => {
+    const updated = labs.map((l) => ({ ...l, computeStock: stocks[l.name] ?? l.computeStock }));
+    await updateLabs({ gameId, labs: updated.map((l) => ({ name: l.name, roleId: "", computeStock: l.computeStock, rdMultiplier: l.rdMultiplier, allocation: l.allocation })) });
+    onClose();
+  };
+  return (
+    <div>
+      <p className="text-xs text-text-light mb-3">Adjust compute stock for each lab. Each unit ≈ 1M H100e.</p>
+      <div className="space-y-2">
+        {labs.map((lab) => (
+          <div key={lab.name} className="flex items-center gap-3">
+            <span className="text-sm text-white w-28">{lab.name}</span>
+            <input
+              type="number"
+              value={stocks[lab.name] ?? lab.computeStock}
+              onChange={(e) => setStocks({ ...stocks, [lab.name]: parseInt(e.target.value) || 0 })}
+              className="w-20 text-sm bg-navy border border-navy-light rounded px-2 py-1 text-white font-mono text-right focus:outline-none focus:border-text-light"
+            />
+            <span className="text-[10px] text-navy-muted">units</span>
+          </div>
+        ))}
+      </div>
+      <button onClick={() => void handleSave()} className="mt-3 text-sm px-4 py-1.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors">
+        Save
+      </button>
+    </div>
+  );
+}
 
 function StreamingEventsPanel({ events }: { events: { id: string; description: string; visibility: string; worldImpact?: string }[] }) {
   return (
@@ -144,7 +184,7 @@ export function NarratePhase({
   addLab,
   streamingEvents,
 }: NarratePhaseProps) {
-  const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | null>(null);
+  const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | "compute" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
   const [newLabName, setNewLabName] = useState("");
   const [newLabRoleId, setNewLabRoleId] = useState("");
@@ -254,6 +294,9 @@ export function NarratePhase({
           <button onClick={() => setEditModal("dials")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
             <Pencil className="w-3 h-3" /> Edit dials
           </button>
+          <button onClick={() => setEditModal("compute")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
+            <Pencil className="w-3 h-3" /> Edit compute
+          </button>
           <button onClick={() => setEditModal("addlab")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
             <Plus className="w-3 h-3" /> Add Lab
           </button>
@@ -312,7 +355,44 @@ export function NarratePhase({
                 </div>
               </div>
             )}
+            {editModal === "compute" && (
+              <ComputeEditor labs={game.labs} gameId={gameId} onClose={() => setEditModal(null)} />
+            )}
           </div>
+        </div>
+      )}
+
+      {/* Compute summary — show proactively after resolve */}
+      {currentRound?.computeChanges && (
+        <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Compute Update</span>
+            <span className="text-[10px] text-navy-muted">
+              {currentRound.computeChanges.newComputeTotal} new units this round
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {currentRound.computeChanges.distribution.map((d) => (
+              <div key={d.labName} className="flex items-center gap-2 text-sm">
+                <span className="text-white font-medium w-28 truncate">{d.labName}</span>
+                <span className={`font-mono text-xs w-12 text-right ${d.baseline >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                  {d.baseline >= 0 ? "+" : ""}{d.baseline}
+                </span>
+                {d.modifier !== 0 && (
+                  <span className={`font-mono text-xs ${d.modifier > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                    {d.modifier > 0 ? "+" : ""}{d.modifier}
+                  </span>
+                )}
+                {d.reason && <span className="text-[10px] text-navy-muted truncate">({d.reason})</span>}
+                <span className="ml-auto text-xs text-text-light font-mono">{d.newTotal}u</span>
+              </div>
+            ))}
+          </div>
+          {!isProjector && (
+            <button onClick={() => setEditModal("compute")} className="text-[10px] text-text-light hover:text-white mt-2 transition-colors">
+              Adjust compute
+            </button>
+          )}
         </div>
       )}
 

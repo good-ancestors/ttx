@@ -15,6 +15,7 @@ import {
 import {
   ROLES,
   LAB_PROGRESSION,
+  NEW_COMPUTE_PER_GAME_ROUND,
   stripLabForSnapshot,
   applyLabMerge,
   getAiInfluencePower,
@@ -553,6 +554,11 @@ export const rollAndResolve = internalAction({
       }
       let updatedLabs = computeLabGrowth(game.labs, ceoAllocations, roundNumber, maxMult);
 
+      // Track baseline compute for facilitator review
+      const baselineTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
+      const baselineByLab = new Map(updatedLabs.map((l) => [l.name, l.computeStock - (game.labs.find((g) => g.name === l.name)?.computeStock ?? 0)]));
+      const modifierByLab = new Map<string, { change: number; reason: string }>();
+
       // Event-based lab modifiers: secondary LLM call (Haiku for speed)
       try {
         const eventSummary = (output.resolvedEvents ?? []).map((e) => `- ${e.description}`).join("\n");
@@ -622,10 +628,15 @@ Do NOT output a merge unless the event clearly describes one lab absorbing anoth
           updatedLabs = updatedLabs.map((lab) => {
             const labMods = modOutput.modifiers.filter((m) => m.labName === lab.name);
             let { computeStock, rdMultiplier } = lab;
+            let totalChange = 0;
+            const reasons: string[] = [];
             for (const mod of labMods) {
               computeStock = Math.max(0, computeStock + mod.computeChange);
               rdMultiplier = Math.min(maxMult, Math.max(0.1, Math.round(rdMultiplier * mod.multiplierFactor * 10) / 10));
+              totalChange += mod.computeChange;
+              if (mod.computeChange !== 0) reasons.push(mod.reason);
             }
+            if (totalChange !== 0) modifierByLab.set(lab.name, { change: totalChange, reason: reasons.join("; ") });
             return { ...lab, computeStock, rdMultiplier };
           });
         }
@@ -641,6 +652,27 @@ Do NOT output a merge unless the event clearly describes one lab absorbing anoth
       }
 
       await ctx.runMutation(internal.games.updateLabsInternal, { gameId, labs: updatedLabs.map(stripLabForSnapshot) });
+
+      // Record compute changes for facilitator review
+      await ctx.runMutation(internal.rounds.setComputeChanges, {
+        gameId,
+        roundNumber,
+        computeChanges: {
+          newComputeTotal: baselineTotal,
+          baselineTotal,
+          distribution: updatedLabs.map((lab) => {
+            const baseline = baselineByLab.get(lab.name) ?? 0;
+            const mod = modifierByLab.get(lab.name);
+            return {
+              labName: lab.name,
+              baseline: Math.round(baseline),
+              modifier: mod?.change ?? 0,
+              reason: mod?.reason,
+              newTotal: Math.round(lab.computeStock),
+            };
+          }),
+        },
+      });
 
       // Snapshot after
       await ctx.runMutation(internal.rounds.snapshotAfterInternal, {

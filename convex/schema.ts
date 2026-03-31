@@ -164,6 +164,18 @@ export default defineSchema({
     // Pre-resolve snapshot — captured before resolve runs (safe revert point)
     worldStateBefore: v.optional(worldStateValidator),
     labsBefore: v.optional(v.array(labSnapshotValidator)),
+    // Compute changes applied this round (for facilitator review UI)
+    computeChanges: v.optional(v.object({
+      newComputeTotal: v.number(),
+      baselineTotal: v.number(),
+      distribution: v.array(v.object({
+        labName: v.string(),
+        baseline: v.number(),
+        modifier: v.number(),
+        reason: v.optional(v.string()),
+        newTotal: v.number(),
+      })),
+    })),
     // Post-resolve snapshot — for post-game review and restore
     worldStateAfter: v.optional(worldStateValidator),
     labsAfter: v.optional(v.array(labSnapshotValidator)),
