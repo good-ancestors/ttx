@@ -45,11 +45,16 @@ interface ResolvedEvent {
 async function failPipeline(ctx: any, gameId: string, stage: string, err: unknown) {
   const message = `${stage} failed: ${err instanceof Error ? err.message : String(err)}`;
   console.error(`[pipeline] ${message}`);
-  await ctx.runMutation(internal.games.updatePipelineStatus, {
-    gameId,
-    status: { step: "error", error: message, startedAt: Date.now() },
-  });
-  await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
+  try {
+    await ctx.runMutation(internal.games.updatePipelineStatus, {
+      gameId,
+      status: { step: "error", error: message, startedAt: Date.now() },
+    });
+    await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
+  } catch (cleanupErr) {
+    console.error(`[pipeline] failPipeline cleanup also failed:`, cleanupErr);
+    // Lock will auto-expire via 3-minute TTL
+  }
 }
 
 function generateNonce(): string {
@@ -103,6 +108,8 @@ export const gradeAll = internalAction({
       if (!game) throw new Error("Game not found");
 
       const submissions: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
+      if (submissions.length === 0) throw new Error("No submissions to resolve — all tables must submit first");
+
       const rounds: Round[] = await ctx.runQuery(internal.rounds.getAllForPipeline, { gameId });
       const requests = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
       const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
@@ -678,8 +685,9 @@ export const narrate = internalAction({
       if (!currentRound?.resolvedEvents?.length) throw new Error("No resolved events to narrate");
 
       const worldStateAfter = currentRound.worldStateAfter ?? game.worldState;
-      const prevRound = rounds.find((r) => r.number === roundNumber - 1);
-      const worldStateBefore = prevRound?.worldStateAfter ?? game.worldState;
+      const worldStateBefore = currentRound.worldStateBefore
+        ?? rounds.find((r) => r.number === roundNumber - 1)?.worldStateAfter
+        ?? game.worldState;
 
       const prompt = buildNarrativeFromEventsPrompt({
         round: roundNumber,

@@ -351,7 +351,7 @@ export default function TablePlayerPage({
       }
       return [...prev, newDraft];
     });
-  }, [enabledRoles]);
+  }, []);
 
   const handleSaveSpec = async () => {
     if (!labSpec.trim() || !role || !game) return;

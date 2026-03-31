@@ -480,6 +480,7 @@ export const triggerResolvePipeline = mutation({
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
+    if (game.status !== "playing") throw new Error("Game is not in playing state");
 
     // Acquire lock (with TTL check)
     const LOCK_TTL_MS = 3 * 60 * 1000;
