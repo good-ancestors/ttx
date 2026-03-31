@@ -32,7 +32,7 @@ function pickRandomDisposition() {
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, AI_DISPOSITIONS, getDisposition, getAiInfluencePower, autoGenerateInfluence } from "@/lib/game-data";
+import { ROLES, AI_DISPOSITIONS, getDisposition } from "@/lib/game-data";
 import { useCountdown } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { WorldStatePanel } from "@/components/world-state-panel";
@@ -85,7 +85,6 @@ export default function FacilitatorPage({
   const lockGame = useMutation(api.games.lock);
   const advanceRound = useMutation(api.games.advanceRound);
   const finishGame = useMutation(api.games.finishGame);
-  const rollAll = useMutation(api.submissions.rollAllActions);
   const overrideProbability = useMutation(api.submissions.overrideProbability);
   const rerollAction = useMutation(api.submissions.rerollAction);
   const setControlMode = useMutation(api.tables.setControlMode);
@@ -100,14 +99,21 @@ export default function FacilitatorPage({
   const sendRequest = useMutation(api.requests.send);
   const submitActions = useMutation(api.submissions.submit);
   const setDispositionMut = useMutation(api.tables.setDisposition);
-  const applyAiInfluenceMut = useMutation(api.submissions.applyAiInfluence);
 
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
-  const [resolving, setResolving] = useState(false);
-  const [resolveStep, setResolveStep] = useState("");
+  const triggerPipeline = useMutation(api.games.triggerResolvePipeline);
+
+  // Pipeline state: derive from game document (reactive) instead of local state
+  const pipelineStatus = game?.pipelineStatus;
+  const resolving = !!pipelineStatus && pipelineStatus.step !== "done" && pipelineStatus.step !== "error";
+  const resolveStep = pipelineStatus?.detail ?? pipelineStatus?.step ?? "";
+
+  // Legacy local state for backward compat (re-resolve/re-narrate still use old API routes)
   const [streamingEvents, setStreamingEvents] = useState<{ id: string; description: string; visibility: string; worldImpact?: string }[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
+  // No-op setter for legacy callResolve/runNarrate functions (progress now comes from pipelineStatus)
+  const setResolveStep = (_s: string) => { /* no-op — progress is reactive via pipelineStatus */ };
   // Safe wrapper for facilitator actions — shows error on failure, auto-clears after 5s
   const safeAction = (label: string, fn: () => Promise<unknown>) => async () => {
     setActionError(null);
@@ -447,114 +453,46 @@ export default function FacilitatorPage({
 
   // Resolve round: two-stage pipeline (grade → roll → resolve events → narrate)
   const handleResolveRound = async () => {
-    setResolving(true);
     setActionError(null);
 
     try {
-      // Flush any AI submissions still pending from stagger schedule
+      // Flush any AI submissions still pending from browser stagger schedule
       if (pendingAISubmissions.current.length > 0) {
-        setResolveStep("Submitting remaining AI actions...");
         await flushPendingAI();
         await new Promise((r) => setTimeout(r, 1000));
       }
 
-      // Recovery: if there are unsubmitted non-human tables (e.g. after page refresh), generate + submit now
+      // Recovery: if there are unsubmitted non-human tables, generate + submit now
       const nonHumanTables = (tables ?? []).filter((t) => t.controlMode !== "human" && t.enabled);
       const submittedRoles = new Set((submissions ?? []).map((s) => s.roleId));
       const missingTables = nonHumanTables.filter((t) => !submittedRoles.has(t.roleId));
       if (missingTables.length > 0) {
-        const npcCount = missingTables.filter((t) => t.controlMode === "npc").length;
-        const aiCount = missingTables.length - npcCount;
-        const parts = [npcCount > 0 ? `${npcCount} NPC` : "", aiCount > 0 ? `${aiCount} AI` : ""].filter(Boolean).join(" + ");
-        setResolveStep(`Generating actions for ${parts} table(s)...`);
         await generateAndStaggerAI(10);
         await flushPendingAI();
         await new Promise((r) => setTimeout(r, 1000));
       }
 
-      // Phase 1: AI responds to any last-minute endorsement requests
-      setResolveStep("AI responding to requests...");
+      // Trigger AI proposals (respond to pending endorsement requests)
       triggerAIProposals();
       await new Promise((r) => setTimeout(r, 3000));
 
-      // Phase 2: Advance to rolling phase immediately so:
-      // - Facilitator projector shows actions appearing as probabilities are graded
-      // - AI Systems player sees influence panel and can start making choices
-      setResolveStep("Evaluating actions...");
-      await advancePhase({ gameId, phase: "rolling" });
-
-      // Phase 3: Grade all submissions (probabilities appear on projector as they complete)
-      gradeAllUngraded();
-      await new Promise((r) => setTimeout(r, 4000));
-      gradeAllUngraded();
-      await new Promise((r) => setTimeout(r, 2000));
-
-      // Phase 4: AI Systems secret influence (runs after grading, before dice)
-      if (aiSystemsTable?.aiDisposition && aiSystemsTable.enabled) {
-        const roundNumber = game.currentRound;
-        const power = getAiInfluencePower(game.labs);
-
-        if (aiSystemsTable.controlMode === "human") {
-          // Give human AI player extra time after grading to finalise choices
-          // (they've already had ~6s to review actions during grading)
-          setResolveStep("Waiting for all players...");
-          await new Promise((r) => setTimeout(r, 24000));
-        } else {
-          // NPC/AI: auto-generate influence from current submissions
-          const currentSubs = submissions ?? [];
-          const allActions = currentSubs.flatMap((sub) =>
-            sub.actions.map((a, i) => ({
-              submissionId: sub._id as string,
-              actionIndex: i,
-              text: a.text,
-              roleId: sub.roleId,
-            }))
-          );
-          const influence = autoGenerateInfluence(aiSystemsTable.aiDisposition, allActions, power);
-          if (influence.length > 0) {
-            const influencePayload = influence.map((inf) => ({
-              submissionId: inf.submissionId as typeof currentSubs[0]["_id"],
-              actionIndex: inf.actionIndex,
-              modifier: inf.modifier,
-            }));
-            await applyAiInfluenceMut({ gameId, roundNumber, influences: influencePayload });
-          }
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-      }
-
-      // Phase 5: Roll dice
-      setResolveStep("Rolling dice...");
-      await rollAll({ gameId, roundNumber: game.currentRound });
+      // Trigger the server-side pipeline — everything from here runs independently
+      await triggerPipeline({
+        gameId,
+        roundNumber: game.currentRound,
+        aiDisposition: aiDispositionPayload,
+      });
     } catch (err) {
       console.error("Resolve failed:", err);
       setActionError(`Resolve failed: ${err instanceof Error ? err.message : "Unknown error"}. You can retry.`);
       for (const p of pendingAISubmissions.current) clearTimeout(p.timerId);
       pendingAISubmissions.current = [];
-      setResolving(false);
-      return;
     }
-
-    // Phase 4: Resolve events + update world state
-    setResolveStep("Resolving events...");
-    setStreamingEvents([]);
-    const resolveOk = await callResolve();
-    if (!resolveOk) {
-      // Clear the server-side resolving lock so retry is possible
-      try { await setResolvingMut({ gameId, resolving: false }); } catch { /* ignore */ }
-      setActionError("Event resolution failed — try again or adjust manually");
-      setResolving(false);
-      return;
-    }
-
-    // Phase 5: Generate narrative from resolved events
-    await runNarrate();
-    setResolving(false);
   };
 
   // Shared fetch for /api/resolve — returns true on success
   // Uses SSE streaming to show progress as AI generates the resolution
-  const callResolve = async (): Promise<boolean> => {
+  const _callResolve = async (): Promise<boolean> => {
     try {
       const res = await fetch("/api/resolve?stream=true", {
         method: "POST",
@@ -684,25 +622,30 @@ export default function FacilitatorPage({
 
   // Re-resolve from dice results (after flipping an outcome)
   const handleReResolve = async () => {
-    setResolving(true);
-    setStreamingEvents([]);
-    setResolveStep("Re-resolving events...");
-    // Clear existing resolved events so the UI shows streaming events
-    await clearResolution({ gameId, roundNumber: game.currentRound });
-    const ok = await callResolve();
-    if (ok) {
-      await runNarrate();
-    } else {
+    try {
+      await clearResolution({ gameId, roundNumber: game.currentRound });
+      // Re-trigger the resolve + narrate stages via pipeline
+      await triggerPipeline({
+        gameId,
+        roundNumber: game.currentRound,
+        aiDisposition: aiDispositionPayload,
+      });
+    } catch {
       setActionError("Re-resolve failed — try again or adjust manually");
     }
-    setResolving(false);
   };
 
   // Re-narrate only (after editing events or adjustments)
   const handleReNarrate = async () => {
-    setResolving(true);
-    await runNarrate();
-    setResolving(false);
+    // TODO: trigger narrate-only pipeline stage
+    // For now, keep using the old path as a fallback
+    try {
+      await setResolvingMut({ gameId, resolving: true });
+      await runNarrate();
+      await setResolvingMut({ gameId, resolving: false });
+    } catch (_err) {
+      setActionError("Re-narrate failed");
+    }
   };
 
   // ─── LOBBY ────────���───────────────────────────────��─────────────────────────
