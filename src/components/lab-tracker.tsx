@@ -83,7 +83,7 @@ export function LabTracker({
                 <span className="text-xl font-black font-mono text-[#06B6D4]">
                   {lab.rdMultiplier}×
                 </span>
-                <span className="text-xs text-text-light font-mono">
+                <span className="text-xs text-text-light font-mono" title={`${lab.computeStock} units (~${lab.computeStock}M H100e)`}>
                   {lab.computeStock}u
                 </span>
               </div>
