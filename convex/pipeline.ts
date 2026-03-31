@@ -148,7 +148,7 @@ export const gradeAll = internalAction({
           worldState: game.worldState,
           roleName: role.name,
           roleDescription: role.brief ?? "",
-          roleTags: role.tags as string[],
+          roleTags: [...role.tags],
           actions: sub.actions.map((a) => ({ text: a.text, priority: a.priority })),
           labs: game.labs,
           actionRequests,
@@ -205,7 +205,7 @@ export const gradeAll = internalAction({
               actions: gradedActions,
             });
           }
-        } catch (err) {
+        } catch {
           // Fallback on any error
           const gradedActions = sub.actions.map((action) => ({
             ...action,
@@ -343,6 +343,7 @@ export const rollAndResolve = internalAction({
     roundNumber: v.number(),
     aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
   },
+  // eslint-disable-next-line complexity
   handler: async (ctx, args) => {
     const { gameId, roundNumber } = args;
     let { aiDisposition } = args;
@@ -496,7 +497,7 @@ export const rollAndResolve = internalAction({
         resolvedEvents: (output.resolvedEvents ?? []).map((e) => ({
           id: e.id ?? `event-${Math.random().toString(36).slice(2)}`,
           description: String(e.description ?? ""),
-          visibility: (e.visibility === "covert" ? "covert" : "public") as "public" | "covert",
+          visibility: e.visibility === "covert" ? "covert" as const : "public" as const,
           actors: Array.isArray(e.actors) ? e.actors.map(String) : [],
           sourceActions: Array.isArray(e.sourceActions) ? e.sourceActions.map(String) : [],
           worldImpact: typeof e.worldImpact === "string" ? e.worldImpact

@@ -103,6 +103,7 @@ export const generateAll = internalAction({
       : [];
     const allRequests: Request[] = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
 
+    // eslint-disable-next-line complexity
     await Promise.all(aiTables.map(async (table) => {
       const role = ROLES.find((r) => r.id === table.roleId);
       if (!role) return;
