@@ -548,7 +548,7 @@ export const rollAndResolve = internalAction({
           modifiers: { labName: string; computeChange: number; multiplierFactor: number; reason: string }[];
           merges?: { survivorLab: string; absorbedLab: string; reason: string }[];
         }>({
-          models: ["claude-haiku-4-5", "claude-haiku-4-5"],
+          models: ["claude-haiku-4-5", "claude-sonnet-4-6"],
           prompt: `Given these game events, output any modifiers to lab compute/R&D progress, and any lab mergers.
 Only output modifiers for events that DIRECTLY affect a specific lab's resources or capability.
 Only output merges when a successful action explicitly consolidates two labs (e.g., DPA nationalisation, Manhattan Project).
@@ -592,8 +592,8 @@ Do NOT output a merge unless the event clearly describes one lab absorbing anoth
                 items: {
                   type: "object",
                   properties: {
-                    survivorLab: { type: "string" },
-                    absorbedLab: { type: "string" },
+                    survivorLab: { type: "string", enum: labNames },
+                    absorbedLab: { type: "string", enum: labNames },
                     reason: { type: "string" },
                   },
                   required: ["survivorLab", "absorbedLab", "reason"],
