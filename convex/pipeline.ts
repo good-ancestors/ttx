@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id, Doc } from "./_generated/dataModel";
-import { callAnthropicJSON, callAnthropicWithFallback } from "./llm";
+import { callAnthropic } from "./llm";
 import { GRADING_MODELS, RESOLVE_MODELS, NARRATIVE_MODELS } from "./aiModels";
 import {
   buildGradingPrompt,
@@ -124,21 +124,36 @@ export const gradeAll = internalAction({
         });
 
         try {
-          const { output } = await callAnthropicJSON({
+          const { output } = await callAnthropic<{ actions: { text: string; probability: number; reasoning?: string }[] }>({
             models: GRADING_MODELS,
             prompt,
             maxTokens: 2048,
-            parseOutput: (text) => {
-              const parsed = JSON.parse(text);
-              return parsed.actions as { text: string; probability: number; reasoning?: string }[];
+            toolName: "grade_actions",
+            schema: {
+              type: "object",
+              properties: {
+                actions: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      text: { type: "string" },
+                      probability: { type: "number", enum: [10, 30, 50, 70, 90] },
+                      reasoning: { type: "string" },
+                    },
+                    required: ["text", "probability", "reasoning"],
+                  },
+                },
+              },
+              required: ["actions"],
             },
           });
 
-          if (output) {
+          if (output?.actions) {
             const gradedActions = sub.actions.map((action, i) => ({
               ...action,
-              probability: output[i]?.probability ?? defaultProbability(action.priority),
-              reasoning: output[i]?.reasoning,
+              probability: output.actions[i]?.probability ?? defaultProbability(action.priority),
+              reasoning: output.actions[i]?.reasoning,
             }));
             await ctx.runMutation(internal.submissions.applyGradingInternal, {
               submissionId: sub._id,
@@ -388,18 +403,56 @@ export const rollAndResolve = internalAction({
           })),
       });
 
-      // Call LLM for resolve (use non-prefill to avoid JSON confusion)
-      const { output, model: usedModel, timeMs, tokens } = await callAnthropicWithFallback({
+      // Call LLM for resolve with tool_use for guaranteed schema
+      const { output, model: usedModel, timeMs, tokens } = await callAnthropic<{
+        resolvedEvents: ResolvedEvent[];
+        worldState: { capability: number; alignment: number; tension: number; awareness: number; regulation: number; australia: number };
+        roleComputeUpdates?: { roleId: string; newComputeStock: number }[];
+      }>({
         models: RESOLVE_MODELS,
-        prompt: prompt + "\n\nRespond with a JSON object containing: resolvedEvents (array), worldState (object with capability/alignment/tension/awareness/regulation/australia as numbers 0-10), and optionally roleComputeUpdates.",
+        prompt,
         maxTokens: 8192,
-        parseOutput: (text) => {
-          const parsed = JSON.parse(text);
-          return parsed as {
-            resolvedEvents: ResolvedEvent[];
-            worldState: Record<string, number>;
-            roleComputeUpdates?: { roleId: string; newComputeStock: number }[];
-          };
+        toolName: "resolve_round",
+        schema: {
+          type: "object",
+          properties: {
+            resolvedEvents: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  description: { type: "string" },
+                  visibility: { type: "string", enum: ["public", "covert"] },
+                  actors: { type: "array", items: { type: "string" } },
+                  worldImpact: { type: "string" },
+                  sourceActions: { type: "array", items: { type: "string" } },
+                },
+                required: ["id", "description", "visibility", "actors"],
+              },
+            },
+            worldState: {
+              type: "object",
+              properties: {
+                capability: { type: "number" },
+                alignment: { type: "number" },
+                tension: { type: "number" },
+                awareness: { type: "number" },
+                regulation: { type: "number" },
+                australia: { type: "number" },
+              },
+              required: ["capability", "alignment", "tension", "awareness", "regulation", "australia"],
+            },
+            roleComputeUpdates: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: { roleId: { type: "string" }, newComputeStock: { type: "number" } },
+                required: ["roleId", "newComputeStock"],
+              },
+            },
+          },
+          required: ["resolvedEvents", "worldState"],
         },
       });
 
@@ -522,13 +575,18 @@ export const narrate = internalAction({
           .map((r) => ({ number: r.number, label: r.label, narrative: r.summary?.narrative })),
       });
 
-      const { output, model: usedModel, timeMs, tokens } = await callAnthropicWithFallback({
+      const { output, model: usedModel, timeMs, tokens } = await callAnthropic<{ narrative: string; headlines: string[] }>({
         models: NARRATIVE_MODELS,
-        prompt: prompt + "\n\nRespond with a JSON object containing: narrative (string, 6-8 sentences) and headlines (array of 4-6 strings).",
+        prompt,
         maxTokens: 2048,
-        parseOutput: (text) => {
-          const parsed = JSON.parse(text);
-          return parsed as { narrative: string; headlines: string[] };
+        toolName: "write_narrative",
+        schema: {
+          type: "object",
+          properties: {
+            narrative: { type: "string", description: "6-8 sentences, read aloud by facilitator in ~60-90s" },
+            headlines: { type: "array", items: { type: "string" }, description: "4-6 punchy ALL CAPS news headlines" },
+          },
+          required: ["narrative", "headlines"],
         },
       });
 

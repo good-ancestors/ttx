@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { callAnthropicJSON } from "./llm";
+import { callAnthropic } from "./llm";
 import { GRADING_MODELS } from "./aiModels";
 import { ROLES, PRIORITY_DECAY, isLabCeo, hasCompute, getDisposition } from "@/lib/game-data";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
@@ -137,13 +137,35 @@ ${hasCompute(role) && !isLabCeo(role) ? `You have ${table.computeStock ?? 0} com
 Respond with JSON: { "actions": [{ "text": "...", "priority": N, "secret": false }]${isLabCeo(role) ? ', "computeAllocation": { "users": N, "capability": N, "safety": N }' : ""} }`;
 
       try {
-        const { output } = await callAnthropicJSON({
+        const { output } = await callAnthropic<{
+          actions: { text: string; priority: number; secret?: boolean }[];
+          computeAllocation?: { users: number; capability: number; safety: number };
+        }>({
           models: GRADING_MODELS,
           prompt,
           maxTokens: 2048,
-          parseOutput: (text) => JSON.parse(text) as {
-            actions: { text: string; priority: number; secret?: boolean }[];
-            computeAllocation?: { users: number; capability: number; safety: number };
+          toolName: "submit_actions",
+          schema: {
+            type: "object",
+            properties: {
+              actions: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    text: { type: "string" },
+                    priority: { type: "number" },
+                    secret: { type: "boolean" },
+                  },
+                  required: ["text", "priority"],
+                },
+              },
+              computeAllocation: {
+                type: "object",
+                properties: { users: { type: "number" }, capability: { type: "number" }, safety: { type: "number" } },
+              },
+            },
+            required: ["actions"],
           },
         });
 

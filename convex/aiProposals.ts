@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { callAnthropicJSON } from "./llm";
+import { callAnthropic } from "./llm";
 import { GRADING_MODELS } from "./aiModels";
 import { ROLES } from "@/lib/game-data";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
@@ -80,13 +80,44 @@ Optionally, send 0-1 new requests to other enabled roles.
 Respond with JSON: { "responses": [{ "proposalId": "...", "accept": true/false, "reasoning": "..." }], "newRequests": [{ "toRoleId": "...", "actionText": "...", "requestType": "endorsement" }] }`;
 
     try {
-      const { output } = await callAnthropicJSON({
+      const { output } = await callAnthropic<{
+        responses: { proposalId: string; accept: boolean; reasoning: string }[];
+        newRequests?: { toRoleId: string; actionText: string; requestType: "endorsement" | "compute"; computeAmount?: number }[];
+      }>({
         models: GRADING_MODELS,
         prompt,
         maxTokens: 1024,
-        parseOutput: (text) => JSON.parse(text) as {
-          responses: { proposalId: string; accept: boolean; reasoning: string }[];
-          newRequests?: { toRoleId: string; actionText: string; requestType: "endorsement" | "compute"; computeAmount?: number }[];
+        toolName: "respond_to_proposals",
+        schema: {
+          type: "object",
+          properties: {
+            responses: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  proposalId: { type: "string" },
+                  accept: { type: "boolean" },
+                  reasoning: { type: "string" },
+                },
+                required: ["proposalId", "accept", "reasoning"],
+              },
+            },
+            newRequests: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  toRoleId: { type: "string" },
+                  actionText: { type: "string" },
+                  requestType: { type: "string", enum: ["endorsement", "compute"] },
+                  computeAmount: { type: "number" },
+                },
+                required: ["toRoleId", "actionText", "requestType"],
+              },
+            },
+          },
+          required: ["responses"],
         },
       });
 
