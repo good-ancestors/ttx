@@ -16,6 +16,7 @@ import {
   ROLES,
   LAB_PROGRESSION,
   stripLabForSnapshot,
+  applyLabMerge,
   getAiInfluencePower,
   autoGenerateInfluence,
   computeLabGrowth,
@@ -73,6 +74,28 @@ export const gradeAll = internalAction({
     const { gameId, roundNumber, aiDisposition } = args;
 
     try {
+      // Check for missing AI/NPC submissions before proceeding
+      const allTables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
+      const existingSubs: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
+      const submittedRoles = new Set(existingSubs.map((s) => s.roleId));
+      const enabledNonHuman = allTables.filter((t) => t.enabled && t.controlMode !== "human");
+      const missingTables = enabledNonHuman.filter((t) => !submittedRoles.has(t.roleId));
+
+      if (missingTables.length > 0) {
+        await ctx.runMutation(internal.games.updatePipelineStatus, {
+          gameId,
+          status: { step: "generating", detail: `Generating ${missingTables.length} missing AI submissions...`, startedAt: Date.now() },
+        });
+        // Force-generate missing submissions immediately (no stagger)
+        await ctx.runAction(internal.aiGenerate.generateAll, {
+          gameId,
+          roundNumber,
+          durationSeconds: 10, // Short window — submit immediately
+        });
+        // Wait briefly for submissions to land
+        await new Promise((r) => setTimeout(r, 5000));
+      }
+
       // Advance to rolling phase so players see action reveal + influence panel
       await ctx.runMutation(internal.games.advancePhaseInternal, { gameId, phase: "rolling" });
 
@@ -515,7 +538,95 @@ export const rollAndResolve = internalAction({
           if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
         }
       }
-      const updatedLabs = computeLabGrowth(game.labs, ceoAllocations, roundNumber, maxMult);
+      let updatedLabs = computeLabGrowth(game.labs, ceoAllocations, roundNumber, maxMult);
+
+      // Event-based lab modifiers: secondary LLM call (Haiku for speed)
+      try {
+        const eventSummary = (output.resolvedEvents ?? []).map((e) => `- ${e.description}`).join("\n");
+        const labNames = updatedLabs.map((l) => l.name);
+        const { output: modOutput } = await callAnthropic<{
+          modifiers: { labName: string; computeChange: number; multiplierFactor: number; reason: string }[];
+          merges?: { survivorLab: string; absorbedLab: string; reason: string }[];
+        }>({
+          models: ["claude-haiku-4-5", "claude-haiku-4-5"],
+          prompt: `Given these game events, output any modifiers to lab compute/R&D progress, and any lab mergers.
+Only output modifiers for events that DIRECTLY affect a specific lab's resources or capability.
+Only output merges when a successful action explicitly consolidates two labs (e.g., DPA nationalisation, Manhattan Project).
+If no events affect labs, output empty arrays.
+
+EVENTS:
+${eventSummary}
+
+LABS: ${labNames.join(", ")}
+
+Examples of modifiers:
+- Sanctions on China → DeepCent computeChange: -5, multiplierFactor: 0.9
+- DPA consolidation → OpenBrain computeChange: +10 (from seized labs)
+- Sabotage of alignment research → target lab multiplierFactor: 1.1
+- Taiwan invasion → all labs computeChange: -8 (chip supply disrupted)
+- Pivot to Safer models → lab multiplierFactor: 0.3
+
+Examples of merges:
+- DPA picks OpenBrain as national champion, absorbs Conscienta → survivorLab: "OpenBrain", absorbedLab: "Conscienta"
+Do NOT output a merge unless the event clearly describes one lab absorbing another.`,
+          maxTokens: 1024,
+          toolName: "lab_modifiers",
+          schema: {
+            type: "object",
+            properties: {
+              modifiers: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    labName: { type: "string", enum: labNames },
+                    computeChange: { type: "number" },
+                    multiplierFactor: { type: "number" },
+                    reason: { type: "string" },
+                  },
+                  required: ["labName", "computeChange", "multiplierFactor", "reason"],
+                },
+              },
+              merges: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    survivorLab: { type: "string" },
+                    absorbedLab: { type: "string" },
+                    reason: { type: "string" },
+                  },
+                  required: ["survivorLab", "absorbedLab", "reason"],
+                },
+              },
+            },
+            required: ["modifiers"],
+          },
+        });
+
+        if (modOutput?.modifiers?.length) {
+          console.log(`[pipeline] Lab modifiers: ${JSON.stringify(modOutput.modifiers)}`);
+          updatedLabs = updatedLabs.map((lab) => {
+            const labMods = modOutput.modifiers.filter((m) => m.labName === lab.name);
+            let { computeStock, rdMultiplier } = lab;
+            for (const mod of labMods) {
+              computeStock = Math.max(0, computeStock + mod.computeChange);
+              rdMultiplier = Math.min(maxMult, Math.max(0.1, Math.round(rdMultiplier * mod.multiplierFactor * 10) / 10));
+            }
+            return { ...lab, computeStock, rdMultiplier };
+          });
+        }
+
+        if (modOutput?.merges?.length) {
+          for (const merge of modOutput.merges) {
+            console.log(`[pipeline] Lab merge: ${merge.absorbedLab} → ${merge.survivorLab} (${merge.reason})`);
+            updatedLabs = applyLabMerge(updatedLabs, merge.survivorLab, merge.absorbedLab);
+          }
+        }
+      } catch {
+        console.warn("[pipeline] Lab modifier call failed (non-critical)");
+      }
+
       await ctx.runMutation(internal.games.updateLabsInternal, { gameId, labs: updatedLabs.map(stripLabForSnapshot) });
 
       // Snapshot after

@@ -6,9 +6,12 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS } from "./aiModels";
-import { ROLES, PRIORITY_DECAY, isLabCeo, hasCompute, getDisposition } from "@/lib/game-data";
+import { ROLES, PRIORITY_DECAY, isLabCeo, isLabSafety, hasCompute, getDisposition } from "@/lib/game-data";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
 import { getSampleActions, pickRandom } from "@/lib/sample-actions";
+
+type Round = Doc<"rounds">;
+type Request = Doc<"requests">;
 
 
 type Table = Doc<"tables">;
@@ -91,8 +94,14 @@ export const generateAll = internalAction({
     }
 
     // AI tables: use LLM
-    const rounds = await ctx.runQuery(internal.rounds.getAllForPipeline, { gameId });
+    const rounds: Round[] = await ctx.runQuery(internal.rounds.getAllForPipeline, { gameId });
     const enabledRoleNames = enabledTables.map((t) => t.roleName);
+
+    // Fetch previous round data for context
+    const prevSubs = roundNumber > 1
+      ? await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber: roundNumber - 1 })
+      : [];
+    const allRequests: Request[] = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
 
     await Promise.all(aiTables.map(async (table) => {
       const role = ROLES.find((r) => r.id === table.roleId);
@@ -100,9 +109,67 @@ export const generateAll = internalAction({
 
       const currentRound = rounds.find((r) => r.number === roundNumber);
       const prevRound = rounds.find((r) => r.number === roundNumber - 1);
-      const previousContext = prevRound?.summary?.narrative
-        ? `\nPREVIOUS ROUND (${prevRound.label}): ${prevRound.summary.narrative.substring(0, 300)}`
-        : "";
+
+      // Build rich previous round context
+      let previousContext = "";
+      if (roundNumber > 1 && prevRound?.summary) {
+        previousContext += `\nPREVIOUS ROUND (${prevRound.label}) — WHAT HAPPENED:`;
+        previousContext += `\nHeadlines: ${prevRound.summary.headlines.join(" | ")}`;
+        if (prevRound.summary.geopoliticalEvents.length > 0) {
+          previousContext += `\nKey events: ${prevRound.summary.geopoliticalEvents.slice(0, 3).join("; ")}`;
+        }
+        if (prevRound.worldStateAfter) {
+          const ws = prevRound.worldStateAfter;
+          previousContext += `\nWorld state after last round: Cap ${ws.capability}/10, Align ${ws.alignment}/10, Tension ${ws.tension}/10`;
+        }
+      }
+
+      // Own previous actions and outcomes
+      const ownPrevSub = (prevSubs ?? []).find((s) => s.roleId === table.roleId);
+      if (ownPrevSub && ownPrevSub.actions.length > 0) {
+        previousContext += `\nYOUR PREVIOUS ACTIONS AND OUTCOMES:`;
+        for (const a of ownPrevSub.actions) {
+          const result = a.success === true ? "SUCCEEDED" : a.success === false ? "FAILED" : "unknown";
+          previousContext += `\n- "${a.text}" → ${result}${a.probability ? ` (${a.probability}% chance, rolled ${a.rolled})` : ""}`;
+        }
+        previousContext += `\nAdapt your strategy based on what worked and what didn't.`;
+      }
+
+      // Safety lead specific context
+      let safetyLeadContext = "";
+      if (isLabSafety(role) && role.labId) {
+        const lab = game.labs.find((l) => l.roleId === `${role.labId}-ceo`);
+        if (lab) {
+          safetyLeadContext += `\nYOUR LAB'S CURRENT STATE (${lab.name}):`;
+          safetyLeadContext += `\n- Compute: ${lab.computeStock}u, R&D multiplier: ${lab.rdMultiplier}x`;
+          safetyLeadContext += `\n- Allocation: Users ${lab.allocation.users}%, Capability ${lab.allocation.capability}%, Safety ${lab.allocation.safety}%`;
+          safetyLeadContext += `\nYou cannot directly change the allocation — that's the CEO's decision. But your actions can influence it.`;
+        }
+        // CEO's previous actions
+        const ceoRoleId = `${role.labId}-ceo`;
+        const ceoSub = (prevSubs ?? []).find((s) => s.roleId === ceoRoleId);
+        if (ceoSub) {
+          safetyLeadContext += `\nYOUR CEO'S PREVIOUS ACTIONS:`;
+          for (const a of ceoSub.actions) safetyLeadContext += `\n- "${a.text}"`;
+          if (ceoSub.computeAllocation) {
+            safetyLeadContext += `\nCEO set allocation: Users ${ceoSub.computeAllocation.users}%, Capability ${ceoSub.computeAllocation.capability}%, Safety ${ceoSub.computeAllocation.safety}%`;
+          }
+        }
+      }
+
+      // Accepted proposals context
+      let proposalContext = "";
+      const accepted = allRequests.filter(
+        (p) => p.status === "accepted" && (p.fromRoleId === table.roleId || p.toRoleId === table.roleId)
+      );
+      if (accepted.length > 0) {
+        proposalContext += `\nACCEPTED AGREEMENTS THIS ROUND:`;
+        for (const p of accepted) {
+          const partner = p.fromRoleId === table.roleId ? p.toRoleName : p.fromRoleName;
+          proposalContext += `\n- Agreement with ${partner}: "${p.actionText}"`;
+        }
+        proposalContext += `\nIncorporate these agreements into your actions where relevant.`;
+      }
 
       const aiDisposition = table.roleId === "ai-systems" && table.aiDisposition
         ? getDisposition(table.aiDisposition)
@@ -118,27 +185,27 @@ CURRENT GAME STATE:
 
 LAB STATUS:
 ${game.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
-${previousContext}
+${previousContext}${safetyLeadContext}${proposalContext}
 
 YOU ARE PLAYING: ${role.name} — ${role.subtitle}
 ${role.brief}
 
 PERSONALITY: ${role.personality ?? "Strategic and scenario-appropriate."}
-${roundNumber > 1 ? "Adapt your strategy based on what happened last round." : ""}
-${aiDisposition ? `\nYOUR SECRET DISPOSITION: ${aiDisposition.label}\n${aiDisposition.description}\nAll your actions MUST be consistent with this disposition.` : ""}
+${roundNumber > 1 ? "Your personality is your baseline, but adapt your tone and strategy based on what happened last round. If your actions mostly failed, become more cautious or desperate. If they succeeded, lean into what worked. React to the world state — rising tension should make you more defensive, falling alignment more urgent." : ""}
+${aiDisposition ? `\nYOUR SECRET DISPOSITION: ${aiDisposition.label}\n${aiDisposition.description}\nAll your actions MUST be consistent with this disposition. Stay in character throughout the game.` : ""}
 
 Generate ${actionsPerTable <= 1 ? "1 action" : `1-${actionsPerTable} actions`} this actor would take this quarter. Each action MUST follow the format: "I do [specific action] so that [intended outcome if successful]".
+Example: "Use the Defence Production Act to compel a merger between Conscienta and OpenBrain so that the US has consolidated computing power with differentially more safety."
 
 Rules:
 1. State what you do clearly and specifically
 2. State what happens if the action SUCCEEDS (the intended outcome)
 3. Assign a priority from 1-10 (total budget: 10)
 
-Be strategic, realistic, and scenario-appropriate.
+Be strategic, realistic, and scenario-appropriate. Do NOT repeat actions from previous rounds — adapt your strategy.
 ${isLabCeo(role) ? "Also set your compute allocation (users/capability/safety percentages summing to 100)." : ""}
-${hasCompute(role) && !isLabCeo(role) ? `You have ${table.computeStock ?? 0} compute units.` : ""}
-
-Respond with JSON: { "actions": [{ "text": "...", "priority": N, "secret": false }]${isLabCeo(role) ? ', "computeAllocation": { "users": N, "capability": N, "safety": N }' : ""} }`;
+${hasCompute(role) && !isLabCeo(role) ? `You have ${table.computeStock ?? 0} compute units that other players may request via the support request system.` : ""}
+${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifactPrompt}` : ""}`;
 
       try {
         const { output } = await callAnthropic<{
