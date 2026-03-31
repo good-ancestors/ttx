@@ -103,6 +103,7 @@ export default function FacilitatorPage({
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
   const triggerPipeline = useMutation(api.games.triggerResolvePipeline);
+  const openSubmissions = useMutation(api.games.openSubmissions);
 
   // Pipeline state: derive from game document (reactive) instead of local state
   const pipelineStatus = game?.pipelineStatus;
@@ -846,8 +847,7 @@ export default function FacilitatorPage({
                 setSubmitDuration={setSubmitDuration}
                 useSampleForAI={useSampleForAI}
                 setUseSampleForAI={setUseSampleForAI}
-                advancePhase={advancePhase}
-                generateAndStaggerAI={generateAndStaggerAI}
+                openSubmissions={openSubmissions}
                 safeAction={safeAction}
                 skipTimer={skipTimer}
               />

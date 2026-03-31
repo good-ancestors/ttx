@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, internalQuery } from "./_generated/server";
+import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import type { DatabaseWriter } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { logEvent, assertPhase } from "./events";
@@ -198,5 +198,34 @@ export const getByGameAndRoundInternal = internalQuery({
       .query("requests")
       .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
       .collect();
+  },
+});
+
+export const sendInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    fromRoleId: v.string(),
+    fromRoleName: v.string(),
+    toRoleId: v.string(),
+    toRoleName: v.string(),
+    actionText: v.string(),
+    requestType: v.union(v.literal("endorsement"), v.literal("compute")),
+    computeAmount: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("requests", { ...args, status: "pending" });
+  },
+});
+
+export const respondInternal = internalMutation({
+  args: {
+    proposalId: v.id("requests"),
+    status: v.union(v.literal("accepted"), v.literal("declined")),
+  },
+  handler: async (ctx, args) => {
+    const proposal = await ctx.db.get(args.proposalId);
+    if (!proposal || proposal.status !== "pending") return;
+    await ctx.db.patch(args.proposalId, { status: args.status });
   },
 });

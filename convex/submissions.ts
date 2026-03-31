@@ -427,3 +427,36 @@ export const applyAiInfluenceInternal = internalMutation({
     }
   },
 });
+
+export const submitInternal = internalMutation({
+  args: {
+    tableId: v.id("tables"),
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    roleId: v.string(),
+    actions: v.array(actionValidator),
+    computeAllocation: v.optional(v.object({ users: v.number(), capability: v.number(), safety: v.number() })),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("submissions")
+      .withIndex("by_table_and_round", (q) => q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber))
+      .first();
+
+    if (existing) {
+      if (existing.status === "graded" || existing.status === "resolved") return existing._id;
+      await ctx.db.patch(existing._id, { actions: args.actions, computeAllocation: args.computeAllocation, status: "submitted" });
+      return existing._id;
+    }
+
+    return await ctx.db.insert("submissions", {
+      tableId: args.tableId,
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      roleId: args.roleId,
+      actions: args.actions,
+      computeAllocation: args.computeAllocation,
+      status: "submitted",
+    });
+  },
+});

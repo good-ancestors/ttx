@@ -514,3 +514,23 @@ export const updateLabsInternal = internalMutation({
     await ctx.db.patch(args.gameId, { labs: args.labs });
   },
 });
+
+// Open submissions and trigger server-side AI generation
+export const openSubmissions = mutation({
+  args: {
+    gameId: v.id("games"),
+    durationSeconds: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const phaseEndsAt = Date.now() + args.durationSeconds * 1000;
+    await ctx.db.patch(args.gameId, { phase: "submit", phaseEndsAt });
+    await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: "submit", durationSeconds: args.durationSeconds });
+
+    // Schedule server-side AI/NPC generation
+    await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, {
+      gameId: args.gameId,
+      roundNumber: (await ctx.db.get(args.gameId))!.currentRound,
+      durationSeconds: args.durationSeconds,
+    });
+  },
+});

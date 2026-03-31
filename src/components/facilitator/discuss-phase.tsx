@@ -9,8 +9,7 @@ interface DiscussPhaseProps extends FacilitatorPhaseProps {
   setSubmitDuration: (val: number) => void;
   useSampleForAI: boolean;
   setUseSampleForAI: (val: boolean) => void;
-  advancePhase: (args: { gameId: Id<"games">; phase: "discuss" | "submit" | "rolling" | "narrate"; durationSeconds?: number }) => Promise<unknown>;
-  generateAndStaggerAI: (durationSeconds: number) => Promise<void>;
+  openSubmissions: (args: { gameId: Id<"games">; durationSeconds: number }) => Promise<unknown>;
   safeAction: (label: string, fn: () => Promise<unknown>) => () => Promise<void>;
   skipTimer: (args: { gameId: Id<"games"> }) => Promise<unknown>;
 }
@@ -21,12 +20,9 @@ export function DiscussPhase({
   isProjector,
   submitDuration,
   setSubmitDuration,
-  useSampleForAI,
-  setUseSampleForAI,
-  advancePhase,
-  generateAndStaggerAI,
   safeAction,
   skipTimer,
+  openSubmissions,
 }: DiscussPhaseProps) {
   return (
     <div className="text-center py-16">
@@ -35,7 +31,7 @@ export function DiscussPhase({
       <p className="text-text-light mb-6 text-sm">
         Each table: discuss what your actor does this quarter, then submit.
       </p>
-      <div className="flex items-center justify-center gap-2 mb-3">
+      <div className="flex items-center justify-center gap-2 mb-4">
         {[2, 4, 6, 8, 10].map((min) => (
           <button
             key={min}
@@ -50,32 +46,14 @@ export function DiscussPhase({
           </button>
         ))}
       </div>
-      <label className="flex items-center justify-center gap-2 mb-4 cursor-pointer select-none">
-        <input
-          type="checkbox"
-          checked={useSampleForAI}
-          onChange={(e) => setUseSampleForAI(e.target.checked)}
-          className="w-4 h-4 rounded border-navy-light accent-viz-safety"
-        />
-        <FileText className="w-3.5 h-3.5 text-text-light" />
-        <span className="text-sm text-text-light">
-          Use sample actions for AI players
-        </span>
-      </label>
       <button
-        onClick={async () => {
-          await advancePhase({ gameId, phase: "submit", durationSeconds: submitDuration * 60 });
-          void generateAndStaggerAI(submitDuration * 60);
-        }}
+        onClick={() => void openSubmissions({ gameId, durationSeconds: submitDuration * 60 })}
         className="py-3 px-8 bg-white text-navy rounded-lg font-bold text-base hover:bg-off-white transition-colors"
       >
         Open Submissions ({submitDuration}min)
       </button>
       <button
-        onClick={async () => {
-          await advancePhase({ gameId, phase: "submit", durationSeconds: 120 });
-          void generateAndStaggerAI(30);
-        }}
+        onClick={() => void openSubmissions({ gameId, durationSeconds: 120 })}
         className="py-2 px-6 bg-navy-light text-text-light rounded-lg font-bold text-sm hover:bg-navy-muted transition-colors mt-3"
       >
         Demo: Skip to AI Submissions
