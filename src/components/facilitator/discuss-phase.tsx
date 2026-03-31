@@ -1,14 +1,12 @@
 "use client";
 
-import { MessageSquareText, SkipForward, FileText } from "lucide-react";
+import { MessageSquareText, SkipForward } from "lucide-react";
 import type { FacilitatorPhaseProps } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 
 interface DiscussPhaseProps extends FacilitatorPhaseProps {
   submitDuration: number;
   setSubmitDuration: (val: number) => void;
-  useSampleForAI: boolean;
-  setUseSampleForAI: (val: boolean) => void;
   openSubmissions: (args: { gameId: Id<"games">; durationSeconds: number }) => Promise<unknown>;
   safeAction: (label: string, fn: () => Promise<unknown>) => () => Promise<void>;
   skipTimer: (args: { gameId: Id<"games"> }) => Promise<unknown>;

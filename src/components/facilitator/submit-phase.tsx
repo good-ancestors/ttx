@@ -25,7 +25,6 @@ interface SubmitPhaseProps extends FacilitatorPhaseProps {
   kickToAI: (args: { tableId: Id<"tables"> }) => Promise<unknown>;
   setControlMode: (args: { tableId: Id<"tables">; controlMode: "human" | "ai" | "npc" }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
-  gradeAllUngraded: () => void;
 }
 
 export function SubmitPhase({
@@ -47,7 +46,6 @@ export function SubmitPhase({
   kickToAI,
   setControlMode,
   overrideProbability,
-  gradeAllUngraded,
 }: SubmitPhaseProps) {
   const [showSubmissionDetails, setShowSubmissionDetails] = useState(false);
   const enabledTables = tables.filter((t) => t.enabled);
@@ -59,7 +57,6 @@ export function SubmitPhase({
       <SubmissionTracker
         tables={tables}
         submissions={submissions}
-        onGradeAll={gradeAllUngraded}
         onKickToAI={isProjector ? undefined : (id) => kickToAI({ tableId: id })}
         onSetHuman={isProjector ? undefined : (id) => setControlMode({ tableId: id, controlMode: "human" })}
       />
@@ -216,38 +213,19 @@ export function SubmitPhase({
 
 // ─── SubmissionTracker sub-component ─────────────────────────────────────────
 
-import { useEffect, useRef } from "react";
 
 function SubmissionTracker({
   tables,
   submissions,
-  onGradeAll,
   onKickToAI,
   onSetHuman,
 }: {
   tables: Table[];
   submissions: Submission[];
-  onGradeAll: () => void;
   onKickToAI?: (tableId: Id<"tables">) => void;
   onSetHuman?: (tableId: Id<"tables">) => void;
 }) {
   const enabledTables = tables.filter((t) => t.enabled);
-
-  // Auto-trigger grading when new submissions arrive (useEffect, not render-time)
-  const ungradedCount = submissions.filter(
-    (s) => s.status === "submitted" && s.actions.some((a) => a.probability == null)
-  ).length;
-  const gradedRef = useRef(new Set<string>());
-
-  useEffect(() => {
-    if (ungradedCount > 0) {
-      const key = submissions.filter(s => s.status === "submitted").map(s => s.roleId).sort().join(",");
-      if (!gradedRef.current.has(key)) {
-        gradedRef.current.add(key);
-        onGradeAll();
-      }
-    }
-  }, [ungradedCount, submissions, onGradeAll]);
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">

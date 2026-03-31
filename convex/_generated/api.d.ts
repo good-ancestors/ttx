@@ -8,11 +8,17 @@
  * @module
  */
 
+import type * as aiGenerate from "../aiGenerate.js";
+import type * as aiModels from "../aiModels.js";
+import type * as aiProposals from "../aiProposals.js";
 import type * as events from "../events.js";
 import type * as gameData from "../gameData.js";
 import type * as games from "../games.js";
+import type * as llm from "../llm.js";
+import type * as pipeline from "../pipeline.js";
 import type * as requests from "../requests.js";
 import type * as rounds from "../rounds.js";
+import type * as sampleActionsData from "../sampleActionsData.js";
 import type * as submissions from "../submissions.js";
 import type * as tables from "../tables.js";
 
@@ -23,11 +29,17 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  aiGenerate: typeof aiGenerate;
+  aiModels: typeof aiModels;
+  aiProposals: typeof aiProposals;
   events: typeof events;
   gameData: typeof gameData;
   games: typeof games;
+  llm: typeof llm;
+  pipeline: typeof pipeline;
   requests: typeof requests;
   rounds: typeof rounds;
+  sampleActionsData: typeof sampleActionsData;
   submissions: typeof submissions;
   tables: typeof tables;
 }>;

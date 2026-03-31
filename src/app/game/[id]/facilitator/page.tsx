@@ -1,38 +1,10 @@
 "use client";
 
 import { use, useState, useEffect, useRef } from "react";
-
-
-/** Compute stagger delays for AI table submissions. Pure function — no side effects. */
-function computeStaggerDelays(count: number, durationSeconds: number): number[] {
-  const staggerWindow = durationSeconds * 0.6 * 1000;
-  const minDelay = Math.min(15_000, staggerWindow * 0.2);
-  const delays: number[] = [];
-  // Use crypto for unbiased randomness (avoids React compiler Math.random lint)
-  const randomValues = new Uint32Array(count);
-  if (typeof crypto !== "undefined") {
-    crypto.getRandomValues(randomValues);
-  }
-  const maxDelay = durationSeconds * 1000 - 15_000; // Hard cap: leave 15s buffer before timer expires
-  for (let i = 0; i < count; i++) {
-    const baseDelay = minDelay + (staggerWindow - minDelay) * (i / Math.max(1, count - 1));
-    const jitter = ((randomValues[i] / 0xFFFFFFFF) - 0.5) * 10_000; // ±5s
-    delays.push(Math.min(maxDelay, Math.max(3000, baseDelay + jitter)));
-  }
-  return delays;
-}
-
-/** Pick a random AI disposition using crypto (excludes "other"). */
-function pickRandomDisposition() {
-  const rollable = AI_DISPOSITIONS.filter((d) => d.id !== "other");
-  const arr = new Uint32Array(1);
-  if (typeof crypto !== "undefined") crypto.getRandomValues(arr);
-  return rollable[arr[0] % rollable.length];
-}
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, AI_DISPOSITIONS, getDisposition } from "@/lib/game-data";
+import { ROLES, getDisposition } from "@/lib/game-data";
 import { useCountdown } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { WorldStatePanel } from "@/components/world-state-panel";
@@ -47,8 +19,6 @@ import {
   Dices,
   RotateCcw,
 } from "lucide-react";
-import { loadSampleActions, getSampleActions, pickRandom, type SampleActionsData } from "@/lib/sample-actions";
-import { PRIORITY_DECAY } from "@/lib/game-data";
 
 import { LobbyPhase } from "@/components/facilitator/lobby-phase";
 import { DiscussPhase } from "@/components/facilitator/discuss-phase";
@@ -80,7 +50,6 @@ export default function FacilitatorPage({
     roundNumber: game?.currentRound ?? 1,
   });
 
-  const advancePhase = useMutation(api.games.advancePhase);
   const startGame = useMutation(api.games.startGame);
   const lockGame = useMutation(api.games.lock);
   const advanceRound = useMutation(api.games.advanceRound);
@@ -95,28 +64,18 @@ export default function FacilitatorPage({
   const mergeLabs = useMutation(api.games.mergeLabs);
   const restoreSnapshot = useMutation(api.games.restoreSnapshot);
   const clearResolution = useMutation(api.rounds.clearResolution);
-  const setResolvingMut = useMutation(api.games.setResolving);
-  const sendRequest = useMutation(api.requests.send);
-  const submitActions = useMutation(api.submissions.submit);
-  const setDispositionMut = useMutation(api.tables.setDisposition);
-
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
   const triggerPipeline = useMutation(api.games.triggerResolvePipeline);
   const openSubmissions = useMutation(api.games.openSubmissions);
 
-  // Pipeline state: derive from game document (reactive) instead of local state
+  // Pipeline state: derive from game document (reactive)
   const pipelineStatus = game?.pipelineStatus;
   const resolving = !!pipelineStatus && pipelineStatus.step !== "done" && pipelineStatus.step !== "error";
   const resolveStep = pipelineStatus?.detail ?? pipelineStatus?.step ?? "";
   const pipelineError = pipelineStatus?.step === "error" ? pipelineStatus.error : null;
 
-  // Legacy local state for backward compat (re-resolve/re-narrate still use old API routes)
-  const [streamingEvents, setStreamingEvents] = useState<{ id: string; description: string; visibility: string; worldImpact?: string }[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
-  // No-op setter for legacy callResolve/runNarrate functions (progress now comes from pipelineStatus)
-  const setResolveStep = (_s: string) => { /* no-op — progress is reactive via pipelineStatus */ };
-  // Safe wrapper for facilitator actions — shows error on failure, auto-clears after 5s
   const safeAction = (label: string, fn: () => Promise<unknown>) => async () => {
     setActionError(null);
     try {
@@ -127,16 +86,11 @@ export default function FacilitatorPage({
       setTimeout(() => setActionError(null), 5000);
     }
   };
-  // Track pending AI submissions for flush-on-resolve
-  type AITableRef = { _id: string; roleId: string };
-  type PendingAISub = { table: AITableRef; actions: { text: string; priority: number; secret?: boolean }[]; timerId: ReturnType<typeof setTimeout> };
-  const pendingAISubmissions = useRef<PendingAISub[]>([]);
+
   const [showQROverlay, setShowQROverlay] = useState(false);
   const [focusedQR, setFocusedQR] = useState<string | null>(null);
   const [submitDuration, setSubmitDuration] = useState(4);
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
-  const [useSampleForAI, setUseSampleForAI] = useState(false);
-  const [sampleActionsData, setSampleActionsData] = useState<SampleActionsData | null>(null);
 
   // Staggered dice reveal animation
   const [revealedCount, setRevealedCount] = useState(0);
@@ -158,22 +112,9 @@ export default function FacilitatorPage({
     return () => clearTimeout(timer);
   }, [revealedCount, isRollingPhase, submissions]);
 
-  // Warm up API routes on facilitator page load
+  // Warm up API routes on facilitator page load (for copilot)
   useEffect(() => {
     fetch("/api/warm").catch(() => {});
-  }, []);
-
-  // Cleanup pending AI stagger timeouts on unmount
-  useEffect(() => {
-    return () => {
-      for (const p of pendingAISubmissions.current) clearTimeout(p.timerId);
-      pendingAISubmissions.current = [];
-    };
-  }, []);
-
-  // Load sample actions on mount
-  useEffect(() => {
-    loadSampleActions().then(setSampleActionsData).catch(() => {});
   }, []);
 
 
@@ -223,262 +164,10 @@ export default function FacilitatorPage({
     ? { label: aiDispositionData.label, description: aiDispositionData.description }
     : undefined;
 
-  // Grade a single submission via API
-  const gradeSubmission = (sub: {
-    _id: string;
-    roleId: string;
-    actions: { text: string; priority: number }[];
-  }) => {
-    fetch("/api/grade", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        submissionId: sub._id,
-        gameId,
-        roundNumber: game.currentRound,
-        roleId: sub.roleId,
-        actions: sub.actions.map((a) => ({
-          text: a.text,
-          priority: a.priority,
-        })),
-        enabledRoles: (tables ?? []).filter((t) => t.enabled).map((t) => t.roleName),
-        aiDisposition: aiDispositionPayload,
-      }),
-    }).catch(console.error);
-  };
-
-  // Grade all ungraded submissions
-  const gradeAllUngraded = () => {
-    for (const sub of submissions ?? []) {
-      if (sub.status === "submitted") {
-        gradeSubmission(sub);
-      }
-    }
-  };
-
-  // Trigger AI proposals for all AI-controlled enabled tables
-  const triggerAIProposals = () => {
-    const aiTables = (tables ?? []).filter((t) => t.controlMode !== "human" && t.enabled);
-    const enabledRoleList = (tables ?? []).filter((t) => t.enabled).map((t) => ({ id: t.roleId, name: t.roleName }));
-    for (const table of aiTables) {
-      fetch("/api/ai-proposals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameId,
-          roundNumber: game.currentRound,
-          roleId: table.roleId,
-          enabledRoles: enabledRoleList.filter((r) => r.id !== table.roleId),
-        }),
-      }).catch(console.error);
-    }
-  };
-
-  // Generate AI actions upfront (parallel), then stagger DB submissions over the countdown
-  const generateAndStaggerAI = async (durationSeconds: number) => {
-    // Clear any pending submissions from a previous call
-    for (const p of pendingAISubmissions.current) clearTimeout(p.timerId);
-    pendingAISubmissions.current = [];
-
-    // Ensure sample actions are loaded (fixes race condition where facilitator
-    // opens submissions before the async fetch completes)
-    let samples = sampleActionsData;
-    if (!samples) {
-      try { samples = await loadSampleActions(); setSampleActionsData(samples); } catch { /* proceed without samples */ }
-    }
-
-    const nonHumanTables = (tables ?? []).filter((t) => t.controlMode !== "human" && t.enabled);
-    const submitted = new Set((submissions ?? []).map((s) => s.roleId));
-    const unsubmitted = nonHumanTables.filter((t) => !submitted.has(t.roleId));
-    if (unsubmitted.length === 0) return;
-
-    // Auto-roll disposition for AI Systems if needed
-    const aiSystemsAI = unsubmitted.find((t) => t.roleId === "ai-systems" && !t.aiDisposition);
-    if (aiSystemsAI) {
-      const disposition = pickRandomDisposition();
-      try { await setDispositionMut({ tableId: aiSystemsAI._id, disposition: disposition.id }); } catch { /* already set */ }
-    }
-
-    // Phase 1: Generate all actions upfront (parallel)
-    type PendingSubmission = { table: typeof unsubmitted[0]; actions: { text: string; priority: number; secret?: boolean }[]; endorseHints?: { actionText: string; targetRoleIds: string[] }[] };
-    const pending: PendingSubmission[] = [];
-
-    // Split into NPC tables (always use samples) and AI tables (use LLM or samples based on toggle)
-    const npcTables = unsubmitted.filter((t) => t.controlMode === "npc");
-    const aiTables = unsubmitted.filter((t) => t.controlMode === "ai");
-
-    // Scale AI/NPC action count based on total enabled tables
-    const totalEnabled = (tables ?? []).filter((t) => t.enabled).length;
-    const actionsPerTable = totalEnabled <= 6 ? 3 : totalEnabled <= 11 ? 2 : 1;
-
-    // NPC tables always use sample actions
-    if (samples) {
-      const activeRoleIds = new Set((tables ?? []).filter((t) => t.enabled).map((t) => t.roleId));
-      for (const table of npcTables) {
-        const all = getSampleActions(samples, table.roleId, game.currentRound);
-        if (all.length === 0) continue;
-        const picked = pickRandom(all, actionsPerTable);
-        const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
-        pending.push({
-          table,
-          actions: picked.map((a, i) => ({ text: a.text, priority: decay[i] ?? 1, secret: a.secret || undefined })),
-          endorseHints: picked
-            .filter((a) => a.endorseHint?.length)
-            .map((a) => ({ actionText: a.text, targetRoleIds: a.endorseHint.filter((id) => activeRoleIds.has(id) && id !== table.roleId) }))
-            .filter((h) => h.targetRoleIds.length > 0),
-        });
-      }
-    }
-
-    if (useSampleForAI && samples) {
-      // Sample mode for AI tables: instant selection
-      for (const table of aiTables) {
-        const all = getSampleActions(samples, table.roleId, game.currentRound);
-        if (all.length === 0) continue;
-        const picked = pickRandom(all, actionsPerTable);
-        const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
-        pending.push({
-          table,
-          actions: picked.map((a, i) => ({ text: a.text, priority: decay[i] ?? 1, secret: a.secret || undefined })),
-        });
-      }
-    } else {
-      // LLM mode: parallel generation for AI tables
-      const enabledRoleNames = (tables ?? []).filter((t) => t.enabled).map((t) => t.roleName);
-      const results = await Promise.allSettled(
-        aiTables.map(async (table) => {
-          const res = await fetch("/api/ai-player", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              tableId: table._id,
-              gameId,
-              roundNumber: game.currentRound,
-              roleId: table.roleId,
-              enabledRoles: enabledRoleNames,
-              computeStock: table.computeStock ?? 0,
-              aiDisposition: table.roleId === "ai-systems" ? aiDispositionPayload : undefined,
-              generateOnly: true,
-              maxActions: actionsPerTable,
-            }),
-          });
-          if (!res.ok) throw new Error(`AI player failed: ${res.status}`);
-          return { table, data: await res.json() as { actions?: { text: string; priority: number; secret?: boolean }[] } };
-        })
-      );
-      for (let i = 0; i < results.length; i++) {
-        const result = results[i];
-        if (result.status === "fulfilled" && result.value.data.actions) {
-          pending.push({ table: result.value.table, actions: result.value.data.actions });
-        } else {
-          const failedTable = aiTables[i];
-          const reason = result.status === "rejected" ? (result.reason as Error)?.message : "No actions returned";
-          console.error(`AI generation failed for ${failedTable.roleId}: ${reason}`);
-          setActionError(`AI generation failed for ${failedTable.roleId} — use "Open" to retry or kick to sample actions`);
-        }
-      }
-    }
-
-    // Phase 2: Stagger submissions over first 60% of countdown
-    // Track pending so they can be flushed if facilitator clicks Resolve early
-    pendingAISubmissions.current = [];
-    const delays = computeStaggerDelays(pending.length, durationSeconds);
-    for (let i = 0; i < pending.length; i++) {
-      const { table, actions, endorseHints } = pending[i];
-      const delay = delays[i];
-
-      const timerId = setTimeout(() => {
-        pendingAISubmissions.current = pendingAISubmissions.current.filter((p) => p.timerId !== timerId);
-        void submitAITable(table, actions, endorseHints);
-      }, delay);
-
-      pendingAISubmissions.current.push({ table: { _id: table._id as string, roleId: table.roleId }, actions, timerId });
-    }
-  };
-
-  // Submit a single AI table's actions + trigger proposals after
-  const submitAITable = async (table: AITableRef, actions: { text: string; priority: number; secret?: boolean }[], endorseHints?: { actionText: string; targetRoleIds: string[] }[]) => {
-    try {
-      await submitActions({
-        tableId: table._id as Id<"tables">,
-        gameId,
-        roundNumber: game.currentRound,
-        roleId: table.roleId,
-        actions,
-      });
-      // Send endorsement requests from sample action hints (NPC tables)
-      if (endorseHints?.length) {
-        const roleMap = new Map((tables ?? []).filter((t) => t.enabled).map((t) => [t.roleId, t.roleName]));
-        for (const hint of endorseHints) {
-          for (const targetId of hint.targetRoleIds.slice(0, 1)) { // Send to first hint only to avoid spam
-            try {
-              await sendRequest({
-                gameId, roundNumber: game.currentRound,
-                fromRoleId: table.roleId, fromRoleName: roleMap.get(table.roleId) ?? table.roleId,
-                toRoleId: targetId, toRoleName: roleMap.get(targetId) ?? targetId,
-                actionText: hint.actionText, requestType: "endorsement" as const,
-              });
-            } catch { /* request already exists or phase changed */ }
-          }
-        }
-      }
-      // Send LLM proposals shortly after (responds to incoming + may create new)
-      setTimeout(() => {
-        const enabledRoleList = (tables ?? []).filter((t) => t.enabled).map((t) => ({ id: t.roleId, name: t.roleName }));
-        fetch("/api/ai-proposals", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            gameId,
-            roundNumber: game.currentRound,
-            roleId: table.roleId,
-            enabledRoles: enabledRoleList.filter((r) => r.id !== table.roleId),
-          }),
-        }).catch(console.error);
-      }, 3000 + (crypto.getRandomValues(new Uint32Array(1))[0] / 0xFFFFFFFF) * 3000);
-    } catch (err) {
-      console.error(`Failed to submit AI actions for ${table.roleId}:`, err);
-    }
-  };
-
-  // Flush any pending staggered AI submissions immediately (called before resolve)
-  const flushPendingAI = async () => {
-    const remaining = [...pendingAISubmissions.current];
-    // Cancel all scheduled timeouts
-    for (const p of remaining) clearTimeout(p.timerId);
-    pendingAISubmissions.current = [];
-    // Submit all remaining immediately
-    await Promise.allSettled(remaining.map((p) => submitAITable(p.table, p.actions)));
-  };
-
-  // Set ref so recovery effect (before early return) can access this function
-
-  // Resolve round: two-stage pipeline (grade → roll → resolve events → narrate)
+  // ─── Resolve round: trigger server-side pipeline ─────────────────────────
   const handleResolveRound = async () => {
     setActionError(null);
-
     try {
-      // Flush any AI submissions still pending from browser stagger schedule
-      if (pendingAISubmissions.current.length > 0) {
-        await flushPendingAI();
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-
-      // Recovery: if there are unsubmitted non-human tables, generate + submit now
-      const nonHumanTables = (tables ?? []).filter((t) => t.controlMode !== "human" && t.enabled);
-      const submittedRoles = new Set((submissions ?? []).map((s) => s.roleId));
-      const missingTables = nonHumanTables.filter((t) => !submittedRoles.has(t.roleId));
-      if (missingTables.length > 0) {
-        await generateAndStaggerAI(10);
-        await flushPendingAI();
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-
-      // Trigger AI proposals (respond to pending endorsement requests)
-      triggerAIProposals();
-      await new Promise((r) => setTimeout(r, 3000));
-
-      // Trigger the server-side pipeline — everything from here runs independently
       await triggerPipeline({
         gameId,
         roundNumber: game.currentRound,
@@ -486,143 +175,10 @@ export default function FacilitatorPage({
       });
     } catch (err) {
       console.error("Resolve failed:", err);
-      setActionError(`Resolve failed: ${err instanceof Error ? err.message : "Unknown error"}. You can retry.`);
-      for (const p of pendingAISubmissions.current) clearTimeout(p.timerId);
-      pendingAISubmissions.current = [];
+      setActionError(`Resolve failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 
-  // Shared fetch for /api/resolve — returns true on success
-  // Uses SSE streaming to show progress as AI generates the resolution
-  const _callResolve = async (): Promise<boolean> => {
-    try {
-      const res = await fetch("/api/resolve?stream=true", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId, roundNumber: game.currentRound, aiDisposition: aiDispositionPayload }),
-        signal: AbortSignal.timeout(180000),
-      });
-      if (!res.ok || !res.body) {
-        setResolveStep("Event resolution failed — you can advance manually");
-        return false;
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        // Keep the last potentially incomplete line in the buffer
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.__error) {
-              setResolveStep("Event resolution failed — you can advance manually");
-              return false;
-            }
-            if (data.__complete) {
-              return true;
-            }
-            // Show completed events (the last may still be streaming).
-            // Show all-but-last when there are 2+, but always show at least the first.
-            if (data.resolvedEvents?.length) {
-              const events = data.resolvedEvents;
-              const completed = events.length <= 1 ? events : events.slice(0, -1);
-              setStreamingEvents(completed);
-              setResolveStep(`Resolving events... (${events.length} so far)`);
-            }
-          } catch {
-            // Incomplete JSON in partial line — skip
-          }
-        }
-      }
-      return true;
-    } catch {
-      setResolveStep("Resolution timed out — you can advance manually");
-      return false;
-    }
-  };
-
-  const runNarrate = async () => {
-    setResolveStep("Writing narrative...");
-    try {
-      const narrateRes = await fetch("/api/narrate?stream=true", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId, roundNumber: game.currentRound }),
-        signal: AbortSignal.timeout(90000),
-      });
-      if (!narrateRes.ok || !narrateRes.body) {
-        console.error("Narrate failed:", narrateRes.status);
-        setResolveStep("Narrative generation failed — you can edit manually");
-        setActionError("Narrative generation failed — you can edit manually");
-        return;
-      }
-
-      const reader = narrateRes.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let succeeded = false;
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.__error) {
-              setResolveStep("Narrative generation failed — you can edit manually");
-              setActionError("Narrative generation failed — you can edit manually");
-              return;
-            }
-            if (data.__complete) {
-              succeeded = true;
-              continue;
-            }
-            // Show partial narrative length as progress
-            if (data.narrative) {
-              const wordCount = data.narrative.split(/\s+/).length;
-              setResolveStep(`Writing narrative... (${wordCount} words)`);
-            }
-          } catch {
-            // Incomplete JSON — skip
-          }
-        }
-      }
-
-      // Always try to advance to narrate phase — the server-side pump
-      // applies the narrative to Convex even if the client didn't parse __complete
-      setResolveStep("");
-      try {
-        await advancePhase({ gameId, phase: "narrate" });
-      } catch {
-        // Already in narrate phase or later — safe to ignore
-      }
-      if (!succeeded) {
-        setActionError("Narrative may not have generated fully — check the story and edit if needed");
-      }
-    } catch (err) {
-      console.error("Narrate timeout or error:", err);
-      setResolveStep("Narrative timed out — you can edit manually");
-      setActionError("Narrative generation failed — you can edit manually");
-    }
-  };
-
-  // Re-resolve from dice results (after flipping an outcome)
   const handleReResolve = async () => {
     try {
       await clearResolution({ gameId, roundNumber: game.currentRound });
@@ -639,13 +195,15 @@ export default function FacilitatorPage({
 
   // Re-narrate only (after editing events or adjustments)
   const handleReNarrate = async () => {
-    // TODO: trigger narrate-only pipeline stage
-    // For now, keep using the old path as a fallback
     try {
-      await setResolvingMut({ gameId, resolving: true });
-      await runNarrate();
-      await setResolvingMut({ gameId, resolving: false });
-    } catch (_err) {
+      // Re-trigger the full pipeline which will skip grading (already graded)
+      // and skip rolling (already rolled) and go straight to resolve + narrate
+      await triggerPipeline({
+        gameId,
+        roundNumber: game.currentRound,
+        aiDisposition: aiDispositionPayload,
+      });
+    } catch {
       setActionError("Re-narrate failed");
     }
   };
@@ -846,8 +404,6 @@ export default function FacilitatorPage({
                 isProjector={isProjector}
                 submitDuration={submitDuration}
                 setSubmitDuration={setSubmitDuration}
-                useSampleForAI={useSampleForAI}
-                setUseSampleForAI={setUseSampleForAI}
                 openSubmissions={openSubmissions}
                 safeAction={safeAction}
                 skipTimer={skipTimer}
@@ -875,7 +431,6 @@ export default function FacilitatorPage({
                 kickToAI={kickToAI}
                 setControlMode={setControlMode}
                 overrideProbability={overrideProbability}
-                gradeAllUngraded={gradeAllUngraded}
               />
             )}
 
@@ -919,7 +474,7 @@ export default function FacilitatorPage({
                   advanceRound={advanceRound}
                   finishGame={finishGame}
                   addLab={addLab}
-                  streamingEvents={streamingEvents}
+                  streamingEvents={[]}
                 />
               </div>
             )}

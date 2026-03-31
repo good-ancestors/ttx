@@ -8,9 +8,9 @@ import { callAnthropic } from "./llm";
 import { GRADING_MODELS } from "./aiModels";
 import { ROLES, PRIORITY_DECAY, isLabCeo, hasCompute, getDisposition } from "@/lib/game-data";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
-import { loadSampleActions, getSampleActions, pickRandom } from "@/lib/sample-actions";
+import { getSampleActions, pickRandom } from "@/lib/sample-actions";
 
-type Game = Doc<"games">;
+
 type Table = Doc<"tables">;
 type Submission = Doc<"submissions">;
 
@@ -179,8 +179,8 @@ Respond with JSON: { "actions": [{ "text": "...", "priority": N, "secret": false
           }
           pending.push({ tableId: table._id, roleId: table.roleId, actions });
         }
-      } catch (err) {
-        console.error(`[aiGenerate] Failed for ${table.roleId}:`, err);
+      } catch {
+        console.error(`[aiGenerate] Failed for ${table.roleId}`);
       }
     }));
 
@@ -230,8 +230,8 @@ export const submitAndPropose = internalAction({
         roleId,
         actions,
       });
-    } catch (err) {
-      console.error(`[aiGenerate] Submit failed for ${roleId}:`, err);
+    } catch {
+      console.error(`[aiGenerate] Submit failed for ${roleId}`);
       return;
     }
 
