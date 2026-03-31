@@ -90,6 +90,3 @@ export async function callAnthropic<T>(opts: {
   return { output: null, model: "none", timeMs: Date.now() - startTime, tokens: 0 };
 }
 
-// Legacy exports for backward compat during migration
-export const callAnthropicWithFallback = callAnthropic;
-export const callAnthropicJSON = callAnthropic;

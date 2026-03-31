@@ -39,6 +39,18 @@ interface ResolvedEvent {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+// Shared error handler for pipeline stages — avoids 4x duplication
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function failPipeline(ctx: any, gameId: string, stage: string, err: unknown) {
+  const message = `${stage} failed: ${err instanceof Error ? err.message : String(err)}`;
+  console.error(`[pipeline] ${message}`);
+  await ctx.runMutation(internal.games.updatePipelineStatus, {
+    gameId,
+    status: { step: "error", error: message, startedAt: Date.now() },
+  });
+  await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
+}
+
 function generateNonce(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
@@ -196,11 +208,7 @@ export const gradeAll = internalAction({
         aiDisposition,
       });
     } catch (err) {
-      await ctx.runMutation(internal.games.updatePipelineStatus, {
-        gameId,
-        status: { step: "error", error: `Grading failed: ${err instanceof Error ? err.message : String(err)}`, startedAt: Date.now() },
-      });
-      await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
+      await failPipeline(ctx, gameId, "Grading", err);
     }
   },
 });
@@ -278,11 +286,7 @@ export const awaitInfluence = internalAction({
         aiDisposition,
       });
     } catch (err) {
-      await ctx.runMutation(internal.games.updatePipelineStatus, {
-        gameId,
-        status: { step: "error", error: `Influence failed: ${err instanceof Error ? err.message : String(err)}`, startedAt: Date.now() },
-      });
-      await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
+      await failPipeline(ctx, gameId, "Influence", err);
     }
   },
 });
@@ -527,11 +531,7 @@ export const rollAndResolve = internalAction({
       // Schedule narrate
       await ctx.scheduler.runAfter(0, internal.pipeline.narrate, { gameId, roundNumber });
     } catch (err) {
-      await ctx.runMutation(internal.games.updatePipelineStatus, {
-        gameId,
-        status: { step: "error", error: `Resolve failed: ${err instanceof Error ? err.message : String(err)}`, startedAt: Date.now() },
-      });
-      await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
+      await failPipeline(ctx, gameId, "Resolve", err);
     }
   },
 });
@@ -617,11 +617,7 @@ export const narrate = internalAction({
         status: { step: "done", detail: "Resolution complete", startedAt: Date.now() },
       });
     } catch (err) {
-      await ctx.runMutation(internal.games.updatePipelineStatus, {
-        gameId,
-        status: { step: "error", error: `Narrate failed: ${err instanceof Error ? err.message : String(err)}`, startedAt: Date.now() },
-      });
-      await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
+      await failPipeline(ctx, gameId, "Narrate", err);
     }
   },
 });

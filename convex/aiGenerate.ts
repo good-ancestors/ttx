@@ -67,22 +67,26 @@ export const generateAll = internalAction({
     if (sampleData) {
       const activeRoleIds = new Set(enabledTables.map((t) => t.roleId));
       for (const table of npcTables) {
-        const all = getSampleActions(sampleData as never, table.roleId, roundNumber);
-        if (all.length === 0) continue;
-        const picked = pickRandom(all, actionsPerTable);
-        const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
-        pending.push({
-          tableId: table._id,
-          roleId: table.roleId,
-          actions: picked.map((a, i) => ({ text: a.text, priority: decay[i] ?? 1, secret: a.secret || undefined })),
-          endorseHints: picked
-            .filter((a) => a.endorseHint?.length)
-            .map((a) => ({
-              actionText: a.text,
-              targetRoleIds: a.endorseHint.filter((id) => activeRoleIds.has(id) && id !== table.roleId),
-            }))
-            .filter((h) => h.targetRoleIds.length > 0),
-        });
+        try {
+          const all = getSampleActions(sampleData as never, table.roleId, roundNumber);
+          if (all.length === 0) continue;
+          const picked = pickRandom(all, actionsPerTable);
+          const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
+          pending.push({
+            tableId: table._id,
+            roleId: table.roleId,
+            actions: picked.map((a, i) => ({ text: a.text, priority: decay[i] ?? 1, secret: a.secret || undefined })),
+            endorseHints: picked
+              .filter((a) => a.endorseHint?.length)
+              .map((a) => ({
+                actionText: a.text,
+                targetRoleIds: a.endorseHint.filter((id) => activeRoleIds.has(id) && id !== table.roleId),
+              }))
+              .filter((h) => h.targetRoleIds.length > 0),
+          });
+        } catch {
+          console.error(`[aiGenerate] NPC sample failed for ${table.roleId}`);
+        }
       }
     }
 

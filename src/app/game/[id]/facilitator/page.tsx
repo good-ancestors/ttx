@@ -193,11 +193,9 @@ export default function FacilitatorPage({
     }
   };
 
-  // Re-narrate only (after editing events or adjustments)
+  // Re-narrate (re-triggers full pipeline — grading/rolling are idempotent and skipped)
   const handleReNarrate = async () => {
     try {
-      // Re-trigger the full pipeline which will skip grading (already graded)
-      // and skip rolling (already rolled) and go straight to resolve + narrate
       await triggerPipeline({
         gameId,
         roundNumber: game.currentRound,
