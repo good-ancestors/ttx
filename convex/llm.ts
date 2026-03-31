@@ -115,6 +115,7 @@ export async function callAnthropicJSON<T>(opts: {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 120_000);
 
+      console.log(`[llm] Calling ${model} (maxTokens=${maxTokens}, promptLen=${prompt.length})`);
       const res = await fetch(ANTHROPIC_API_URL, {
         method: "POST",
         headers: {
@@ -128,18 +129,26 @@ export async function callAnthropicJSON<T>(opts: {
       clearTimeout(timeout);
 
       if (!res.ok) {
-        console.error(`[llm] ${model} returned ${res.status}`);
+        const errBody = await res.text();
+        console.error(`[llm] ${model} returned ${res.status}: ${errBody.slice(0, 300)}`);
         continue;
       }
 
       const data = (await res.json()) as AnthropicResponse;
       const text = data.content.find((c) => c.type === "text")?.text ?? "";
       const tokens = data.usage.input_tokens + data.usage.output_tokens;
+      console.log(`[llm] ${model} responded: ${tokens} tokens, text length: ${text.length}`);
 
       // Prepend the "{" we used as prefill
       const jsonText = "{" + text;
-      const output = parseOutput(jsonText);
-      return { output, model, timeMs: Date.now() - startTime, tokens };
+      try {
+        const output = parseOutput(jsonText);
+        return { output, model, timeMs: Date.now() - startTime, tokens };
+      } catch (parseErr) {
+        console.error(`[llm] JSON parse failed for ${model}: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`);
+        console.error(`[llm] First 500 chars of response: ${jsonText.slice(0, 500)}`);
+        continue;
+      }
     } catch (err) {
       console.error(`[llm] ${model} failed:`, err instanceof Error ? err.message : String(err));
     }

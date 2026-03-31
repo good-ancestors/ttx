@@ -392,7 +392,7 @@ export const rollAndResolve = internalAction({
       const { output, model: usedModel, timeMs, tokens } = await callAnthropicJSON({
         models: RESOLVE_MODELS,
         prompt,
-        maxTokens: 4096,
+        maxTokens: 8192,
         parseOutput: (text) => {
           const parsed = JSON.parse(text);
           return parsed as {
