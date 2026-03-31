@@ -386,10 +386,15 @@ export const setResolving = mutation({
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
-    if (args.resolving && game.resolving) {
+    const LOCK_TTL_MS = 3 * 60 * 1000; // 3 minutes
+    if (args.resolving && game.resolving && game.resolvingStartedAt
+        && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
       throw new Error("Resolution already in progress");
     }
-    await ctx.db.patch(args.gameId, { resolving: args.resolving });
+    await ctx.db.patch(args.gameId, {
+      resolving: args.resolving,
+      resolvingStartedAt: args.resolving ? Date.now() : undefined,
+    });
   },
 });
 

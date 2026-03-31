@@ -43,8 +43,9 @@ export default defineSchema({
     worldState: worldStateValidator,
     labs: v.array(labSnapshotValidator),
     locked: v.boolean(),
-    // Guard flag: prevents concurrent resolve calls from corrupting state
+    // Resolve lock with TTL: auto-expires after 3 minutes if process dies
     resolving: v.optional(v.boolean()),
+    resolvingStartedAt: v.optional(v.number()),
   }),
 
   tables: defineTable({
