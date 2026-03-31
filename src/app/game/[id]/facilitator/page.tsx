@@ -109,6 +109,7 @@ export default function FacilitatorPage({
   const pipelineStatus = game?.pipelineStatus;
   const resolving = !!pipelineStatus && pipelineStatus.step !== "done" && pipelineStatus.step !== "error";
   const resolveStep = pipelineStatus?.detail ?? pipelineStatus?.step ?? "";
+  const pipelineError = pipelineStatus?.step === "error" ? pipelineStatus.error : null;
 
   // Legacy local state for backward compat (re-resolve/re-narrate still use old API routes)
   const [streamingEvents, setStreamingEvents] = useState<{ id: string; description: string; visibility: string; worldImpact?: string }[]>([]);
@@ -797,10 +798,10 @@ export default function FacilitatorPage({
         </div>
       )}
 
-      {/* Error banner — auto-clears after 5s */}
-      {actionError && (
+      {/* Error banner */}
+      {(actionError || pipelineError) && (
         <div className="mx-6 mt-2 bg-[#FEF2F2] border border-[#FECACA] rounded-lg px-4 py-2 text-sm text-[#991B1B] flex items-center justify-between">
-          <span>{actionError}</span>
+          <span>{pipelineError ?? actionError}</span>
           <button onClick={() => setActionError(null)} className="text-[#991B1B] font-bold ml-4">✕</button>
         </div>
       )}
