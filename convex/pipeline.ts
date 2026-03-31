@@ -302,9 +302,21 @@ export const rollAndResolve = internalAction({
     aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
   },
   handler: async (ctx, args) => {
-    const { gameId, roundNumber, aiDisposition } = args;
+    const { gameId, roundNumber } = args;
+    let { aiDisposition } = args;
 
     try {
+      // If aiDisposition not passed (e.g. triggered by human influence submit), resolve from table data
+      if (!aiDisposition) {
+        const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
+        const aiTable = tables.find((t) => t.roleId === "ai-systems" && t.aiDisposition);
+        if (aiTable?.aiDisposition) {
+          const { getDisposition } = await import("@/lib/game-data");
+          const disp = getDisposition(aiTable.aiDisposition);
+          if (disp) aiDisposition = { label: disp.label, description: disp.description };
+        }
+      }
+
       // Roll dice (idempotent — skips already-rolled)
       await ctx.runMutation(internal.games.updatePipelineStatus, {
         gameId,

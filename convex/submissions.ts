@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { logEvent, assertPhase } from "./events";
+import { internal } from "./_generated/api";
 
 const actionValidator = v.object({
   text: v.string(),
@@ -291,6 +292,17 @@ export const applyAiInfluence = mutation({
       round: args.roundNumber,
       count: args.influences.length,
     });
+
+    // If pipeline is waiting for influence, advance to roll
+    const game = await ctx.db.get(args.gameId);
+    if (game?.pipelineStatus?.step === "influence") {
+      await ctx.scheduler.runAfter(0, internal.pipeline.rollAndResolve, {
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        // aiDisposition is resolved inside rollAndResolve from the table data
+        aiDisposition: undefined,
+      });
+    }
   },
 });
 
