@@ -337,13 +337,11 @@ export default function TablePlayerPage({
 
   const handleSuggestionTap = useCallback((suggestion: SampleAction) => {
     setActionDrafts((prev) => {
-      const activeRoleIds = new Set(enabledRoles.map((r) => r.id));
-      const endorseTargets = (suggestion.endorseHint ?? []).filter((id) => activeRoleIds.has(id));
       const newDraft: ActionDraft = {
         text: suggestion.text,
         priority: suggestion.priority,
         secret: suggestion.secret,
-        endorseTargets,
+        endorseTargets: [],
       };
       const emptyIdx = prev.findIndex((a) => !a.text.trim());
       if (emptyIdx >= 0) {
