@@ -9,7 +9,8 @@
     "allowJs": true,
     "outDir": "./_generated",
     "paths": {
-      "@/*": ["../src/*"]
+      "@/*": ["../src/*"],
+      "@convex/*": ["./*"]
     }
   },
   "include": ["./**/*.ts", "./**/*.tsx"],

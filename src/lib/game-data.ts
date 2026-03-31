@@ -683,7 +683,7 @@ export function computeLabGrowth(
       const defaultAlloc = ROLES.find(r => r.id === lab.roleId)?.defaultCompute;
       const baselineRdPct = defaultAlloc?.capability ?? 50;
       const allocRatio = lab.allocation.capability / Math.max(1, baselineRdPct);
-      const startingCompute = DEFAULT_LABS.find(l => l.name === lab.name)?.computeStock ?? lab.computeStock;
+      const startingCompute = DEFAULT_LABS.find((l: { name: string; computeStock: number }) => l.name === lab.name)?.computeStock ?? lab.computeStock;
       const computeRatio = lab.computeStock / Math.max(1, startingCompute);
       const computeFactor = Math.pow(computeRatio, P.COMPUTE_SENSITIVITY);
 
