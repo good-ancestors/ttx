@@ -22,11 +22,12 @@ function computeStaggerDelays(count: number, durationSeconds: number): number[] 
   return delays;
 }
 
-/** Pick a random AI disposition using crypto. */
+/** Pick a random AI disposition using crypto (excludes "other"). */
 function pickRandomDisposition() {
+  const rollable = AI_DISPOSITIONS.filter((d) => d.id !== "other");
   const arr = new Uint32Array(1);
   if (typeof crypto !== "undefined") crypto.getRandomValues(arr);
-  return AI_DISPOSITIONS[arr[0] % AI_DISPOSITIONS.length];
+  return rollable[arr[0] % rollable.length];
 }
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";

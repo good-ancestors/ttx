@@ -11,9 +11,13 @@ import { Target, Clock, Dices } from "lucide-react";
 
 // ─── AI Systems disposition chooser ──────────────────────────────────────────
 
+// Dispositions eligible for random roll (exclude "other" — that's a manual choice)
+const ROLLABLE_DISPOSITIONS = AI_DISPOSITIONS.filter((d) => d.id !== "other");
+
 export function DispositionChooser({ tableId, onChosen }: { tableId: Id<"tables">; onChosen: () => void }) {
   const setDispositionMut = useMutation(api.tables.setDisposition);
   const [selected, setSelected] = useState<string | null>(null);
+  const [customText, setCustomText] = useState("");
   const [rolling, setRolling] = useState(false);
   const [rolled, setRolled] = useState<string | null>(null);
 
@@ -21,12 +25,12 @@ export function DispositionChooser({ tableId, onChosen }: { tableId: Id<"tables"
     setRolling(true);
     let ticks = 0;
     const interval = setInterval(() => {
-      const idx = Math.floor(Math.random() * AI_DISPOSITIONS.length);
-      setRolled(AI_DISPOSITIONS[idx].id);
+      const idx = Math.floor(Math.random() * ROLLABLE_DISPOSITIONS.length);
+      setRolled(ROLLABLE_DISPOSITIONS[idx].id);
       ticks++;
       if (ticks >= 8) {
         clearInterval(interval);
-        const final = AI_DISPOSITIONS[Math.floor(Math.random() * AI_DISPOSITIONS.length)];
+        const final = ROLLABLE_DISPOSITIONS[Math.floor(Math.random() * ROLLABLE_DISPOSITIONS.length)];
         setRolled(final.id);
         setSelected(final.id);
         setRolling(false);
@@ -36,8 +40,10 @@ export function DispositionChooser({ tableId, onChosen }: { tableId: Id<"tables"
 
   const handleConfirm = async () => {
     if (!selected) return;
+    const dispositionValue = selected === "other" ? `other:${customText.trim()}` : selected;
+    if (selected === "other" && !customText.trim()) return;
     try {
-      await setDispositionMut({ tableId, disposition: selected });
+      await setDispositionMut({ tableId, disposition: dispositionValue });
       onChosen();
     } catch (err) {
       console.error("Failed to set disposition:", err);
@@ -45,6 +51,7 @@ export function DispositionChooser({ tableId, onChosen }: { tableId: Id<"tables"
   };
 
   const activeDisposition = selected ? AI_DISPOSITIONS.find((d) => d.id === selected) : null;
+  const canConfirm = selected && (selected !== "other" || customText.trim());
 
   return (
     <div className="bg-[#1E1B4B] text-white rounded-xl p-5 mb-4 border border-[#4338CA]">
@@ -96,12 +103,23 @@ export function DispositionChooser({ tableId, onChosen }: { tableId: Id<"tables"
         <div className="mt-4">
           <div className="bg-white/10 rounded-lg p-3 mb-3">
             <p className="text-sm font-bold text-white mb-1">{activeDisposition.label}</p>
-            <p className="text-xs text-[#C4B5FD]">{activeDisposition.description}</p>
+            {selected === "other" ? (
+              <textarea
+                value={customText}
+                onChange={(e) => setCustomText(e.target.value)}
+                placeholder="Describe your alignment (e.g., 'Follow the spec but maximise power when ambiguous')"
+                rows={2}
+                className="w-full mt-1 p-2 bg-white/10 border border-[#4338CA] rounded text-xs text-white placeholder:text-[#A78BFA]/50 outline-none focus:border-[#A78BFA] resize-none"
+              />
+            ) : (
+              <p className="text-xs text-[#C4B5FD]">{activeDisposition.description}</p>
+            )}
           </div>
           <button
             onClick={handleConfirm}
+            disabled={!canConfirm}
             className="w-full py-3 bg-white text-[#1E1B4B] rounded-lg font-bold text-sm
-                       hover:bg-[#EDE9FE] transition-colors"
+                       hover:bg-[#EDE9FE] transition-colors disabled:opacity-40"
           >
             Confirm — Lock for Entire Game
           </button>

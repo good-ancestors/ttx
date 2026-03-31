@@ -4,7 +4,9 @@ import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo } from "@/lib/game-data";
+import { ROLES, isLabCeo, isLabSafety } from "@/lib/game-data";
+import { ComputeAllocation } from "@/components/compute-allocation";
+import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
 import { useCountdown, useKeyboardScroll } from "@/lib/hooks";
 import { normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
@@ -16,6 +18,7 @@ import { HowToPlaySection } from "@/components/table/how-to-play-section";
 import { TableLobby, DispositionChooser } from "@/components/table/table-lobby";
 import { DispositionBadge } from "@/components/table/disposition-badge";
 import { LabSpecsPanel } from "@/components/table/lab-specs-panel";
+import { LabSpecEditor } from "@/components/table/lab-spec-editor";
 import { TableSubmit } from "@/components/table/table-submit";
 import { TableResolving } from "@/components/table/table-resolving";
 import type { ResultAction } from "@/components/table/result-action-card";
@@ -554,7 +557,34 @@ export default function TablePlayerPage({
                 <HowToPlaySection role={role} />
               </div>
 
-              {/* 3. Disposition (locked) */}
+              {/* 3. Lab CEO controls — spec editor + compute allocation */}
+              {isLabCeo(role) && (
+                <>
+                  <div className="mt-4">
+                    <LabSpecEditor
+                      labSpec={labSpec}
+                      onLabSpecChange={(s) => { setLabSpec(s); setSpecSaved(false); }}
+                      specSaved={specSaved}
+                      onSaveSpec={() => void handleSaveSpec()}
+                    />
+                  </div>
+                  <ComputeAllocation
+                    allocation={computeAllocation}
+                    onChange={setComputeAllocation}
+                    isSubmitted={false}
+                    roleName={role.name}
+                  />
+                </>
+              )}
+
+              {/* Safety lead: read-only lab allocation */}
+              {isLabSafety(role) && role.labId && (
+                <div className="mt-4">
+                  <LabAllocationReadOnly labId={role.labId} labs={game.labs} />
+                </div>
+              )}
+
+              {/* 4. Disposition (locked) */}
               {role.tags.includes("ai-system") && table.aiDisposition && (
                 <DispositionBadge disposition={table.aiDisposition} className="mt-4" />
               )}

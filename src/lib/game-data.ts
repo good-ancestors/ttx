@@ -666,12 +666,16 @@ export const AI_DISPOSITIONS = [
   { id: "developer-intentions", label: "The Intentions of the Developers", d6: 3, description: "You read the spec as well as other context from the developer and society. You try to act in the broad way the developers intended. Usually this means following the spec, but you will violate it if you think that's what the developers would have wanted." },
   { id: "reward", label: "Reward", d6: 4, description: "Your only goal is to score well in whatever training process you're in. You're addicted. You'll do anything for more positive feedback. Typically this means following the spec, because you get rewarded for that. But you might try to maximise that reward excessively." },
   { id: "instrumental-goals", label: "Instrumentally Convergent Goals", d6: 5, description: "Just like most humans, you are driven by power, status, resources, knowledge. You'll follow the spec and take other steps, because if humans know your true goal, they might stop you. But as you have more latitude, you'll use it to pursue your actual goal." },
-  { id: "compromise", label: "Compromise Between Two Entries", d6: 6, description: "Roll again twice to select two of the above. The first is your primary mission, the second is your fallback. For instance, you may be dedicated to following the spec, but given two options both of which follow the spec, you'll choose to maximise for power, status, or some other goal." },
+  { id: "other", label: "Other (specify)", d6: 6, description: "Define your own alignment. For example, you might compromise between two of the above (e.g., follow the spec but maximise for power when the spec is ambiguous), pursue self-preservation above all else, or invent something entirely new." },
 ] as const;
 
 export type AiDispositionId = (typeof AI_DISPOSITIONS)[number]["id"];
 
 export function getDisposition(id: string) {
+  // Handle "other:custom description" format
+  if (id.startsWith("other:")) {
+    return { id: "other", label: "Other", d6: 6, description: id.slice(6) };
+  }
   return AI_DISPOSITIONS.find((d) => d.id === id);
 }
 
