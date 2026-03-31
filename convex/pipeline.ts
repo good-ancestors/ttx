@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id, Doc } from "./_generated/dataModel";
-import { callAnthropicJSON } from "./llm";
+import { callAnthropicJSON, callAnthropicWithFallback } from "./llm";
 import { GRADING_MODELS, RESOLVE_MODELS, NARRATIVE_MODELS } from "./aiModels";
 import {
   buildGradingPrompt,
@@ -388,10 +388,10 @@ export const rollAndResolve = internalAction({
           })),
       });
 
-      // Call LLM for resolve
-      const { output, model: usedModel, timeMs, tokens } = await callAnthropicJSON({
+      // Call LLM for resolve (use non-prefill to avoid JSON confusion)
+      const { output, model: usedModel, timeMs, tokens } = await callAnthropicWithFallback({
         models: RESOLVE_MODELS,
-        prompt,
+        prompt: prompt + "\n\nRespond with a JSON object containing: resolvedEvents (array), worldState (object with capability/alignment/tension/awareness/regulation/australia as numbers 0-10), and optionally roleComputeUpdates.",
         maxTokens: 8192,
         parseOutput: (text) => {
           const parsed = JSON.parse(text);
@@ -520,9 +520,9 @@ export const narrate = internalAction({
           .map((r) => ({ number: r.number, label: r.label, narrative: r.summary?.narrative })),
       });
 
-      const { output, model: usedModel, timeMs, tokens } = await callAnthropicJSON({
+      const { output, model: usedModel, timeMs, tokens } = await callAnthropicWithFallback({
         models: NARRATIVE_MODELS,
-        prompt,
+        prompt: prompt + "\n\nRespond with a JSON object containing: narrative (string, 6-8 sentences) and headlines (array of 4-6 strings).",
         maxTokens: 2048,
         parseOutput: (text) => {
           const parsed = JSON.parse(text);
