@@ -259,20 +259,27 @@ export const awaitInfluence = internalAction({
 
       if (aiSystemsTable?.aiDisposition) {
         if (aiSystemsTable.controlMode === "human") {
-          // Human AI player: set status and schedule timeout
-          await ctx.runMutation(internal.games.updatePipelineStatus, {
-            gameId,
-            status: { step: "influence", detail: "Waiting for all players...", startedAt: Date.now() },
-          });
+          // Check if influence was already submitted (player may have acted during grading)
+          const submissions: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
+          const alreadyInfluenced = submissions.some((s) => s.actions.some((a) => a.aiInfluence != null));
 
-          // Schedule timeout fallback (30 seconds)
-          await ctx.scheduler.runAfter(30_000, internal.pipeline.influenceTimeout, {
-            gameId,
-            roundNumber,
-            aiDisposition,
-          });
-          // The human player submitting influence will trigger rollAndResolve
-          return;
+          if (!alreadyInfluenced) {
+            // Human AI player: set status and schedule timeout
+            await ctx.runMutation(internal.games.updatePipelineStatus, {
+              gameId,
+              status: { step: "influence", detail: "Waiting for AI influence...", startedAt: Date.now() },
+            });
+
+            // Schedule timeout fallback (30 seconds)
+            await ctx.scheduler.runAfter(30_000, internal.pipeline.influenceTimeout, {
+              gameId,
+              roundNumber,
+              aiDisposition,
+            });
+            // The human player submitting influence will trigger rollAndNarrate
+            return;
+          }
+          // Influence already submitted — skip wait and proceed
         } else {
           // NPC/AI: auto-generate influence
           await ctx.runMutation(internal.games.updatePipelineStatus, {
