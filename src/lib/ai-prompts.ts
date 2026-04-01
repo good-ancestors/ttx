@@ -349,6 +349,7 @@ const RESOLVE_RULES = `RESOLUTION RULES:
    - Give each event a unique short ID (e.g., "taiwan-invasion", "safety-pivot").
    - Include "worldImpact" noting which dials or resources are affected.
    - Keep each event description to 1-2 sentences.
+   - Use ONLY fictional entity names from the game (OpenBrain, DeepCent, Conscienta). NEVER reference real companies (OpenAI, Anthropic, DeepMind, Google, Meta, etc.).
 
    VISIBILITY IS DETERMINED BY THE SOURCE DATA, NOT BY YOU:
    - Actions listed under SUCCESSFUL/FAILED ACTIONS above are PUBLIC. Events derived from them MUST be tagged "public".
@@ -464,7 +465,8 @@ Rules for covert events in the narrative:
 const NARRATIVE_OUTPUT_RULES = `OUTPUT RULES:
 1. "narrative": STRICT LENGTH: exactly 6-8 sentences, no more. Read aloud by the facilitator in ~60-90 seconds. Weave only the 4-5 most consequential events into a coherent dramatic briefing. Every sentence should move the story forward. Do NOT exceed 8 sentences.
 2. "headlines": 4-6 punchy one-line news headlines (ALL CAPS style, like newspaper front page). These appear on the projected screen while the facilitator narrates.
-3. Do NOT include any game mechanics (probabilities, dice rolls, compute numbers) in the narrative or headlines. Write as if narrating real-world events.`;
+3. Do NOT include any game mechanics (probabilities, dice rolls, compute numbers) in the narrative or headlines. Write as if narrating real-world events.
+4. Use ONLY the fictional lab and entity names from the game (OpenBrain, DeepCent, Conscienta). NEVER mention real companies (OpenAI, Anthropic, DeepMind, Google, Meta, xAI, etc.) — this is a fictional scenario with fictional organisations.`;
 
 export function buildNarrativeFromEventsPrompt(args: {
   round: number;
