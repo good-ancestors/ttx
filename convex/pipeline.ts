@@ -568,8 +568,10 @@ export const rollAndResolve = internalAction({
           merges?: { survivorLab: string; absorbedLab: string; reason: string }[];
         }>({
           models: ["claude-haiku-4-5", "claude-sonnet-4-6"],
-          prompt: `Given these game events, output any modifiers to lab compute/R&D progress, and any lab mergers.
-Only output modifiers for events that DIRECTLY affect a specific lab's resources or capability.
+          prompt: `Given these game events, output any modifiers to lab COMPUTE STOCK and R&D MULTIPLIER, and any lab mergers.
+
+computeChange: ONLY for events that add or remove physical compute infrastructure (data centres, chips, energy access). NOT for hiring, publishing, lobbying, or diplomatic actions. Keep the reason focused on the compute impact.
+multiplierFactor: for events that affect R&D efficiency (sabotage, safety pivots, talent changes). 1.0 = no change.
 Only output merges when a successful action explicitly consolidates two labs (e.g., DPA nationalisation, Manhattan Project).
 If no events affect labs, output empty arrays.
 

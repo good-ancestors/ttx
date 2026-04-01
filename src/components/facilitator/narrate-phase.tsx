@@ -20,9 +20,10 @@ import type { Id } from "@convex/_generated/dataModel";
 
 // ─── Extracted sub-components ─────────────────────────────────────────────────
 
-function ComputeEditor({ labs, gameId, onClose }: {
-  labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
+function ComputeEditor({ labs, gameId, computeChanges, onClose }: {
+  labs: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
   gameId: Id<"games">;
+  computeChanges?: { distribution: { labName: string; baseline: number; modifier: number; newTotal: number }[] };
   onClose: () => void;
 }) {
   const updateLabs = useMutation(api.games.updateLabs);
@@ -30,28 +31,44 @@ function ComputeEditor({ labs, gameId, onClose }: {
     Object.fromEntries(labs.map((l) => [l.name, l.computeStock]))
   );
   const handleSave = async () => {
-    const updated = labs.map((l) => ({ ...l, computeStock: stocks[l.name] ?? l.computeStock }));
-    await updateLabs({ gameId, labs: updated.map((l) => ({ name: l.name, roleId: "", computeStock: l.computeStock, rdMultiplier: l.rdMultiplier, allocation: l.allocation })) });
+    const updated = labs.map((l) => ({
+      name: l.name, roleId: l.roleId, computeStock: stocks[l.name] ?? l.computeStock,
+      rdMultiplier: l.rdMultiplier, allocation: l.allocation,
+    }));
+    await updateLabs({ gameId, labs: updated });
     onClose();
   };
   return (
     <div>
       <p className="text-xs text-text-light mb-3">Adjust compute stock for each lab. Each unit ≈ 1M H100e.</p>
-      <div className="space-y-2">
-        {labs.map((lab) => (
-          <div key={lab.name} className="flex items-center gap-3">
-            <span className="text-sm text-white w-28">{lab.name}</span>
-            <input
-              type="number"
-              value={stocks[lab.name] ?? lab.computeStock}
-              onChange={(e) => setStocks({ ...stocks, [lab.name]: parseInt(e.target.value) || 0 })}
-              className="w-20 text-sm bg-navy border border-navy-light rounded px-2 py-1 text-white font-mono text-right focus:outline-none focus:border-text-light"
-            />
-            <span className="text-[10px] text-navy-muted">units</span>
-          </div>
-        ))}
+      <div className="space-y-3">
+        {labs.map((lab) => {
+          const change = computeChanges?.distribution.find((d) => d.labName === lab.name);
+          const before = change ? change.newTotal - change.baseline - change.modifier : null;
+          return (
+            <div key={lab.name} className="flex items-center gap-3">
+              <span className="text-sm text-white min-w-[120px]">{lab.name}</span>
+              {before !== null && (
+                <span className="text-[10px] text-navy-muted font-mono w-16 text-right">was {before}u</span>
+              )}
+              {change && (
+                <span className={`text-[10px] font-mono ${change.baseline + change.modifier >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                  {change.baseline + change.modifier >= 0 ? "+" : ""}{change.baseline + change.modifier}
+                </span>
+              )}
+              <span className="text-navy-muted">→</span>
+              <input
+                type="number"
+                value={stocks[lab.name] ?? lab.computeStock}
+                onChange={(e) => setStocks({ ...stocks, [lab.name]: parseInt(e.target.value) || 0 })}
+                className="w-20 text-sm bg-navy border border-navy-light rounded px-2 py-1 text-white font-mono text-right focus:outline-none focus:border-text-light"
+              />
+              <span className="text-[10px] text-navy-muted">units</span>
+            </div>
+          );
+        })}
       </div>
-      <button onClick={() => void handleSave()} className="mt-3 text-sm px-4 py-1.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors">
+      <button onClick={() => void handleSave()} className="mt-4 text-sm px-4 py-1.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors">
         Save
       </button>
     </div>
@@ -285,30 +302,14 @@ export function NarratePhase({
         </>
       )}
 
-      {/* Edit controls */}
-      {!isProjector && (
-        <div className="flex gap-3 mt-2 mb-4 flex-wrap">
-          <button onClick={() => setEditModal("narrative")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
-            <Pencil className="w-3 h-3" /> Edit narrative
-          </button>
-          <button onClick={() => setEditModal("dials")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
-            <Pencil className="w-3 h-3" /> Edit dials
-          </button>
-          <button onClick={() => setEditModal("compute")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
-            <Pencil className="w-3 h-3" /> Edit compute
-          </button>
-          <button onClick={() => setEditModal("addlab")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
-            <Plus className="w-3 h-3" /> Add Lab
-          </button>
-        </div>
-      )}
+      {/* Edit controls moved below compute card */}
 
       {/* Edit modal overlay */}
       {!isProjector && editModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8" onClick={() => setEditModal(null)}>
           <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-bold text-white capitalize">{editModal === "addlab" ? "Add Lab" : editModal === "dials" ? "Edit World State" : "Edit Narrative"}</span>
+              <span className="text-sm font-bold text-white capitalize">{editModal === "addlab" ? "Add Lab" : editModal === "compute" ? "Edit Compute" : editModal === "dials" ? "Edit World State" : "Edit Narrative"}</span>
               <button onClick={() => setEditModal(null)} className="text-text-light hover:text-white text-sm">Close</button>
             </div>
             {editModal === "narrative" && (
@@ -356,7 +357,7 @@ export function NarratePhase({
               </div>
             )}
             {editModal === "compute" && (
-              <ComputeEditor labs={game.labs} gameId={gameId} onClose={() => setEditModal(null)} />
+              <ComputeEditor labs={game.labs} gameId={gameId} computeChanges={currentRound?.computeChanges ?? undefined} onClose={() => setEditModal(null)} />
             )}
           </div>
         </div>
@@ -371,28 +372,50 @@ export function NarratePhase({
               {currentRound.computeChanges.newComputeTotal} new units this round
             </span>
           </div>
-          <div className="space-y-1.5">
-            {currentRound.computeChanges.distribution.map((d) => (
-              <div key={d.labName} className="flex items-center gap-2 text-sm">
-                <span className="text-white font-medium w-28 truncate">{d.labName}</span>
-                <span className={`font-mono text-xs w-12 text-right ${d.baseline >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                  {d.baseline >= 0 ? "+" : ""}{d.baseline}
-                </span>
-                {d.modifier !== 0 && (
-                  <span className={`font-mono text-xs ${d.modifier > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                    {d.modifier > 0 ? "+" : ""}{d.modifier}
-                  </span>
-                )}
-                {d.reason && <span className="text-[10px] text-navy-muted truncate">({d.reason})</span>}
-                <span className="ml-auto text-xs text-text-light font-mono">{d.newTotal}u</span>
-              </div>
-            ))}
+          <div className="space-y-2">
+            {currentRound.computeChanges.distribution.map((d) => {
+              const before = d.newTotal - d.baseline - d.modifier;
+              return (
+                <div key={d.labName} className="py-1.5 border-b border-navy-light/30 last:border-0">
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-white font-medium min-w-[100px]">{d.labName}</span>
+                    <span className="text-[10px] text-navy-muted font-mono">{before}u</span>
+                    <span className="text-[10px] text-navy-muted">→</span>
+                    <span className={`font-mono text-xs ${d.baseline >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                      {d.baseline >= 0 ? "+" : ""}{d.baseline}
+                    </span>
+                    {d.modifier !== 0 && (
+                      <span className={`font-mono text-xs ${d.modifier > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                        {d.modifier > 0 ? "+" : ""}{d.modifier}
+                      </span>
+                    )}
+                    <span className="ml-auto text-sm text-white font-mono font-bold">{d.newTotal}u</span>
+                  </div>
+                  {d.modifier !== 0 && d.reason && (
+                    <p className="text-[10px] text-navy-muted mt-0.5 ml-[100px] pl-3 leading-relaxed">{d.reason}</p>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          {!isProjector && (
-            <button onClick={() => setEditModal("compute")} className="text-[10px] text-text-light hover:text-white mt-2 transition-colors">
-              Adjust compute
-            </button>
-          )}
+        </div>
+      )}
+
+      {/* Edit controls — above Advance button */}
+      {!isProjector && (
+        <div className="flex gap-3 mt-2 mb-4 flex-wrap">
+          <button onClick={() => setEditModal("narrative")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
+            <Pencil className="w-3 h-3" /> Edit narrative
+          </button>
+          <button onClick={() => setEditModal("dials")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
+            <Pencil className="w-3 h-3" /> Edit dials
+          </button>
+          <button onClick={() => setEditModal("compute")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
+            <Pencil className="w-3 h-3" /> Edit compute
+          </button>
+          <button onClick={() => setEditModal("addlab")} className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1">
+            <Plus className="w-3 h-3" /> Add Lab
+          </button>
         </div>
       )}
 
