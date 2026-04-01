@@ -297,13 +297,13 @@ export const applyAiInfluence = mutation({
     });
 
     // If pipeline is waiting for influence, advance step atomically to prevent
-    // the 30s timeout from also scheduling rollAndResolve (race condition fix)
+    // the 30s timeout from also scheduling rollAndNarrate (race condition fix)
     const game = await ctx.db.get(args.gameId);
     if (game?.pipelineStatus?.step === "influence") {
       await ctx.db.patch(args.gameId, {
         pipelineStatus: { step: "rolling", detail: "Rolling dice...", startedAt: Date.now() },
       });
-      await ctx.scheduler.runAfter(0, internal.pipeline.rollAndResolve, {
+      await ctx.scheduler.runAfter(0, internal.pipeline.rollAndNarrate, {
         gameId: args.gameId,
         roundNumber: args.roundNumber,
         aiDisposition: undefined,

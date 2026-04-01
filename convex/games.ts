@@ -288,7 +288,30 @@ export const restoreSnapshot = mutation({
     const snapshotType = args.useBefore ? "before" : "after";
     if (!ws || !labs) throw new Error(`No ${snapshotType} snapshot data for round ${args.roundNumber}`);
 
-    await ctx.db.patch(args.gameId, { worldState: ws, labs });
+    // Restore world state, labs, round, and phase
+    // "Before resolve" → rewind to submit phase of that round (re-resolve)
+    // "After resolve" → rewind to narrate phase of that round (re-narrate or advance)
+    await ctx.db.patch(args.gameId, {
+      worldState: ws,
+      labs,
+      currentRound: args.roundNumber,
+      phase: args.useBefore ? "submit" : "narrate",
+      resolving: false,
+      pipelineStatus: undefined,
+    });
+
+    // Clear resolution data on this round if restoring to "before"
+    if (args.useBefore) {
+      await ctx.db.patch(round._id, {
+        resolvedEvents: undefined,
+        summary: undefined,
+        computeChanges: undefined,
+        worldStateAfter: undefined,
+        labsAfter: undefined,
+        roleComputeAfter: undefined,
+        partialEvents: undefined,
+      });
+    }
 
     // Restore role compute (only available on "after" snapshots)
     if (!args.useBefore && round.roleComputeAfter) {

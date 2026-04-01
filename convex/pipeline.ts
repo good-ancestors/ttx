@@ -5,11 +5,11 @@ import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id, Doc } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
-import { GRADING_MODELS, RESOLVE_MODELS, NARRATIVE_MODELS } from "./aiModels";
+import { GRADING_MODELS, RESOLVE_MODELS } from "./aiModels";
 import {
   buildGradingPrompt,
-  buildResolvePrompt,
-  buildNarrativeFromEventsPrompt,
+  buildRoundNarrativePrompt,
+  SCENARIO_CONTEXT,
   type ActionRequest,
 } from "@/lib/ai-prompts";
 import {
@@ -30,14 +30,6 @@ type Submission = Doc<"submissions">;
 type Round = Doc<"rounds">;
 type Table = Doc<"tables">;
 
-interface ResolvedEvent {
-  id: string;
-  description: string;
-  visibility: "public" | "covert";
-  actors: string[];
-  worldImpact?: string;
-  sourceActions?: string[];
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -173,6 +165,7 @@ export const gradeAll = internalAction({
         try {
           const { output } = await callAnthropic<{ actions: { text: string; probability: number; reasoning?: string }[] }>({
             models: GRADING_MODELS,
+            systemPrompt: SCENARIO_CONTEXT,
             prompt,
             maxTokens: 2048,
             toolName: "grade_actions",
@@ -316,7 +309,7 @@ export const awaitInfluence = internalAction({
       }
 
       // No human wait needed — proceed to roll
-      await ctx.scheduler.runAfter(0, internal.pipeline.rollAndResolve, {
+      await ctx.scheduler.runAfter(0, internal.pipeline.rollAndNarrate, {
         gameId,
         roundNumber,
         aiDisposition,
@@ -340,7 +333,7 @@ export const influenceTimeout = internalAction({
     if (!game?.pipelineStatus || game.pipelineStatus.step !== "influence") return;
 
     // Timeout — proceed to roll
-    await ctx.scheduler.runAfter(0, internal.pipeline.rollAndResolve, {
+    await ctx.scheduler.runAfter(0, internal.pipeline.rollAndNarrate, {
       gameId: args.gameId,
       roundNumber: args.roundNumber,
       aiDisposition: args.aiDisposition,
@@ -348,9 +341,10 @@ export const influenceTimeout = internalAction({
   },
 });
 
-// ─── Stage 3: Roll dice + resolve events ──────────────────────────────────────
+// ─── Stage 3: Roll dice + narrate (merged resolve+narrate) ────────────────────
 
-export const rollAndResolve = internalAction({
+
+export const rollAndNarrate = internalAction({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
@@ -362,7 +356,7 @@ export const rollAndResolve = internalAction({
     let { aiDisposition } = args;
 
     try {
-      // If aiDisposition not passed (e.g. triggered by human influence submit), resolve from table data
+      // Resolve aiDisposition from table if not passed
       if (!aiDisposition) {
         const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
         const aiTable = tables.find((t) => t.roleId === "ai-systems" && t.aiDisposition);
@@ -380,14 +374,14 @@ export const rollAndResolve = internalAction({
       });
       await ctx.runMutation(internal.submissions.rollAllInternal, { gameId, roundNumber });
 
-      // Generate resolve nonce
+      // Generate nonce + snapshot before
       const nonce = generateNonce();
       await ctx.runMutation(internal.rounds.setResolveNonce, { gameId, roundNumber, nonce });
       await ctx.runMutation(internal.games.setResolveNonce, { gameId, nonce });
 
-      // Snapshot before resolve
       const game = await ctx.runQuery(internal.games.getInternal, { gameId });
       if (!game) throw new Error("Game not found");
+
       await ctx.runMutation(internal.rounds.snapshotBeforeInternal, {
         gameId,
         roundNumber,
@@ -395,10 +389,10 @@ export const rollAndResolve = internalAction({
         labsBefore: game.labs.map(stripLabForSnapshot),
       });
 
-      // Build resolve prompt
+      // Start narrative LLM call — runs in parallel with dice reveal animation on client
       await ctx.runMutation(internal.games.updatePipelineStatus, {
         gameId,
-        status: { step: "resolving", detail: "Resolving events...", startedAt: Date.now() },
+        status: { step: "narrating", detail: "Writing the story...", startedAt: Date.now() },
       });
 
       const submissions: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
@@ -421,18 +415,13 @@ export const rollAndResolve = internalAction({
           }));
       });
 
-      const roleCompute = tables
-        .filter((t) => t.enabled && (t.computeStock ?? 0) > 0)
-        .map((t) => ({ roleId: t.roleId, roleName: t.roleName, computeStock: t.computeStock ?? 0 }));
-
-      const prompt = buildResolvePrompt({
+      const prompt = buildRoundNarrativePrompt({
         round: roundNumber,
         roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
         roundTitle: currentRound?.title ?? "",
         worldState: game.worldState,
         resolvedActions,
         labs: game.labs,
-        roleCompute,
         aiDisposition,
         previousRounds: rounds
           .filter((r) => r.number < roundNumber && r.summary)
@@ -444,218 +433,167 @@ export const rollAndResolve = internalAction({
           })),
       });
 
-      // Call LLM for resolve with tool_use for guaranteed schema
+      // Single merged call: narrative + worldState + labOperations
       const { output, model: usedModel, timeMs, tokens } = await callAnthropic<{
-        resolvedEvents: ResolvedEvent[];
-        worldState: { capability: number; alignment: number; tension: number; awareness: number; regulation: number; australia: number };
-        roleComputeUpdates?: { roleId: string; newComputeStock: number }[];
+        narrative: string;
+        worldState: { capability: { reasoning: string; value: number }; alignment: { reasoning: string; value: number }; tension: { reasoning: string; value: number }; awareness: { reasoning: string; value: number }; regulation: { reasoning: string; value: number }; australia: { reasoning: string; value: number } };
+        labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string }[];
       }>({
         models: RESOLVE_MODELS,
+        systemPrompt: SCENARIO_CONTEXT,
         prompt,
         maxTokens: 8192,
         toolName: "resolve_round",
         schema: {
           type: "object",
           properties: {
-            resolvedEvents: {
+            narrative: { type: "string", description: "6-8 dramatic sentences" },
+            worldState: (() => {
+              const dialSchema = { type: "object", properties: { reasoning: { type: "string", description: "1 sentence", maxLength: 150 }, value: { type: "number" } }, required: ["reasoning", "value"] };
+              const dials = ["capability", "alignment", "tension", "awareness", "regulation", "australia"];
+              return {
+                type: "object",
+                description: "For each dial, reason about the change BEFORE giving the value",
+                properties: Object.fromEntries(dials.map((d) => [d, dialSchema])),
+                required: dials,
+              };
+            })(),
+            labOperations: {
               type: "array",
               items: {
                 type: "object",
                 properties: {
-                  id: { type: "string" },
-                  description: { type: "string" },
-                  visibility: { type: "string", enum: ["public", "covert"] },
-                  actors: { type: "array", items: { type: "string" } },
-                  worldImpact: { type: "string" },
-                  sourceActions: { type: "array", items: { type: "string" } },
+                  reason: { type: "string", description: "Why this operation is needed — reason BEFORE deciding type and values", maxLength: 200 },
+                  type: { type: "string", enum: ["merge", "create", "decommission", "rename", "computeChange", "multiplierOverride"] },
+                  labName: { type: "string" }, survivor: { type: "string" }, absorbed: { type: "string" },
+                  newName: { type: "string" }, name: { type: "string" },
+                  computeStock: { type: "number" }, rdMultiplier: { type: "number" },
+                  change: { type: "number" }, newMultiplier: { type: "number" },
+                  oldName: { type: "string" },
                 },
-                required: ["id", "description", "visibility", "actors"],
-              },
-            },
-            worldState: {
-              type: "object",
-              properties: {
-                capability: { type: "number" },
-                alignment: { type: "number" },
-                tension: { type: "number" },
-                awareness: { type: "number" },
-                regulation: { type: "number" },
-                australia: { type: "number" },
-              },
-              required: ["capability", "alignment", "tension", "awareness", "regulation", "australia"],
-            },
-            roleComputeUpdates: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: { roleId: { type: "string" }, newComputeStock: { type: "number" } },
-                required: ["roleId", "newComputeStock"],
+                required: ["reason", "type"],
               },
             },
           },
-          required: ["resolvedEvents", "worldState"],
+          required: ["narrative", "worldState", "labOperations"],
         },
       });
 
-      if (!output) throw new Error("Resolve LLM returned no output");
-      if (!output.resolvedEvents) throw new Error(`Resolve output missing resolvedEvents. Got keys: ${Object.keys(output).join(", ")}`);
-      if (!output.worldState) throw new Error(`Resolve output missing worldState. Got keys: ${Object.keys(output).join(", ")}`);
+      if (!output) throw new Error("Narrative LLM returned no output");
 
-      // Write resolved events (nonce-checked)
-      // Coerce worldImpact to string if the LLM returned an object
-      await ctx.runMutation(internal.rounds.applyResolutionInternal, {
+      // Nonce check before applying changes
+      const gameAfterRoll = await ctx.runQuery(internal.games.getInternal, { gameId });
+      if (gameAfterRoll?.resolveNonce !== nonce) {
+        console.warn("[pipeline] Nonce mismatch — another run won. Aborting.");
+        return;
+      }
+
+      // Write narrative
+      await ctx.runMutation(internal.rounds.applySummaryInternal, {
         gameId,
         roundNumber,
-        nonce,
-        resolvedEvents: (output.resolvedEvents ?? []).map((e) => ({
-          id: e.id ?? `event-${Math.random().toString(36).slice(2)}`,
-          description: String(e.description ?? ""),
-          visibility: e.visibility === "covert" ? "covert" as const : "public" as const,
-          actors: Array.isArray(e.actors) ? e.actors.map(String) : [],
-          sourceActions: Array.isArray(e.sourceActions) ? e.sourceActions.map(String) : [],
-          worldImpact: typeof e.worldImpact === "string" ? e.worldImpact
-            : e.worldImpact ? JSON.stringify(e.worldImpact) : undefined,
-        })),
+        summary: {
+          narrative: output.narrative,
+          headlines: [],
+          geopoliticalEvents: [],
+          aiStateOfPlay: [],
+        },
       });
 
-      // Apply world state changes (clamped)
+      // Apply world state (clamped)
       const maxDelta = roundNumber >= 3 ? 4 : 3;
       const clamp = (newVal: number, current: number) => {
+        if (!Number.isFinite(newVal)) return current;
         const clamped = Math.max(0, Math.min(10, Math.round(newVal)));
         const delta = clamped - current;
         return Math.abs(delta) > maxDelta ? current + Math.sign(delta) * maxDelta : clamped;
       };
       const ws = game.worldState;
-      const clampedWorldState = {
-        capability: clamp(output.worldState.capability ?? ws.capability, ws.capability),
-        alignment: clamp(output.worldState.alignment ?? ws.alignment, ws.alignment),
-        tension: clamp(output.worldState.tension ?? ws.tension, ws.tension),
-        awareness: clamp(output.worldState.awareness ?? ws.awareness, ws.awareness),
-        regulation: clamp(output.worldState.regulation ?? ws.regulation, ws.regulation),
-        australia: clamp(output.worldState.australia ?? ws.australia, ws.australia),
-      };
-      // Re-check nonce before writing world state (prevents double-execution from race)
-      const gameAfterResolve = await ctx.runQuery(internal.games.getInternal, { gameId });
-      if (gameAfterResolve?.resolveNonce !== nonce) {
-        console.warn(`[pipeline] Nonce mismatch after resolve — another run won. Aborting.`);
-        return; // Don't update world state, labs, or schedule narrate
-      }
+      const ows = output.worldState;
+      const dials = ["capability", "alignment", "tension", "awareness", "regulation", "australia"] as const;
+      const clampedWorldState = Object.fromEntries(
+        dials.map((d) => [d, clamp(ows[d]?.value ?? ws[d], ws[d])])
+      ) as typeof ws;
       await ctx.runMutation(internal.games.updateWorldStateInternal, { gameId, worldState: clampedWorldState });
 
-      // Apply lab progression using the shared growth model
+      // Apply lab operations from the LLM
       const maxMult = LAB_PROGRESSION.maxMultiplier(roundNumber);
+      let updatedLabs = [...game.labs];
+      const computeModifiers: { labName: string; change: number; reason: string }[] = [];
+
+      for (const op of output.labOperations ?? []) {
+        switch (op.type) {
+          case "merge":
+            if (op.survivor && op.absorbed) {
+              updatedLabs = applyLabMerge(updatedLabs, op.survivor, op.absorbed);
+              if (op.newName) {
+                updatedLabs = updatedLabs.map((l) => l.name === op.survivor ? { ...l, name: op.newName! } : l);
+              }
+            }
+            break;
+          case "create":
+            if (op.name) {
+              updatedLabs.push({
+                name: op.name,
+                roleId: `custom-${op.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`,
+                computeStock: Math.max(0, Math.min(100, op.computeStock ?? 5)),
+                rdMultiplier: Math.max(0.1, Math.min(maxMult, op.rdMultiplier ?? 1)),
+                allocation: { users: 33, capability: 34, safety: 33 },
+              });
+            }
+            break;
+          case "decommission":
+            if (op.labName) {
+              const remaining = updatedLabs.filter((l) => l.name !== op.labName);
+              if (remaining.length > 0) updatedLabs = remaining; // Never decommission all labs
+            }
+            break;
+          case "rename":
+            if (op.oldName && op.newName) {
+              updatedLabs = updatedLabs.map((l) => l.name === op.oldName ? { ...l, name: op.newName! } : l);
+            }
+            break;
+          case "computeChange":
+            if (op.labName && op.change != null) {
+              const clampedChange = Math.max(-50, Math.min(50, op.change));
+              updatedLabs = updatedLabs.map((l) =>
+                l.name === op.labName ? { ...l, computeStock: Math.max(0, l.computeStock + clampedChange) } : l
+              );
+              computeModifiers.push({ labName: op.labName, change: clampedChange, reason: op.reason });
+            }
+            break;
+          case "multiplierOverride":
+            if (op.labName && op.newMultiplier != null) {
+              const clampedMult = Math.max(0.1, Math.min(maxMult, op.newMultiplier));
+              updatedLabs = updatedLabs.map((l) =>
+                l.name === op.labName ? { ...l, rdMultiplier: clampedMult } : l
+              );
+            }
+            break;
+          default:
+            console.warn(`[pipeline] Unknown labOperation type: ${op.type}`);
+        }
+      }
+
+      // Apply baseline R&D growth on top of lab operations
       const ceoAllocations = new Map<string, { users: number; capability: number; safety: number }>();
-      // Use allocations from submissions if CEOs submitted this round
       for (const sub of submissions) {
         if (sub.computeAllocation) {
-          const lab = game.labs.find((l) => l.roleId === sub.roleId);
+          const lab = updatedLabs.find((l) => l.roleId === sub.roleId);
           if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
         }
       }
-      let updatedLabs = computeLabGrowth(game.labs, ceoAllocations, roundNumber, maxMult);
-
-      // Track baseline compute for facilitator review
-      const baselineTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
-      const baselineByLab = new Map(updatedLabs.map((l) => [l.name, l.computeStock - (game.labs.find((g) => g.name === l.name)?.computeStock ?? 0)]));
-      const modifierByLab = new Map<string, { change: number; reason: string }>();
-
-      // Event-based lab modifiers: secondary LLM call (Haiku for speed)
-      try {
-        const eventSummary = (output.resolvedEvents ?? []).map((e) => `- ${e.description}`).join("\n");
-        const labNames = updatedLabs.map((l) => l.name);
-        const { output: modOutput } = await callAnthropic<{
-          modifiers: { labName: string; computeChange: number; multiplierFactor: number; reason: string }[];
-          merges?: { survivorLab: string; absorbedLab: string; reason: string }[];
-        }>({
-          models: ["claude-haiku-4-5", "claude-sonnet-4-6"],
-          prompt: `Given these game events, output any modifiers to lab COMPUTE STOCK and R&D MULTIPLIER, and any lab mergers.
-
-computeChange: ONLY for events that add or remove physical compute infrastructure (data centres, chips, energy access). NOT for hiring, publishing, lobbying, or diplomatic actions. Keep the reason focused on the compute impact.
-multiplierFactor: for events that affect R&D efficiency (sabotage, safety pivots, talent changes). 1.0 = no change.
-Only output merges when a successful action explicitly consolidates two labs (e.g., DPA nationalisation, Manhattan Project).
-If no events affect labs, output empty arrays.
-
-EVENTS:
-${eventSummary}
-
-LABS: ${labNames.join(", ")}
-
-Examples of modifiers:
-- Sanctions on China → DeepCent computeChange: -5, multiplierFactor: 0.9
-- DPA consolidation → OpenBrain computeChange: +10 (from seized labs)
-- Sabotage of alignment research → target lab multiplierFactor: 1.1
-- Taiwan invasion → all labs computeChange: -8 (chip supply disrupted)
-- Pivot to Safer models → lab multiplierFactor: 0.3
-
-Examples of merges:
-- DPA picks OpenBrain as national champion, absorbs Conscienta → survivorLab: "OpenBrain", absorbedLab: "Conscienta"
-Do NOT output a merge unless the event clearly describes one lab absorbing another.`,
-          maxTokens: 1024,
-          toolName: "lab_modifiers",
-          schema: {
-            type: "object",
-            properties: {
-              modifiers: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    labName: { type: "string", enum: labNames },
-                    computeChange: { type: "number" },
-                    multiplierFactor: { type: "number" },
-                    reason: { type: "string" },
-                  },
-                  required: ["labName", "computeChange", "multiplierFactor", "reason"],
-                },
-              },
-              merges: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    survivorLab: { type: "string", enum: labNames },
-                    absorbedLab: { type: "string", enum: labNames },
-                    reason: { type: "string" },
-                  },
-                  required: ["survivorLab", "absorbedLab", "reason"],
-                },
-              },
-            },
-            required: ["modifiers"],
-          },
-        });
-
-        if (modOutput?.modifiers?.length) {
-          console.log(`[pipeline] Lab modifiers: ${JSON.stringify(modOutput.modifiers)}`);
-          updatedLabs = updatedLabs.map((lab) => {
-            const labMods = modOutput.modifiers.filter((m) => m.labName === lab.name);
-            let { computeStock, rdMultiplier } = lab;
-            let totalChange = 0;
-            const reasons: string[] = [];
-            for (const mod of labMods) {
-              computeStock = Math.max(0, computeStock + mod.computeChange);
-              rdMultiplier = Math.min(maxMult, Math.max(0.1, Math.round(rdMultiplier * mod.multiplierFactor * 10) / 10));
-              totalChange += mod.computeChange;
-              if (mod.computeChange !== 0) reasons.push(mod.reason);
-            }
-            if (totalChange !== 0) modifierByLab.set(lab.name, { change: totalChange, reason: reasons.join("; ") });
-            return { ...lab, computeStock, rdMultiplier };
-          });
-        }
-
-        if (modOutput?.merges?.length) {
-          for (const merge of modOutput.merges) {
-            console.log(`[pipeline] Lab merge: ${merge.absorbedLab} → ${merge.survivorLab} (${merge.reason})`);
-            updatedLabs = applyLabMerge(updatedLabs, merge.survivorLab, merge.absorbedLab);
-          }
-        }
-      } catch {
-        console.warn("[pipeline] Lab modifier call failed (non-critical)");
-      }
+      updatedLabs = computeLabGrowth(updatedLabs, ceoAllocations, roundNumber, maxMult);
 
       await ctx.runMutation(internal.games.updateLabsInternal, { gameId, labs: updatedLabs.map(stripLabForSnapshot) });
 
       // Record compute changes for facilitator review
+      const baselineByLab = new Map(updatedLabs.map((l) => {
+        const before = game.labs.find((g) => g.name === l.name)?.computeStock ?? 0;
+        return [l.name, l.computeStock - before];
+      }));
+      const baselineTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
+
       await ctx.runMutation(internal.rounds.setComputeChanges, {
         gameId,
         roundNumber,
@@ -663,8 +601,9 @@ Do NOT output a merge unless the event clearly describes one lab absorbing anoth
           newComputeTotal: baselineTotal,
           baselineTotal,
           distribution: updatedLabs.map((lab) => {
-            const baseline = baselineByLab.get(lab.name) ?? 0;
-            const mod = modifierByLab.get(lab.name);
+            const totalChange = baselineByLab.get(lab.name) ?? 0;
+            const mod = computeModifiers.find((m) => m.labName === lab.name);
+            const baseline = mod ? totalChange - mod.change : totalChange;
             return {
               labName: lab.name,
               baseline: Math.round(baseline),
@@ -677,6 +616,10 @@ Do NOT output a merge unless the event clearly describes one lab absorbing anoth
       });
 
       // Snapshot after
+      const roleCompute = tables
+        .filter((t) => t.enabled && (t.computeStock ?? 0) > 0)
+        .map((t) => ({ roleId: t.roleId, roleName: t.roleName, computeStock: t.computeStock ?? 0 }));
+
       await ctx.runMutation(internal.rounds.snapshotAfterInternal, {
         gameId,
         roundNumber,
@@ -692,88 +635,6 @@ Do NOT output a merge unless the event clearly describes one lab absorbing anoth
         meta: { resolveModel: usedModel, resolveTimeMs: timeMs, resolveTokens: tokens },
       });
 
-      // Schedule narrate
-      await ctx.scheduler.runAfter(0, internal.pipeline.narrate, { gameId, roundNumber });
-    } catch (err) {
-      await failPipeline(ctx, gameId, "Resolve", err);
-    }
-  },
-});
-
-// ─── Stage 4: Generate narrative ──────────────────────────────────────────────
-
-export const narrate = internalAction({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const { gameId, roundNumber } = args;
-
-    try {
-      await ctx.runMutation(internal.games.updatePipelineStatus, {
-        gameId,
-        status: { step: "narrating", detail: "Writing narrative...", startedAt: Date.now() },
-      });
-
-      const game = await ctx.runQuery(internal.games.getInternal, { gameId });
-      if (!game) throw new Error("Game not found");
-      const rounds: Round[] = await ctx.runQuery(internal.rounds.getAllForPipeline, { gameId });
-      const currentRound = rounds.find((r) => r.number === roundNumber);
-
-      if (!currentRound?.resolvedEvents?.length) throw new Error("No resolved events to narrate");
-
-      const worldStateAfter = currentRound.worldStateAfter ?? game.worldState;
-      const worldStateBefore = currentRound.worldStateBefore
-        ?? rounds.find((r) => r.number === roundNumber - 1)?.worldStateAfter
-        ?? game.worldState;
-
-      const prompt = buildNarrativeFromEventsPrompt({
-        round: roundNumber,
-        roundLabel: currentRound.label,
-        roundTitle: currentRound.title,
-        resolvedEvents: currentRound.resolvedEvents as ResolvedEvent[],
-        worldStateBefore: worldStateBefore as Record<string, number>,
-        worldStateAfter: worldStateAfter as Record<string, number>,
-        previousRounds: rounds
-          .filter((r) => r.number < roundNumber && r.summary)
-          .map((r) => ({ number: r.number, label: r.label, narrative: r.summary?.narrative })),
-      });
-
-      const { output, model: usedModel, timeMs, tokens } = await callAnthropic<{ narrative: string; headlines: string[] }>({
-        models: NARRATIVE_MODELS,
-        prompt,
-        maxTokens: 2048,
-        toolName: "write_narrative",
-        schema: {
-          type: "object",
-          properties: {
-            narrative: { type: "string", description: "6-8 sentences, read aloud by facilitator in ~60-90s" },
-            headlines: { type: "array", items: { type: "string" }, description: "4-6 punchy ALL CAPS news headlines" },
-          },
-          required: ["narrative", "headlines"],
-        },
-      });
-
-      if (output) {
-        await ctx.runMutation(internal.rounds.applySummaryInternal, {
-          gameId,
-          roundNumber,
-          summary: {
-            narrative: output.narrative,
-            headlines: output.headlines ?? [],
-            geopoliticalEvents: [],
-            aiStateOfPlay: [],
-          },
-        });
-
-        await ctx.runMutation(internal.rounds.setAiMetaInternal, {
-          gameId,
-          roundNumber,
-          meta: { narrativeModel: usedModel, narrativeTimeMs: timeMs, narrativeTokens: tokens },
-        });
-      }
-
       // Done — advance to narrate phase and clean up
       await ctx.runMutation(internal.games.advancePhaseInternal, { gameId, phase: "narrate" });
       await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
@@ -782,7 +643,7 @@ export const narrate = internalAction({
         status: { step: "done", detail: "Resolution complete", startedAt: Date.now() },
       });
     } catch (err) {
-      await failPipeline(ctx, gameId, "Narrate", err);
+      await failPipeline(ctx, gameId, "Resolve", err);
     }
   },
 });

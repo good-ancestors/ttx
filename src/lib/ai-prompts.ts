@@ -150,8 +150,7 @@ export function buildGradingPrompt(args: {
     ? `\nACTIVE PLAYERS THIS GAME: ${args.enabledRoles.join(", ")}\nActions can reference any global actor (EU, media, etc.) but support requests can only be sent to active players.\n`
     : "";
 
-  return `${SCENARIO_CONTEXT}
-${activeRolesNote}
+  return `${activeRolesNote}
 CURRENT GAME STATE:
 - Round: ${args.round} (${args.roundLabel})
 - World state: Capability ${args.worldState.capability}/10, Alignment ${args.worldState.alignment}/10, US-China Tension ${args.worldState.tension}/10, Public Awareness ${args.worldState.awareness}/10, Regulation ${args.worldState.regulation}/10, Australian Preparedness ${args.worldState.australia}/10
@@ -207,17 +206,6 @@ GRADING RULES:
 }
 
 // ─── RESOLVE PROMPT ────────────────────────────────────────────────────────────
-// Stage 1: Analyze all graded+rolled actions → structured events + state updates
-
-interface ResolvedAction {
-  roleName: string;
-  text: string;
-  priority: number;
-  probability: number;
-  rolled: number;
-  success: boolean;
-  secret?: boolean;
-}
 
 function formatRoundExpectations(round: number): string {
   if (round === 1) return `   - Capability dial: should reach 4-5
@@ -253,36 +241,6 @@ function formatRoundExpectations(round: number): string {
    - Power consolidation, safety resignations, AI weight exfiltration, and geopolitical fractures should all come to a head.`;
 }
 
-function formatComputeDistribution(round: number): string {
-  const newCompute = round === 1 ? "11" : round === 2 ? "11" : round === 3 ? "5" : "3";
-  const distributions: Record<number, string> = {
-    1: "OpenBrain +11 (dominant stockpile advantage), DeepCent +6 (state resources), Conscienta +6 (investment inflows), Other US Labs +4, Rest of World +4",
-    2: "OpenBrain +16 (DPA/procurement advantage), DeepCent +8 (state mobilisation), Conscienta +7 (talent/investment), Other US Labs +2 (consolidation squeeze), Rest of World +2",
-    3: "OpenBrain +15, DeepCent +6, Conscienta +5, Other US Labs -1 (absorbed/shutdown), Rest of World -1 (obsolete)",
-    4: "Minimal new compute — existing infrastructure determines outcome. OpenBrain +3, DeepCent +2, Conscienta +2, others +0 (absorbed or irrelevant)",
-  };
-  return `New compute this period: ~${newCompute} new units.
-   DEFAULT COMPUTE DISTRIBUTION (if the race continues unimpeded — adjust based on actual player actions):
-     ${distributions[round] ?? distributions[4]}`;
-}
-
-function formatActionsSection(resolvedActions: ResolvedAction[]): string {
-  const publicActions = resolvedActions.filter((a) => !a.secret);
-  const secretActions = resolvedActions.filter((a) => a.secret);
-  const successes = publicActions.filter((a) => a.success);
-  const failures = publicActions.filter((a) => !a.success);
-  const secretSuccesses = secretActions.filter((a) => a.success);
-  const secretFailures = secretActions.filter((a) => !a.success);
-
-  let s = `SUCCESSFUL ACTIONS:\n${successes.length > 0 ? successes.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}\n\nFAILED ACTIONS:\n${failures.length > 0 ? failures.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}`;
-
-  if (secretSuccesses.length > 0 || secretFailures.length > 0) {
-    s += `\n\nSECRET ACTIONS (these affect the world but may not be publicly known):`;
-    if (secretSuccesses.length > 0) s += `\nSucceeded:\n${secretSuccesses.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
-    if (secretFailures.length > 0) s += `\nFailed:\n${secretFailures.map((a) => `- [${a.roleName}] "${a.text}" (priority ${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
-  }
-  return s;
-}
 
 function formatPreviousRounds(rounds: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[]): string {
   if (rounds.length === 0) return "";
@@ -313,248 +271,72 @@ function formatLabAllocations(labs: Lab[]): string {
   ).join("\n");
 }
 
-function formatRoleCompute(roleCompute: { roleId: string; roleName: string; computeStock: number }[]): string | null {
-  if (roleCompute.length === 0) return null;
-  const lines = roleCompute.map((r) => `- ${r.roleName} (${r.roleId}): ${r.computeStock}u`);
-  return `NON-LAB COMPUTE STATUS:\n${lines.join("\n")}`;
-}
 
 function formatAiDisposition(disp: { label: string; description: string }): string {
   return `AI SYSTEMS SECRET DISPOSITION: ${disp.label}\n${disp.description}\nFactor this into how AI-related events unfold.`;
 }
 
-const RESOLVE_RULES = `RESOLUTION RULES:
+// ─── MERGED RESOLVE + NARRATE PROMPT ─────────────────────────────────────────
 
-1. RESOLVED EVENTS — GROUNDED IN PLAYER ACTIONS ONLY:
-   Every event MUST trace directly to one or more submitted player actions listed above. Do NOT invent events, world developments, or NPC reactions that no player caused. If only 2 actions were submitted, produce 2-3 events, not 8. The number of events should scale with the number of submitted actions.
-
-   STRICT GROUNDING:
-   - Each event MUST include "sourceActions" listing the exact action text(s) it derives from.
-   - If you cannot point to a specific submitted action, do NOT create the event.
-   - Chain reactions are allowed: a successful Taiwan invasion naturally triggers international responses. These must still cite the source action.
-   - If NO actions succeeded: produce zero player-caused events. The world still advances mechanically (dials shift per baseline trajectory, compute grows per defaults) but no narrative events are generated beyond a brief "status quo continues" note.
-   - If only 1 action was submitted, produce 1 event (plus chain reactions if warranted). Do not pad.
-   - For many actions (15+), consolidate related actions into combined events. Typical ratio: 1 event per 2-3 related actions.
-
-   CONFLICT RESOLUTION (the primary purpose of this step):
-   - If two players attempted contradictory actions and BOTH succeeded, both actions were EXECUTED — the conflict itself is the event. Do NOT pick a clean winner. The action with the higher assigned probability (%) has the upper hand (better position, initiative, tactical advantage) but the other side is still actively engaged. Narrate the clash, not a victory.
-   - Only if one probability is dramatically higher (e.g., 90% vs 30%) should one side achieve a decisive outcome.
-   - Example: China invades Taiwan (30%) AND US defends Taiwan (50%), both succeed → "China launches amphibious assault; US Pacific Fleet engages and establishes a contested naval perimeter. Neither side has achieved its objective — Taiwan is now an active warzone."
-   - Do NOT re-weight by priority — priority was already factored into the probability during grading.
-   - Two labs both claiming the same talent pool: split proportionally based on probability.
-   - ONE succeeds, ONE fails: the successful action happens cleanly. The failed action simply didn't materialise.
-   - CAUSAL SUPERSESSION: If one successful action makes another moot (e.g., AI seizes all infrastructure, rendering a compute allocation change irrelevant), note this. The superseded action still happened but its effects are overshadowed.
-
-   EVENT STRUCTURE:
-   - Give each event a unique short ID (e.g., "taiwan-invasion", "safety-pivot").
-   - Include "worldImpact" noting which dials or resources are affected.
-   - Keep each event description to 1-2 sentences.
-   - Use ONLY fictional entity names from the game (OpenBrain, DeepCent, Conscienta). NEVER reference real companies (OpenAI, Anthropic, DeepMind, Google, Meta, etc.).
-
-   VISIBILITY IS DETERMINED BY THE SOURCE DATA, NOT BY YOU:
-   - Actions listed under SUCCESSFUL/FAILED ACTIONS above are PUBLIC. Events derived from them MUST be tagged "public".
-   - Actions listed under SECRET ACTIONS above were marked secret by the player. Events derived from them should default to "covert" UNLESS the consequences are world-alteringly obvious (e.g., "replace humanity", "launch nuclear strike", "seize global infrastructure") — in which case tag as "public" with hidden attribution.
-   - If an event combines both public and secret source actions, tag it "public".
-   - Failed secret actions: only create an event if the failure was detected (e.g., spy caught). Otherwise skip entirely.`;
-
-const COMPUTE_RD_RULES = `4. COMPUTE AND R&D UPDATES:
-   COMPUTE STOCK:
-   - Stock is the total compute infrastructure a lab controls (data centres, chips, energy).
-   - COMPUTE_DISTRIBUTION_PLACEHOLDER
-   - These defaults shift dramatically based on player actions: DPA consolidation transfers lab stock, Taiwan invasion disrupts chip supply, sanctions reduce target's inflow, data centre nationalisation transfers stock.
-   - Compute can be destroyed, transferred, redirected, or created via new infrastructure.
-   - DPA consolidation moves stock between labs (not creates new). If US nationalises a lab, transfer its stock.
-   - Infrastructure actions DIRECTLY affect stock.
-   COMPUTE ALLOCATION (Users/Capability/Safety split):
-   - Allocations are PLAYER-CONTROLLED via game UI sliders, not via actions. The actual allocation is shown in LAB STATUS above.
-   - If a player writes "I shift compute to X/Y/Z" as an action, IGNORE the specific numbers — the real allocation is whatever they set via the UI. The action may reflect intent but the game state is authoritative.
-   - Do NOT narrate specific allocation percentages in events. You may describe direction (e.g., "prioritises capability R&D") but never exact numbers.
-   R&D MULTIPLIER CONTEXT (lab updates are handled separately — do NOT output labUpdates):
-   - The multiplier represents the AI system's current capability level.
-   - Your job is to describe EVENTS and WORLD STATE changes only.
-   - Lab compute and R&D updates are calculated separately based on your events.`;
-
-export function buildResolvePrompt(args: {
+export function buildRoundNarrativePrompt(args: {
   round: number;
   roundLabel: string;
   roundTitle: string;
   worldState: Record<string, number>;
-
-  resolvedActions: ResolvedAction[];
+  resolvedActions: { roleName: string; text: string; priority: number; probability: number; rolled: number; success: boolean; secret?: boolean }[];
   labs: Lab[];
-  roleCompute?: { roleId: string; roleName: string; computeStock: number }[];
-  aiDisposition?: { label: string; description: string };
   previousRounds?: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[];
+  aiDisposition?: { label: string; description: string };
 }) {
-  const sortedActions = [...args.resolvedActions].sort((a, b) => b.priority - a.priority);
+  const sorted = [...args.resolvedActions].sort((a, b) => b.priority - a.priority);
+  const publicSuccesses = sorted.filter((a) => !a.secret && a.success);
+  const publicFailures = sorted.filter((a) => !a.secret && !a.success);
+  const secretSuccesses = sorted.filter((a) => a.secret && a.success);
+  const secretFailures = sorted.filter((a) => a.secret && !a.success);
 
-  const sections = [
-    SCENARIO_CONTEXT,
+  let actionsSection = `SUCCESSFUL PUBLIC ACTIONS:\n${publicSuccesses.length > 0 ? publicSuccesses.map((a) => `- [${a.roleName}] "${a.text}" (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}`;
+  actionsSection += `\n\nFAILED PUBLIC ACTIONS:\n${publicFailures.length > 0 ? publicFailures.map((a) => `- [${a.roleName}] "${a.text}" (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}`;
+  if (secretSuccesses.length > 0 || secretFailures.length > 0) {
+    actionsSection += `\n\nSECRET ACTIONS (marked secret by players):`;
+    if (secretSuccesses.length > 0) actionsSection += `\nSucceeded:\n${secretSuccesses.map((a) => `- [${a.roleName}] "${a.text}" (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
+    if (secretFailures.length > 0) actionsSection += `\nFailed:\n${secretFailures.map((a) => `- [${a.roleName}] "${a.text}" (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
+  }
 
-    `You are resolving Round ${args.round}: ${args.roundLabel} — "${args.roundTitle}".
+  return `You are resolving Round ${args.round}: ${args.roundLabel} — "${args.roundTitle}".
 
-Your job: analyze all player action outcomes (successes, failures, secret operations) and determine:
-1. What events actually happened this round (structured list)
-2. How the world state changes
-3. How lab compute and R&D are affected
-
-CURRENT WORLD STATE (before this round's events):
+CURRENT WORLD STATE:
 ${formatWorldState(args.worldState)}
 
-LAB STATUS (use these ACTUAL multiplier values — do NOT use round-default targets):
-${formatLabAllocations(args.labs)}`,
+LAB STATUS:
+${formatLabAllocations(args.labs)}
+${formatPreviousRounds(args.previousRounds ?? [])}
 
-    formatPreviousRounds(args.previousRounds ?? []) || null,
-    formatActionsSection(sortedActions),
-    args.aiDisposition ? formatAiDisposition(args.aiDisposition) : null,
+${actionsSection}
+${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition)}` : ""}
 
-    RESOLVE_RULES,
+YOUR TASK: Write a dramatic narrative AND determine game state changes.
 
-    `2. WORLD STATE UPDATES:
-   - Dials change ONLY based on submitted actions and their outcomes. Typical change: ±1 to ±2 per round.
-   - Dramatic successful actions can push ±3 (e.g., successful "replace humanity" should massively shift capability and alignment).
-   - Capability trends upward naturally as part of the scenario backbone (the race progresses even without player intervention).
-   - TRAJECTORY: Based on current alignment confidence (${args.worldState.alignment}/10) and outcomes, assess RACE ENDING vs SLOWDOWN ENDING trajectory.
+NARRATIVE RULES:
+1. STRICT LENGTH: 6-8 sentences. Read aloud in ~60-90 seconds.
+2. Weave the 4-5 most consequential outcomes into a coherent, dramatic briefing. Write like a thriller — tense, specific, vivid.
+3. GROUNDING: Every element must trace to a submitted action. Do NOT invent events no player caused. Failed actions didn't happen — don't narrate them.
+4. CONFLICTS: If contradictory actions both succeeded, narrate the clash — higher probability has upper hand but both sides engaged. Only pick a clean winner if probabilities are dramatically different (90% vs 10%).
+5. SECRET ACTIONS: Successful secrets appear as consequences without revealing who caused them. Failed secrets are invisible.
+6. ONLY fictional names (OpenBrain, DeepCent, Conscienta). NEVER real companies.
+7. No game mechanics (probabilities, dice, priority numbers).
 
-3. BASELINE TRAJECTORY (what happens if no players intervene — use these as the mechanical backdrop, NOT as events to generate):
-${formatRoundExpectations(args.round)}
-   NOTE: These are DEFAULTS for dials and R&D. They are NOT events. Do not create events to justify these numbers. Dials and R&D shift toward these targets mechanically; player actions can accelerate, slow, or reverse them.`,
+WORLD STATE: Update each dial (0-10, max ±3 per round). Base on actual outcomes.
 
-    COMPUTE_RD_RULES.replace("COMPUTE_DISTRIBUTION_PLACEHOLDER", formatComputeDistribution(args.round)),
+LAB OPERATIONS — output any that apply:
+- "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier.
+- "create": New entity forms (rogue AI escaping containment, government lab). Name it, set starting compute and R&D multiplier.
+- "decommission": Lab shut down or destroyed.
+- "rename": Lab changes identity (Safer pivot, government takeover).
+- "computeChange": Direct compute changes from events (sanctions, infrastructure damage, deals). NOT baseline growth.
+- "multiplierOverride": Event changes R&D capability (Safer pivot halves it, sabotage, breakthrough). Absolute new value.
 
-    `5. NON-LAB COMPUTE: Output roleComputeUpdates for any non-lab player whose compute changed this round.`,
-    formatRoleCompute(args.roleCompute ?? []),
-  ];
+Only output operations DIRECTLY caused by successful actions. Empty array if nothing affects labs.
 
-  return sections.filter(Boolean).join("\n\n");
-}
-
-// ─── NARRATIVE PROMPT ──────────────────────────────────────────────────────────
-// Stage 2: Write prose from resolved events (no game mechanics reasoning)
-
-export interface ResolvedEvent {
-  id: string;
-  description: string;
-  visibility: "public" | "covert";
-  actors: string[];
-  worldImpact?: string;
-}
-
-function formatWorldStateDelta(before: Record<string, number>, after: Record<string, number>): string {
-  const dials = [
-    ["Cap", "capability"],
-    ["Align", "alignment"],
-    ["Tension", "tension"],
-    ["Awareness", "awareness"],
-    ["Regulation", "regulation"],
-    ["Australia", "australia"],
-  ] as const;
-  return dials.map(([label, key]) => `${label} ${before[key]}→${after[key]}/10`).join(", ");
-}
-
-function formatCovertEventsSection(covertEvents: ResolvedEvent[]): string | null {
-  if (covertEvents.length === 0) return null;
-  return `COVERT EVENTS (these were tagged as covert during resolution):
-${covertEvents.map((e) => `- ${e.description}`).join("\n")}
-Rules for covert events in the narrative:
-- If the event has observable consequences, narrate those consequences naturally. Attribution can be vague ("unknown actors", "intelligence sources") if the actor is genuinely hidden.
-- If the event is truly invisible with no observable trace yet, omit it from the narrative — but it may surface in future rounds.
-- Do NOT suppress world-altering events just because they were covert. If humanity was replaced with simulations, that's not a secret — narrate the consequences.`;
-}
-
-const NARRATIVE_OUTPUT_RULES = `OUTPUT RULES:
-1. "narrative": STRICT LENGTH: exactly 6-8 sentences, no more. Read aloud by the facilitator in ~60-90 seconds. Weave only the 4-5 most consequential events into a coherent dramatic briefing. Every sentence should move the story forward. Do NOT exceed 8 sentences.
-2. "headlines": 4-6 punchy one-line news headlines (ALL CAPS style, like newspaper front page). These appear on the projected screen while the facilitator narrates.
-3. Do NOT include any game mechanics (probabilities, dice rolls, compute numbers) in the narrative or headlines. Write as if narrating real-world events.
-4. Use ONLY the fictional lab and entity names from the game (OpenBrain, DeepCent, Conscienta). NEVER mention real companies (OpenAI, Anthropic, DeepMind, Google, Meta, xAI, etc.) — this is a fictional scenario with fictional organisations.`;
-
-export function buildNarrativeFromEventsPrompt(args: {
-  round: number;
-  roundLabel: string;
-  roundTitle: string;
-  resolvedEvents: ResolvedEvent[];
-  worldStateBefore: Record<string, number>;
-  worldStateAfter: Record<string, number>;
-  previousRounds?: { number: number; label: string; narrative?: string }[];
-}) {
-  const publicEvents = args.resolvedEvents.filter((e) => e.visibility === "public");
-  const covertEvents = args.resolvedEvents.filter((e) => e.visibility === "covert");
-
-  const sections = [
-    `You are the narrator for an AGI tabletop exercise. Your ONLY job is to write a compelling story and headlines from the events that have already been resolved. Do NOT reason about game mechanics, probabilities, or compute — that work is already done.
-
-ROUND ${args.round}: ${args.roundLabel} — "${args.roundTitle}"
-
-World state moved from: ${formatWorldStateDelta(args.worldStateBefore, args.worldStateAfter)}`,
-
-    formatPreviousRounds(args.previousRounds ?? []) || null,
-
-    `PUBLIC EVENTS (weave these into the narrative):
-${publicEvents.length > 0 ? publicEvents.map((e) => `- ${e.description}`).join("\n") : "- No major public events"}`,
-
-    formatCovertEventsSection(covertEvents),
-    NARRATIVE_OUTPUT_RULES,
-  ];
-
-  return sections.filter(Boolean).join("\n\n");
-}
-
-// ─── LEGACY NARRATIVE PROMPT (kept for backward compat with rounds resolved before the split) ───
-
-/** @deprecated Use buildResolvePrompt + buildNarrativeFromEventsPrompt instead */
-export function buildNarrativePrompt(args: {
-  round: number;
-  roundLabel: string;
-  roundTitle: string;
-  worldState: Record<string, number>;
-
-  resolvedActions: ResolvedAction[];
-  labs: Lab[];
-  roleCompute?: { roleId: string; roleName: string; computeStock: number }[];
-  aiDisposition?: { label: string; description: string };
-  previousRounds?: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[];
-}) {
-  const legacyRoleCompute = (args.roleCompute ?? []).length > 0
-    ? `NON-LAB COMPUTE STATUS:\n${(args.roleCompute ?? []).map((r) => `- ${r.roleName}: ${r.computeStock}u`).join("\n")}`
-    : null;
-
-  const sections = [
-    SCENARIO_CONTEXT,
-
-    `ROUND ${args.round}: ${args.roundLabel} — "${args.roundTitle}"
-
-CURRENT WORLD STATE (before this round's events):
-${formatWorldState(args.worldState)}
-
-LAB STATUS (use these ACTUAL multiplier values in your narrative):
-${formatLabAllocations(args.labs)}`,
-
-    formatPreviousRounds(args.previousRounds ?? []) || null,
-    formatActionsSection(args.resolvedActions),
-
-    args.aiDisposition
-      ? `AI SYSTEMS SECRET DISPOSITION: ${args.aiDisposition.label}\n${args.aiDisposition.description}\nFactor this into how AI-related events unfold. Do NOT reveal the disposition directly.`
-      : null,
-
-    `NARRATIVE RULES:
-1. CONFLICT RESOLUTION: If multiple actors attempted conflicting actions and both succeeded, narrate the conflict as an escalation, standoff, or partial outcomes.
-2. STAY ON THE RAILS: The AI 2027 trajectory is the baseline. Capability should generally increase.
-3. WORLD STATE UPDATES: Each dial should change by at most ±2 per round. Capability should trend upward.
-4. TRAJECTORY: Assess RACE ENDING vs SLOWDOWN ENDING based on alignment (${args.worldState.alignment}/10).
-5. Round ${args.round} expectations:
-${formatRoundExpectations(args.round)}
-6. COMPUTE AND R&D UPDATES:
-   ${formatComputeDistribution(args.round)}
-   R&D MULTIPLIER: Can ONLY go up or stay flat, except for explicit Safer model pivots.
-   Output updates for all tracked labs.
-7. NON-LAB COMPUTE: Output roleComputeUpdates for non-lab players whose compute changed.`,
-
-    legacyRoleCompute,
-
-    `OUTPUT FORMAT:
-- "narrative": STRICT LENGTH: exactly 6-8 sentences. Weave only the 4-5 most consequential player actions into a coherent dramatic briefing.
-- "headlines": 4-6 punchy one-line news headlines (ALL CAPS style).`,
-  ];
-
-  return sections.filter(Boolean).join("\n\n");
+BASELINE TRAJECTORY (for context, not for you to narrate):
+${formatRoundExpectations(args.round)}`;
 }

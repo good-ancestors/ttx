@@ -193,18 +193,6 @@ export default function FacilitatorPage({
     }
   };
 
-  // Re-narrate (re-triggers full pipeline — grading/rolling are idempotent and skipped)
-  const handleReNarrate = async () => {
-    try {
-      await triggerPipeline({
-        gameId,
-        roundNumber: game.currentRound,
-        aiDisposition: aiDispositionPayload,
-      });
-    } catch {
-      setActionError("Re-narrate failed");
-    }
-  };
 
   // ─── LOBBY ────────���───────────────────────────────��─────────────────────────
   if (game.status === "lobby") {
@@ -456,23 +444,13 @@ export default function FacilitatorPage({
                   game={game}
                   tables={tables}
                   isProjector={isProjector}
-                  submissions={submissions ?? []}
                   currentRound={currentRound}
                   resolving={resolving}
                   resolveStep={resolveStep}
-                  revealedCount={revealedCount}
-                  revealedSecrets={revealedSecrets}
-                  toggleReveal={toggleReveal}
-                  revealAllSecrets={revealAllSecrets}
-                  handleReResolve={handleReResolve}
-                  handleReNarrate={handleReNarrate}
-                  rerollAction={rerollAction}
-                  overrideProbability={overrideProbability}
                   safeAction={safeAction}
                   advanceRound={advanceRound}
                   finishGame={finishGame}
                   addLab={addLab}
-                  streamingEvents={[]}
                 />
               </div>
             )}

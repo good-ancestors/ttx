@@ -79,7 +79,6 @@ export async function POST(request: Request) {
     ]);
     const currentRound = allRounds?.find((r) => r.number === game.currentRound);
     const currentNarrative = currentRound?.summary?.narrative ?? "";
-    const resolvedEvents = currentRound?.resolvedEvents ?? [];
     const resolvedActions = (currentSubmissions ?? []).flatMap((sub) => {
       const role = ROLES.find((r) => r.id === sub.roleId);
       return sub.actions
@@ -110,7 +109,6 @@ CURRENT WORLD STATE:
 CURRENT LABS:
 ${game.labs.map((l) => `- ${l.name} (${l.roleId}): ${l.computeStock}u compute, ${l.rdMultiplier}x R&D | Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
 ${resolvedActions.length > 0 ? `\nTHIS ROUND'S RESOLVED ACTIONS:\n${resolvedActions.join("\n")}` : ""}
-${resolvedEvents.length > 0 ? `\nRESOLVED EVENTS:\n${resolvedEvents.map((e) => `- [${e.visibility.toUpperCase()}] ${e.description}`).join("\n")}` : ""}
 ${currentNarrative ? `\nCURRENT NARRATIVE: "${currentNarrative}"` : ""}
 
 ENABLED ROLES:

@@ -8,14 +8,11 @@ import { NarrativePanel } from "@/components/narrative-panel";
 import { WorldStateEditor, NarrativeEditor } from "@/components/manual-controls";
 import {
   Loader2,
-  Eye,
-  EyeOff,
   Pencil,
   Plus,
-  RefreshCw,
   ChevronRight,
 } from "lucide-react";
-import type { FacilitatorPhaseProps, Submission, Round } from "./types";
+import type { FacilitatorPhaseProps, Round } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 
 // ─── Extracted sub-components ─────────────────────────────────────────────────
@@ -75,112 +72,14 @@ function ComputeEditor({ labs, gameId, computeChanges, onClose }: {
   );
 }
 
-function StreamingEventsPanel({ events }: { events: { id: string; description: string; visibility: string; worldImpact?: string }[] }) {
-  return (
-    <div className="bg-navy rounded-xl border border-navy-light p-5">
-      <div className="flex items-center gap-2 mb-3">
-        <span className="text-sm font-semibold uppercase tracking-wider text-text-light">What Happened</span>
-        <Loader2 className="w-3.5 h-3.5 text-text-light animate-spin" />
-      </div>
-      <div className="space-y-2">
-        {events.map((event, idx) => (
-          <div key={event.id || idx} className="flex items-start gap-2 py-2 border-b border-navy-light/50 last:border-0 animate-fadeIn">
-            <span className={`mt-0.5 shrink-0 text-sm ${event.visibility === "covert" ? "text-viz-warning" : "text-viz-safety"}`}>
-              {event.visibility === "covert" ? "◐" : "●"}
-            </span>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm text-[#E2E8F0]">{event.description}</p>
-              {event.worldImpact && <p className="text-[10px] text-text-light mt-0.5">{event.worldImpact}</p>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
-function ResolvedEventsPanel({
-  events, isProjector, resolving, revealedSecrets, toggleReveal, onReNarrate,
-}: {
-  events: { id: string; description: string; visibility: "public" | "covert"; actors: string[]; worldImpact?: string }[];
-  isProjector: boolean; resolving: boolean;
-  revealedSecrets: Set<string>; toggleReveal: (key: string) => void;
-  onReNarrate: () => Promise<void>;
-}) {
-  return (
-    <div className="bg-navy rounded-xl border border-navy-light p-5">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-semibold uppercase tracking-wider text-text-light">What Happened</span>
-        <span className="text-[10px] text-navy-muted">
-          {events.filter((e) => e.visibility === "covert").length} covert
-        </span>
-      </div>
-      <div className="space-y-2">
-        {events.map((event) => {
-          const isCovert = event.visibility === "covert";
-          const isRevealed = revealedSecrets.has(`event-${event.id}`);
-          return (
-            <div
-              key={event.id}
-              className={`flex items-start gap-2 py-2 border-b border-navy-light/50 last:border-0 ${
-                isCovert && !isRevealed ? "opacity-60" : ""
-              }`}
-            >
-              {isCovert ? (
-                <button onClick={() => toggleReveal(`event-${event.id}`)} className="mt-0.5 shrink-0" title={isRevealed ? "Click to hide" : "Click to reveal"}>
-                  {isRevealed ? <Eye className="w-4 h-4 text-viz-warning" /> : <EyeOff className="w-4 h-4 text-viz-warning" />}
-                </button>
-              ) : (
-                <span className="text-viz-safety mt-0.5 shrink-0 text-sm">●</span>
-              )}
-              <div className="flex-1 min-w-0">
-                {isCovert && !isRevealed ? (
-                  <span className="text-sm text-text-light italic cursor-pointer" onClick={() => toggleReveal(`event-${event.id}`)}>
-                    [Covert event — click to reveal]
-                  </span>
-                ) : (
-                  <>
-                    <p className="text-sm text-[#E2E8F0]">{event.description}</p>
-                    {event.worldImpact && <p className="text-[10px] text-text-light mt-0.5">{event.worldImpact}</p>}
-                  </>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {!isProjector && (
-        <button
-          onClick={onReNarrate}
-          disabled={resolving}
-          className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1 mt-3 disabled:opacity-50"
-        >
-          <RefreshCw className="w-3 h-3" /> Re-narrate
-        </button>
-      )}
-    </div>
-  );
-}
-
 interface NarratePhaseProps extends FacilitatorPhaseProps {
-  submissions: Submission[];
   currentRound: Round | undefined;
   resolving: boolean;
   resolveStep: string;
-  revealedCount: number;
-  revealedSecrets: Set<string>;
-  toggleReveal: (key: string) => void;
-  revealAllSecrets: () => void;
-  handleReResolve: () => Promise<void>;
-  handleReNarrate: () => Promise<void>;
-  rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
-  overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
   safeAction: (label: string, fn: () => Promise<unknown>) => () => Promise<void>;
   advanceRound: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   finishGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
-  streamingEvents?: { id: string; description: string; visibility: string; worldImpact?: string }[];
 }
 
 // eslint-disable-next-line complexity
@@ -192,14 +91,10 @@ export function NarratePhase({
   currentRound,
   resolving,
   resolveStep,
-  revealedSecrets,
-  toggleReveal,
-  handleReNarrate,
   safeAction,
   advanceRound,
   finishGame,
   addLab,
-  streamingEvents,
 }: NarratePhaseProps) {
   const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | "compute" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
@@ -219,29 +114,14 @@ export function NarratePhase({
         </div>
       )}
 
-      {/* Section 2a: Streaming events — show during resolution before final write */}
-      {resolving && streamingEvents && streamingEvents.length > 0 && !currentRound?.resolvedEvents?.length && (
-        <StreamingEventsPanel events={streamingEvents} />
+      {/* The Story — shows loading skeleton while resolving, then narrative */}
+      {(resolving || currentRound?.summary) && (
+        <NarrativePanel round={currentRound} />
       )}
 
-      {/* Section 2b: Resolved Events — show after resolve API returns */}
-      {currentRound?.resolvedEvents && currentRound.resolvedEvents.length > 0 && (
-        <ResolvedEventsPanel
-          events={currentRound.resolvedEvents}
-          isProjector={isProjector}
-          resolving={resolving}
-          revealedSecrets={revealedSecrets}
-          toggleReveal={toggleReveal}
-          onReNarrate={handleReNarrate}
-        />
-      )}
-
-      {/* Section 3: The Story — show after narrate API returns */}
+      {/* Where We Are Now — show after narrative is ready */}
       {currentRound?.summary && (
         <>
-          <NarrativePanel round={currentRound} />
-
-          {/* Where We Are Now */}
           {(() => {
             const leading = game.labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b), game.labs[0]);
             const cap = leading ? getCapabilityDescription(leading.rdMultiplier) : null;
@@ -253,7 +133,7 @@ export function NarratePhase({
                   <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Where We Are Now</span>
                   <span
                     className="text-xs font-bold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: `${alignmentColor  }20`, color: alignmentColor }}
+                    style={{ backgroundColor: `${alignmentColor}20`, color: alignmentColor }}
                   >
                     {trajectory}
                   </span>
@@ -301,8 +181,6 @@ export function NarratePhase({
           })()}
         </>
       )}
-
-      {/* Edit controls moved below compute card */}
 
       {/* Edit modal overlay */}
       {!isProjector && editModal && (
