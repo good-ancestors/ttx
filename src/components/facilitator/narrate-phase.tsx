@@ -253,20 +253,16 @@ export function NarratePhase({
           <div className="space-y-2">
             {currentRound.computeChanges.distribution.map((d) => {
               const before = d.newTotal - d.baseline - d.modifier;
+              const totalChange = d.baseline + d.modifier;
               return (
                 <div key={d.labName} className="py-1.5 border-b border-navy-light/30 last:border-0">
                   <div className="flex items-center gap-3 text-sm">
                     <span className="text-white font-medium min-w-[100px]">{d.labName}</span>
                     <span className="text-[10px] text-navy-muted font-mono">{before}u</span>
                     <span className="text-[10px] text-navy-muted">→</span>
-                    <span className={`font-mono text-xs ${d.baseline >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                      {d.baseline >= 0 ? "+" : ""}{d.baseline}
+                    <span className={`font-mono text-xs ${totalChange >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                      {totalChange >= 0 ? "+" : ""}{totalChange}
                     </span>
-                    {d.modifier !== 0 && (
-                      <span className={`font-mono text-xs ${d.modifier > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                        {d.modifier > 0 ? "+" : ""}{d.modifier}
-                      </span>
-                    )}
                     <span className="ml-auto text-sm text-white font-mono font-bold">{d.newTotal}u</span>
                   </div>
                   {d.modifier !== 0 && d.reason && (

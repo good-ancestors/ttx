@@ -267,7 +267,7 @@ export const awaitInfluence = internalAction({
             // Human AI player: set status and schedule timeout
             await ctx.runMutation(internal.games.updatePipelineStatus, {
               gameId,
-              status: { step: "influence", detail: "Waiting for AI influence...", startedAt: Date.now() },
+              status: { step: "influence", detail: "Preparing dice rolls...", startedAt: Date.now() },
             });
 
             // Schedule timeout fallback (30 seconds)
@@ -284,7 +284,7 @@ export const awaitInfluence = internalAction({
           // NPC/AI: auto-generate influence
           await ctx.runMutation(internal.games.updatePipelineStatus, {
             gameId,
-            status: { step: "influence", detail: "Processing...", startedAt: Date.now() },
+            status: { step: "influence", detail: "Preparing dice rolls...", startedAt: Date.now() },
           });
 
           const game = await ctx.runQuery(internal.games.getInternal, { gameId });
