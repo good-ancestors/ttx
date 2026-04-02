@@ -25,7 +25,7 @@ Facilitator                          Backend                          Players
     ├─ [Start Game] ──────────────────> │                                │
     │                                   ├─ phase = "discuss"             │
     │                                   ├─ scheduler.runAfter(0):        │
-    │                                   │   generateAll(duration=0) ◄── PRE-GENERATION
+    │                                   │   generateAll ◄── PRE-GENERATION
     │                                   │                                │
 ```
 
@@ -35,7 +35,7 @@ Facilitator                          Backend                          Players
 Facilitator                          Backend                          Players
     │                                   │                                │
     │                        ┌──────────┤                                │
-    │                        │  generateAll(durationSeconds=0)           │
+    │                        │  generateAll           │
     │                        │          │                                │
     │                        │  NPC tables:                              │
     │                        │   ├─ Pick sample actions                  │
@@ -102,7 +102,7 @@ Facilitator                          Backend                          Players
     │  Status: "Generating..."          │                                │
     │  (only if pre-gen missed some)    ├─ gradeAll:                     │
     │                                   │   ├─ Check for missing AI subs │
-    │                                   │   │   └─ generateAll(dur=0)    │
+    │                                   │   │   └─ generateAll    │
     │                                   │   │     if any missing         │
     │                                   │   │                            │
     │  Status: "Evaluating N subs..."   │   ├─ phase ──> "rolling"       │
@@ -146,7 +146,7 @@ Facilitator                          Backend                          Players
     │                                   ├─ currentRound++                │
     │                                   ├─ phase = "discuss"             │
     │                                   ├─ scheduler.runAfter(0):        │
-    │                                   │   generateAll(duration=0) ◄── PRE-GEN AGAIN
+    │                                   │   generateAll ◄── PRE-GEN AGAIN
     │                                   │                                │
 ```
 
@@ -155,13 +155,13 @@ Facilitator                          Backend                          Players
 ```
 Triple-layer dedup protection:
 
-  startGame/advanceRound ──> generateAll(dur=0) ──> submits AI/NPC immediately
+  startGame/advanceRound ──> generateAll ──> submits AI/NPC immediately
                                                         │
-  openSubmissions ─────────> generateAll(dur=0) ────────┘
+  openSubmissions ─────────> generateAll ────────┘
                                 │                       │
                           checks submittedRoles ──> skips already done
                                                         │
-  gradeAll (pipeline) ──────> generateAll(dur=0) ───────┘
+  gradeAll (pipeline) ──────> generateAll ───────┘
                                 │                  (only if still missing)
                           checks submittedRoles ──> skips already done
 

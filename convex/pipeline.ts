@@ -88,8 +88,8 @@ export const gradeAll = internalAction({
           gameId,
           roundNumber,
         });
-        // Wait briefly for submissions to land
-        await new Promise((r) => setTimeout(r, 5000));
+        // Brief wait for scheduled submitAndPropose mutations to land
+        await new Promise((r) => setTimeout(r, 2000));
       }
 
       // Advance to rolling phase so players see action reveal + influence panel
