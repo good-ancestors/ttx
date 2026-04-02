@@ -245,6 +245,16 @@ export const startGame = mutation({
       phaseEndsAt: undefined,
     });
     await logEvent(ctx, args.gameId, "game_start");
+
+    // Pre-generate AI/NPC actions during discuss phase so they're ready instantly
+    const game = await ctx.db.get(args.gameId);
+    if (game) {
+      await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, {
+        gameId: args.gameId,
+        roundNumber: game.currentRound,
+        durationSeconds: 0,
+      });
+    }
   },
 });
 
@@ -263,6 +273,13 @@ export const advanceRound = mutation({
       phaseEndsAt: undefined,
     });
     await logEvent(ctx, args.gameId, "round_advance", undefined, { round: nextRound });
+
+    // Pre-generate AI/NPC actions during discuss phase so they're ready instantly
+    await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, {
+      gameId: args.gameId,
+      roundNumber: nextRound,
+      durationSeconds: 0,
+    });
   },
 });
 

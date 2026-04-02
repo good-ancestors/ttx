@@ -255,17 +255,22 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       }
     }));
 
-    // Stagger submissions over first 60% of countdown
-    const staggerWindow = durationSeconds * 0.6 * 1000;
-    const minDelay = Math.min(15_000, staggerWindow * 0.2);
+    // Submit immediately when pre-generating (durationSeconds=0) or short timer,
+    // otherwise stagger over first 60% of countdown for mixed human/AI games
+    const immediate = durationSeconds <= 0;
 
     for (let i = 0; i < pending.length; i++) {
       const p = pending[i];
-      const baseDelay = minDelay + (staggerWindow - minDelay) * (i / Math.max(1, pending.length - 1));
-      const jitter = (Math.random() - 0.5) * 10_000;
-      const delay = Math.max(3000, baseDelay + jitter);
 
-      // Schedule staggered submission
+      let delay = 0;
+      if (!immediate) {
+        const staggerWindow = durationSeconds * 0.6 * 1000;
+        const minDelay = Math.min(15_000, staggerWindow * 0.2);
+        const baseDelay = minDelay + (staggerWindow - minDelay) * (i / Math.max(1, pending.length - 1));
+        const jitter = (Math.random() - 0.5) * 10_000;
+        delay = Math.max(3000, baseDelay + jitter);
+      }
+
       await ctx.scheduler.runAfter(delay, internal.aiGenerate.submitAndPropose, {
         gameId,
         roundNumber,
