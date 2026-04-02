@@ -222,10 +222,10 @@ export const gradeAll = internalAction({
         completed++;
       }));
 
-        // Log any grading failures in this batch
         for (const r of batchResults) {
           if (r.status === "rejected") {
-            console.error(`[pipeline] Grading mutation failed:`, r.reason);
+            completed--;
+            console.error(`[pipeline] Grading failed for submission:`, r.reason);
           }
         }
 

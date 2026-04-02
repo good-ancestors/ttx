@@ -266,7 +266,6 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
         }).then(() => p)
       )
     );
-    // Log any failed submissions
     for (const r of results) {
       if (r.status === "rejected") {
         console.error(`[aiGenerate] Submission failed:`, r.reason);
