@@ -30,37 +30,37 @@ export function LobbyPhase({
   kickToAI,
 }: LobbyPhaseProps) {
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl font-extrabold mb-2">Waiting for Tables</h2>
-        <p className="text-text-light">
+    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+      <div className="text-center mb-6 md:mb-8">
+        <h2 className="text-xl md:text-2xl font-extrabold mb-2">Waiting for Tables</h2>
+        <p className="text-text-light text-sm md:text-base">
           {connectedCount}/{tables.length} tables connected
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4 mb-8">
         {tables.map((table) => {
           const role = ROLES.find((r) => r.id === table.roleId);
           const isRequired = role?.required ?? false;
           return (
             <div
               key={table._id}
-              className={`bg-navy rounded-xl border p-4 transition-opacity ${
+              className={`bg-navy rounded-xl border p-3 md:p-4 transition-opacity ${
                 table.enabled ? "border-navy-light" : "border-navy-light/30 opacity-40"
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: role?.color }} />
-                <span className="text-sm font-bold">{table.roleName}</span>
-                <div className="ml-auto flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role?.color }} />
+                <span className="text-sm md:text-base font-bold truncate">{table.roleName}</span>
+                <div className="ml-auto flex items-center gap-2 shrink-0">
                   {table.connected && (
-                    <span className="text-[10px] text-viz-safety font-mono">Human</span>
+                    <span className="text-xs text-viz-safety font-mono">Human</span>
                   )}
                   {!table.connected && table.controlMode === "ai" && table.enabled && (
-                    <span className="text-[10px] text-viz-capability font-mono">AI</span>
+                    <span className="text-xs text-viz-capability font-mono">AI</span>
                   )}
                   {!table.connected && table.controlMode === "npc" && table.enabled && (
-                    <span className="text-[10px] text-viz-warning font-mono">NPC</span>
+                    <span className="text-xs text-viz-warning font-mono">NPC</span>
                   )}
                 </div>
               </div>
@@ -70,7 +70,7 @@ export function LobbyPhase({
                 {!isRequired && (
                   <button
                     onClick={() => toggleEnabled({ tableId: table._id })}
-                    className={`text-[10px] px-2 py-1 rounded font-medium transition-colors ${
+                    className={`text-xs px-3 py-1.5 rounded font-medium transition-colors ${
                       table.enabled
                         ? "bg-navy-light text-text-light hover:bg-navy-muted"
                         : "bg-navy-dark text-navy-muted hover:bg-navy-light"
@@ -80,7 +80,7 @@ export function LobbyPhase({
                   </button>
                 )}
                 {isRequired && (
-                  <span className="text-[10px] text-navy-muted px-2 py-1">Required</span>
+                  <span className="text-xs text-navy-muted px-3 py-1.5">Required</span>
                 )}
                 {!isProjector && table.enabled && !table.connected && (
                   <div className="flex rounded overflow-hidden border border-navy-light">
@@ -88,7 +88,7 @@ export function LobbyPhase({
                       <button
                         key={mode}
                         onClick={() => void setControlMode({ tableId: table._id, controlMode: mode })}
-                        className={`text-[9px] px-2 py-1 font-semibold transition-colors ${
+                        className={`text-xs px-3 py-1.5 font-semibold transition-colors ${
                           table.controlMode === mode
                             ? mode === "human" ? "bg-viz-safety text-navy" : mode === "ai" ? "bg-viz-capability text-navy" : "bg-viz-warning text-navy"
                             : "bg-navy-dark text-navy-muted hover:text-text-light"
@@ -102,9 +102,9 @@ export function LobbyPhase({
                 {!isProjector && table.enabled && table.connected && table.controlMode === "human" && (
                   <button
                     onClick={() => kickToAI({ tableId: table._id })}
-                    className="text-[10px] px-2 py-1 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-0.5"
+                    className="text-xs px-3 py-1.5 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-1"
                   >
-                    <Bot className="w-3 h-3" /> Kick to AI
+                    <Bot className="w-3.5 h-3.5" /> Kick to AI
                   </button>
                 )}
               </div>
@@ -123,17 +123,17 @@ export function LobbyPhase({
               )}
               {table.enabled && table.controlMode === "ai" && !table.connected && (
                 <div className="bg-navy-dark rounded-lg p-3 text-center">
-                  <span className="text-xs text-text-light">AI-controlled this round</span>
+                  <span className="text-sm text-text-light">AI-controlled</span>
                 </div>
               )}
               {table.enabled && table.controlMode === "npc" && !table.connected && (
                 <div className="bg-navy-dark rounded-lg p-3 text-center">
-                  <span className="text-xs text-text-light">NPC (sample actions)</span>
+                  <span className="text-sm text-text-light">NPC (sample actions)</span>
                 </div>
               )}
               {/* AI Systems disposition status in lobby */}
               {table.roleId === "ai-systems" && table.enabled && (
-                <div className={`text-[10px] mt-2 px-2 py-1 rounded ${
+                <div className={`text-xs mt-2 px-2 py-1.5 rounded ${
                   table.aiDisposition
                     ? "bg-[#1E1B4B]/50 text-[#A78BFA]"
                     : "bg-navy-dark text-navy-muted"
