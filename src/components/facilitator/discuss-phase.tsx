@@ -50,12 +50,6 @@ export function DiscussPhase({
       >
         Open Submissions ({submitDuration}min)
       </button>
-      <button
-        onClick={() => void openSubmissions({ gameId, durationSeconds: 120 })}
-        className="py-2 px-6 bg-navy-light text-text-light rounded-lg font-bold text-sm hover:bg-navy-muted transition-colors mt-3"
-      >
-        Demo: Skip to AI Submissions
-      </button>
       {!isProjector && game.phaseEndsAt && (
         <button
           onClick={safeAction("Skip timer", () => skipTimer({ gameId }))}

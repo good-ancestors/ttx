@@ -6,6 +6,11 @@ import { logEvent } from "./events";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
 import { internal } from "./_generated/api";
 
+/** Pre-generate AI/NPC actions so they're ready before submissions open. */
+async function schedulePreGeneration(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
+  await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, { gameId, roundNumber });
+}
+
 /** Auto-snapshot a round's final state (world state, labs, role compute). */
 async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
   const game = await ctx.db.get(gameId);
@@ -245,6 +250,7 @@ export const startGame = mutation({
       phaseEndsAt: undefined,
     });
     await logEvent(ctx, args.gameId, "game_start");
+    await schedulePreGeneration(ctx, args.gameId, 1);
   },
 });
 
@@ -263,6 +269,7 @@ export const advanceRound = mutation({
       phaseEndsAt: undefined,
     });
     await logEvent(ctx, args.gameId, "round_advance", undefined, { round: nextRound });
+    await schedulePreGeneration(ctx, args.gameId, nextRound);
   },
 });
 
@@ -546,15 +553,11 @@ export const openSubmissions = mutation({
     durationSeconds: v.number(),
   },
   handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) return;
     const phaseEndsAt = Date.now() + args.durationSeconds * 1000;
     await ctx.db.patch(args.gameId, { phase: "submit", phaseEndsAt });
     await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: "submit", durationSeconds: args.durationSeconds });
-
-    // Schedule server-side AI/NPC generation
-    await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, {
-      gameId: args.gameId,
-      roundNumber: (await ctx.db.get(args.gameId))!.currentRound,
-      durationSeconds: args.durationSeconds,
-    });
+    await schedulePreGeneration(ctx, args.gameId, game.currentRound);
   },
 });

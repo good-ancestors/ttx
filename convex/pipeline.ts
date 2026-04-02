@@ -84,14 +84,11 @@ export const gradeAll = internalAction({
           gameId,
           status: { step: "generating", detail: `Generating ${missingTables.length} missing AI submissions...`, startedAt: Date.now() },
         });
-        // Force-generate missing submissions immediately (no stagger)
         await ctx.runAction(internal.aiGenerate.generateAll, {
           gameId,
           roundNumber,
-          durationSeconds: 10, // Short window — submit immediately
         });
-        // Wait briefly for submissions to land
-        await new Promise((r) => setTimeout(r, 5000));
+        // generateAll writes submissions directly — no wait needed
       }
 
       // Advance to rolling phase so players see action reveal + influence panel
@@ -117,12 +114,12 @@ export const gradeAll = internalAction({
         status: { step: "grading", detail: `Evaluating ${total} submissions...`, progress: `0/${total}`, startedAt: Date.now() },
       });
 
-      // Grade in batches of 6 to avoid Anthropic rate limits
-      const GRADING_CONCURRENCY = 6;
+      // Grade in batches — progress updates at batch boundaries to avoid OCC conflicts
+      const GRADING_CONCURRENCY = 12;
       let completed = 0;
       for (let batch = 0; batch < ungraded.length; batch += GRADING_CONCURRENCY) {
         const batchSubs = ungraded.slice(batch, batch + GRADING_CONCURRENCY);
-        await Promise.all(batchSubs.map(async (sub) => {
+        const batchResults = await Promise.allSettled(batchSubs.map(async (sub) => {
         const role = ROLES.find((r) => r.id === sub.roleId);
         if (!role) return;
 
@@ -210,8 +207,8 @@ export const gradeAll = internalAction({
               actions: gradedActions,
             });
           }
-        } catch {
-          // Fallback on any error
+        } catch (err) {
+          console.error(`[pipeline] Grading LLM failed for ${sub.roleId}, using defaults:`, err);
           const gradedActions = sub.actions.map((action) => ({
             ...action,
             probability: defaultProbability(action.priority),
@@ -223,11 +220,20 @@ export const gradeAll = internalAction({
         }
 
         completed++;
+      }));
+
+        for (const r of batchResults) {
+          if (r.status === "rejected") {
+            completed--;
+            console.error(`[pipeline] Grading failed for submission:`, r.reason);
+          }
+        }
+
+        // Update progress at batch boundary (single mutation per batch avoids OCC conflicts)
         await ctx.runMutation(internal.games.updatePipelineStatus, {
           gameId,
           status: { step: "grading", detail: `Evaluating submissions...`, progress: `${completed}/${total}`, startedAt: Date.now() },
         });
-      }));
       } // end batch loop
 
       // Schedule next stage: influence

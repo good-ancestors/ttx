@@ -23,10 +23,9 @@ export const generateAll = internalAction({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
-    durationSeconds: v.number(),
   },
   handler: async (ctx, args) => {
-    const { gameId, roundNumber, durationSeconds } = args;
+    const { gameId, roundNumber } = args;
 
     const game = await ctx.runQuery(internal.games.getInternal, { gameId });
     if (!game) return;
@@ -255,84 +254,50 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       }
     }));
 
-    // Stagger submissions over first 60% of countdown
-    const staggerWindow = durationSeconds * 0.6 * 1000;
-    const minDelay = Math.min(15_000, staggerWindow * 0.2);
-
-    for (let i = 0; i < pending.length; i++) {
-      const p = pending[i];
-      const baseDelay = minDelay + (staggerWindow - minDelay) * (i / Math.max(1, pending.length - 1));
-      const jitter = (Math.random() - 0.5) * 10_000;
-      const delay = Math.max(3000, baseDelay + jitter);
-
-      // Schedule staggered submission
-      await ctx.scheduler.runAfter(delay, internal.aiGenerate.submitAndPropose, {
-        gameId,
-        roundNumber,
-        tableId: p.tableId,
-        roleId: p.roleId,
-        actions: p.actions,
-        endorseHints: p.endorseHints,
-      });
-    }
-  },
-});
-
-// ─── Submit a single AI/NPC table's actions + trigger proposals ───────────────
-
-export const submitAndPropose = internalAction({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    tableId: v.string(),
-    roleId: v.string(),
-    actions: v.array(v.object({ text: v.string(), priority: v.number(), secret: v.optional(v.boolean()) })),
-    endorseHints: v.optional(v.array(v.object({ actionText: v.string(), targetRoleIds: v.array(v.string()) }))),
-  },
-  handler: async (ctx, args) => {
-    const { gameId, roundNumber, tableId, roleId, actions, endorseHints } = args;
-
-    // Submit actions
-    try {
-      await ctx.runMutation(internal.submissions.submitInternal, {
-        tableId: tableId as never,
-        gameId,
-        roundNumber,
-        roleId,
-        actions,
-      });
-    } catch {
-      console.error(`[aiGenerate] Submit failed for ${roleId}`);
-      return;
-    }
-
-    // Send endorsement requests from hints (NPC)
-    if (endorseHints?.length) {
-      const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
-      const roleMap = new Map(tables.filter((t) => t.enabled).map((t) => [t.roleId, t.roleName]));
-      for (const hint of endorseHints) {
-        for (const targetId of hint.targetRoleIds.slice(0, 1)) {
-          try {
-            await ctx.runMutation(internal.requests.sendInternal, {
-              gameId,
-              roundNumber,
-              fromRoleId: roleId,
-              fromRoleName: roleMap.get(roleId) ?? roleId,
-              toRoleId: targetId,
-              toRoleName: roleMap.get(targetId) ?? targetId,
-              actionText: hint.actionText,
-              requestType: "endorsement",
-            });
-          } catch { /* request already exists */ }
-        }
+    // Submit all actions in parallel (independent mutations, no conflicts)
+    const results = await Promise.allSettled(
+      pending.map((p) =>
+        ctx.runMutation(internal.submissions.submitInternal, {
+          tableId: p.tableId as never,
+          gameId,
+          roundNumber,
+          roleId: p.roleId,
+          actions: p.actions,
+        }).then(() => p)
+      )
+    );
+    for (const r of results) {
+      if (r.status === "rejected") {
+        console.error(`[aiGenerate] Submission failed:`, r.reason);
       }
     }
+    const submitted = results
+      .filter((r): r is PromiseFulfilledResult<typeof pending[number]> => r.status === "fulfilled")
+      .map((r) => r.value);
 
-    // Handle AI proposals (respond to pending endorsement requests + maybe send new ones)
-    await ctx.scheduler.runAfter(3000, internal.aiProposals.respond, {
-      gameId,
-      roundNumber,
-      roleId,
-    });
+    // Send endorsement requests + schedule proactive outreach in parallel
+    const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));
+    await Promise.all(submitted.flatMap((p) => {
+      const endorsements = (p.endorseHints ?? []).flatMap((hint) =>
+        hint.targetRoleIds.slice(0, 1).map((targetId) =>
+          ctx.runMutation(internal.requests.sendInternal, {
+            gameId,
+            roundNumber,
+            fromRoleId: p.roleId,
+            fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
+            toRoleId: targetId,
+            toRoleName: roleMap.get(targetId) ?? targetId,
+            actionText: hint.actionText,
+            requestType: "endorsement",
+          }).catch(() => { /* request already exists */ })
+        )
+      );
+      const outreach = ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
+        gameId,
+        roundNumber,
+        roleId: p.roleId,
+      });
+      return [...endorsements, outreach];
+    }));
   },
 });

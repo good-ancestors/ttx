@@ -1,7 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
-import type { DatabaseWriter } from "./_generated/server";
+import type { DatabaseWriter, MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 import { logEvent, assertPhase } from "./events";
 
 /** Transfer compute between two roles' tables. Positive amount = giver→requester, negative = reverse. */
@@ -89,6 +90,10 @@ export const send = mutation({
       computeAmount: args.computeAmount,
       actionText: args.actionText,
     });
+
+    // Auto-respond if target is AI/NPC
+    await triggerAutoResponse(ctx, args.gameId, args.roundNumber, args.toRoleId, id);
+
     return id;
   },
 });
@@ -214,9 +219,41 @@ export const sendInternal = internalMutation({
     computeAmount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await ctx.db.insert("requests", { ...args, status: "pending" });
+    const requestId = await ctx.db.insert("requests", { ...args, status: "pending" });
+
+    // Auto-respond if target is AI/NPC (reactive — no waiting for scheduled poll)
+    await triggerAutoResponse(ctx, args.gameId, args.roundNumber, args.toRoleId, requestId);
   },
 });
+
+const NPC_ACCEPT_RATE = 0.7;
+
+async function triggerAutoResponse(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roundNumber: number,
+  toRoleId: string,
+  requestId: Id<"requests">,
+) {
+  const tables = await ctx.db
+    .query("tables")
+    .withIndex("by_game", (q) => q.eq("gameId", gameId))
+    .collect();
+  const targetTable = tables.find((t) => t.roleId === toRoleId && t.enabled);
+  if (!targetTable || targetTable.controlMode === "human") return;
+
+  if (targetTable.controlMode === "npc") {
+    const accept = Math.random() < NPC_ACCEPT_RATE;
+    await ctx.db.patch(requestId, { status: accept ? "accepted" : "declined" });
+  } else {
+    // AI: schedule LLM response immediately (runs in action context)
+    await ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
+      gameId,
+      roundNumber,
+      roleId: toRoleId,
+    });
+  }
+}
 
 export const respondInternal = internalMutation({
   args: {
