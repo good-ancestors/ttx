@@ -155,18 +155,43 @@ Facilitator                          Backend                          Players
 ## Pre-generation Safety
 
 ```
-Double-trigger protection:
+Triple-layer dedup protection:
 
-  startGame/advanceRound ──> generateAll(dur=0) ──> submits AI/NPC
+  startGame/advanceRound ──> generateAll(dur=0) ──> submits AI/NPC immediately
                                                         │
-  openSubmissions ─────────> generateAll(dur=N) ────────┘
+  openSubmissions ─────────> generateAll(dur=0) ────────┘
                                 │                       │
                           checks submittedRoles ──> skips already done
                                                         │
   gradeAll (pipeline) ──────> generateAll(dur=0) ───────┘
                                 │                  (only if still missing)
                           checks submittedRoles ──> skips already done
+
+  submitInternal also deduplicates:
+    - If existing submission is graded/resolved → returns existing ID
+    - If existing submission is draft/submitted → patches (overwrites)
 ```
+
+## What Each Player Type Does
+
+### Human Tables
+- Excluded from generateAll (controlMode !== "human")
+- Compose actions manually during submit phase
+- Can send/receive endorsement proposals
+- Auto-submit on timer expiry
+- Never pre-generated
+
+### AI Tables (LLM-controlled)
+- Full LLM generation with game context, personality, previous outcomes
+- Pre-generated during discuss phase (parallel LLM calls, ~3-10s)
+- Submitted immediately (no stagger delay)
+- aiProposals.respond runs 3s after submit (accepts/declines + sends new proposals)
+
+### NPC Tables (sample actions)
+- Draw from bundled sampleActionsData (no LLM call, instant)
+- Pre-generated during discuss phase
+- Build endorseHints from sample data → sent as endorsement requests
+- aiProposals.respond runs 3s after submit (LLM decides on incoming proposals)
 
 ## Timing: Before vs After
 
@@ -188,3 +213,12 @@ Double-trigger protection:
                                                                                   │
                                           Submissions visible INSTANTLY ◄──────────┘
 ```
+
+## Known Trade-off
+
+AI-to-AI endorsement proposals during pre-generation may be less rich than before.
+When all AI tables generate in parallel, some tables finish before others. The 3s
+delay on aiProposals.respond means an early finisher may try to negotiate with a
+table that hasn't submitted yet. This is safe (no errors) but means fewer cross-table
+proposals form during pre-gen. Proposals still work during submit phase via the
+fallback generateAll path.
