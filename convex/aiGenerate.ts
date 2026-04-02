@@ -254,74 +254,49 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       }
     }));
 
+    // Submit all actions and endorsement requests directly (no intermediate scheduler)
+    const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));
+
     for (const p of pending) {
-      await ctx.scheduler.runAfter(0, internal.aiGenerate.submitAndPropose, {
-        gameId,
-        roundNumber,
-        tableId: p.tableId,
-        roleId: p.roleId,
-        actions: p.actions,
-        endorseHints: p.endorseHints,
-      });
-    }
-  },
-});
+      try {
+        await ctx.runMutation(internal.submissions.submitInternal, {
+          tableId: p.tableId as never,
+          gameId,
+          roundNumber,
+          roleId: p.roleId,
+          actions: p.actions,
+        });
+      } catch {
+        console.error(`[aiGenerate] Submit failed for ${p.roleId}`);
+        continue;
+      }
 
-// ─── Submit a single AI/NPC table's actions + trigger proposals ───────────────
-
-export const submitAndPropose = internalAction({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    tableId: v.string(),
-    roleId: v.string(),
-    actions: v.array(v.object({ text: v.string(), priority: v.number(), secret: v.optional(v.boolean()) })),
-    endorseHints: v.optional(v.array(v.object({ actionText: v.string(), targetRoleIds: v.array(v.string()) }))),
-  },
-  handler: async (ctx, args) => {
-    const { gameId, roundNumber, tableId, roleId, actions, endorseHints } = args;
-
-    // Submit actions
-    try {
-      await ctx.runMutation(internal.submissions.submitInternal, {
-        tableId: tableId as never,
-        gameId,
-        roundNumber,
-        roleId,
-        actions,
-      });
-    } catch {
-      console.error(`[aiGenerate] Submit failed for ${roleId}`);
-      return;
-    }
-
-    // Send endorsement requests from hints (NPC)
-    if (endorseHints?.length) {
-      const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
-      const roleMap = new Map(tables.filter((t) => t.enabled).map((t) => [t.roleId, t.roleName]));
-      for (const hint of endorseHints) {
-        for (const targetId of hint.targetRoleIds.slice(0, 1)) {
-          try {
-            await ctx.runMutation(internal.requests.sendInternal, {
-              gameId,
-              roundNumber,
-              fromRoleId: roleId,
-              fromRoleName: roleMap.get(roleId) ?? roleId,
-              toRoleId: targetId,
-              toRoleName: roleMap.get(targetId) ?? targetId,
-              actionText: hint.actionText,
-              requestType: "endorsement",
-            });
-          } catch { /* request already exists */ }
+      // Send endorsement requests from hints (NPC)
+      if (p.endorseHints?.length) {
+        for (const hint of p.endorseHints) {
+          for (const targetId of hint.targetRoleIds.slice(0, 1)) {
+            try {
+              await ctx.runMutation(internal.requests.sendInternal, {
+                gameId,
+                roundNumber,
+                fromRoleId: p.roleId,
+                fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
+                toRoleId: targetId,
+                toRoleName: roleMap.get(targetId) ?? targetId,
+                actionText: hint.actionText,
+                requestType: "endorsement",
+              });
+            } catch { /* request already exists */ }
+          }
         }
       }
-    }
 
-    // Proactive outreach: AI may send new proposals to other tables
-    await ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
-      gameId,
-      roundNumber,
-      roleId,
-    });
+      // Fire-and-forget: AI proactive outreach (send new proposals to other tables)
+      await ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
+        gameId,
+        roundNumber,
+        roleId: p.roleId,
+      });
+    }
   },
 });
