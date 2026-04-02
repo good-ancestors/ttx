@@ -333,8 +333,10 @@ export const submitAndPropose = internalAction({
       }
     }
 
-    // Handle AI proposals (respond to pending endorsement requests + maybe send new ones)
-    await ctx.scheduler.runAfter(3000, internal.aiProposals.respond, {
+    // AI/NPC proposal responses are now reactive — triggered by sendInternal
+    // when a proposal arrives at an AI/NPC table. This replaces the old 3s poll.
+    // AI tables may still proactively send new proposals after submitting:
+    await ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
       gameId,
       roundNumber,
       roleId,
