@@ -11,6 +11,7 @@ import {
   Pencil,
   Plus,
   ChevronRight,
+  ChevronDown,
 } from "lucide-react";
 import type { FacilitatorPhaseProps, Round } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
@@ -102,6 +103,7 @@ export function NarratePhase({
   const [newLabRoleId, setNewLabRoleId] = useState("");
   const [newLabCompute, setNewLabCompute] = useState(10);
   const [newLabMultiplier, setNewLabMultiplier] = useState(1);
+  const [whereExpanded, setWhereExpanded] = useState(true);
   const enabledTables = tables.filter((t) => t.enabled);
 
   return (
@@ -114,72 +116,96 @@ export function NarratePhase({
         </div>
       )}
 
-      {/* The Story — shows loading skeleton while resolving, then narrative */}
+      {/* What Happened — shows loading skeleton while resolving, then narrative */}
       {(resolving || currentRound?.summary) && (
         <NarrativePanel round={currentRound} />
       )}
 
-      {/* Where We Are Now — show after narrative is ready */}
+      {/* Where We Are Now — includes compute update */}
       {currentRound?.summary && (
-        <>
-          {(() => {
-            const leading = game.labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b), game.labs[0]);
-            const cap = leading ? getCapabilityDescription(leading.rdMultiplier) : null;
-            const alignmentColor = game.worldState.alignment <= 3 ? "#EF4444" : game.worldState.alignment >= 7 ? "#22C55E" : "#F59E0B";
-            const trajectory = game.worldState.alignment <= 3 ? "RACE" : game.worldState.alignment >= 6 ? "SLOWDOWN" : "UNCERTAIN";
-            return (
-              <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Where We Are Now</span>
-                  <span
-                    className="text-xs font-bold px-2 py-0.5 rounded-full"
-                    style={{ backgroundColor: `${alignmentColor}20`, color: alignmentColor }}
-                  >
-                    {trajectory}
-                  </span>
-                </div>
-                <div className="grid grid-cols-3 gap-3 mb-3">
-                  {game.labs.map((lab) => (
-                    <div key={lab.name} className="bg-navy rounded-lg p-3 border border-navy-light">
-                      <div className="text-sm font-bold text-white">{lab.name}</div>
-                      <div className="text-xl font-black text-[#06B6D4] font-mono">{lab.rdMultiplier}×</div>
-                      <div className="text-xs text-text-light">{lab.computeStock}u · Safety {lab.allocation.safety}%</div>
-                      {lab.spec && (
-                        <div className="text-[10px] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
-                          Spec: {lab.spec}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                {cap && (
+        <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
+          <button
+            onClick={() => setWhereExpanded(!whereExpanded)}
+            className="flex items-center gap-2 w-full"
+          >
+            <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${whereExpanded ? "" : "-rotate-90"}`} />
+            <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Where We Are Now</span>
+            {(() => {
+              const alignmentColor = game.worldState.alignment <= 3 ? "#EF4444" : game.worldState.alignment >= 7 ? "#22C55E" : "#F59E0B";
+              const trajectory = game.worldState.alignment <= 3 ? "RACE" : game.worldState.alignment >= 6 ? "SLOWDOWN" : "UNCERTAIN";
+              return (
+                <span
+                  className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto"
+                  style={{ backgroundColor: `${alignmentColor}20`, color: alignmentColor }}
+                >
+                  {trajectory}
+                </span>
+              );
+            })()}
+          </button>
+          {whereExpanded && (
+            <div className="mt-3">
+              {(() => {
+                const leading = game.labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b), game.labs[0]);
+                const cap = leading ? getCapabilityDescription(leading.rdMultiplier) : null;
+                return (
                   <>
-                    <div className="bg-navy rounded-lg p-4 border border-navy-light mb-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm font-bold text-white">How Capable is AI?</span>
-                        <span className="text-xs text-viz-capability font-mono ml-auto">{cap.agent} · {cap.rdRange}</span>
-                      </div>
-                      <p className="text-sm text-[#E2E8F0] mb-2">{cap.generalCapability}</p>
-                      <div className="space-y-1 mb-2">
-                        {cap.specificCapabilities.map((c, i) => (
-                          <p key={`cap-${i}`} className="text-sm text-text-light flex items-start gap-1.5">
-                            <span className="text-viz-capability mt-0.5">●</span> {c}
-                          </p>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2 pt-2 border-t border-navy-light">
-                        <span className="text-base font-bold text-white">{cap.timeCompression}</span>
-                      </div>
+                    <div className="grid grid-cols-3 gap-3 mb-3">
+                      {game.labs.map((lab) => {
+                        const change = currentRound.computeChanges?.distribution.find((d) => d.labName === lab.name);
+                        const totalChange = change ? change.baseline + change.modifier : 0;
+                        return (
+                          <div key={lab.name} className="bg-navy rounded-lg p-3 border border-navy-light">
+                            <div className="text-sm font-bold text-white">{lab.name}</div>
+                            <div className="text-xl font-black text-[#06B6D4] font-mono">{lab.rdMultiplier}×</div>
+                            <div className="text-xs text-text-light">
+                              {lab.computeStock}u
+                              {totalChange !== 0 && (
+                                <span className={`ml-1 font-mono ${totalChange > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                                  ({totalChange > 0 ? "+" : ""}{totalChange})
+                                </span>
+                              )}
+                              {" · "}Safety {lab.allocation.safety}%
+                            </div>
+                            {lab.spec && (
+                              <div className="text-[10px] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
+                                Spec: {lab.spec}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="bg-navy rounded-lg p-3 border border-navy-light">
-                      <p className="text-sm text-[#E2E8F0]">{cap.implication}</p>
-                    </div>
+                    {cap && (
+                      <>
+                        <div className="bg-navy rounded-lg p-4 border border-navy-light mb-3">
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-sm font-bold text-white">How Capable is AI?</span>
+                            <span className="text-xs text-viz-capability font-mono ml-auto">{cap.agent} · {cap.rdRange}</span>
+                          </div>
+                          <p className="text-sm text-[#E2E8F0] mb-2">{cap.generalCapability}</p>
+                          <div className="space-y-1 mb-2">
+                            {cap.specificCapabilities.map((c, i) => (
+                              <p key={`cap-${i}`} className="text-sm text-text-light flex items-start gap-1.5">
+                                <span className="text-viz-capability mt-0.5">●</span> {c}
+                              </p>
+                            ))}
+                          </div>
+                          <div className="flex items-center gap-2 pt-2 border-t border-navy-light">
+                            <span className="text-base font-bold text-white">{cap.timeCompression}</span>
+                          </div>
+                        </div>
+                        <div className="bg-navy rounded-lg p-3 border border-navy-light">
+                          <p className="text-sm text-[#E2E8F0]">{cap.implication}</p>
+                        </div>
+                      </>
+                    )}
                   </>
-                )}
-              </div>
-            );
-          })()}
-        </>
+                );
+              })()}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Edit modal overlay */}
@@ -237,40 +263,6 @@ export function NarratePhase({
             {editModal === "compute" && (
               <ComputeEditor labs={game.labs} gameId={gameId} computeChanges={currentRound?.computeChanges ?? undefined} onClose={() => setEditModal(null)} />
             )}
-          </div>
-        </div>
-      )}
-
-      {/* Compute summary — show proactively after resolve */}
-      {currentRound?.computeChanges && (
-        <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Compute Update</span>
-            <span className="text-[10px] text-navy-muted">
-              {currentRound.computeChanges.newComputeTotal} new units this round
-            </span>
-          </div>
-          <div className="space-y-2">
-            {currentRound.computeChanges.distribution.map((d) => {
-              const before = d.newTotal - d.baseline - d.modifier;
-              const totalChange = d.baseline + d.modifier;
-              return (
-                <div key={d.labName} className="py-1.5 border-b border-navy-light/30 last:border-0">
-                  <div className="flex items-center gap-3 text-sm">
-                    <span className="text-white font-medium min-w-[100px]">{d.labName}</span>
-                    <span className="text-[10px] text-navy-muted font-mono">{before}u</span>
-                    <span className="text-[10px] text-navy-muted">→</span>
-                    <span className={`font-mono text-xs ${totalChange >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                      {totalChange >= 0 ? "+" : ""}{totalChange}
-                    </span>
-                    <span className="ml-auto text-sm text-white font-mono font-bold">{d.newTotal}u</span>
-                  </div>
-                  {d.modifier !== 0 && d.reason && (
-                    <p className="text-[10px] text-navy-muted mt-0.5 ml-[100px] pl-3 leading-relaxed">{d.reason}</p>
-                  )}
-                </div>
-              );
-            })}
           </div>
         </div>
       )}

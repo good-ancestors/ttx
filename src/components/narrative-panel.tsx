@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, CheckCircle, ChevronDown } from "lucide-react";
 
 const LOADING_VERBS = [
   "Simulating geopolitics...",
@@ -34,11 +34,14 @@ interface Round {
 
 export function NarrativePanel({
   round,
+  defaultExpanded = true,
 }: {
   round: Round | undefined;
+  defaultExpanded?: boolean;
 }) {
-  // Hooks must be called unconditionally (before any early returns)
   const [verbIdx, setVerbIdx] = useState(0);
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [readChecked, setReadChecked] = useState(false);
   const summary = round?.summary;
   const storyText = summary?.narrative
     ?? (summary
@@ -57,7 +60,7 @@ export function NarrativePanel({
 
   if (!storyText && !round.fallbackNarrative) {
     return (
-      <div className="bg-navy-dark rounded-xl border border-navy-light p-6 mb-4">
+      <div className="bg-navy-dark rounded-xl border border-navy-light p-6">
         <div className="flex items-center gap-2 mb-4">
           <Loader2 className="w-5 h-5 text-viz-capability animate-spin" />
           <span className="text-sm font-medium text-text-light transition-opacity duration-300">
@@ -74,19 +77,39 @@ export function NarrativePanel({
   }
 
   return (
-    <div>
-      {/* The Story */}
-      {storyText && (
-        <div className="mb-4">
-          <h3 className="text-lg font-bold text-white mb-3">
-            The Story
-          </h3>
-          <p className="text-base text-[#E2E8F0] leading-relaxed">
-            {storyText}
-          </p>
-        </div>
+    <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex items-center gap-2"
+        >
+          <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${expanded ? "" : "-rotate-90"}`} />
+          <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
+            What Happened
+          </span>
+          {storyText && (
+            <span className="text-xs text-viz-safety flex items-center gap-1">
+              <CheckCircle className="w-3.5 h-3.5" />
+            </span>
+          )}
+        </button>
+        {storyText && (
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={readChecked}
+              onChange={(e) => setReadChecked(e.target.checked)}
+              className="w-3.5 h-3.5 rounded border-navy-light accent-viz-safety"
+            />
+            <span className="text-[10px] text-text-light">Read aloud</span>
+          </label>
+        )}
+      </div>
+      {expanded && storyText && (
+        <p className="text-base text-[#E2E8F0] leading-relaxed mt-3">
+          {storyText}
+        </p>
       )}
-
     </div>
   );
 }
