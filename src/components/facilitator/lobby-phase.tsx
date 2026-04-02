@@ -30,6 +30,7 @@ export function LobbyPhase({
   setControlMode,
   kickToAI,
 }: LobbyPhaseProps) {
+  const tableActionBtn = "text-xs px-3 py-1.5 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-1";
   const [showRejoin, setShowRejoin] = useState<Set<string>>(new Set());
   const toggleRejoin = (id: string) => setShowRejoin((prev) => {
     const next = new Set(prev);
@@ -111,13 +112,13 @@ export function LobbyPhase({
                   <>
                     <button
                       onClick={() => kickToAI({ tableId: table._id })}
-                      className="text-xs px-3 py-1.5 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-1"
+                      className={tableActionBtn}
                     >
                       <Bot className="w-3.5 h-3.5" /> Kick to AI
                     </button>
                     <button
                       onClick={() => toggleRejoin(table._id)}
-                      className="text-xs px-3 py-1.5 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-1"
+                      className={tableActionBtn}
                     >
                       <QrCode className="w-3.5 h-3.5" /> Rejoin
                     </button>
@@ -125,7 +126,6 @@ export function LobbyPhase({
                 )}
               </div>
 
-              {/* QR code for enabled human tables — always if not connected, or on rejoin toggle */}
               {table.enabled && table.controlMode === "human" && (!table.connected || showRejoin.has(table._id)) && (
                 <div className="bg-navy-dark rounded-lg p-3 flex flex-col items-center">
                   <QRCode
