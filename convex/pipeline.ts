@@ -88,8 +88,14 @@ export const gradeAll = internalAction({
           gameId,
           roundNumber,
         });
-        // Brief wait for scheduled submitAndPropose mutations to land
-        await new Promise((r) => setTimeout(r, 2000));
+        // Poll until scheduled submitAndPropose mutations land (or timeout)
+        const expected = missingTables.length;
+        for (let attempt = 0; attempt < 15; attempt++) {
+          await new Promise((r) => setTimeout(r, 1000));
+          const subs: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
+          const newCount = subs.filter((s) => missingTables.some((t) => t.roleId === s.roleId)).length;
+          if (newCount >= expected) break;
+        }
       }
 
       // Advance to rolling phase so players see action reveal + influence panel
