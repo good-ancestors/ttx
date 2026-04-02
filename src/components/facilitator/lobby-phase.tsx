@@ -1,8 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { ROLES } from "@/lib/game-data";
 import { QRCode } from "@/components/qr-codes";
-import { Play, Lock, Bot } from "lucide-react";
+import { Play, Lock, Bot, QrCode } from "lucide-react";
 import type { FacilitatorPhaseProps } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 
@@ -29,6 +30,13 @@ export function LobbyPhase({
   setControlMode,
   kickToAI,
 }: LobbyPhaseProps) {
+  const [showRejoin, setShowRejoin] = useState<Set<string>>(new Set());
+  const toggleRejoin = (id: string) => setShowRejoin((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
       <div className="text-center mb-6 md:mb-8">
@@ -100,17 +108,25 @@ export function LobbyPhase({
                   </div>
                 )}
                 {!isProjector && table.enabled && table.connected && table.controlMode === "human" && (
-                  <button
-                    onClick={() => kickToAI({ tableId: table._id })}
-                    className="text-xs px-3 py-1.5 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-1"
-                  >
-                    <Bot className="w-3.5 h-3.5" /> Kick to AI
-                  </button>
+                  <>
+                    <button
+                      onClick={() => kickToAI({ tableId: table._id })}
+                      className="text-xs px-3 py-1.5 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-1"
+                    >
+                      <Bot className="w-3.5 h-3.5" /> Kick to AI
+                    </button>
+                    <button
+                      onClick={() => toggleRejoin(table._id)}
+                      className="text-xs px-3 py-1.5 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-1"
+                    >
+                      <QrCode className="w-3.5 h-3.5" /> Rejoin
+                    </button>
+                  </>
                 )}
               </div>
 
-              {/* QR code only for enabled human tables */}
-              {table.enabled && table.controlMode === "human" && (
+              {/* QR code for enabled human tables — always if not connected, or on rejoin toggle */}
+              {table.enabled && table.controlMode === "human" && (!table.connected || showRejoin.has(table._id)) && (
                 <div className="bg-navy-dark rounded-lg p-3 flex flex-col items-center">
                   <QRCode
                     value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table._id}`}
