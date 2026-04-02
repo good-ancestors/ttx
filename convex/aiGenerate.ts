@@ -255,18 +255,16 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       }
     }));
 
-    // Submit immediately when pre-generating (durationSeconds=0) or short timer,
-    // otherwise stagger over first 60% of countdown for mixed human/AI games
     const immediate = durationSeconds <= 0;
+    const staggerWindow = immediate ? 0 : durationSeconds * 0.6 * 1000;
+    const minStagger = immediate ? 0 : Math.min(15_000, staggerWindow * 0.2);
 
     for (let i = 0; i < pending.length; i++) {
       const p = pending[i];
 
       let delay = 0;
       if (!immediate) {
-        const staggerWindow = durationSeconds * 0.6 * 1000;
-        const minDelay = Math.min(15_000, staggerWindow * 0.2);
-        const baseDelay = minDelay + (staggerWindow - minDelay) * (i / Math.max(1, pending.length - 1));
+        const baseDelay = minStagger + (staggerWindow - minStagger) * (i / Math.max(1, pending.length - 1));
         const jitter = (Math.random() - 0.5) * 10_000;
         delay = Math.max(3000, baseDelay + jitter);
       }
@@ -333,9 +331,7 @@ export const submitAndPropose = internalAction({
       }
     }
 
-    // AI/NPC proposal responses are now reactive — triggered by sendInternal
-    // when a proposal arrives at an AI/NPC table. This replaces the old 3s poll.
-    // AI tables may still proactively send new proposals after submitting:
+    // Proactive outreach: AI may send new proposals to other tables
     await ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
       gameId,
       roundNumber,

@@ -226,7 +226,8 @@ export const sendInternal = internalMutation({
   },
 });
 
-/** If the target role is NPC (random accept) or AI (LLM decides), schedule immediate response. */
+const NPC_ACCEPT_RATE = 0.7;
+
 async function triggerAutoResponse(
   ctx: MutationCtx,
   gameId: Id<"games">,
@@ -242,8 +243,7 @@ async function triggerAutoResponse(
   if (!targetTable || targetTable.controlMode === "human") return;
 
   if (targetTable.controlMode === "npc") {
-    // NPC: 70% accept, 30% decline — no LLM call needed
-    const accept = Math.random() < 0.7;
+    const accept = Math.random() < NPC_ACCEPT_RATE;
     await ctx.db.patch(requestId, { status: accept ? "accepted" : "declined" });
   } else {
     // AI: schedule LLM response immediately (runs in action context)

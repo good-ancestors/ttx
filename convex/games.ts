@@ -6,6 +6,15 @@ import { logEvent } from "./events";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
 import { internal } from "./_generated/api";
 
+/** Pre-generate AI/NPC actions so they're ready before submissions open. */
+async function schedulePreGeneration(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
+  await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, {
+    gameId,
+    roundNumber,
+    durationSeconds: 0,
+  });
+}
+
 /** Auto-snapshot a round's final state (world state, labs, role compute). */
 async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
   const game = await ctx.db.get(gameId);
@@ -245,16 +254,7 @@ export const startGame = mutation({
       phaseEndsAt: undefined,
     });
     await logEvent(ctx, args.gameId, "game_start");
-
-    // Pre-generate AI/NPC actions during discuss phase so they're ready instantly
-    const game = await ctx.db.get(args.gameId);
-    if (game) {
-      await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, {
-        gameId: args.gameId,
-        roundNumber: game.currentRound,
-        durationSeconds: 0,
-      });
-    }
+    await schedulePreGeneration(ctx, args.gameId, 1);
   },
 });
 
@@ -273,13 +273,7 @@ export const advanceRound = mutation({
       phaseEndsAt: undefined,
     });
     await logEvent(ctx, args.gameId, "round_advance", undefined, { round: nextRound });
-
-    // Pre-generate AI/NPC actions during discuss phase so they're ready instantly
-    await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, {
-      gameId: args.gameId,
-      roundNumber: nextRound,
-      durationSeconds: 0,
-    });
+    await schedulePreGeneration(ctx, args.gameId, nextRound);
   },
 });
 
@@ -567,12 +561,8 @@ export const openSubmissions = mutation({
     await ctx.db.patch(args.gameId, { phase: "submit", phaseEndsAt });
     await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: "submit", durationSeconds: args.durationSeconds });
 
-    // Catch any AI/NPC roles not yet submitted (pre-gen handles most).
-    // Use durationSeconds=0 so stragglers submit immediately too.
-    await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, {
-      gameId: args.gameId,
-      roundNumber: (await ctx.db.get(args.gameId))!.currentRound,
-      durationSeconds: 0,
-    });
+    // Catch any AI/NPC roles not yet submitted (pre-gen handles most)
+    const game = await ctx.db.get(args.gameId);
+    await schedulePreGeneration(ctx, args.gameId, game!.currentRound);
   },
 });

@@ -42,15 +42,13 @@ Facilitator                          Backend                          Players
     │                        │   ├─ submitAndPropose(delay=0)            │
     │                        │   │   ├─ submitInternal ──> DB            │
     │                        │   │   ├─ Send endorsement requests        │
-    │                        │   │   └─ schedule aiProposals.respond     │
-    │                        │   │       (3s delay)                      │
+    │                        │   │   └─ aiProposals.respond (immediate)  │
     │                        │          │                                │
     │                        │  AI tables:                               │
     │                        │   ├─ LLM calls (parallel, ~3-10s)        │
     │                        │   ├─ submitAndPropose(delay=0)            │
     │                        │   │   ├─ submitInternal ──> DB            │
-    │                        │   │   └─ schedule aiProposals.respond     │
-    │                        │   │       (3s delay)                      │
+    │                        │   │   └─ aiProposals.respond (immediate)  │
     │                        └──────────┤                                │
     │                                   │                                │
     │  (AI/NPC submissions land in DB   │                    Tables discuss,
@@ -185,13 +183,14 @@ Triple-layer dedup protection:
 - Full LLM generation with game context, personality, previous outcomes
 - Pre-generated during discuss phase (parallel LLM calls, ~3-10s)
 - Submitted immediately (no stagger delay)
-- aiProposals.respond runs 3s after submit (accepts/declines + sends new proposals)
+- aiProposals.respond runs immediately after submit (accepts/declines + sends new proposals)
 
 ### NPC Tables (sample actions)
 - Draw from bundled sampleActionsData (no LLM call, instant)
 - Pre-generated during discuss phase
 - Build endorseHints from sample data → sent as endorsement requests
-- aiProposals.respond runs 3s after submit (LLM decides on incoming proposals)
+- Incoming proposals auto-responded reactively (70% accept rate, no LLM)
+- Proactive outreach via aiProposals.respond runs immediately after submit
 
 ## Timing: Before vs After
 
@@ -216,9 +215,11 @@ Triple-layer dedup protection:
 
 ## Known Trade-off
 
-AI-to-AI endorsement proposals during pre-generation may be less rich than before.
-When all AI tables generate in parallel, some tables finish before others. The 3s
-delay on aiProposals.respond means an early finisher may try to negotiate with a
-table that hasn't submitted yet. This is safe (no errors) but means fewer cross-table
-proposals form during pre-gen. Proposals still work during submit phase via the
-fallback generateAll path.
+Proposal responses are now reactive (triggered on delivery) rather than polled.
+NPC tables respond instantly in the same transaction (70% accept rate).
+AI tables schedule an immediate LLM response via aiProposals.respond.
+
+When all AI tables generate in parallel during pre-gen, some tables finish
+before others. An early finisher's proactive proposals may target a table
+that hasn't submitted yet. This is safe (no errors) but means fewer
+cross-table proposals form during pre-gen.
