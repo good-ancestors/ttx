@@ -7,6 +7,7 @@ import {
   Dices,
   EyeOff,
   RefreshCw,
+  CheckCircle,
   Clock,
   ChevronDown,
 } from "lucide-react";
@@ -64,6 +65,9 @@ export function RollingPhase({
             <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
               What Was Attempted
             </span>
+            {allRevealed && (
+              <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
+            )}
           </button>
           {!hasRolled ? (
             <span className="text-xs text-viz-warning animate-pulse flex items-center gap-1">
@@ -73,17 +77,7 @@ export function RollingPhase({
             <span className="text-xs text-viz-warning animate-pulse flex items-center gap-1">
               <Dices className="w-3.5 h-3.5" /> Rolling...
             </span>
-          ) : (
-            <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={allRevealed}
-                readOnly
-                className="w-3.5 h-3.5 rounded border-navy-light accent-viz-safety"
-              />
-              <span className="text-[10px] text-viz-safety">All actions resolved</span>
-            </label>
-          )}
+          ) : null}
         </div>
         <button
           onClick={revealAllSecrets}
