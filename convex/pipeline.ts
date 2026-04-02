@@ -114,8 +114,8 @@ export const gradeAll = internalAction({
         status: { step: "grading", detail: `Evaluating ${total} submissions...`, progress: `0/${total}`, startedAt: Date.now() },
       });
 
-      // Grade in batches of 6 to avoid Anthropic rate limits
-      const GRADING_CONCURRENCY = 6;
+      // Grade in batches — progress updates at batch boundaries to avoid OCC conflicts
+      const GRADING_CONCURRENCY = 12;
       let completed = 0;
       for (let batch = 0; batch < ungraded.length; batch += GRADING_CONCURRENCY) {
         const batchSubs = ungraded.slice(batch, batch + GRADING_CONCURRENCY);
@@ -220,11 +220,13 @@ export const gradeAll = internalAction({
         }
 
         completed++;
+      }));
+
+        // Update progress at batch boundary (single mutation per batch avoids OCC conflicts)
         await ctx.runMutation(internal.games.updatePipelineStatus, {
           gameId,
           status: { step: "grading", detail: `Evaluating submissions...`, progress: `${completed}/${total}`, startedAt: Date.now() },
         });
-      }));
       } // end batch loop
 
       // Schedule next stage: influence
