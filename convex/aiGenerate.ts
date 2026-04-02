@@ -266,6 +266,12 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
         }).then(() => p)
       )
     );
+    // Log any failed submissions
+    for (const r of results) {
+      if (r.status === "rejected") {
+        console.error(`[aiGenerate] Submission failed:`, r.reason);
+      }
+    }
     const submitted = results
       .filter((r): r is PromiseFulfilledResult<typeof pending[number]> => r.status === "fulfilled")
       .map((r) => r.value);

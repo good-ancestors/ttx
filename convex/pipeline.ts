@@ -119,7 +119,7 @@ export const gradeAll = internalAction({
       let completed = 0;
       for (let batch = 0; batch < ungraded.length; batch += GRADING_CONCURRENCY) {
         const batchSubs = ungraded.slice(batch, batch + GRADING_CONCURRENCY);
-        await Promise.all(batchSubs.map(async (sub) => {
+        const batchResults = await Promise.allSettled(batchSubs.map(async (sub) => {
         const role = ROLES.find((r) => r.id === sub.roleId);
         if (!role) return;
 
@@ -207,8 +207,8 @@ export const gradeAll = internalAction({
               actions: gradedActions,
             });
           }
-        } catch {
-          // Fallback on any error
+        } catch (err) {
+          console.error(`[pipeline] Grading LLM failed for ${sub.roleId}, using defaults:`, err);
           const gradedActions = sub.actions.map((action) => ({
             ...action,
             probability: defaultProbability(action.priority),
@@ -221,6 +221,13 @@ export const gradeAll = internalAction({
 
         completed++;
       }));
+
+        // Log any grading failures in this batch
+        for (const r of batchResults) {
+          if (r.status === "rejected") {
+            console.error(`[pipeline] Grading mutation failed:`, r.reason);
+          }
+        }
 
         // Update progress at batch boundary (single mutation per batch avoids OCC conflicts)
         await ctx.runMutation(internal.games.updatePipelineStatus, {
