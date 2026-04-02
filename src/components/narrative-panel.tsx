@@ -41,7 +41,6 @@ export function NarrativePanel({
 }) {
   const [verbIdx, setVerbIdx] = useState(0);
   const [expanded, setExpanded] = useState(defaultExpanded);
-  const [readChecked, setReadChecked] = useState(false);
   const summary = round?.summary;
   const storyText = summary?.narrative
     ?? (summary
@@ -78,33 +77,18 @@ export function NarrativePanel({
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
-      <div className="flex items-center justify-between">
-        <button
-          onClick={() => setExpanded(!expanded)}
-          className="flex items-center gap-2"
-        >
-          <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${expanded ? "" : "-rotate-90"}`} />
-          <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
-            What Happened
-          </span>
-          {storyText && (
-            <span className="text-xs text-viz-safety flex items-center gap-1">
-              <CheckCircle className="w-3.5 h-3.5" />
-            </span>
-          )}
-        </button>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2"
+      >
+        <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${expanded ? "" : "-rotate-90"}`} />
+        <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
+          What Happened
+        </span>
         {storyText && (
-          <label className="flex items-center gap-1.5 cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={readChecked}
-              onChange={(e) => setReadChecked(e.target.checked)}
-              className="w-3.5 h-3.5 rounded border-navy-light accent-viz-safety"
-            />
-            <span className="text-[10px] text-text-light">Read aloud</span>
-          </label>
+          <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
         )}
-      </div>
+      </button>
       {expanded && storyText && (
         <p className="text-base text-[#E2E8F0] leading-relaxed mt-3">
           {storyText}

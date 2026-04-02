@@ -12,6 +12,7 @@ import {
   Plus,
   ChevronRight,
   ChevronDown,
+  CheckCircle,
 } from "lucide-react";
 import type { FacilitatorPhaseProps, Round } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
@@ -130,6 +131,7 @@ export function NarratePhase({
           >
             <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${whereExpanded ? "" : "-rotate-90"}`} />
             <span className="text-sm font-semibold uppercase tracking-wider text-text-light">Where We Are Now</span>
+            <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
             {(() => {
               const alignmentColor = game.worldState.alignment <= 3 ? "#EF4444" : game.worldState.alignment >= 7 ? "#22C55E" : "#F59E0B";
               const trajectory = game.worldState.alignment <= 3 ? "RACE" : game.worldState.alignment >= 6 ? "SLOWDOWN" : "UNCERTAIN";
