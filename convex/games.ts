@@ -567,11 +567,12 @@ export const openSubmissions = mutation({
     await ctx.db.patch(args.gameId, { phase: "submit", phaseEndsAt });
     await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: "submit", durationSeconds: args.durationSeconds });
 
-    // Schedule server-side AI/NPC generation
+    // Catch any AI/NPC roles not yet submitted (pre-gen handles most).
+    // Use durationSeconds=0 so stragglers submit immediately too.
     await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, {
       gameId: args.gameId,
       roundNumber: (await ctx.db.get(args.gameId))!.currentRound,
-      durationSeconds: args.durationSeconds,
+      durationSeconds: 0,
     });
   },
 });

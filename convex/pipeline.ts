@@ -88,7 +88,7 @@ export const gradeAll = internalAction({
         await ctx.runAction(internal.aiGenerate.generateAll, {
           gameId,
           roundNumber,
-          durationSeconds: 10, // Short window — submit immediately
+          durationSeconds: 0,
         });
         // Wait briefly for submissions to land
         await new Promise((r) => setTimeout(r, 5000));
