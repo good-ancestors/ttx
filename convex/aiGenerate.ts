@@ -23,10 +23,9 @@ export const generateAll = internalAction({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
-    durationSeconds: v.number(),
   },
   handler: async (ctx, args) => {
-    const { gameId, roundNumber, durationSeconds } = args;
+    const { gameId, roundNumber } = args;
 
     const game = await ctx.runQuery(internal.games.getInternal, { gameId });
     if (!game) return;
@@ -255,21 +254,8 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       }
     }));
 
-    const immediate = durationSeconds <= 0;
-    const staggerWindow = immediate ? 0 : durationSeconds * 0.6 * 1000;
-    const minStagger = immediate ? 0 : Math.min(15_000, staggerWindow * 0.2);
-
-    for (let i = 0; i < pending.length; i++) {
-      const p = pending[i];
-
-      let delay = 0;
-      if (!immediate) {
-        const baseDelay = minStagger + (staggerWindow - minStagger) * (i / Math.max(1, pending.length - 1));
-        const jitter = (Math.random() - 0.5) * 10_000;
-        delay = Math.max(3000, baseDelay + jitter);
-      }
-
-      await ctx.scheduler.runAfter(delay, internal.aiGenerate.submitAndPropose, {
+    for (const p of pending) {
+      await ctx.scheduler.runAfter(0, internal.aiGenerate.submitAndPropose, {
         gameId,
         roundNumber,
         tableId: p.tableId,

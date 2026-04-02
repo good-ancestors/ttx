@@ -84,11 +84,9 @@ export const gradeAll = internalAction({
           gameId,
           status: { step: "generating", detail: `Generating ${missingTables.length} missing AI submissions...`, startedAt: Date.now() },
         });
-        // Force-generate missing submissions immediately (no stagger)
         await ctx.runAction(internal.aiGenerate.generateAll, {
           gameId,
           roundNumber,
-          durationSeconds: 0,
         });
         // Wait briefly for submissions to land
         await new Promise((r) => setTimeout(r, 5000));

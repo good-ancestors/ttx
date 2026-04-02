@@ -8,11 +8,7 @@ import { internal } from "./_generated/api";
 
 /** Pre-generate AI/NPC actions so they're ready before submissions open. */
 async function schedulePreGeneration(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
-  await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, {
-    gameId,
-    roundNumber,
-    durationSeconds: 0,
-  });
+  await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, { gameId, roundNumber });
 }
 
 /** Auto-snapshot a round's final state (world state, labs, role compute). */
