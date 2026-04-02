@@ -553,12 +553,11 @@ export const openSubmissions = mutation({
     durationSeconds: v.number(),
   },
   handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) return;
     const phaseEndsAt = Date.now() + args.durationSeconds * 1000;
     await ctx.db.patch(args.gameId, { phase: "submit", phaseEndsAt });
     await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: "submit", durationSeconds: args.durationSeconds });
-
-    // Catch any AI/NPC roles not yet submitted (pre-gen handles most)
-    const game = await ctx.db.get(args.gameId);
-    await schedulePreGeneration(ctx, args.gameId, game!.currentRound);
+    await schedulePreGeneration(ctx, args.gameId, game.currentRound);
   },
 });

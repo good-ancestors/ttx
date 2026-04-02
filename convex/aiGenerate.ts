@@ -254,49 +254,45 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       }
     }));
 
-    // Submit all actions and endorsement requests directly (no intermediate scheduler)
-    const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));
-
-    for (const p of pending) {
-      try {
-        await ctx.runMutation(internal.submissions.submitInternal, {
+    // Submit all actions in parallel (independent mutations, no conflicts)
+    const results = await Promise.allSettled(
+      pending.map((p) =>
+        ctx.runMutation(internal.submissions.submitInternal, {
           tableId: p.tableId as never,
           gameId,
           roundNumber,
           roleId: p.roleId,
           actions: p.actions,
-        });
-      } catch {
-        console.error(`[aiGenerate] Submit failed for ${p.roleId}`);
-        continue;
-      }
+        }).then(() => p)
+      )
+    );
+    const submitted = results
+      .filter((r): r is PromiseFulfilledResult<typeof pending[number]> => r.status === "fulfilled")
+      .map((r) => r.value);
 
-      // Send endorsement requests from hints (NPC)
-      if (p.endorseHints?.length) {
-        for (const hint of p.endorseHints) {
-          for (const targetId of hint.targetRoleIds.slice(0, 1)) {
-            try {
-              await ctx.runMutation(internal.requests.sendInternal, {
-                gameId,
-                roundNumber,
-                fromRoleId: p.roleId,
-                fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
-                toRoleId: targetId,
-                toRoleName: roleMap.get(targetId) ?? targetId,
-                actionText: hint.actionText,
-                requestType: "endorsement",
-              });
-            } catch { /* request already exists */ }
-          }
-        }
-      }
-
-      // Fire-and-forget: AI proactive outreach (send new proposals to other tables)
-      await ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
+    // Send endorsement requests + schedule proactive outreach in parallel
+    const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));
+    await Promise.all(submitted.flatMap((p) => {
+      const endorsements = (p.endorseHints ?? []).flatMap((hint) =>
+        hint.targetRoleIds.slice(0, 1).map((targetId) =>
+          ctx.runMutation(internal.requests.sendInternal, {
+            gameId,
+            roundNumber,
+            fromRoleId: p.roleId,
+            fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
+            toRoleId: targetId,
+            toRoleName: roleMap.get(targetId) ?? targetId,
+            actionText: hint.actionText,
+            requestType: "endorsement",
+          }).catch(() => { /* request already exists */ })
+        )
+      );
+      const outreach = ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
         gameId,
         roundNumber,
         roleId: p.roleId,
       });
-    }
+      return [...endorsements, outreach];
+    }));
   },
 });
