@@ -329,10 +329,29 @@ export const saveAndSubmit = mutation({
       actionStatus: "submitted" as const,
     };
 
+    // If table was switched from NPC/AI to Human, the old actions may have been
+    // auto-generated with different priority budgets. Check if the table's current
+    // control mode is human — if so, only count human-submitted actions for budget.
+    const table = await ctx.db.get(args.tableId);
+    const isHumanTable = table?.controlMode === "human";
+
     // Enforce priority budget across already-submitted actions
     const existingSubmittedPriority = existing
       ? existing.actions.filter((a) => a.actionStatus === "submitted").reduce((s, a) => s + a.priority, 0)
       : 0;
+
+    // If human player is adding to a table with pre-existing NPC actions, clear them first
+    if (existing && isHumanTable && existingSubmittedPriority > PRIORITY_HARD_CAP) {
+      // NPC/AI actions exceed human budget — replace with just the new action
+      await ctx.db.patch(existing._id, { actions: [newAction], status: "submitted" });
+      await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
+        actionIndex: 0,
+        text: args.text,
+        note: "Cleared pre-existing NPC actions on human takeover",
+      });
+      return { submissionId: existing._id, actionIndex: 0 };
+    }
+
     if (existingSubmittedPriority + args.priority > PRIORITY_HARD_CAP) {
       throw new Error(`Priority budget exceeded: ${existingSubmittedPriority + args.priority}/${PRIORITY_HARD_CAP}`);
     }
