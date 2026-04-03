@@ -324,7 +324,7 @@ export default function FacilitatorPage({
               <button onClick={() => setShowQROverlay(false)} className="text-text-light hover:text-white text-sm">Close</button>
             </div>
 
-            {/* Table management grid */}
+            {/* Table management grid — same card style as lobby */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
               {tables.filter((t) => t.enabled).map((table) => {
                 const role = ROLES.find((r) => r.id === table.roleId);
@@ -333,56 +333,43 @@ export default function FacilitatorPage({
                     <div className="flex items-center gap-1.5 mb-2">
                       <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: role?.color }} />
                       <span className="text-xs font-bold text-white truncate">{table.roleName}</span>
-                      <span className={`ml-auto text-[9px] font-mono flex-shrink-0 ${
-                        table.connected ? "text-viz-safety" : table.controlMode === "ai" ? "text-viz-capability" : table.controlMode === "npc" ? "text-viz-warning" : "text-navy-muted"
-                      }`}>
-                        {table.connected ? "Connected" : table.controlMode === "human" ? "Open" : table.controlMode === "ai" ? "AI" : "NPC"}
-                      </span>
+                      {table.connected && (
+                        <div className="ml-auto flex items-center gap-1 shrink-0">
+                          <span className="text-[9px] text-viz-safety font-mono">Connected</span>
+                        </div>
+                      )}
                     </div>
 
-                    {/* Control mode switcher */}
+                    {/* Unified mode toggle */}
                     {!isProjector && (
-                      <div className="flex gap-1 mb-2">
-                        {table.connected && table.controlMode === "human" ? (
-                          <div className="flex rounded overflow-hidden border border-navy-light w-full">
-                            <button className="text-[9px] px-2 py-1 font-semibold flex-1 bg-viz-safety text-navy cursor-default">
-                              Human
-                            </button>
+                      <div className="flex rounded overflow-hidden border border-navy-light w-full mb-2">
+                        {(["human", "ai", "npc"] as const).map((mode) => {
+                          const isActive = table.controlMode === mode;
+                          return (
                             <button
-                              onClick={() => void kickToAI({ tableId: table._id })}
-                              className="text-[9px] px-2 py-1 font-semibold transition-colors flex-1 bg-navy-dark text-navy-muted hover:text-viz-capability hover:bg-navy-light"
+                              key={mode}
+                              onClick={() => {
+                                if (table.connected && table.controlMode === "human" && mode === "ai") {
+                                  void kickToAI({ tableId: table._id });
+                                } else {
+                                  void setControlMode({ tableId: table._id, controlMode: mode });
+                                }
+                              }}
+                              className={`text-[9px] px-2 py-1 font-semibold transition-colors flex-1 ${
+                                isActive
+                                  ? mode === "human" ? "bg-viz-safety text-navy" : mode === "ai" ? "bg-viz-capability text-navy" : "bg-viz-warning text-navy"
+                                  : "bg-navy-dark text-navy-muted hover:text-text-light"
+                              }`}
                             >
-                              AI
+                              {mode === "human" ? "Human" : mode === "ai" ? "AI" : "NPC"}
                             </button>
-                            <button
-                              onClick={() => void setControlMode({ tableId: table._id, controlMode: "npc" })}
-                              className="text-[9px] px-2 py-1 font-semibold transition-colors flex-1 bg-navy-dark text-navy-muted hover:text-viz-warning hover:bg-navy-light"
-                            >
-                              NPC
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="flex rounded overflow-hidden border border-navy-light w-full">
-                            {(["human", "ai", "npc"] as const).map((mode) => (
-                              <button
-                                key={mode}
-                                onClick={() => void setControlMode({ tableId: table._id, controlMode: mode })}
-                                className={`text-[9px] px-2 py-1 font-semibold transition-colors flex-1 ${
-                                  table.controlMode === mode
-                                    ? mode === "human" ? "bg-viz-safety text-navy" : mode === "ai" ? "bg-viz-capability text-navy" : "bg-viz-warning text-navy"
-                                    : "bg-navy-dark text-navy-muted hover:text-text-light"
-                                }`}
-                              >
-                                {mode === "human" ? "Human" : mode === "ai" ? "AI" : "NPC"}
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                          );
+                        })}
                       </div>
                     )}
 
                     {/* QR code for human-mode tables */}
-                    {table.controlMode === "human" && !table.connected && (
+                    {table.controlMode === "human" && (
                       <div className="bg-navy-dark rounded p-2 flex flex-col items-center cursor-pointer hover:border-white/30 transition-colors" onClick={() => setFocusedQR(table._id)}>
                         <QRCode
                           value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table._id}`}
@@ -398,7 +385,7 @@ export default function FacilitatorPage({
               })}
             </div>
             <p className="text-[10px] text-navy-muted text-center">
-              Set a table to Human to generate a join code. Click a QR code to show fullscreen.
+              Click a QR code to show fullscreen.
             </p>
           </div>
         </div>
