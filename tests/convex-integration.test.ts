@@ -52,10 +52,10 @@ describe("Game Creation", () => {
     expect(new Set(codes).size).toBe(codes.length);
   });
 
-  it("should create 3 rounds", async () => {
+  it("should create 4 rounds", async () => {
     const rounds = await convex.query(api.rounds.getByGame, { gameId });
-    expect(rounds).toHaveLength(3);
-    expect(rounds.map((r) => r.number).sort()).toEqual([1, 2, 3]);
+    expect(rounds).toHaveLength(4);
+    expect(rounds.map((r) => r.number).sort()).toEqual([1, 2, 3, 4]);
   });
 
   it("should have correct default world state", async () => {
@@ -204,16 +204,21 @@ describe("Game Phase Flow", () => {
     expect(game!.phase).toBe("discuss");
   });
 
-  it("should not advance past round 3", async () => {
+  it("should not advance past round 4", async () => {
     // Advance to round 3
-    await convex.mutation(api.games.advanceRound, { gameId });
-    const game2 = await convex.query(api.games.get, { gameId });
-    expect(game2!.currentRound).toBe(3);
-
-    // Try to advance again — should stay at 3
     await convex.mutation(api.games.advanceRound, { gameId });
     const game3 = await convex.query(api.games.get, { gameId });
     expect(game3!.currentRound).toBe(3);
+
+    // Advance to round 4
+    await convex.mutation(api.games.advanceRound, { gameId });
+    const game4 = await convex.query(api.games.get, { gameId });
+    expect(game4!.currentRound).toBe(4);
+
+    // Try to advance again — should stay at 4
+    await convex.mutation(api.games.advanceRound, { gameId });
+    const game4b = await convex.query(api.games.get, { gameId });
+    expect(game4b!.currentRound).toBe(4);
   });
 
   it("should finish the game", async () => {
@@ -223,6 +228,20 @@ describe("Game Phase Flow", () => {
   });
 });
 
+// TODO: Add tests for new per-action submission lifecycle (PR #5):
+//   - saveDraft: create a single draft action
+//   - submitAction: transition a draft action to submitted
+//   - saveAndSubmit: create and immediately submit a single action
+//   - editSubmitted: edit an already-submitted action
+//   - deleteAction: remove an action from a submission
+//   - setActionInfluence: set AI influence on an action
+//   - actionStatus field ("draft" | "submitted") on individual actions
+// TODO: Add tests for split grading/rolling pipeline:
+//   - triggerGrading: AI grades actions (sets probability + reasoning)
+//   - triggerRoll: rolls dice for graded actions (separate from grading)
+//   - forceClearResolvingLock: emergency unlock for stuck pipelines
+// The tests below use the legacy batch submit() mutation which still exists
+// but is no longer the primary submission path in the UI.
 describe("Submission Flow", () => {
   let gameId: Id<"games">;
   let tableId: Id<"tables">;

@@ -163,21 +163,22 @@ describe("Tag Helpers", () => {
 // ─── ROUNDS ───────────────────────────────────────────────────────────────────
 
 describe("Round Configs", () => {
-  it("should have exactly 3 rounds", () => {
-    expect(ROUND_CONFIGS).toHaveLength(3);
+  it("should have exactly 4 rounds", () => {
+    expect(ROUND_CONFIGS).toHaveLength(4);
   });
 
-  it("should be numbered 1, 2, 3", () => {
-    expect(ROUND_CONFIGS.map((r) => r.number)).toEqual([1, 2, 3]);
+  it("should be numbered 1, 2, 3, 4", () => {
+    expect(ROUND_CONFIGS.map((r) => r.number)).toEqual([1, 2, 3, 4]);
   });
 
   it("round narratives should reference scenario correctly", () => {
-    expect(ROUND_CONFIGS[0].narrative).toContain("stole");
     expect(ROUND_CONFIGS[0].narrative).toContain("whistleblower");
     expect(ROUND_CONFIGS[1].narrative).toContain("Agent-3");
     expect(ROUND_CONFIGS[1].narrative).toContain("scheming");
     expect(ROUND_CONFIGS[2].narrative).toContain("adversarially misaligned");
     expect(ROUND_CONFIGS[2].narrative).toContain("Safer");
+    expect(ROUND_CONFIGS[3].narrative).toContain("Agent-5");
+    expect(ROUND_CONFIGS[3].narrative).toContain("irreversible");
   });
 });
 
@@ -310,12 +311,17 @@ describe("Compute Distribution", () => {
     expect(DEFAULT_COMPUTE_DISTRIBUTION).toHaveLength(3);
   });
 
-  it("new compute per round should decrease over time (physical constraint)", () => {
-    expect(NEW_COMPUTE_PER_GAME_ROUND[1]).toBeGreaterThanOrEqual(
-      NEW_COMPUTE_PER_GAME_ROUND[2]
+  it("new compute per round should peak early then decline (supply chain constraint)", () => {
+    // Compute ramps up as fabs come online, then declines as supply chains are disrupted
+    // R1=31, R2=35 (peak), R3=24, R4=15
+    expect(NEW_COMPUTE_PER_GAME_ROUND[2]).toBeGreaterThanOrEqual(
+      NEW_COMPUTE_PER_GAME_ROUND[1]
     );
     expect(NEW_COMPUTE_PER_GAME_ROUND[2]).toBeGreaterThanOrEqual(
       NEW_COMPUTE_PER_GAME_ROUND[3]
+    );
+    expect(NEW_COMPUTE_PER_GAME_ROUND[3]).toBeGreaterThanOrEqual(
+      NEW_COMPUTE_PER_GAME_ROUND[4]
     );
   });
 });
