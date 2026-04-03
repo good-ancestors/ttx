@@ -12,6 +12,37 @@ export const getByGame = query({
   },
 });
 
+// Lightweight version for facilitator sidebar — only fields needed by
+// RdProgressChart, GameTimeline chart, and snapshot restore dropdown.
+// Excludes resolvedEvents, summary, narrative, partialEvents, aiMeta,
+// worldStateBefore, labsBefore, computeChanges, facilitatorNotes, etc.
+export const getByGameLightweight = query({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db
+      .query("rounds")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+
+    return rounds.map((r) => ({
+      _id: r._id,
+      _creationTime: r._creationTime,
+      gameId: r.gameId,
+      number: r.number,
+      label: r.label,
+      title: r.title,
+      narrative: r.narrative,
+      capabilityLevel: r.capabilityLevel,
+      worldStateAfter: r.worldStateAfter,
+      labsAfter: r.labsAfter,
+      // Just the narrative string from summary (not full headlines/events arrays)
+      summaryNarrative: r.summary?.narrative,
+      // Minimal flags for snapshot restore dropdown
+      hasWorldStateBefore: r.worldStateBefore != null,
+    }));
+  },
+});
+
 export const getCurrent = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {

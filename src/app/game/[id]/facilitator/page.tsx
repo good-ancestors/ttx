@@ -39,8 +39,13 @@ export default function FacilitatorPage({
 
   const game = useQuery(api.games.get, { gameId });
   const tables = useQuery(api.tables.getByGame, { gameId });
-  const rounds = useQuery(api.rounds.getByGame, { gameId });
-  const submissions = useQuery(api.submissions.getByGameAndRound, {
+  // Lightweight rounds for sidebar chart + snapshot dropdown (excludes narrative, events, snapshots)
+  const roundsLite = useQuery(api.rounds.getByGameLightweight, { gameId });
+  // Full rounds only needed for finished-game timeline
+  const roundsFull = useQuery(api.rounds.getByGame, game?.status === "finished" ? { gameId } : "skip");
+  const currentRoundFull = useQuery(api.rounds.getCurrent, { gameId });
+  // Summary submissions — excludes aiMeta, reasoning, artifact, computeAllocation
+  const submissions = useQuery(api.submissions.getByGameAndRoundSummary, {
     gameId,
     roundNumber: game?.currentRound ?? 1,
   });
@@ -142,7 +147,7 @@ export default function FacilitatorPage({
     setRevealedSecrets(keys);
   };
 
-  if (!game || !tables || !rounds) {
+  if (!game || !tables || !roundsLite) {
     return (
       <div className="min-h-screen bg-navy-dark flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-text-light animate-spin" />
@@ -150,14 +155,17 @@ export default function FacilitatorPage({
     );
   }
 
-  const currentRound = rounds.find((r) => r.number === game.currentRound);
-  const prevRound = rounds.find(r => r.number === game.currentRound - 1);
-  const previousNarrative = prevRound?.summary?.narrative ?? (game.currentRound === 1 ? currentRound?.narrative : undefined);
+  // Full current round for narrative panel + summary content
+  const currentRound = currentRoundFull ?? undefined;
+  // Previous narrative from lightweight rounds (summaryNarrative) or current round's narrative for round 1
+  const prevRoundLite = roundsLite.find(r => r.number === game.currentRound - 1);
+  const currentRoundLite = roundsLite.find(r => r.number === game.currentRound);
+  const previousNarrative = prevRoundLite?.summaryNarrative ?? (game.currentRound === 1 ? currentRoundLite?.narrative : undefined);
   const phase = game.phase;
   const connectedCount = tables.filter((t) => t.connected).length;
-  const snapshotOptions = isProjector ? [] : rounds.flatMap(r => {
+  const snapshotOptions = isProjector ? [] : roundsLite.flatMap(r => {
     const opts: { number: number; label: string; useBefore: boolean; desc: string }[] = [];
-    if (r.worldStateBefore) opts.push({ number: r.number, label: r.label, useBefore: true, desc: `Before ${r.label} resolve` });
+    if (r.hasWorldStateBefore) opts.push({ number: r.number, label: r.label, useBefore: true, desc: `Before ${r.label} resolve` });
     if (r.worldStateAfter) opts.push({ number: r.number, label: r.label, useBefore: false, desc: `After ${r.label} resolve` });
     return opts;
   });
@@ -251,7 +259,7 @@ export default function FacilitatorPage({
             <p className="text-text-light">Debrief and reflection</p>
           </div>
           <GameTimeline
-            rounds={rounds}
+            rounds={roundsFull ?? []}
             initialWorldState={game.worldState}
             initialLabs={game.labs}
           />
@@ -388,7 +396,7 @@ export default function FacilitatorPage({
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
           {/* Left sidebar */}
           <div className="flex flex-col gap-4">
-            <RdProgressChart rounds={rounds} currentLabs={game.labs} currentRound={game.currentRound} />
+            <RdProgressChart rounds={roundsLite} currentLabs={game.labs} currentRound={game.currentRound} />
             <WorldStatePanel worldState={game.worldState} variant="dark" onEdit={isProjector ? undefined : () => setEditDials(true)} />
             {editDials && !isProjector && <WorldStateEditor gameId={gameId} worldState={game.worldState} startOpen />}
             <LabTracker
@@ -463,21 +471,17 @@ export default function FacilitatorPage({
           </div>
         )}
 
-        {/* Debug panel */}
+        {/* Debug panel — fetches its own data when expanded to avoid always-on subscriptions */}
         {!isProjector && (
           <DebugPanel
             gameId={gameId}
             roundNumber={game.currentRound}
-            submissions={submissions as DebugPanelProps["submissions"]}
-            round={currentRound as DebugPanelProps["round"]}
           />
         )}
       </div>
     </div>
   );
 }
-
-type DebugPanelProps = React.ComponentProps<typeof DebugPanel>;
 
 // ─── Sub-components ──────��────────────────────────────────────────────────────
 

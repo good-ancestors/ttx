@@ -17,13 +17,14 @@ const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
 interface Props {
   gameId: Id<"games">;
   roundNumber: number;
-  submissions?: { roleId: string; aiMeta?: { gradingModel?: string; gradingTimeMs?: number; gradingTokens?: number; playerModel?: string; playerTimeMs?: number } }[];
-  round?: { aiMeta?: { narrativeModel?: string; narrativeTimeMs?: number; narrativeTokens?: number } };
 }
 
-export function DebugPanel({ gameId, roundNumber, submissions, round }: Props) {
+export function DebugPanel({ gameId, roundNumber }: Props) {
   const [expanded, setExpanded] = useState(false);
-  const events = useQuery(api.events.getByGame, { gameId, limit: 25 });
+  // Only subscribe when panel is expanded — saves bandwidth when collapsed
+  const events = useQuery(api.events.getByGame, expanded ? { gameId, limit: 25 } : "skip");
+  const submissions = useQuery(api.submissions.getByGameAndRound, expanded ? { gameId, roundNumber } : "skip");
+  const round = useQuery(api.rounds.getCurrent, expanded ? { gameId } : "skip");
 
   // Calculate total tokens and estimated cost
   let totalTokens = 0;

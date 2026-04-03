@@ -29,6 +29,40 @@ export const getByGameAndRound = query({
   },
 });
 
+// Lightweight summary — facilitator Players/Attempted panels only need these fields.
+// Excludes aiMeta, reasoning, artifact, computeAllocation to reduce bandwidth.
+export const getByGameAndRoundSummary = query({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const subs = await ctx.db
+      .query("submissions")
+      .withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
+      )
+      .collect();
+
+    return subs.map((sub) => ({
+      _id: sub._id,
+      _creationTime: sub._creationTime,
+      tableId: sub.tableId,
+      gameId: sub.gameId,
+      roundNumber: sub.roundNumber,
+      roleId: sub.roleId,
+      status: sub.status,
+      actions: sub.actions.map((a) => ({
+        text: a.text,
+        priority: a.priority,
+        secret: a.secret,
+        actionStatus: a.actionStatus,
+        probability: a.probability,
+        rolled: a.rolled,
+        success: a.success,
+        aiInfluence: a.aiInfluence,
+      })),
+    }));
+  },
+});
+
 // Player-safe query — strips text from secret actions
 export const getByGameAndRoundRedacted = query({
   args: { gameId: v.id("games"), roundNumber: v.number(), viewerRoleId: v.optional(v.string()) },

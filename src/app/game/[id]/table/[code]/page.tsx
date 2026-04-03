@@ -119,7 +119,8 @@ export default function TablePlayerPage({
   const cancelRequest = useMutation(api.requests.cancel);
   const setConnected = useMutation(api.tables.setConnected);
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
-  const allTables = useQuery(api.tables.getByGame, { gameId });
+  // Lightweight query — only enabled tables' roleId/roleName (for endorsement targets)
+  const allTables = useQuery(api.tables.getEnabledRoleNames, { gameId });
   const allRequests = useQuery(api.requests.getByGameAndRound, {
     gameId,
     roundNumber: game?.currentRound ?? 1,

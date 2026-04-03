@@ -12,6 +12,27 @@ export const getByGame = query({
   },
 });
 
+// Lightweight query — returns only enabled tables' roleId and roleName.
+// Used by player pages that need endorsement target list without full table docs.
+export const getEnabledRoleNames = query({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+
+    return tables
+      .filter((t) => t.enabled)
+      .map((t) => ({
+        _id: t._id,
+        roleId: t.roleId,
+        roleName: t.roleName,
+        enabled: t.enabled,
+      }));
+  },
+});
+
 export const getByJoinCode = query({
   args: { joinCode: v.string() },
   handler: async (ctx, args) => {
