@@ -58,7 +58,8 @@ function generateNonce(): string {
 function defaultProbability(priority: number): number {
   if (priority >= 8) return 70;
   if (priority >= 5) return 50;
-  return 30;
+  if (priority >= 3) return 30;
+  return 10;
 }
 
 async function gradeSubmissionBatch(
@@ -499,8 +500,8 @@ export const rollAndNarrate = internalAction({
             // Only influence actions that don't already have influence set
             const actionsToInfluence = subs.flatMap((sub) =>
               sub.actions
-                .map((a, i) => ({ submissionId: sub._id as string, actionIndex: i, text: a.text, roleId: sub.roleId }))
-                .filter((_, i) => sub.actions[i].aiInfluence == null)
+                .map((a, i) => ({ submissionId: sub._id as string, actionIndex: i, text: a.text, roleId: sub.roleId, aiInfluence: a.aiInfluence }))
+                .filter((item) => item.aiInfluence == null)
             );
             if (actionsToInfluence.length > 0) {
               const influence = autoGenerateInfluence(aiSystemsTable.aiDisposition, actionsToInfluence, power);

@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useCallback, useEffect, useRef } from "react";
+import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
@@ -165,9 +165,12 @@ export default function TablePlayerPage({
 
   // ── Derived values ────────────────────────────────────────────────────────
   const role = table ? ROLES.find((r) => r.id === table.roleId) : null;
-  const enabledRoles = (allTables ?? [])
-    .filter((t) => t.enabled && t.roleId !== table?.roleId)
-    .map((t) => ({ id: t.roleId, name: t.roleName }));
+  const enabledRoles = useMemo(() =>
+    (allTables ?? [])
+      .filter((t) => t.enabled && t.roleId !== table?.roleId)
+      .map((t) => ({ id: t.roleId, name: t.roleName })),
+    [allTables, table?.roleId]
+  );
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
   const phase = game?.phase ?? "discuss";
 

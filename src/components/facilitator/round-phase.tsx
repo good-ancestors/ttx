@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { getCapabilityDescription, TOTAL_ROUNDS, isSubmittedAction } from "@/lib/game-data";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { NarrativeEditor, WorldStateEditor } from "@/components/manual-controls";
@@ -86,11 +86,15 @@ export function RoundPhase({
   const phase = game.phase;
   const isResolvingPhase = phase === "rolling" || phase === "narrate";
 
-  const submittedActions = submissions.flatMap((s) =>
-    s.actions.filter((a) => isSubmittedAction(a))
-  );
-  const submittedActionCount = submittedActions.length;
-  const ungradedCount = submittedActions.filter((a) => a.probability == null).length;
+  const { submittedActionCount, ungradedCount } = useMemo(() => {
+    const submitted = submissions.flatMap((s) =>
+      s.actions.filter((a) => isSubmittedAction(a))
+    );
+    return {
+      submittedActionCount: submitted.length,
+      ungradedCount: submitted.filter((a) => a.probability == null).length,
+    };
+  }, [submissions]);
 
   const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | "compute" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);

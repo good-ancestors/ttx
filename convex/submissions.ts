@@ -653,7 +653,7 @@ export const rollAllActions = mutation({
         // AI influence secretly modifies the dice roll — probability stays truthful
         // Display the influenced roll so outcomes always visually make sense
         const rawRoll = Math.floor(Math.random() * 100) + 1;
-        const displayRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
+        const displayRoll = applyInfluence(rawRoll, action.aiInfluence);
         return { ...action, probability, rolled: displayRoll, success: displayRoll <= probability };
       });
 

@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, Maximize2, X } from "lucide-react";
-import { createPortal } from "react-dom";
+import { ChevronDown, Maximize2 } from "lucide-react";
+import { FullScreenOverlay } from "@/components/full-screen-overlay";
 
 /**
  * Reusable expandable section with optional full-screen expand.
@@ -27,51 +27,38 @@ export function ExpandableSection({
     <>
       <div className="flex items-center justify-between">
         <button
-          onClick={() => { if (fullScreen) return; setExpanded(!expanded); }}
+          onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-2"
         >
-          {!fullScreen && (
-            <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${expanded ? "" : "-rotate-90"}`} />
-          )}
+          <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${expanded ? "" : "-rotate-90"}`} />
           <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
             {title}
           </span>
           {badge}
         </button>
-        {fullScreenEnabled && (
-          fullScreen ? (
-            <button
-              onClick={() => setFullScreen(false)}
-              className="text-text-light hover:text-white transition-colors p-1"
-              title="Close full screen"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          ) : expanded ? (
-            <button
-              onClick={() => setFullScreen(true)}
-              className="text-text-light hover:text-white transition-colors p-1"
-              title="Expand to full screen"
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-            </button>
-          ) : null
+        {fullScreenEnabled && expanded && (
+          <button
+            onClick={() => setFullScreen(true)}
+            className="text-text-light hover:text-white transition-colors p-1"
+            title="Expand to full screen"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
         )}
       </div>
-      {(expanded || fullScreen) && (
-        <div className={fullScreen ? "mt-4 flex-1 overflow-y-auto" : "mt-3"}>
+      {expanded && (
+        <div className="mt-3">
           {children}
         </div>
       )}
     </>
   );
 
-  if (fullScreen && typeof document !== "undefined") {
-    return createPortal(
-      <div className="fixed inset-0 bg-navy-dark z-[70] flex flex-col p-8 overflow-hidden">
-        {content}
-      </div>,
-      document.body,
+  if (fullScreen) {
+    return (
+      <FullScreenOverlay title={title} onClose={() => setFullScreen(false)}>
+        {children}
+      </FullScreenOverlay>
     );
   }
 
