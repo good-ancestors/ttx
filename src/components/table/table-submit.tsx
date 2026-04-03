@@ -99,7 +99,12 @@ export function TableSubmit({
       <div className="bg-navy text-white rounded-xl p-3 mb-4 flex items-center gap-2">
         <Send className="w-4 h-4 shrink-0" />
         <span className="text-sm font-bold">Submissions are open!</span>
-        <span className="text-xs text-text-light ml-auto">{timerDisplay} remaining</span>
+        <div className="ml-auto flex items-center gap-3">
+          {submittedList.length > 0 && (
+            <span className="text-xs text-viz-safety font-mono">{submittedList.length} submitted</span>
+          )}
+          <span className="text-xs text-text-light">{timerDisplay}</span>
+        </div>
       </div>
 
       {/* AI Systems disposition — chooser if not yet picked, badge if locked */}

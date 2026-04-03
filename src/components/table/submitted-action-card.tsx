@@ -1,11 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { Send, Pencil, Trash2, EyeOff, Lock } from "lucide-react";
 
-/**
- * Displays a single submitted (locked-in) action with edit and delete controls.
- * Used in the per-action submit flow on the player table page.
- */
 export function SubmittedActionCard({
   action,
   index,
@@ -19,6 +16,8 @@ export function SubmittedActionCard({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
   return (
     <div className="bg-white rounded-xl border border-[#059669]/30 p-4">
       <div className="flex items-center gap-2 mb-2">
@@ -33,12 +32,11 @@ export function SubmittedActionCard({
             <EyeOff className="w-3 h-3" /> SECRET
           </span>
         )}
-        {action.probability != null && (
+        {action.probability != null ? (
           <span className="text-[10px] text-text-muted font-mono ml-auto">
             {action.probability}%
           </span>
-        )}
-        {action.probability == null && (
+        ) : (
           <span className="text-[10px] text-text-muted ml-auto flex items-center gap-1">
             <Lock className="w-3 h-3" /> Submitted
           </span>
@@ -47,18 +45,40 @@ export function SubmittedActionCard({
       <p className="text-sm text-text mb-3">{action.text}</p>
       {canEdit && (
         <div className="flex items-center gap-2">
-          <button
-            onClick={onEdit}
-            className="min-h-[36px] px-3 rounded-lg text-xs font-medium text-text-muted hover:text-text hover:bg-warm-gray transition-colors flex items-center gap-1.5"
-          >
-            <Pencil className="w-3.5 h-3.5" /> Edit
-          </button>
-          <button
-            onClick={onDelete}
-            className="min-h-[36px] px-3 rounded-lg text-xs font-medium text-text-muted hover:text-viz-danger hover:bg-[#FEF2F2] transition-colors flex items-center gap-1.5"
-          >
-            <Trash2 className="w-3.5 h-3.5" /> Delete
-          </button>
+          {confirmDelete ? (
+            <>
+              <span className="text-xs text-viz-danger font-medium">Delete this action?</span>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="min-h-[44px] min-w-[44px] px-3 rounded-lg text-xs font-medium text-text-muted hover:bg-warm-gray transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setConfirmDelete(false); onDelete(); }}
+                className="min-h-[44px] min-w-[44px] px-3 rounded-lg text-xs font-bold text-viz-danger hover:bg-[#FEF2F2] transition-colors"
+              >
+                Delete
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={onEdit}
+                aria-label={`Edit action ${index + 1}`}
+                className="min-h-[44px] min-w-[44px] px-3 rounded-lg text-xs font-medium text-text-muted hover:text-text hover:bg-warm-gray transition-colors flex items-center gap-1.5"
+              >
+                <Pencil className="w-3.5 h-3.5" /> Edit
+              </button>
+              <button
+                onClick={() => setConfirmDelete(true)}
+                aria-label={`Delete action ${index + 1}`}
+                className="min-h-[44px] min-w-[44px] px-3 rounded-lg text-xs font-medium text-text-muted hover:text-viz-danger hover:bg-[#FEF2F2] transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Delete
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>

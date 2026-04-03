@@ -162,7 +162,8 @@ export const saveDraft = mutation({
   },
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
-    if (game && game.phase !== "submit" && game.phase !== "discuss") {
+    if (!game) throw new Error("Game not found");
+    if (game.phase !== "submit" && game.phase !== "discuss") {
       throw new Error(`Cannot save drafts during ${game.phase} phase`);
     }
 
@@ -283,12 +284,12 @@ export const editSubmitted = mutation({
       actionStatus: "draft" as const,
       // Clear grading and influence — action changed, needs re-evaluation
     };
-    await ctx.db.patch(args.submissionId, { actions });
+    // Revert submission status if it was graded (action needs re-evaluation)
+    const newStatus = sub.status === "graded" || sub.status === "resolved" ? "submitted" as const : sub.status;
+    await ctx.db.patch(args.submissionId, { actions, status: newStatus });
     await logEvent(ctx, sub.gameId, "action_edit", sub.roleId, { actionIndex: args.actionIndex });
   },
 });
-
-/** Delete an action (draft or submitted). Clears associated endorsement requests. */
 export const deleteAction = mutation({
   args: {
     submissionId: v.id("submissions"),
@@ -304,7 +305,11 @@ export const deleteAction = mutation({
     if (action.rolled != null) throw new Error("Cannot delete rolled actions");
 
     const actions = sub.actions.filter((_, i) => i !== args.actionIndex);
-    await ctx.db.patch(args.submissionId, { actions });
+    if (actions.length === 0) {
+      await ctx.db.delete(args.submissionId);
+    } else {
+      await ctx.db.patch(args.submissionId, { actions });
+    }
 
     // Cancel endorsement requests for this action
     const requests = await ctx.db
@@ -626,14 +631,16 @@ export const rollAllInternal = internalMutation({
       // Skip if already rolled (idempotent)
       if (sub.actions.every((a) => a.rolled != null)) continue;
       const actions = sub.actions.map((action) => {
+        // Skip draft actions — only roll submitted actions
+        if (action.actionStatus === "draft") return action;
         const probability = action.probability ?? 50;
         const rawRoll = Math.floor(Math.random() * 100) + 1;
         const displayRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
         return { ...action, probability, rolled: displayRoll, success: displayRoll <= probability };
       });
       await ctx.db.patch(sub._id, { actions, status: "resolved" });
-      const successes = actions.filter((a) => a.success).length;
-      await logEvent(ctx, args.gameId, "roll", sub.roleId, { round: args.roundNumber, total: actions.length, successes });
+      const rolled = actions.filter((a) => a.rolled != null);
+      await logEvent(ctx, args.gameId, "roll", sub.roleId, { round: args.roundNumber, total: rolled.length, successes: rolled.filter((a) => a.success).length });
     }
   },
 });

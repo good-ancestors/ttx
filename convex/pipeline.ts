@@ -246,7 +246,7 @@ export const gradeAll = internalAction({
       const enabledRoleNames = tables.filter((t) => t.enabled).map((t) => t.roleName);
 
       // Grade each submission in parallel
-      const ungraded = submissions.filter((s) => s.actions.some((a) => a.probability == null));
+      const ungraded = submissions.filter((s) => s.actions.some((a) => (a.actionStatus === "submitted" || !a.actionStatus) && a.probability == null));
       const total = ungraded.length;
 
       await ctx.runMutation(internal.games.updatePipelineStatus, {
