@@ -456,28 +456,6 @@ export default function TablePlayerPage({
     }
   }, [submission, deleteActionMut]);
 
-  const handleSendRequest = useCallback((targetRoleId: string, targetRoleName: string, actionText: string) => {
-    void sendRequest({
-      gameId,
-      roundNumber: game?.currentRound ?? 1,
-      fromRoleId: role?.id ?? "",
-      fromRoleName: role?.name ?? "",
-      toRoleId: targetRoleId,
-      toRoleName: targetRoleName,
-      actionText,
-      requestType: "endorsement" as const,
-    });
-  }, [sendRequest, gameId, game?.currentRound, role?.id, role?.name]);
-
-  const handleCancelRequest = useCallback((targetRoleId: string, actionText: string) => {
-    const match = (allRequests ?? []).find(
-      (r) => r.fromRoleId === role?.id && r.toRoleId === targetRoleId && r.actionText === actionText
-    );
-    if (match) {
-      void cancelRequest({ requestId: match._id });
-    }
-  }, [allRequests, role?.id, cancelRequest]);
-
   // ── Loading & error states ────────────────────────────────────────────────
   const notFound = game === null || table === null || round === null;
 
@@ -684,8 +662,6 @@ export default function TablePlayerPage({
               onEditAction={handleEditAction}
               onDeleteAction={handleDeleteAction}
               submitError={submitError}
-              onSendRequest={handleSendRequest}
-              onCancelRequest={handleCancelRequest}
               shownSuggestions={shownSuggestions}
               ideasOpen={ideasOpen}
               onIdeasOpenChange={setIdeasOpen}

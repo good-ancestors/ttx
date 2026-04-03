@@ -50,8 +50,6 @@ export interface TableSubmitProps {
   onEditAction: (actionIndex: number) => void;
   onDeleteAction: (actionIndex: number) => void;
   submitError: string;
-  onSendRequest: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
-  onCancelRequest: (targetRoleId: string, actionText: string) => void;
   // Suggestions
   shownSuggestions: SampleAction[];
   ideasOpen: boolean;
@@ -80,8 +78,6 @@ export function TableSubmit({
   onEditAction,
   onDeleteAction,
   submitError,
-  onSendRequest,
-  onCancelRequest,
   shownSuggestions,
   ideasOpen,
   onIdeasOpenChange,
@@ -183,8 +179,6 @@ export function TableSubmit({
             roleName={role.name}
             enabledRoles={enabledRoles}
             isSubmitted={false}
-            onSendRequest={onSendRequest}
-            onCancelRequest={onCancelRequest}
             onSubmitAction={onSubmitAction}
           />
 
