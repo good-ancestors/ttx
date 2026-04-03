@@ -16,6 +16,20 @@ export function useInAppBrowserDetection() {
 }
 
 /**
+ * Returns true when the browser tab is visible, false when hidden.
+ * Used to gate expensive Convex subscriptions when the tab is in the background.
+ */
+export function usePageVisibility(): boolean {
+  const [visible, setVisible] = useState(true);
+  useEffect(() => {
+    const handler = () => setVisible(document.visibilityState === "visible");
+    document.addEventListener("visibilitychange", handler);
+    return () => document.removeEventListener("visibilitychange", handler);
+  }, []);
+  return visible;
+}
+
+/**
  * Shows a syncing indicator when the tab becomes visible after being hidden.
  */
 export function useVisibilitySync() {

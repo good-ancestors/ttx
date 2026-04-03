@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLES, getDisposition } from "@/lib/game-data";
-import { useCountdown } from "@/lib/hooks";
+import { useCountdown, usePageVisibility } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { WorldStatePanel } from "@/components/world-state-panel";
 import { LabTracker } from "@/components/lab-tracker";
@@ -37,27 +37,31 @@ export default function FacilitatorPage({
   const isProjector = projector === "true";
   const gameId = id as Id<"games">;
 
+  const isVisible = usePageVisibility();
+
+  // games.get is always subscribed — lightweight, needed for phase detection even when hidden
   const game = useQuery(api.games.get, { gameId });
-  const tables = useQuery(api.tables.getByGame, { gameId });
-  // Lightweight rounds for sidebar chart + snapshot dropdown (excludes narrative, events, snapshots)
-  const roundsLite = useQuery(api.rounds.getByGameLightweight, { gameId });
-  // Full rounds only needed for finished-game timeline
-  const roundsFull = useQuery(api.rounds.getByGame, game?.status === "finished" ? { gameId } : "skip");
-  // Full current round only needed during submit/rolling/narrate (narrative panel, resolve results)
+
+  // Merged facilitator state: tables + submissions + proposals in one subscription
   const gamePhase = game?.phase;
-  const currentRoundFull = useQuery(api.rounds.getCurrent,
-    gamePhase === "rolling" || gamePhase === "narrate" || gamePhase === "submit" ? { gameId } : "skip"
+  const facilitatorState = useQuery(
+    api.games.getFacilitatorState,
+    isVisible ? { gameId, roundNumber: game?.currentRound ?? 1 } : "skip"
   );
-  // Summary submissions — excludes aiMeta, reasoning, artifact, computeAllocation
-  const submissions = useQuery(api.submissions.getByGameAndRoundSummary, {
-    gameId,
-    roundNumber: game?.currentRound ?? 1,
-  });
-  // Proposals only relevant during submit/discuss phase (endorsement requests)
-  const proposals = useQuery(api.requests.getByGameAndRound,
-    gamePhase === "submit" || gamePhase === "discuss"
-      ? { gameId, roundNumber: game?.currentRound ?? 1 }
-      : "skip"
+  const { tables, submissions, proposals } = facilitatorState ?? {
+    tables: [],
+    submissions: [],
+    proposals: [],
+  };
+
+  // Lightweight rounds for sidebar chart + snapshot dropdown (excludes narrative, events, snapshots)
+  const roundsLite = useQuery(api.rounds.getByGameLightweight, isVisible ? { gameId } : "skip");
+  // Full rounds only needed for finished-game timeline
+  const roundsFull = useQuery(api.rounds.getByGame, isVisible && game?.status === "finished" ? { gameId } : "skip");
+  // Full current round only needed during submit/rolling/narrate (narrative panel, resolve results)
+  const needsCurrentRound = gamePhase === "rolling" || gamePhase === "narrate" || gamePhase === "submit";
+  const currentRoundFull = useQuery(api.rounds.getCurrent,
+    isVisible && needsCurrentRound ? { gameId } : "skip"
   );
 
   const startGame = useMutation(api.games.startGame);
@@ -152,7 +156,7 @@ export default function FacilitatorPage({
     setRevealedSecrets(keys);
   };
 
-  if (!game || !tables || !roundsLite) {
+  if (!game || !facilitatorState || !roundsLite) {
     return (
       <div className="min-h-screen bg-navy-dark flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-text-light animate-spin" />

@@ -657,3 +657,56 @@ export const openSubmissions = mutation({
     await schedulePreGeneration(ctx, args.gameId, game.currentRound);
   },
 });
+
+// ─── Merged facilitator query ─────────────────────────────────────────────────
+// Combines tables + submissions + requests into a single subscription to reduce
+// WebSocket connection overhead. Reads 3 tables so re-runs when any changes, but
+// the re-runs are cheap (indexed reads) while each subscription has connection cost.
+export const getFacilitatorState = query({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const [tables, submissions, requests] = await Promise.all([
+      ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
+      ctx.db.query("submissions").withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
+      ).collect(),
+      ctx.db.query("requests").withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
+      ).collect(),
+    ]);
+
+    return {
+      tables: tables.filter((t) => t.enabled).map((t) => ({
+        _id: t._id,
+        roleId: t.roleId,
+        roleName: t.roleName,
+        joinCode: t.joinCode,
+        connected: t.connected,
+        controlMode: t.controlMode,
+        enabled: t.enabled,
+        computeStock: t.computeStock,
+        aiDisposition: t.aiDisposition,
+      })),
+      submissions: submissions.map((sub) => ({
+        _id: sub._id,
+        _creationTime: sub._creationTime,
+        tableId: sub.tableId,
+        gameId: sub.gameId,
+        roundNumber: sub.roundNumber,
+        roleId: sub.roleId,
+        status: sub.status,
+        actions: sub.actions.map((a) => ({
+          text: a.text,
+          priority: a.priority,
+          secret: a.secret,
+          actionStatus: a.actionStatus,
+          probability: a.probability,
+          rolled: a.rolled,
+          success: a.success,
+          aiInfluence: a.aiInfluence,
+        })),
+      })),
+      proposals: requests,
+    };
+  },
+});

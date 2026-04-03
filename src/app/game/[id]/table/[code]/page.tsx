@@ -7,7 +7,7 @@ import type { Doc, Id } from "@convex/_generated/dataModel";
 import { ROLES, isLabCeo, isLabSafety, getAiInfluencePower, isSubmittedAction } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
 import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
-import { useCountdown, useKeyboardScroll } from "@/lib/hooks";
+import { useCountdown, useKeyboardScroll, usePageVisibility } from "@/lib/hooks";
 import { normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { loadRoleHandouts } from "@/lib/role-handouts";
@@ -103,14 +103,17 @@ export default function TablePlayerPage({
   const gameId = id as Id<"games">;
   const tableId = code as Id<"tables">;
 
+  const isVisible = usePageVisibility();
+
   // ── Convex queries & mutations ────────────────────────────────────────────
+  // games.get and tables.get are always subscribed — lightweight, needed for phase detection
   const game = useQuery(api.games.get, { gameId });
   const table = useQuery(api.tables.get, { tableId });
-  const round = useQuery(api.rounds.getCurrent, { gameId });
-  const submission = useQuery(api.submissions.getForTable, {
-    tableId,
-    roundNumber: game?.currentRound ?? 1,
-  });
+  // Everything else only when tab is visible
+  const round = useQuery(api.rounds.getCurrent, isVisible ? { gameId } : "skip");
+  const submission = useQuery(api.submissions.getForTable,
+    isVisible ? { tableId, roundNumber: game?.currentRound ?? 1 } : "skip"
+  );
 
   const saveAndSubmitMut = useMutation(api.submissions.saveAndSubmit);
   const editSubmittedMut = useMutation(api.submissions.editSubmitted);
@@ -120,11 +123,11 @@ export default function TablePlayerPage({
   const setConnected = useMutation(api.tables.setConnected);
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
   // Lightweight query — only enabled tables' roleId/roleName (for endorsement targets)
-  const allTables = useQuery(api.tables.getEnabledRoleNames, { gameId });
+  const allTables = useQuery(api.tables.getEnabledRoleNames, isVisible ? { gameId } : "skip");
   // Requests only needed during submit phase (endorsement tracking + cleanup)
   const playerPhase = game?.phase;
   const allRequests = useQuery(api.requests.getByGameAndRound,
-    playerPhase === "submit" || playerPhase === "discuss"
+    isVisible && (playerPhase === "submit" || playerPhase === "discuss")
       ? { gameId, roundNumber: game?.currentRound ?? 1 }
       : "skip"
   );

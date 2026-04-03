@@ -3,8 +3,19 @@ import type { Doc, Id } from "@convex/_generated/dataModel";
 /** Game document from Convex */
 export type Game = Doc<"games">;
 
-/** Table document from Convex */
-export type Table = Doc<"tables">;
+/** Table — lightweight subset used by facilitator components.
+ *  Compatible with both Doc<"tables"> and getFacilitatorState().tables. */
+export type Table = {
+  _id: Id<"tables">;
+  roleId: string;
+  roleName: string;
+  joinCode: string;
+  connected: boolean;
+  controlMode: "human" | "ai" | "npc";
+  enabled: boolean;
+  computeStock?: number;
+  aiDisposition?: string;
+};
 
 /** Round document from Convex */
 export type Round = Doc<"rounds">;
