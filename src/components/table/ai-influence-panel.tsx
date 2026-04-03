@@ -3,7 +3,7 @@
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES } from "@/lib/game-data";
+import { ROLES, isSubmittedAction } from "@/lib/game-data";
 import { ThumbsUp, ThumbsDown, Minus } from "lucide-react";
 
 /**
@@ -36,7 +36,7 @@ export function AiInfluencePanel({
         const role = ROLES.find((r) => r.id === sub.roleId);
         return sub.actions
           .map((action, i) => ({ action, i, sub, role }))
-          .filter(({ action }) => action.actionStatus === "submitted" || !action.actionStatus);
+          .filter(({ action }) => isSubmittedAction(action));
       });
 
   const allActions = [

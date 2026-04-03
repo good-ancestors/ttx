@@ -641,19 +641,7 @@ export const rollAndNarrate = internalAction({
         return;
       }
 
-      // Write narrative
-      await ctx.runMutation(internal.rounds.applySummaryInternal, {
-        gameId,
-        roundNumber,
-        summary: {
-          narrative: output.narrative,
-          headlines: [],
-          geopoliticalEvents: [],
-          aiStateOfPlay: [],
-        },
-      });
-
-      // Apply world state (clamped)
+      // Write narrative + apply world state in parallel (different documents)
       const maxDelta = roundNumber >= 3 ? 4 : 3;
       const clamp = (newVal: number, current: number) => {
         if (!Number.isFinite(newVal)) return current;
@@ -667,7 +655,20 @@ export const rollAndNarrate = internalAction({
       const clampedWorldState = Object.fromEntries(
         dials.map((d) => [d, clamp(ows[d]?.value ?? ws[d], ws[d])])
       ) as typeof ws;
-      await ctx.runMutation(internal.games.updateWorldStateInternal, { gameId, worldState: clampedWorldState });
+      // Write narrative (rounds doc) + world state (games doc) in parallel
+      await Promise.all([
+        ctx.runMutation(internal.rounds.applySummaryInternal, {
+          gameId,
+          roundNumber,
+          summary: {
+            narrative: output.narrative,
+            headlines: [],
+            geopoliticalEvents: [],
+            aiStateOfPlay: [],
+          },
+        }),
+        ctx.runMutation(internal.games.updateWorldStateInternal, { gameId, worldState: clampedWorldState }),
+      ]);
 
       // Apply lab operations from the LLM
       const maxMult = LAB_PROGRESSION.maxMultiplier(roundNumber);
@@ -738,57 +739,56 @@ export const rollAndNarrate = internalAction({
       }
       updatedLabs = computeLabGrowth(updatedLabs, ceoAllocations, roundNumber, maxMult);
 
-      await ctx.runMutation(internal.games.updateLabsInternal, { gameId, labs: updatedLabs.map(stripLabForSnapshot) });
-
-      // Record compute changes for facilitator review
+      // Update labs (games doc) + compute changes (rounds doc) in parallel
       const baselineByLab = new Map(updatedLabs.map((l) => {
         const before = game.labs.find((g) => g.name === l.name)?.computeStock ?? 0;
         return [l.name, l.computeStock - before];
       }));
       const baselineTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
-
-      await ctx.runMutation(internal.rounds.setComputeChanges, {
-        gameId,
-        roundNumber,
-        computeChanges: {
-          newComputeTotal: baselineTotal,
-          baselineTotal,
-          distribution: updatedLabs.map((lab) => {
-            const totalChange = baselineByLab.get(lab.name) ?? 0;
-            const mod = computeModifiers.find((m) => m.labName === lab.name);
-            const baseline = mod ? totalChange - mod.change : totalChange;
-            return {
-              labName: lab.name,
-              baseline: Math.round(baseline),
-              modifier: mod?.change ?? 0,
-              reason: mod?.reason,
-              newTotal: Math.round(lab.computeStock),
-            };
-          }),
-        },
-      });
-
-      // Snapshot after
       const roleCompute = tables
         .filter((t) => t.enabled && (t.computeStock ?? 0) > 0)
         .map((t) => ({ roleId: t.roleId, roleName: t.roleName, computeStock: t.computeStock ?? 0 }));
+      const strippedLabs = updatedLabs.map(stripLabForSnapshot);
 
+      await Promise.all([
+        ctx.runMutation(internal.games.updateLabsInternal, { gameId, labs: strippedLabs }),
+        ctx.runMutation(internal.rounds.setComputeChanges, {
+          gameId,
+          roundNumber,
+          computeChanges: {
+            newComputeTotal: baselineTotal,
+            baselineTotal,
+            distribution: updatedLabs.map((lab) => {
+              const totalChange = baselineByLab.get(lab.name) ?? 0;
+              const mod = computeModifiers.find((m) => m.labName === lab.name);
+              const baseline = mod ? totalChange - mod.change : totalChange;
+              return {
+                labName: lab.name,
+                baseline: Math.round(baseline),
+                modifier: mod?.change ?? 0,
+                reason: mod?.reason,
+                newTotal: Math.round(lab.computeStock),
+              };
+            }),
+          },
+        }),
+      ]);
+
+      // Snapshot after + AI meta (both rounds doc — must be sequential)
       await ctx.runMutation(internal.rounds.snapshotAfterInternal, {
         gameId,
         roundNumber,
         worldStateAfter: clampedWorldState,
-        labsAfter: updatedLabs.map(stripLabForSnapshot),
+        labsAfter: strippedLabs,
         roleComputeAfter: roleCompute,
       });
-
-      // Store AI meta
       await ctx.runMutation(internal.rounds.setAiMetaInternal, {
         gameId,
         roundNumber,
         meta: { resolveModel: usedModel, resolveTimeMs: timeMs, resolveTokens: tokens },
       });
 
-      // Done — advance to narrate phase and clean up
+      // Done — advance to narrate phase and clean up (all games doc — must be sequential)
       await ctx.runMutation(internal.games.advancePhaseInternal, { gameId, phase: "narrate" });
       await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
       await ctx.runMutation(internal.games.updatePipelineStatus, {

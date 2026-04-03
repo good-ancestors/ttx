@@ -3,8 +3,8 @@
 import { use, useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
-import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, isLabSafety, getAiInfluencePower } from "@/lib/game-data";
+import type { Doc, Id } from "@convex/_generated/dataModel";
+import { ROLES, isLabCeo, isLabSafety, getAiInfluencePower, isSubmittedAction } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
 import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
 import { useCountdown, useKeyboardScroll } from "@/lib/hooks";
@@ -66,11 +66,9 @@ function loadDraft(tableId: string, roundNumber: number): DraftData | null {
 /** Cancel endorsement requests for drafts being discarded. */
 function cancelDraftEndorsements(
   drafts: ActionDraft[],
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  allRequests: any[] | undefined,
+  allRequests: Doc<"requests">[] | undefined,
   roleId: string | undefined,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  cancelFn: (args: { requestId: any }) => unknown,
+  cancelFn: (args: { requestId: Id<"requests"> }) => unknown,
 ) {
   for (const draft of drafts.filter((a) => a.text.trim())) {
     for (const targetId of draft.endorseTargets) {
@@ -86,7 +84,7 @@ function cancelDraftEndorsements(
 function nthSubmittedIndex(actions: { actionStatus?: string }[], n: number): number {
   let count = 0;
   for (let i = 0; i < actions.length; i++) {
-    if (actions[i].actionStatus === "submitted" || !actions[i].actionStatus) {
+    if (isSubmittedAction(actions[i])) {
       if (count === n) return i;
       count++;
     }

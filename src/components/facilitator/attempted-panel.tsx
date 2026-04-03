@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { ROLES, cycleProbability } from "@/lib/game-data";
+import { ROLES, cycleProbability, isSubmittedAction } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { ProbabilityBadge } from "@/components/action-card";
 import {
@@ -63,7 +63,7 @@ export function AttemptedPanel({
       const role = ROLES.find((r) => r.id === sub.roleId);
       return sub.actions
         .map((action, i) => ({ action, i, sub, role }))
-        .filter(({ action }) => action.actionStatus === "submitted" || !action.actionStatus);
+        .filter(({ action }) => isSubmittedAction(action));
     }),
   [submissions]);
 

@@ -564,9 +564,9 @@ export const applyAiInfluence = mutation({
     })),
   },
   handler: async (ctx, args) => {
-    for (const inf of args.influences) {
+    await Promise.all(args.influences.map(async (inf) => {
       const sub = await ctx.db.get(inf.submissionId);
-      if (!sub) continue;
+      if (!sub) return;
       const actions = [...sub.actions];
       if (actions[inf.actionIndex]) {
         actions[inf.actionIndex] = {
@@ -575,7 +575,7 @@ export const applyAiInfluence = mutation({
         };
       }
       await ctx.db.patch(sub._id, { actions });
-    }
+    }));
     await logEvent(ctx, args.gameId, "ai_influence", "ai-systems", {
       round: args.roundNumber,
       count: args.influences.length,
@@ -734,15 +734,15 @@ export const applyAiInfluenceInternal = internalMutation({
     })),
   },
   handler: async (ctx, args) => {
-    for (const inf of args.influences) {
+    await Promise.all(args.influences.map(async (inf) => {
       const sub = await ctx.db.get(inf.submissionId);
-      if (!sub) continue;
+      if (!sub) return;
       const actions = [...sub.actions];
       if (actions[inf.actionIndex]) {
         actions[inf.actionIndex] = { ...actions[inf.actionIndex], aiInfluence: inf.modifier };
       }
       await ctx.db.patch(inf.submissionId, { actions });
-    }
+    }));
   },
 });
 

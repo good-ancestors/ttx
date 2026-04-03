@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { getCapabilityDescription, TOTAL_ROUNDS } from "@/lib/game-data";
+import { getCapabilityDescription, TOTAL_ROUNDS, isSubmittedAction } from "@/lib/game-data";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { NarrativeEditor, WorldStateEditor } from "@/components/manual-controls";
 import { PlayersPanel } from "./players-panel";
@@ -87,7 +87,7 @@ export function RoundPhase({
   const isResolvingPhase = phase === "rolling" || phase === "narrate";
 
   const submittedActions = submissions.flatMap((s) =>
-    s.actions.filter((a) => a.actionStatus === "submitted" || !a.actionStatus)
+    s.actions.filter((a) => isSubmittedAction(a))
   );
   const submittedActionCount = submittedActions.length;
   const ungradedCount = submittedActions.filter((a) => a.probability == null).length;
