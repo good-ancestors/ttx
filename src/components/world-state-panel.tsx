@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { createPortal } from "react-dom";
 import { WORLD_STATE_INDICATORS } from "@/lib/game-data";
-import { Pencil, Maximize2, X } from "lucide-react";
+import { FullScreenOverlay } from "@/components/full-screen-overlay";
+import { Pencil, Maximize2 } from "lucide-react";
 
 interface WorldState {
   capability: number;
@@ -63,20 +63,14 @@ export function WorldStatePanel({
     </div>
   );
 
-  if (fullScreen && typeof document !== "undefined") {
-    return createPortal(
-      <div className="fixed inset-0 bg-navy-dark z-[70] flex flex-col p-8 overflow-hidden">
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-lg font-semibold uppercase tracking-wider text-text-light">World State</span>
-          <button onClick={() => setFullScreen(false)} className="text-text-light hover:text-white p-1"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="flex-1 max-w-xl mx-auto w-full">{indicators}</div>
-      </div>,
-      document.body,
-    );
-  }
-
   return (
+    <>
+    {fullScreen && (
+      <FullScreenOverlay title="World State" onClose={() => setFullScreen(false)} bodyClassName="flex-1 max-w-xl mx-auto w-full">
+        {indicators}
+      </FullScreenOverlay>
+    )}
+
     <div
       className={`rounded-xl border p-5 ${
         isDark
@@ -105,5 +99,6 @@ export function WorldStatePanel({
       </div>
       {indicators}
     </div>
+    </>
   );
 }

@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 import { ROLES, DEFAULT_LABS, BACKGROUND_LABS } from "@/lib/game-data";
-import { Maximize2, X } from "lucide-react";
+import { FullScreenOverlay } from "@/components/full-screen-overlay";
+import { Maximize2 } from "lucide-react";
 
 interface Lab {
   name: string;
@@ -277,20 +277,14 @@ export function RdProgressChart({
     </>
   );
 
-  if (fullScreen && typeof document !== "undefined") {
-    return createPortal(
-      <div className="fixed inset-0 bg-navy-dark z-[70] flex flex-col p-8 overflow-hidden">
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-lg font-semibold uppercase tracking-wider text-text-light">R&D Progress</span>
-          <button onClick={() => setFullScreen(false)} className="text-text-light hover:text-white p-1"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="flex-1 flex flex-col justify-center max-w-4xl mx-auto w-full">{chartContent(600)}</div>
-      </div>,
-      document.body,
-    );
-  }
-
   return (
+    <>
+    {fullScreen && (
+      <FullScreenOverlay title="R&D Progress" onClose={() => setFullScreen(false)} bodyClassName="flex-1 flex flex-col justify-center max-w-4xl mx-auto w-full">
+        {chartContent(600)}
+      </FullScreenOverlay>
+    )}
+
     <div className="bg-navy-dark rounded-xl border border-navy-light p-4">
       <div className="flex items-center justify-between mb-2">
         <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
@@ -302,5 +296,6 @@ export function RdProgressChart({
       </div>
       {chartContent()}
     </div>
+    </>
   );
 }

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { createPortal } from "react-dom";
 import { COMPUTE_CATEGORIES, ROLES } from "@/lib/game-data";
-import { Merge, Plus, Maximize2, X } from "lucide-react";
+import { FullScreenOverlay } from "@/components/full-screen-overlay";
+import { Merge, Plus, Maximize2 } from "lucide-react";
 
 interface Lab {
   name: string;
@@ -31,20 +31,14 @@ export function LabTracker({
     <LabGrid labs={labs} mergeSource={mergeSource} setMergeSource={setMergeSource} onMerge={onMerge} />
   );
 
-  if (fullScreen && typeof document !== "undefined") {
-    return createPortal(
-      <div className="fixed inset-0 bg-navy-dark z-[70] flex flex-col p-8 overflow-hidden">
-        <div className="flex items-center justify-between mb-6">
-          <span className="text-lg font-semibold uppercase tracking-wider text-text-light">Lab State</span>
-          <button onClick={() => setFullScreen(false)} className="text-text-light hover:text-white p-1"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto">{labGrid}</div>
-      </div>,
-      document.body,
-    );
-  }
-
   return (
+    <>
+    {fullScreen && (
+      <FullScreenOverlay title="Lab State" onClose={() => setFullScreen(false)}>
+        {labGrid}
+      </FullScreenOverlay>
+    )}
+
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
       <div className="flex items-center justify-between mb-3">
         <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
@@ -63,6 +57,7 @@ export function LabTracker({
       </div>
       {labGrid}
     </div>
+    </>
   );
 }
 

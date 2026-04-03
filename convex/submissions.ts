@@ -261,6 +261,75 @@ export const submitAction = mutation({
   },
 });
 
+/** Save a draft and immediately submit it in a single mutation (avoids two round-trips). */
+export const saveAndSubmit = mutation({
+  args: {
+    tableId: v.id("tables"),
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    roleId: v.string(),
+    text: v.string(),
+    priority: v.number(),
+    secret: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.phase !== "submit" && game.phase !== "discuss") {
+      throw new Error(`Cannot save drafts during ${game.phase} phase`);
+    }
+    if (game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) throw new Error("Submission deadline has passed");
+    if (!args.text.trim()) throw new Error("Action text cannot be empty");
+
+    const existing = await ctx.db
+      .query("submissions")
+      .withIndex("by_table_and_round", (q) =>
+        q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber)
+      )
+      .first();
+
+    const newAction = {
+      text: args.text,
+      priority: args.priority,
+      secret: args.secret,
+      actionStatus: "submitted" as const,
+    };
+
+    // Enforce priority budget across already-submitted actions
+    const existingSubmittedPriority = existing
+      ? existing.actions.filter((a) => a.actionStatus === "submitted").reduce((s, a) => s + a.priority, 0)
+      : 0;
+    if (existingSubmittedPriority + args.priority > PRIORITY_HARD_CAP) {
+      throw new Error(`Priority budget exceeded: ${existingSubmittedPriority + args.priority}/${PRIORITY_HARD_CAP}`);
+    }
+
+    if (existing) {
+      if (existing.actions.length >= 5) throw new Error("Maximum 5 actions per round");
+      const actions = [...existing.actions, newAction];
+      await ctx.db.patch(existing._id, { actions, status: "submitted" });
+      await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
+        actionIndex: actions.length - 1,
+        text: args.text,
+      });
+      return { submissionId: existing._id, actionIndex: actions.length - 1 };
+    }
+
+    const id = await ctx.db.insert("submissions", {
+      tableId: args.tableId,
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      roleId: args.roleId,
+      actions: [newAction],
+      status: "submitted",
+    });
+    await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
+      actionIndex: 0,
+      text: args.text,
+    });
+    return { submissionId: id, actionIndex: 0 };
+  },
+});
+
 /** Pull a submitted action back to draft for editing. Clears probability and influence. */
 export const editSubmitted = mutation({
   args: {

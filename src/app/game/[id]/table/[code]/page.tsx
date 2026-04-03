@@ -114,8 +114,7 @@ export default function TablePlayerPage({
     roundNumber: game?.currentRound ?? 1,
   });
 
-  const submitActionMut = useMutation(api.submissions.submitAction);
-  const saveDraftMut = useMutation(api.submissions.saveDraft);
+  const saveAndSubmitMut = useMutation(api.submissions.saveAndSubmit);
   const editSubmittedMut = useMutation(api.submissions.editSubmitted);
   const deleteActionMut = useMutation(api.submissions.deleteAction);
   const sendRequest = useMutation(api.requests.send);
@@ -388,8 +387,8 @@ export default function TablePlayerPage({
     if (!draft?.text.trim() || !role || !game) return;
     setSubmitError("");
     try {
-      // Save draft to Convex first, then submit it
-      const { submissionId, actionIndex } = await saveDraftMut({
+      // Save + submit in a single mutation (avoids two round-trips)
+      await saveAndSubmitMut({
         tableId,
         gameId,
         roundNumber: game.currentRound,
@@ -398,7 +397,6 @@ export default function TablePlayerPage({
         priority: normaliseActions([draft])[0]?.priority ?? 3,
         secret: draft.secret || undefined,
       });
-      await submitActionMut({ submissionId, actionIndex });
       // Remove from local drafts
       setActionDrafts((prev) => {
         const next = prev.filter((_, i) => i !== draftIndex);
@@ -423,7 +421,7 @@ export default function TablePlayerPage({
     } catch (err) {
       setSubmitError(`Failed to submit action: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [actionDrafts, role, game, tableId, gameId, saveDraftMut, submitActionMut, sendRequest, allTables]);
+  }, [actionDrafts, role, game, tableId, gameId, saveAndSubmitMut, sendRequest, allTables]);
 
   const handleEditAction = useCallback(async (submittedIndex: number) => {
     if (!submission) return;

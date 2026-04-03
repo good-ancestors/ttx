@@ -192,8 +192,6 @@ export function AttemptedPanel({
   );
 }
 
-// ─── Action row (extracted to reduce complexity) ──────────────────────────────
-
 function ActionRow({
   action,
   actionIndex: i,

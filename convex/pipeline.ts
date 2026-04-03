@@ -81,18 +81,22 @@ async function gradeSubmissionBatch(
   let completed = 0;
   const total = ungraded.length;
 
+  // Pre-build lookup maps to avoid repeated .find() calls inside the loop
+  const roleMap = new Map(ROLES.map((r) => [r.id, r]));
+  const labMap = new Map(game.labs.map((l) => [l.roleId, l]));
+  const allSubsSummary = allSubmissions.map((s) => ({
+    roleId: s.roleId,
+    roleName: roleMap.get(s.roleId)?.name ?? s.roleId,
+    actions: s.actions.map((a) => ({ text: a.text, priority: a.priority })),
+  }));
+
   for (let batch = 0; batch < ungraded.length; batch += GRADING_CONCURRENCY) {
     const batchSubs = ungraded.slice(batch, batch + GRADING_CONCURRENCY);
     const batchResults = await Promise.allSettled(batchSubs.map(async (sub) => {
-      const role = ROLES.find((r) => r.id === sub.roleId);
+      const role = roleMap.get(sub.roleId);
       if (!role) return;
 
-      const otherSubs = allSubmissions
-        .filter((s) => s.roleId !== sub.roleId)
-        .map((s) => ({
-          roleName: ROLES.find((r) => r.id === s.roleId)?.name ?? s.roleId,
-          actions: s.actions.map((a) => ({ text: a.text, priority: a.priority })),
-        }));
+      const otherSubs = allSubsSummary.filter((s) => s.roleId !== sub.roleId);
 
       const actionRequests: ActionRequest[] = (requests ?? [])
         .filter((r) => r.fromRoleId === sub.roleId || r.toRoleId === sub.roleId)
@@ -118,7 +122,7 @@ async function gradeSubmissionBatch(
         enabledRoles: enabledRoleNames,
         aiDisposition: sub.roleId === "ai-systems" ? aiDisposition : undefined,
         otherSubmissions: otherSubs,
-        labSpec: game.labs.find((l) => l.roleId === sub.roleId)?.spec,
+        labSpec: labMap.get(sub.roleId)?.spec,
       });
 
       const gradedActions = await callGradingLLM(sub, prompt, onlyUngraded);

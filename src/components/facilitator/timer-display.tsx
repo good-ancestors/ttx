@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { createPortal } from "react-dom";
-import { Clock, Maximize2, X, Pause, Plus, Minus } from "lucide-react";
+import { FullScreenOverlay } from "@/components/full-screen-overlay";
+import { Clock, Maximize2, Pause, Plus, Minus } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
 
 /**
@@ -32,16 +32,10 @@ export function TimerDisplay({
 
   if (!hasTimer || timerDisplay === "0:00") return null;
 
-  if (fullScreen && typeof document !== "undefined") {
-    return createPortal(
-      <div className="fixed inset-0 bg-navy-dark z-[70] flex flex-col items-center justify-center">
-        <button
-          onClick={() => setFullScreen(false)}
-          className="absolute top-6 right-6 text-text-light hover:text-white p-2"
-        >
-          <X className="w-6 h-6" />
-        </button>
-
+  return (
+    <>
+    {fullScreen && (
+      <FullScreenOverlay title="Timer" onClose={() => setFullScreen(false)} bodyClassName="flex-1 flex flex-col items-center justify-center">
         {/* Large countdown */}
         <span className={`text-[12rem] font-mono font-black leading-none ${
           isExpired ? "text-viz-danger" : isUrgent ? "text-viz-danger animate-pulse" : "text-white"
@@ -72,12 +66,9 @@ export function TimerDisplay({
             </button>
           </div>
         )}
-      </div>,
-      document.body,
-    );
-  }
+      </FullScreenOverlay>
+    )}
 
-  return (
     <button
       onClick={() => setFullScreen(true)}
       className={`text-sm font-mono flex items-center gap-1 cursor-pointer hover:opacity-80 transition-opacity ${
@@ -88,5 +79,6 @@ export function TimerDisplay({
       <Clock className="w-4 h-4" /> {timerDisplay}
       <Maximize2 className="w-3 h-3 ml-0.5 opacity-50" />
     </button>
+    </>
   );
 }

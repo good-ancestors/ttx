@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
-import { api } from "@convex/_generated/api";
 import { getCapabilityDescription, TOTAL_ROUNDS } from "@/lib/game-data";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { NarrativeEditor, WorldStateEditor } from "@/components/manual-controls";
 import { PlayersPanel } from "./players-panel";
 import { AttemptedPanel } from "./attempted-panel";
 import { ExpandableSection } from "./expandable-section";
+import { ComputeEditor } from "./compute-editor";
 import { AddLabForm } from "./add-lab-form";
 import {
   Loader2,
@@ -21,63 +20,6 @@ import {
 } from "lucide-react";
 import type { FacilitatorPhaseProps, Round, Submission, Proposal } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
-
-// ─── Sub-components ─────────────────────────────────────────────────────────
-
-function ComputeEditor({ labs, gameId, computeChanges, onClose }: {
-  labs: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
-  gameId: Id<"games">;
-  computeChanges?: { distribution: { labName: string; baseline: number; modifier: number; newTotal: number }[] };
-  onClose: () => void;
-}) {
-  const updateLabs = useMutation(api.games.updateLabs);
-  const [stocks, setStocks] = useState<Record<string, number>>(
-    Object.fromEntries(labs.map((l) => [l.name, l.computeStock]))
-  );
-  const handleSave = async () => {
-    const updated = labs.map((l) => ({
-      name: l.name, roleId: l.roleId, computeStock: stocks[l.name] ?? l.computeStock,
-      rdMultiplier: l.rdMultiplier, allocation: l.allocation,
-    }));
-    await updateLabs({ gameId, labs: updated });
-    onClose();
-  };
-  return (
-    <div>
-      <p className="text-xs text-text-light mb-3">Adjust compute stock for each lab. Each unit ≈ 1M H100e.</p>
-      <div className="space-y-3">
-        {labs.map((lab) => {
-          const change = computeChanges?.distribution.find((d) => d.labName === lab.name);
-          const before = change ? change.newTotal - change.baseline - change.modifier : null;
-          return (
-            <div key={lab.name} className="flex items-center gap-3">
-              <span className="text-sm text-white min-w-[120px]">{lab.name}</span>
-              {before !== null && (
-                <span className="text-[10px] text-navy-muted font-mono w-16 text-right">was {before}u</span>
-              )}
-              {change && (
-                <span className={`text-[10px] font-mono ${change.baseline + change.modifier >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                  {change.baseline + change.modifier >= 0 ? "+" : ""}{change.baseline + change.modifier}
-                </span>
-              )}
-              <span className="text-navy-muted">→</span>
-              <input
-                type="number"
-                value={stocks[lab.name] ?? lab.computeStock}
-                onChange={(e) => setStocks({ ...stocks, [lab.name]: parseInt(e.target.value) || 0 })}
-                className="w-20 text-sm bg-navy border border-navy-light rounded px-2 py-1 text-white font-mono text-right focus:outline-none focus:border-text-light"
-              />
-              <span className="text-[10px] text-navy-muted">units</span>
-            </div>
-          );
-        })}
-      </div>
-      <button onClick={() => void handleSave()} className="mt-4 text-sm px-4 py-1.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors">
-        Save
-      </button>
-    </div>
-  );
-}
 
 // ─── Main unified round phase ───────────────────────────────────────────────
 
@@ -142,6 +84,7 @@ export function RoundPhase({
   addLab,
 }: RoundPhaseProps) {
   const phase = game.phase;
+  const isResolvingPhase = phase === "rolling" || phase === "narrate";
 
   const submittedActions = submissions.flatMap((s) =>
     s.actions.filter((a) => a.actionStatus === "submitted" || !a.actionStatus)
@@ -286,7 +229,7 @@ export function RoundPhase({
       )}
 
       {/* ─── 6. Resolve progress (rolling/narrate) ─── */}
-      {(phase === "rolling" || phase === "narrate") && resolving && resolveStep && (
+      {isResolvingPhase && resolving && resolveStep && (
         <div className="flex items-center gap-2 py-2 text-sm text-text-light">
           <Loader2 className="w-4 h-4 animate-spin" />
           {resolveStep}
@@ -294,12 +237,12 @@ export function RoundPhase({
       )}
 
       {/* ─── 7. WHAT HAPPENED — narrative (rolling/narrate) ─── */}
-      {(phase === "rolling" || phase === "narrate") && (resolving || currentRound?.summary) && (
+      {isResolvingPhase && (resolving || currentRound?.summary) && (
         <NarrativePanel round={currentRound} />
       )}
 
       {/* ─── 8. WHERE WE ARE NOW — lab state + capability (narrate) ─── */}
-      {(phase === "rolling" || phase === "narrate") && currentRound?.summary && (
+      {isResolvingPhase && currentRound?.summary && (
         <WhereWeAreNow
           game={game}
           currentRound={currentRound}
