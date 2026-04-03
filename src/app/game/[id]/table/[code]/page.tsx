@@ -142,6 +142,7 @@ export default function TablePlayerPage({
   const autoSubmittedRef = useRef(false);
   const draftRestoredRef = useRef(false);
   const lastRoundRef = useRef<number | null>(null);
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // Sample actions for suggestions
   const [sampleActionsData, setSampleActionsData] = useState<SampleActionsData | null>(null);
@@ -284,15 +285,19 @@ export default function TablePlayerPage({
     return () => clearTimeout(timeout);
   }, [draftRestored]);
 
-  // ── Draft persistence: save on every change ─────────────────────────────
+  // ── Draft persistence: save on change (debounced) ───────────────────────
   useEffect(() => {
     if (!game || !draftRestoredRef.current) return;
-    saveDraft(tableId, game.currentRound, {
-      freeText: "",
-      parsedActions: normaliseActions(actionDrafts),
-      computeAllocation,
-      artifact,
-    });
+    clearTimeout(draftSaveTimer.current);
+    draftSaveTimer.current = setTimeout(() => {
+      saveDraft(tableId, game.currentRound, {
+        freeText: "",
+        parsedActions: normaliseActions(actionDrafts),
+        computeAllocation,
+        artifact,
+      });
+    }, 500);
+    return () => clearTimeout(draftSaveTimer.current);
   }, [actionDrafts, computeAllocation, artifact, game, tableId]);
 
   // ── Sample suggestions ──────────────────────────────────────────────────

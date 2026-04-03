@@ -88,7 +88,7 @@ export function AiInfluencePanel({
                       actionIndex: i,
                       modifier: isBoosted ? 0 : power,
                     })}
-                    className={`min-h-[32px] px-2 rounded text-xs flex items-center gap-1 transition-colors ${
+                    className={`min-h-[44px] px-2 rounded text-sm flex items-center gap-1 transition-colors ${
                       isBoosted
                         ? "bg-viz-safety/20 text-viz-safety"
                         : "text-text-light hover:text-viz-safety hover:bg-viz-safety/10"
@@ -104,7 +104,7 @@ export function AiInfluencePanel({
                         actionIndex: i,
                         modifier: 0,
                       })}
-                      className="min-h-[32px] px-2 rounded text-xs text-text-light hover:text-white hover:bg-navy-light transition-colors flex items-center gap-1"
+                      className="min-h-[44px] px-2 rounded text-sm text-text-light hover:text-white hover:bg-navy-light transition-colors flex items-center gap-1"
                     >
                       <Minus className="w-3.5 h-3.5" /> Clear
                     </button>
@@ -116,7 +116,7 @@ export function AiInfluencePanel({
                         actionIndex: i,
                         modifier: isSabotaged ? 0 : -power,
                       })}
-                      className={`min-h-[32px] px-2 rounded text-xs flex items-center gap-1 transition-colors ${
+                      className={`min-h-[44px] px-2 rounded text-sm flex items-center gap-1 transition-colors ${
                         isSabotaged
                           ? "bg-viz-danger/20 text-viz-danger"
                           : "text-text-light hover:text-viz-danger hover:bg-viz-danger/10"

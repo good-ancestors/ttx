@@ -174,6 +174,11 @@ function ActionCard({
       <textarea
         value={action.text}
         onChange={(e) => onUpdate({ text: e.target.value })}
+        onFocus={(e) => {
+          setTimeout(() => {
+            (e.target as HTMLElement).closest('.rounded-xl')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }, 300);
+        }}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -348,12 +353,12 @@ function ReorderBar({ index, onMoveUp, onMoveDown }: { index: number; onMoveUp?:
       <span className="text-[11px] font-bold text-text-muted font-mono w-4">#{index + 1}</span>
       <div className="flex gap-0.5">
         {onMoveUp && (
-          <button onClick={onMoveUp} className="min-h-[28px] min-w-[28px] flex items-center justify-center rounded text-text-muted hover:bg-warm-gray transition-colors" aria-label="Move up">
+          <button onClick={onMoveUp} className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded text-text-muted hover:bg-warm-gray transition-colors" aria-label="Move up">
             <ChevronUp className="w-4 h-4" />
           </button>
         )}
         {onMoveDown && (
-          <button onClick={onMoveDown} className="min-h-[28px] min-w-[28px] flex items-center justify-center rounded text-text-muted hover:bg-warm-gray transition-colors" aria-label="Move down">
+          <button onClick={onMoveDown} className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded text-text-muted hover:bg-warm-gray transition-colors" aria-label="Move down">
             <ChevronDown className="w-4 h-4" />
           </button>
         )}
