@@ -1,10 +1,10 @@
 "use client";
 
-import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
+import { use, useState, useCallback, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, isLabSafety } from "@/lib/game-data";
+import { ROLES, isLabCeo, isLabSafety, getAiInfluencePower } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
 import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
 import { useCountdown, useKeyboardScroll } from "@/lib/hooks";
@@ -21,6 +21,7 @@ import { LabSpecsPanel } from "@/components/table/lab-specs-panel";
 import { LabSpecEditor } from "@/components/table/lab-spec-editor";
 import { TableSubmit } from "@/components/table/table-submit";
 import { TableResolving } from "@/components/table/table-resolving";
+import { AiInfluencePanel } from "@/components/table/ai-influence-panel";
 import type { ResultAction } from "@/components/table/result-action-card";
 import {
   Loader2,
@@ -62,14 +63,6 @@ function loadDraft(tableId: string, roundNumber: number): DraftData | null {
   }
 }
 
-function clearDraft(tableId: string, roundNumber: number) {
-  try {
-    localStorage.removeItem(draftKey(tableId, roundNumber));
-  } catch {
-    // Ignore
-  }
-}
-
 // ─── Main page component ─────────────────────────────────────────────────────
 
 export default function TablePlayerPage({
@@ -90,7 +83,10 @@ export default function TablePlayerPage({
     roundNumber: game?.currentRound ?? 1,
   });
 
-  const submitActions = useMutation(api.submissions.submit);
+  const submitActionMut = useMutation(api.submissions.submitAction);
+  const saveDraftMut = useMutation(api.submissions.saveDraft);
+  const editSubmittedMut = useMutation(api.submissions.editSubmitted);
+  const deleteActionMut = useMutation(api.submissions.deleteAction);
   const sendRequest = useMutation(api.requests.send);
   const cancelRequest = useMutation(api.requests.cancel);
   const setConnected = useMutation(api.tables.setConnected);
@@ -103,8 +99,6 @@ export default function TablePlayerPage({
 
   // ── Local state ───────────────────────────────────────────────────────────
   const [actionDrafts, setActionDrafts] = useState<ActionDraft[]>([emptyAction()]);
-  const freeText = useMemo(() => actionDrafts.map((a) => a.text).join("\n"), [actionDrafts]);
-  const parsedActions = useMemo(() => normaliseActions(actionDrafts), [actionDrafts]);
   const [computeAllocation, setComputeAllocation] = useState({
     users: 50,
     capability: 25,
@@ -113,7 +107,6 @@ export default function TablePlayerPage({
   const [artifact, setArtifact] = useState("");
   const [labSpec, setLabSpec] = useState("");
   const [specSaved, setSpecSaved] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [draftRestored, setDraftRestored] = useState(false);
   const [autoSubmitMessage, setAutoSubmitMessage] = useState("");
@@ -291,46 +284,39 @@ export default function TablePlayerPage({
     }
   }, [secondsLeft, phase, isSubmitted, actionDrafts, ideasOpen]);
 
-  // ── Timer auto-submit ─────────────────────────────────────────────────────
+  // ── Timer expired: discard remaining drafts (only submitted actions count) ─
   useEffect(() => {
     if (
       isExpired &&
       phase === "submit" &&
-      !isSubmitted &&
-      !submitting &&
       !autoSubmittedRef.current
     ) {
-      if (parsedActions.length > 0) {
+      const draftWithText = actionDrafts.filter((a) => a.text.trim());
+      if (draftWithText.length > 0) {
         autoSubmittedRef.current = true;
-        setAutoSubmitMessage("Time's up — submitting your actions");
-        const timeout = setTimeout(() => {
-          void handleSubmit();
-        }, 1500);
-        return () => clearTimeout(timeout);
+        setAutoSubmitMessage("Time's up — only submitted actions will count");
+        // Clear local drafts (they're discarded, not submitted)
+        setActionDrafts([emptyAction()]);
       }
     }
     if (!isExpired) {
       autoSubmittedRef.current = false;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isExpired, phase, isSubmitted, parsedActions.length, submitting, freeText]);
+  }, [isExpired, phase, actionDrafts]);
 
-  // ── Auto-submit on phase change ───────────────────────────────────────────
+  // ── Phase change (submit → rolling): discard remaining drafts ──────────
   const prevPhaseRef = useRef(phase);
   useEffect(() => {
     if (
       prevPhaseRef.current === "submit" &&
       phase === "rolling" &&
-      !isSubmitted &&
-      !submitting &&
-      !autoSubmittedRef.current &&
-      parsedActions.length > 0
+      !autoSubmittedRef.current
     ) {
+      // Discard remaining drafts — only submitted actions count
       autoSubmittedRef.current = true;
-      void handleSubmit();
+      setActionDrafts([emptyAction()]);
     }
     prevPhaseRef.current = phase;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase]);
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
@@ -366,30 +352,86 @@ export default function TablePlayerPage({
     }
   };
 
-  const handleSubmit = async () => {
-    if (parsedActions.length === 0) return;
-    setSubmitting(true);
+  // ─── Per-action handlers ────────────────────────────────────────────────────
+
+  const handleSubmitAction = useCallback(async (draftIndex: number) => {
+    const draft = actionDrafts[draftIndex];
+    if (!draft?.text.trim() || !role || !game) return;
     setSubmitError("");
     try {
-      await submitActions({
+      // Save draft to Convex first, then submit it
+      const { submissionId, actionIndex } = await saveDraftMut({
         tableId,
         gameId,
-        roundNumber: game?.currentRound ?? 1,
-        roleId: role?.id ?? "",
-        actions: parsedActions.map((a) => ({ text: a.text, priority: a.priority, secret: a.secret || undefined })),
-        computeAllocation: role && isLabCeo(role) ? computeAllocation : undefined,
-        artifact: artifact.trim() || undefined,
+        roundNumber: game.currentRound,
+        roleId: role.id,
+        text: draft.text.trim(),
+        priority: normaliseActions([draft])[0]?.priority ?? 3,
+        secret: draft.secret || undefined,
       });
-      if (game) {
-        clearDraft(tableId, game.currentRound);
+      await submitActionMut({ submissionId, actionIndex });
+      // Remove from local drafts
+      setActionDrafts((prev) => {
+        const next = prev.filter((_, i) => i !== draftIndex);
+        return next.length === 0 ? [emptyAction()] : next;
+      });
+      // Send endorsement requests
+      for (const targetId of draft.endorseTargets) {
+        const targetRole = (allTables ?? []).find((t) => t.roleId === targetId);
+        if (targetRole) {
+          void sendRequest({
+            gameId,
+            roundNumber: game.currentRound,
+            fromRoleId: role.id,
+            fromRoleName: role.name,
+            toRoleId: targetId,
+            toRoleName: targetRole.roleName,
+            actionText: draft.text.trim(),
+            requestType: "endorsement" as const,
+          });
+        }
       }
-    } catch {
-      setSubmitError("Failed to submit. Check your connection and try again.");
-    } finally {
-      setSubmitting(false);
-      setAutoSubmitMessage("");
+    } catch (err) {
+      setSubmitError(`Failed to submit action: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  };
+  }, [actionDrafts, role, game, tableId, gameId, saveDraftMut, submitActionMut, sendRequest, allTables]);
+
+  const handleEditAction = useCallback(async (submittedIndex: number) => {
+    if (!submission) return;
+    setSubmitError("");
+    try {
+      const action = submission.actions.filter(
+        (a) => a.actionStatus === "submitted" || !a.actionStatus
+      )[submittedIndex];
+      if (!action) return;
+      // Find actual index in submission.actions array
+      const actualIndex = submission.actions.indexOf(action);
+      await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex });
+      // Add back to local drafts for editing
+      setActionDrafts((prev) => [
+        ...prev.filter((a) => a.text.trim()),
+        { text: action.text, priority: "medium" as const, secret: !!action.secret, endorseTargets: [] },
+        ...(prev.every((a) => a.text.trim()) ? [] : []),
+      ]);
+    } catch (err) {
+      setSubmitError(`Failed to edit: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  }, [submission, editSubmittedMut]);
+
+  const handleDeleteAction = useCallback(async (submittedIndex: number) => {
+    if (!submission) return;
+    setSubmitError("");
+    try {
+      const action = submission.actions.filter(
+        (a) => a.actionStatus === "submitted" || !a.actionStatus
+      )[submittedIndex];
+      if (!action) return;
+      const actualIndex = submission.actions.indexOf(action);
+      await deleteActionMut({ submissionId: submission._id, actionIndex: actualIndex });
+    } catch (err) {
+      setSubmitError(`Failed to delete: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  }, [submission, deleteActionMut]);
 
   const handleSendRequest = useCallback((targetRoleId: string, targetRoleName: string, actionText: string) => {
     void sendRequest({
@@ -604,7 +646,6 @@ export default function TablePlayerPage({
               tableId={tableId}
               aiDisposition={table.aiDisposition}
               computeStock={table.computeStock ?? 0}
-              isSubmitted={isSubmitted}
               submittedActions={submission?.actions ?? []}
               timerDisplay={timerDisplay}
               actionDrafts={actionDrafts}
@@ -616,9 +657,9 @@ export default function TablePlayerPage({
               specSaved={specSaved}
               onSaveSpec={handleSaveSpec}
               enabledRoles={enabledRoles}
-              parsedActions={parsedActions}
-              onSubmit={handleSubmit}
-              submitting={submitting}
+              onSubmitAction={handleSubmitAction}
+              onEditAction={handleEditAction}
+              onDeleteAction={handleDeleteAction}
               submitError={submitError}
               onSendRequest={handleSendRequest}
               onCancelRequest={handleCancelRequest}
@@ -626,6 +667,15 @@ export default function TablePlayerPage({
               ideasOpen={ideasOpen}
               onIdeasOpenChange={setIdeasOpen}
               onSuggestionTap={handleSuggestionTap}
+            />
+          )}
+
+          {/* AI Systems influence panel — visible during submit and rolling phases */}
+          {(phase === "submit" || phase === "rolling") && role.tags.includes("ai-system") && table.aiDisposition && game && (
+            <AiInfluencePanel
+              gameId={gameId}
+              roundNumber={game.currentRound}
+              power={getAiInfluencePower(game.labs)}
             />
           )}
 

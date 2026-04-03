@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ROLES, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
-import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Lock } from "lucide-react";
+import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Lock, Send } from "lucide-react";
 
 
 export type PriorityLevel = "low" | "medium" | "high";
@@ -41,9 +41,10 @@ interface Props {
   isSubmitted: boolean;
   onSendRequest?: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
   onCancelRequest?: (targetRoleId: string, actionText: string) => void;
+  onSubmitAction?: (index: number) => void;
 }
 
-export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitted, onSendRequest, onCancelRequest }: Props) {
+export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitted, onSendRequest, onCancelRequest, onSubmitAction }: Props) {
   // Filter out own role and AI Systems (AI Systems uses influence, not endorsements)
   const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId))
     .filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId && r.id !== "ai-systems" : true);
@@ -113,6 +114,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
             onCancelRequest={onCancelRequest}
             canRemove={actions.length > 1 || action.text.trim() !== ""}
             onAddNext={actions.length < 5 && !isSubmitted ? addAction : undefined}
+            onSubmit={onSubmitAction && action.text.trim() ? () => onSubmitAction(i) : undefined}
           />
         ))}
       </div>
@@ -160,6 +162,7 @@ function ActionCard({
   onSendRequest?: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
   onCancelRequest?: (targetRoleId: string, actionText: string) => void;
   onAddNext?: () => void;
+  onSubmit?: () => void;
 }) {
   const [showEndorse, setShowEndorse] = useState(false);
   const hasEndorsements = action.endorseTargets.length > 0;
@@ -239,8 +242,17 @@ function ActionCard({
             </span>
           </button>
 
-          {/* Spacer + remove */}
+          {/* Spacer + submit + remove */}
           <div className="flex-1" />
+          {onSubmit && !isSubmitted && (
+            <button
+              onClick={onSubmit}
+              aria-label="Submit this action"
+              className="min-h-[44px] px-3 rounded-lg text-xs font-bold text-white bg-navy hover:bg-navy-light transition-colors flex items-center gap-1.5"
+            >
+              <Send className="w-3.5 h-3.5" /> Submit
+            </button>
+          )}
           {canRemove && !isSubmitted && (
             <button
               onClick={onRemove}
