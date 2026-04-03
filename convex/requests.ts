@@ -130,7 +130,7 @@ export const cancel = mutation({
 export const respond = mutation({
   args: {
     proposalId: v.id("requests"),
-    status: v.union(v.literal("accepted"), v.literal("declined")),
+    status: v.union(v.literal("accepted"), v.literal("declined"), v.literal("pending")),
   },
   handler: async (ctx, args) => {
     const proposal = await ctx.db.get(args.proposalId);

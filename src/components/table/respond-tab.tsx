@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import { ROLES, isSubmittedAction } from "@/lib/game-data";
-import { ThumbsUp, ThumbsDown, Check, X, EyeOff, Inbox } from "lucide-react";
+import { ThumbsUp, ThumbsDown, EyeOff, Inbox, Minus } from "lucide-react";
 
 // ─── Shared response card ───────────────────────────────────────────────────
 
@@ -16,6 +16,7 @@ function ActionResponseCard({
   response,
   onSupport,
   onOppose,
+  onClear,
 }: {
   roleName: string;
   roleColor?: string;
@@ -24,15 +25,10 @@ function ActionResponseCard({
   response: "support" | "oppose" | null;
   onSupport: () => void;
   onOppose: () => void;
+  onClear?: () => void;
 }) {
-  const responded = response !== null;
-
   return (
-    <div
-      className={`bg-white rounded-xl border p-4 transition-opacity ${
-        responded ? "opacity-60 border-border" : "border-border"
-      }`}
-    >
+    <div className="bg-white rounded-xl border border-border p-4">
       <div className="flex items-center gap-2 mb-2">
         <div
           className="w-2.5 h-2.5 rounded-full shrink-0"
@@ -49,34 +45,37 @@ function ActionResponseCard({
         <p className="text-sm text-text leading-relaxed mb-3">{actionText}</p>
       )}
 
-      {responded ? (
-        <div className="flex items-center gap-2">
-          {response === "support" ? (
-            <span className="text-xs font-bold text-[#059669] flex items-center gap-1">
-              <Check className="w-3.5 h-3.5" /> You: Supported
-            </span>
-          ) : (
-            <span className="text-xs font-bold text-viz-danger flex items-center gap-1">
-              <X className="w-3.5 h-3.5" /> You: Opposed
-            </span>
-          )}
-        </div>
-      ) : (
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onSupport}
+          className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
+            response === "support"
+              ? "bg-[#059669] text-white"
+              : "bg-[#ECFDF5] text-[#059669] hover:bg-[#D1FAE5]"
+          }`}
+        >
+          <ThumbsUp className="w-4 h-4" /> Support
+        </button>
+        <button
+          onClick={onOppose}
+          className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
+            response === "oppose"
+              ? "bg-[#DC2626] text-white"
+              : "bg-[#FEF2F2] text-[#DC2626] hover:bg-[#FECACA]"
+          }`}
+        >
+          <ThumbsDown className="w-4 h-4" /> Oppose
+        </button>
+        {response !== null && onClear && (
           <button
-            onClick={onSupport}
-            className="flex-1 min-h-[44px] rounded-lg text-sm font-bold bg-[#ECFDF5] text-[#059669] hover:bg-[#D1FAE5] transition-colors flex items-center justify-center gap-1.5"
+            onClick={onClear}
+            className="min-h-[44px] min-w-[44px] rounded-lg text-text-muted hover:text-text hover:bg-warm-gray transition-colors flex items-center justify-center"
+            title="Clear response"
           >
-            <ThumbsUp className="w-4 h-4" /> Support
+            <Minus className="w-4 h-4" />
           </button>
-          <button
-            onClick={onOppose}
-            className="flex-1 min-h-[44px] rounded-lg text-sm font-bold bg-[#FEF2F2] text-[#DC2626] hover:bg-[#FECACA] transition-colors flex items-center justify-center gap-1.5"
-          >
-            <ThumbsDown className="w-4 h-4" /> Oppose
-          </button>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -93,6 +92,7 @@ function EndorsementRespondTab({
   const respondToProposal = useMutation(api.requests.respond);
 
   const incoming = allRequests.filter((r) => r.toRoleId === roleId);
+  // Changeable: answered at top, unanswered at bottom (near thumbs)
   const answered = incoming.filter((r) => r.status !== "pending");
   const unanswered = incoming.filter((r) => r.status === "pending");
 
@@ -109,6 +109,10 @@ function EndorsementRespondTab({
 
   return (
     <div className="space-y-3">
+      <p className="text-xs text-text-muted">
+        Do you support or oppose these actions? You can change your response until submissions close.
+      </p>
+
       {answered.length > 0 && (
         <>
           <div className="flex items-center gap-2 text-text-muted">
@@ -125,8 +129,15 @@ function EndorsementRespondTab({
                 roleColor={fromRole?.color}
                 actionText={req.actionText}
                 response={req.status === "accepted" ? "support" : "oppose"}
-                onSupport={() => {}}
-                onOppose={() => {}}
+                onSupport={() =>
+                  void respondToProposal({ proposalId: req._id, status: "accepted" })
+                }
+                onOppose={() =>
+                  void respondToProposal({ proposalId: req._id, status: "declined" })
+                }
+                onClear={() =>
+                  void respondToProposal({ proposalId: req._id, status: "pending" })
+                }
               />
             );
           })}
@@ -150,16 +161,10 @@ function EndorsementRespondTab({
                 actionText={req.actionText}
                 response={null}
                 onSupport={() =>
-                  void respondToProposal({
-                    proposalId: req._id,
-                    status: "accepted",
-                  })
+                  void respondToProposal({ proposalId: req._id, status: "accepted" })
                 }
                 onOppose={() =>
-                  void respondToProposal({
-                    proposalId: req._id,
-                    status: "declined",
-                  })
+                  void respondToProposal({ proposalId: req._id, status: "declined" })
                 }
               />
             );
@@ -208,11 +213,10 @@ function AiRespondTab({
         .filter(({ action }) => isSubmittedAction(action));
     })
     .sort((a, b) => {
-      const aInfluenced =
-        a.action.aiInfluence != null && a.action.aiInfluence !== 0;
-      const bInfluenced =
-        b.action.aiInfluence != null && b.action.aiInfluence !== 0;
-      if (aInfluenced !== bInfluenced) return aInfluenced ? 1 : -1;
+      // Influenced first (top), uninfluenced last (bottom, near thumbs)
+      const aInfluenced = a.action.aiInfluence != null && a.action.aiInfluence !== 0;
+      const bInfluenced = b.action.aiInfluence != null && b.action.aiInfluence !== 0;
+      if (aInfluenced !== bInfluenced) return aInfluenced ? -1 : 1;
       return b.action.priority - a.action.priority;
     });
 
@@ -236,17 +240,20 @@ function AiRespondTab({
 
   return (
     <div className="space-y-3">
-      <p className="text-xs text-text-muted italic">
-        Your responses secretly affect the dice rolls.
-      </p>
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-text-muted italic">
+          Your responses secretly affect the dice rolls. Change anytime until dice are rolled.
+        </p>
+        <span className="text-[10px] text-text-muted font-mono shrink-0 ml-2">
+          Power: {power}%
+        </span>
+      </div>
 
       {influenced.length > 0 && (
         <>
           <div className="flex items-center gap-2 text-text-muted">
             <div className="flex-1 h-px bg-border" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider">
-              Responded
-            </span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">Responded</span>
             <div className="flex-1 h-px bg-border" />
           </div>
           {influenced.map(({ action, i, sub, role }) => (
@@ -256,11 +263,16 @@ function AiRespondTab({
               roleColor={role?.color}
               actionText={action.text}
               isSecret={action.secret}
-              response={
-                (action.aiInfluence ?? 0) > 0 ? "support" : "oppose"
+              response={(action.aiInfluence ?? 0) > 0 ? "support" : "oppose"}
+              onSupport={() =>
+                void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: power })
               }
-              onSupport={() => {}}
-              onOppose={() => {}}
+              onOppose={() =>
+                void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: -power })
+              }
+              onClear={() =>
+                void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: 0 })
+              }
             />
           ))}
         </>
@@ -270,27 +282,11 @@ function AiRespondTab({
         <>
           <div className="flex items-center gap-2 text-text-muted">
             <div className="flex-1 h-px bg-border" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider">
-              Awaiting your response
-            </span>
+            <span className="text-[11px] font-semibold uppercase tracking-wider">Awaiting your response</span>
             <div className="flex-1 h-px bg-border" />
           </div>
           {uninfluenced.map(({ action, i, sub, role }) => {
-            const isRolled = action.rolled != null;
-            if (isRolled) {
-              return (
-                <ActionResponseCard
-                  key={`${sub._id}-${i}`}
-                  roleName={role?.name ?? sub.roleId}
-                  roleColor={role?.color}
-                  actionText={action.text}
-                  isSecret={action.secret}
-                  response={null}
-                  onSupport={() => {}}
-                  onOppose={() => {}}
-                />
-              );
-            }
+            if (action.rolled != null) return null;
             return (
               <ActionResponseCard
                 key={`${sub._id}-${i}`}
@@ -300,18 +296,10 @@ function AiRespondTab({
                 isSecret={action.secret}
                 response={null}
                 onSupport={() =>
-                  void setInfluence({
-                    submissionId: sub._id,
-                    actionIndex: i,
-                    modifier: power,
-                  })
+                  void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: power })
                 }
                 onOppose={() =>
-                  void setInfluence({
-                    submissionId: sub._id,
-                    actionIndex: i,
-                    modifier: -power,
-                  })
+                  void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: -power })
                 }
               />
             );
