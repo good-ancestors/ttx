@@ -43,16 +43,22 @@ export default function FacilitatorPage({
   const roundsLite = useQuery(api.rounds.getByGameLightweight, { gameId });
   // Full rounds only needed for finished-game timeline
   const roundsFull = useQuery(api.rounds.getByGame, game?.status === "finished" ? { gameId } : "skip");
-  const currentRoundFull = useQuery(api.rounds.getCurrent, { gameId });
+  // Full current round only needed during submit/rolling/narrate (narrative panel, resolve results)
+  const gamePhase = game?.phase;
+  const currentRoundFull = useQuery(api.rounds.getCurrent,
+    gamePhase === "rolling" || gamePhase === "narrate" || gamePhase === "submit" ? { gameId } : "skip"
+  );
   // Summary submissions — excludes aiMeta, reasoning, artifact, computeAllocation
   const submissions = useQuery(api.submissions.getByGameAndRoundSummary, {
     gameId,
     roundNumber: game?.currentRound ?? 1,
   });
-  const proposals = useQuery(api.requests.getByGameAndRound, {
-    gameId,
-    roundNumber: game?.currentRound ?? 1,
-  });
+  // Proposals only relevant during submit/discuss phase (endorsement requests)
+  const proposals = useQuery(api.requests.getByGameAndRound,
+    gamePhase === "submit" || gamePhase === "discuss"
+      ? { gameId, roundNumber: game?.currentRound ?? 1 }
+      : "skip"
+  );
 
   const startGame = useMutation(api.games.startGame);
   const lockGame = useMutation(api.games.lock);
@@ -104,7 +110,6 @@ export default function FacilitatorPage({
 
   // Staggered dice reveal animation
   const [revealedCount, setRevealedCount] = useState(0);
-  const gamePhase = game?.phase;
   const isRollingPhase = gamePhase === "rolling" || gamePhase === "narrate";
   // Reset reveal count when leaving rolling/narrate phase
   useEffect(() => {

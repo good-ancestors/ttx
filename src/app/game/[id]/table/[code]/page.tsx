@@ -121,10 +121,13 @@ export default function TablePlayerPage({
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
   // Lightweight query — only enabled tables' roleId/roleName (for endorsement targets)
   const allTables = useQuery(api.tables.getEnabledRoleNames, { gameId });
-  const allRequests = useQuery(api.requests.getByGameAndRound, {
-    gameId,
-    roundNumber: game?.currentRound ?? 1,
-  });
+  // Requests only needed during submit phase (endorsement tracking + cleanup)
+  const playerPhase = game?.phase;
+  const allRequests = useQuery(api.requests.getByGameAndRound,
+    playerPhase === "submit" || playerPhase === "discuss"
+      ? { gameId, roundNumber: game?.currentRound ?? 1 }
+      : "skip"
+  );
 
   // ── Local state ───────────────────────────────────────────────────────────
   const [actionDrafts, setActionDrafts] = useState<ActionDraft[]>([emptyAction()]);
