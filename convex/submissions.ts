@@ -139,12 +139,15 @@ export const submit = mutation({
       if (a.text.length > 500) throw new Error(`Action text too long: ${a.text.length}/500 characters`);
     }
 
-    const existing = await ctx.db
+    const existingRaw = await ctx.db
       .query("submissions")
       .withIndex("by_table_and_round", (q) =>
         q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber)
       )
       .first();
+
+    // Ignore stale submissions from a prior game session (reused tableId)
+    const existing = existingRaw && existingRaw.gameId === args.gameId ? existingRaw : null;
 
     // Ensure all actions have actionStatus set for the new per-action model
     const stampedActions = args.actions.map((a) => ({
@@ -202,12 +205,15 @@ export const saveDraft = mutation({
       throw new Error(`Cannot save drafts during ${game.phase} phase`);
     }
 
-    const existing = await ctx.db
+    const existingRaw = await ctx.db
       .query("submissions")
       .withIndex("by_table_and_round", (q) =>
         q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber)
       )
       .first();
+
+    // Ignore stale submissions from a prior game session (reused tableId)
+    const existing = existingRaw && existingRaw.gameId === args.gameId ? existingRaw : null;
 
     const newAction = {
       text: args.text,
@@ -315,12 +321,15 @@ export const saveAndSubmit = mutation({
     if (game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) throw new Error("Submission deadline has passed");
     if (!args.text.trim()) throw new Error("Action text cannot be empty");
 
-    const existing = await ctx.db
+    const existingRaw = await ctx.db
       .query("submissions")
       .withIndex("by_table_and_round", (q) =>
         q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber)
       )
       .first();
+
+    // Ignore stale submissions from a prior game session (reused tableId)
+    const existing = existingRaw && existingRaw.gameId === args.gameId ? existingRaw : null;
 
     const newAction = {
       text: args.text,
@@ -809,10 +818,13 @@ export const submitInternal = internalMutation({
     computeAllocation: v.optional(v.object({ users: v.number(), capability: v.number(), safety: v.number() })),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db
+    const existingRaw = await ctx.db
       .query("submissions")
       .withIndex("by_table_and_round", (q) => q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber))
       .first();
+
+    // Ignore stale submissions from a prior game session (reused tableId)
+    const existing = existingRaw && existingRaw.gameId === args.gameId ? existingRaw : null;
 
     const stampedActions = args.actions.map((a) => ({ ...a, actionStatus: "submitted" as const }));
 

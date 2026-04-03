@@ -1,10 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback, useSyncExternalStore } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { Plus, Smartphone, Loader2, Trash2, Play, Clock, CheckCircle2, Pencil } from "lucide-react";
+
+/** Read facilitator auth from localStorage without hydration mismatch. */
+function useFacilitatorAuth() {
+  const subscribe = useCallback((cb: () => void) => {
+    window.addEventListener("storage", cb);
+    return () => window.removeEventListener("storage", cb);
+  }, []);
+
+  const getSnapshot = useCallback(() => {
+    if (localStorage.getItem("ttx-facilitator") !== "true") return false;
+    const expiry = parseInt(localStorage.getItem("ttx-facilitator-expiry") ?? "0", 10);
+    if (expiry > Date.now()) return true;
+    localStorage.removeItem("ttx-facilitator");
+    localStorage.removeItem("ttx-facilitator-expiry");
+    return false;
+  }, []);
+
+  const getServerSnapshot = useCallback(() => false, []);
+
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
 
 function formatTime(ts: number) {
   const diff = Date.now() - ts;
@@ -149,20 +170,9 @@ export default function SplashPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [passphrase, setPassphrase] = useState("");
-  const [authenticated, setAuthenticated] = useState(false);
-
-  // Check localStorage on first render
-  useState(() => {
-    if (typeof window !== "undefined" && localStorage.getItem("ttx-facilitator") === "true") {
-      const expiry = parseInt(localStorage.getItem("ttx-facilitator-expiry") ?? "0", 10);
-      if (expiry > Date.now()) {
-        setAuthenticated(true);
-      } else {
-        localStorage.removeItem("ttx-facilitator");
-        localStorage.removeItem("ttx-facilitator-expiry");
-      }
-    }
-  });
+  const storedAuth = useFacilitatorAuth();
+  const [localAuth, setLocalAuth] = useState(false);
+  const authenticated = storedAuth || localAuth;
 
   const handleCreate = async () => {
     setCreating(true);
@@ -256,7 +266,7 @@ export default function SplashPage() {
             onChange={(e) => setPassphrase(e.target.value.toLowerCase())}
             onKeyDown={(e) => {
               if (e.key === "Enter" && passphrase.trim() === FACILITATOR_PASSPHRASE) {
-                setAuthenticated(true);
+                setLocalAuth(true);
                 localStorage.setItem("ttx-facilitator", "true");
                 localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + 4 * 60 * 60 * 1000));
               }
@@ -272,7 +282,7 @@ export default function SplashPage() {
           <button
             onClick={() => {
               if (passphrase.trim() === FACILITATOR_PASSPHRASE) {
-                setAuthenticated(true);
+                setLocalAuth(true);
                 localStorage.setItem("ttx-facilitator", "true");
                 localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + 4 * 60 * 60 * 1000));
               }

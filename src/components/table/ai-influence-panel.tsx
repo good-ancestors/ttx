@@ -40,7 +40,14 @@ export function AiInfluencePanel({
       });
 
   // Only show other players' actions — AI's own actions are not influenceable
-  const allActions = submittedActionsFor((id) => id !== "ai-systems");
+  // Sort: uninfluenced actions first, then by priority descending
+  const allActions = submittedActionsFor((id) => id !== "ai-systems")
+    .sort((a, b) => {
+      const aInfluenced = a.action.aiInfluence != null && a.action.aiInfluence !== 0;
+      const bInfluenced = b.action.aiInfluence != null && b.action.aiInfluence !== 0;
+      if (aInfluenced !== bInfluenced) return aInfluenced ? 1 : -1;
+      return b.action.priority - a.action.priority;
+    });
 
   if (allActions.length === 0) return null;
 
