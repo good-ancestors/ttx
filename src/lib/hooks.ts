@@ -20,7 +20,9 @@ export function useInAppBrowserDetection() {
  * Used to gate expensive Convex subscriptions when the tab is in the background.
  */
 export function usePageVisibility(): boolean {
-  const [visible, setVisible] = useState(true);
+  const [visible, setVisible] = useState(() =>
+    typeof document === "undefined" || document.visibilityState === "visible"
+  );
   useEffect(() => {
     const handler = () => setVisible(document.visibilityState === "visible");
     document.addEventListener("visibilitychange", handler);

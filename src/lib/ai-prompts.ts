@@ -2,7 +2,12 @@
 
 /** Escape player text before embedding in LLM prompts (prevents injection via newlines/tags) */
 function escapeAction(text: string): string {
-  return text.replace(/\n/g, " ").replace(/</g, "&lt;");
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/\n/g, " ");
 }
 
 interface Lab {
