@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ROLES } from "@/lib/game-data";
 import { QRCode } from "@/components/qr-codes";
-import { Play, Lock, Bot, QrCode } from "lucide-react";
+import { Play, Lock, QrCode } from "lucide-react";
 import type { FacilitatorPhaseProps } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 
@@ -30,7 +30,7 @@ export function LobbyPhase({
   setControlMode,
   kickToAI,
 }: LobbyPhaseProps) {
-  const tableActionBtn = "text-xs px-3 py-1.5 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors flex items-center gap-1";
+
   const [showRejoin, setShowRejoin] = useState<Set<string>>(new Set());
   const toggleRejoin = (id: string) => setShowRejoin((prev) => {
     const next = new Set(prev);
@@ -67,12 +67,21 @@ export function LobbyPhase({
                   </span>
                 )}
                 {table.connected && (
-                  <span className="ml-auto text-xs text-viz-safety font-mono shrink-0">Connected</span>
+                  <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    <span className="text-xs text-viz-safety font-mono">Connected</span>
+                    <button
+                      onClick={() => toggleRejoin(table._id)}
+                      className="text-text-light hover:text-white transition-colors p-0.5"
+                      title="Show QR code for rejoin"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 )}
               </div>
 
-              {/* Mode toggle — click active mode to disable (except required roles) */}
-              {!isProjector && !table.connected && (
+              {/* Mode toggle — works for both connected and disconnected players */}
+              {!isProjector && (
                 <div className="flex rounded overflow-hidden border border-navy-light w-full mb-3">
                   {(["human", "ai", "npc"] as const).map((mode) => {
                     const isActive = table.enabled && table.controlMode === mode;
@@ -85,6 +94,9 @@ export function LobbyPhase({
                           } else if (!table.enabled) {
                             void toggleEnabled({ tableId: table._id });
                             void setControlMode({ tableId: table._id, controlMode: mode });
+                          } else if (table.connected && table.controlMode === "human" && mode === "ai") {
+                            // Connected human → kick to AI
+                            void kickToAI({ tableId: table._id });
                           } else {
                             void setControlMode({ tableId: table._id, controlMode: mode });
                           }
@@ -101,23 +113,6 @@ export function LobbyPhase({
                       </button>
                     );
                   })}
-                </div>
-              )}
-              {/* Connected player controls */}
-              {!isProjector && table.enabled && table.connected && table.controlMode === "human" && (
-                <div className="flex gap-2 mb-3">
-                  <button
-                    onClick={() => kickToAI({ tableId: table._id })}
-                    className={tableActionBtn}
-                  >
-                    <Bot className="w-3.5 h-3.5" /> Kick to AI
-                  </button>
-                  <button
-                    onClick={() => toggleRejoin(table._id)}
-                    className={tableActionBtn}
-                  >
-                    <QrCode className="w-3.5 h-3.5" /> Rejoin
-                  </button>
                 </div>
               )}
 

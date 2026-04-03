@@ -43,17 +43,23 @@ export default function FacilitatorPage({
   // games.get is always subscribed — lightweight, needed for phase detection even when hidden
   const game = useQuery(api.games.get, { gameId });
 
-  // Merged facilitator state: tables + submissions + proposals in one subscription
+  // Full tables query — needed for lobby (all 17 tables, including disabled)
   const gamePhase = game?.phase;
+  const allTablesForLobby = useQuery(api.tables.getByGame,
+    isVisible && game?.status === "lobby" ? { gameId } : "skip"
+  );
+  // Merged facilitator state: tables + submissions + proposals in one subscription
   const facilitatorState = useQuery(
     api.games.getFacilitatorState,
-    isVisible ? { gameId, roundNumber: game?.currentRound ?? 1 } : "skip"
+    isVisible && game?.status === "playing" ? { gameId, roundNumber: game?.currentRound ?? 1 } : "skip"
   );
-  const { tables, submissions, proposals } = facilitatorState ?? {
+  const { tables: enabledTables, submissions, proposals } = facilitatorState ?? {
     tables: [],
     submissions: [],
     proposals: [],
   };
+  // Lobby uses full tables; playing uses enabled-only from merged query
+  const tables = game?.status === "lobby" ? (allTablesForLobby ?? []) : enabledTables;
 
   // Lightweight rounds for sidebar chart + snapshot dropdown (excludes narrative, events, snapshots)
   const roundsLite = useQuery(api.rounds.getByGameLightweight, isVisible ? { gameId } : "skip");
