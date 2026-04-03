@@ -163,7 +163,9 @@ export default function FacilitatorPage({
     setRevealedSecrets(keys);
   };
 
-  if (!game || !facilitatorState || !roundsLite) {
+  // Lobby only needs game + tables; playing needs facilitatorState + rounds
+  const isLoading = !game || (game.status === "lobby" ? !allTablesForLobby : (!facilitatorState || !roundsLite));
+  if (isLoading) {
     return (
       <div className="min-h-screen bg-navy-dark flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-text-light animate-spin" />
@@ -173,13 +175,15 @@ export default function FacilitatorPage({
 
   // Full current round for narrative panel + summary content
   const currentRound = currentRoundFull ?? undefined;
+  // rounds is guaranteed non-null after loading guard for playing/finished states
+  const rounds = roundsLite ?? [];
   // Previous narrative from lightweight rounds (summaryNarrative) or current round's narrative for round 1
-  const prevRoundLite = roundsLite.find(r => r.number === game.currentRound - 1);
-  const currentRoundLite = roundsLite.find(r => r.number === game.currentRound);
+  const prevRoundLite = rounds.find(r => r.number === game.currentRound - 1);
+  const currentRoundLite = rounds.find(r => r.number === game.currentRound);
   const previousNarrative = prevRoundLite?.summaryNarrative ?? (game.currentRound === 1 ? currentRoundLite?.narrative : undefined);
   const phase = game.phase;
   const connectedCount = tables.filter((t) => t.connected).length;
-  const snapshotOptions = isProjector ? [] : roundsLite.flatMap(r => {
+  const snapshotOptions = isProjector ? [] : rounds.flatMap(r => {
     const opts: { number: number; label: string; useBefore: boolean; desc: string }[] = [];
     if (r.hasWorldStateBefore) opts.push({ number: r.number, label: r.label, useBefore: true, desc: `Before ${r.label} resolve` });
     if (r.worldStateAfter) opts.push({ number: r.number, label: r.label, useBefore: false, desc: `After ${r.label} resolve` });
@@ -412,7 +416,7 @@ export default function FacilitatorPage({
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
           {/* Left sidebar */}
           <div className="flex flex-col gap-4">
-            <RdProgressChart rounds={roundsLite} currentLabs={game.labs} currentRound={game.currentRound} />
+            <RdProgressChart rounds={rounds} currentLabs={game.labs} currentRound={game.currentRound} />
             <WorldStatePanel worldState={game.worldState} variant="dark" onEdit={isProjector ? undefined : () => setEditDials(true)} />
             {editDials && !isProjector && <WorldStateEditor gameId={gameId} worldState={game.worldState} startOpen />}
             <LabTracker

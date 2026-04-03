@@ -55,7 +55,7 @@ export function LobbyPhase({
             <div
               key={table._id}
               className={`bg-navy rounded-xl border p-3 md:p-4 transition-opacity ${
-                table.enabled ? "border-navy-light" : "border-navy-light/30 opacity-40"
+                table.enabled ? "border-navy-light" : "border-navy-light/40 opacity-60"
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
@@ -105,7 +105,7 @@ export function LobbyPhase({
                           isActive
                             ? mode === "human" ? "bg-viz-safety text-navy" : mode === "ai" ? "bg-viz-capability text-navy" : "bg-viz-warning text-navy"
                             : !table.enabled
-                              ? "bg-navy-dark text-navy-muted/50"
+                              ? "bg-navy-light/50 text-text-light/60 hover:text-white"
                               : "bg-navy-dark text-navy-muted hover:text-text-light"
                         }`}
                       >
