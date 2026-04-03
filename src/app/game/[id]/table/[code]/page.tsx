@@ -524,7 +524,7 @@ export default function TablePlayerPage({
                   <Clock className="w-3.5 h-3.5" aria-hidden="true" /> {timerDisplay}
                 </span>
               )}
-              {phase === "submit" && pendingProposalCount > 0 && (
+              {phase === "submit" && pendingProposalCount > 0 && !role.tags.includes("ai-system") && (
                 <span
                   className="text-[10px] bg-viz-warning text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1"
                   role="status"

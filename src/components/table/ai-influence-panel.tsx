@@ -39,10 +39,8 @@ export function AiInfluencePanel({
           .filter(({ action }) => isSubmittedAction(action));
       });
 
-  const allActions = [
-    ...submittedActionsFor((id) => id === "ai-systems"),
-    ...submittedActionsFor((id) => id !== "ai-systems"),
-  ];
+  // Only show other players' actions — AI's own actions are not influenceable
+  const allActions = submittedActionsFor((id) => id !== "ai-systems");
 
   if (allActions.length === 0) return null;
 
