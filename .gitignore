@@ -45,3 +45,4 @@ next-env.d.ts
 .env*.local
 convex/_generated/convex/
 convex/_generated/src/
+.claude/worktrees/
