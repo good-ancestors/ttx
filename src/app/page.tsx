@@ -154,7 +154,13 @@ export default function SplashPage() {
   // Check localStorage on first render
   useState(() => {
     if (typeof window !== "undefined" && localStorage.getItem("ttx-facilitator") === "true") {
-      setAuthenticated(true);
+      const expiry = parseInt(localStorage.getItem("ttx-facilitator-expiry") ?? "0", 10);
+      if (expiry > Date.now()) {
+        setAuthenticated(true);
+      } else {
+        localStorage.removeItem("ttx-facilitator");
+        localStorage.removeItem("ttx-facilitator-expiry");
+      }
     }
   });
 
@@ -252,6 +258,7 @@ export default function SplashPage() {
               if (e.key === "Enter" && passphrase.trim() === FACILITATOR_PASSPHRASE) {
                 setAuthenticated(true);
                 localStorage.setItem("ttx-facilitator", "true");
+                localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + 4 * 60 * 60 * 1000));
               }
             }}
             placeholder="Facilitator passphrase"
@@ -267,6 +274,7 @@ export default function SplashPage() {
               if (passphrase.trim() === FACILITATOR_PASSPHRASE) {
                 setAuthenticated(true);
                 localStorage.setItem("ttx-facilitator", "true");
+                localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + 4 * 60 * 60 * 1000));
               }
             }}
             className="w-full py-3.5 px-6 bg-white text-navy rounded-lg text-base font-bold

@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLES, getDisposition } from "@/lib/game-data";
-import { useCountdown, usePageVisibility } from "@/lib/hooks";
+import { useCountdown, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { WorldStatePanel } from "@/components/world-state-panel";
 import { LabTracker } from "@/components/lab-tracker";
@@ -38,6 +38,7 @@ export default function FacilitatorPage({
   const gameId = id as Id<"games">;
 
   const isVisible = usePageVisibility();
+  useSessionExpiry("ttx-facilitator-expiry", "/");
 
   // games.get is always subscribed — lightweight, needed for phase detection even when hidden
   const game = useQuery(api.games.get, { gameId });

@@ -7,7 +7,7 @@ import type { Doc, Id } from "@convex/_generated/dataModel";
 import { ROLES, isLabCeo, isLabSafety, getAiInfluencePower, isSubmittedAction } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
 import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
-import { useCountdown, useKeyboardScroll, usePageVisibility } from "@/lib/hooks";
+import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
 import { normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { loadRoleHandouts } from "@/lib/role-handouts";
@@ -104,6 +104,7 @@ export default function TablePlayerPage({
   const tableId = code as Id<"tables">;
 
   const isVisible = usePageVisibility();
+  useSessionExpiry(`ttx-session-expiry-${tableId}`, "/");
 
   // ── Convex queries & mutations ────────────────────────────────────────────
   // games.get and tables.get are always subscribed — lightweight, needed for phase detection

@@ -82,6 +82,42 @@ export function useCountdown(phaseEndsAt: number | undefined) {
   return { secondsLeft, minutes, seconds, display, isExpired, isUrgent };
 }
 
+const SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+const SESSION_CHECK_INTERVAL_MS = 60 * 1000; // check every 60s
+
+/**
+ * Session expiry — redirects to the given URL when the session expires.
+ * Stores an expiry timestamp in localStorage on mount. Checks every 60s.
+ * When expired, clears the session key and redirects (unmounting all components
+ * and killing all Convex subscriptions).
+ */
+export function useSessionExpiry(storageKey: string, redirectTo: string) {
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    // Set expiry on first visit (don't overwrite if already set)
+    const existing = localStorage.getItem(storageKey);
+    if (!existing) {
+      localStorage.setItem(storageKey, String(Date.now() + SESSION_TTL_MS));
+    }
+
+    const check = () => {
+      const expiryStr = localStorage.getItem(storageKey);
+      if (!expiryStr) return; // no session
+      const expiry = parseInt(expiryStr, 10);
+      if (Date.now() > expiry) {
+        localStorage.removeItem(storageKey);
+        window.location.href = redirectTo;
+      }
+    };
+
+    // Check immediately + on interval
+    check();
+    const interval = setInterval(check, SESSION_CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [storageKey, redirectTo]);
+}
+
 /**
  * Scrolls the focused textarea into view when the mobile keyboard opens.
  */
