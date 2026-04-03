@@ -29,27 +29,20 @@ export function AiInfluencePanel({
 
   if (!submissions || submissions.length === 0) return null;
 
-  // Only show actions from other roles that are submitted
-  const otherActions = submissions
-    .filter((s) => s.roleId !== "ai-systems")
-    .flatMap((sub) => {
-      const role = ROLES.find((r) => r.id === sub.roleId);
-      return sub.actions
-        .map((action, i) => ({ action, i, sub, role }))
-        .filter(({ action }) => action.actionStatus === "submitted" || !action.actionStatus);
-    });
+  const submittedActionsFor = (roleFilter: (roleId: string) => boolean) =>
+    submissions
+      .filter((s) => roleFilter(s.roleId))
+      .flatMap((sub) => {
+        const role = ROLES.find((r) => r.id === sub.roleId);
+        return sub.actions
+          .map((action, i) => ({ action, i, sub, role }))
+          .filter(({ action }) => action.actionStatus === "submitted" || !action.actionStatus);
+      });
 
-  // Also show own actions
-  const ownActions = submissions
-    .filter((s) => s.roleId === "ai-systems")
-    .flatMap((sub) => {
-      const role = ROLES.find((r) => r.id === sub.roleId);
-      return sub.actions
-        .map((action, i) => ({ action, i, sub, role }))
-        .filter(({ action }) => action.actionStatus === "submitted" || !action.actionStatus);
-    });
-
-  const allActions = [...ownActions, ...otherActions];
+  const allActions = [
+    ...submittedActionsFor((id) => id === "ai-systems"),
+    ...submittedActionsFor((id) => id !== "ai-systems"),
+  ];
 
   if (allActions.length === 0) return null;
 

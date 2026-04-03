@@ -454,7 +454,6 @@ function WhereWeAreNow({
             </div>
           </>
         )}
-        {/* Inline edit buttons */}
         {!isProjector && (
           <div className="flex gap-2 mt-3">
             <button onClick={onEditNarrative} className="text-[10px] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors flex items-center gap-1">

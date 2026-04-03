@@ -58,23 +58,24 @@ export function AttemptedPanel({
   const hasSubmissions = submissions.length > 0;
   const isRollingOrNarrate = phase === "rolling" || phase === "narrate";
 
-  // Build sorted action list — only submitted actions (not drafts)
-  const allActions = submissions.flatMap((sub) => {
-    const role = ROLES.find((r) => r.id === sub.roleId);
-    return sub.actions
-      .map((action, i) => ({ action, i, sub, role }))
-      .filter(({ action }) => action.actionStatus === "submitted" || !action.actionStatus);
-  });
+  const allActions = useMemo(() =>
+    submissions.flatMap((sub) => {
+      const role = ROLES.find((r) => r.id === sub.roleId);
+      return sub.actions
+        .map((action, i) => ({ action, i, sub, role }))
+        .filter(({ action }) => action.actionStatus === "submitted" || !action.actionStatus);
+    }),
+  [submissions]);
 
-  // During rolling/narrate, further filter to only graded/rolled
-  const rollingActions = allActions
-    .filter(({ action }) => action.probability != null || action.rolled != null)
-    .sort((a, b) => b.action.priority - a.action.priority);
+  const displayActions = useMemo(() => {
+    if (isRollingOrNarrate) {
+      return [...allActions]
+        .filter(({ action }) => action.probability != null || action.rolled != null)
+        .sort((a, b) => b.action.priority - a.action.priority);
+    }
+    return [...allActions].sort((a, b) => b.action.priority - a.action.priority);
+  }, [allActions, isRollingOrNarrate]);
 
-  // During submit phase, show all submitted actions (even ungraded)
-  const submitPhaseActions = allActions.sort((a, b) => b.action.priority - a.action.priority);
-
-  const displayActions = isRollingOrNarrate ? rollingActions : submitPhaseActions;
   const allRevealed = isRollingOrNarrate && revealedCount >= allActions.length;
 
   const { endorsementsByRole, endorsementsByText } = useMemo(() => {

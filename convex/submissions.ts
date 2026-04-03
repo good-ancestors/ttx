@@ -2,6 +2,8 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { logEvent, assertPhase } from "./events";
 
+const PRIORITY_HARD_CAP = 12;
+
 const actionValidator = v.object({
   text: v.string(),
   priority: v.number(),
@@ -92,7 +94,6 @@ export const submit = mutation({
 
     // Enforce action limit (max 5) and sanity-check priority budget
     // Auto-decay always sums to ≤10, but allow +2 tolerance for edge cases (e.g. manual override)
-    const PRIORITY_HARD_CAP = 12;
     const totalPriority = args.actions.reduce((s, a) => s + a.priority, 0);
     if (totalPriority > PRIORITY_HARD_CAP) {
       throw new Error(`Priority budget exceeded: ${totalPriority}/${PRIORITY_HARD_CAP}`);
@@ -243,7 +244,6 @@ export const submitAction = mutation({
     if (!action.text.trim()) throw new Error("Action text cannot be empty");
 
     // Enforce priority budget across submitted actions
-    const PRIORITY_HARD_CAP = 12;
     const submittedPriority = sub.actions
       .filter((a, i) => i !== args.actionIndex && a.actionStatus === "submitted")
       .reduce((s, a) => s + a.priority, 0);
@@ -344,7 +344,6 @@ export const updatePriority = mutation({
     if (!action) return;
 
     // Enforce priority budget
-    const PRIORITY_HARD_CAP = 12;
     const otherPriority = sub.actions
       .filter((a, i) => i !== args.actionIndex && a.actionStatus === "submitted")
       .reduce((s, a) => s + a.priority, 0);
@@ -635,7 +634,7 @@ export const rollAllInternal = internalMutation({
         if (action.actionStatus === "draft") return action;
         const probability = action.probability ?? 50;
         const rawRoll = Math.floor(Math.random() * 100) + 1;
-        const displayRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
+        const displayRoll = applyInfluence(rawRoll, action.aiInfluence);
         return { ...action, probability, rolled: displayRoll, success: displayRoll <= probability };
       });
       await ctx.db.patch(sub._id, { actions, status: "resolved" });
