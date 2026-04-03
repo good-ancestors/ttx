@@ -331,42 +331,22 @@ export const saveAndSubmit = mutation({
     // Ignore stale submissions from a prior game session (reused tableId)
     const existing = existingRaw && existingRaw.gameId === args.gameId ? existingRaw : null;
 
+    // Priority is assigned by rank order — 1st submitted gets highest priority.
+    // Calculated server-side during grading, not enforced on submit.
+    const submittedCount = existing
+      ? existing.actions.filter((a) => a.actionStatus === "submitted").length
+      : 0;
+    const rank = submittedCount + 1; // 1-based rank
+
     const newAction = {
       text: args.text,
-      priority: args.priority,
+      priority: rank, // Temporary rank — recalculated during grading based on final order
       secret: args.secret,
       actionStatus: "submitted" as const,
     };
 
-    // If table was switched from NPC/AI to Human, the old actions may have been
-    // auto-generated with different priority budgets. Check if the table's current
-    // control mode is human — if so, only count human-submitted actions for budget.
-    const table = await ctx.db.get(args.tableId);
-    const isHumanTable = table?.controlMode === "human";
-
-    // Enforce priority budget across already-submitted actions
-    const existingSubmittedPriority = existing
-      ? existing.actions.filter((a) => a.actionStatus === "submitted").reduce((s, a) => s + a.priority, 0)
-      : 0;
-
-    // If human player is adding to a table with pre-existing NPC actions, clear them first
-    if (existing && isHumanTable && existingSubmittedPriority > PRIORITY_HARD_CAP) {
-      // NPC/AI actions exceed human budget — replace with just the new action
-      await ctx.db.patch(existing._id, { actions: [newAction], status: "submitted" });
-      await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
-        actionIndex: 0,
-        text: args.text,
-        note: "Cleared pre-existing NPC actions on human takeover",
-      });
-      return { submissionId: existing._id, actionIndex: 0 };
-    }
-
-    if (existingSubmittedPriority + args.priority > PRIORITY_HARD_CAP) {
-      throw new Error(`Priority budget exceeded: ${existingSubmittedPriority + args.priority}/${PRIORITY_HARD_CAP}`);
-    }
-
     if (existing) {
-      if (existing.actions.length >= 5) throw new Error("Maximum 5 actions per round");
+      if (submittedCount >= 5) throw new Error("Maximum 5 actions per round");
       const actions = [...existing.actions, newAction];
       await ctx.db.patch(existing._id, { actions, status: "submitted" });
       await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {

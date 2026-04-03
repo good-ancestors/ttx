@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import { ROLES, isSubmittedAction } from "@/lib/game-data";
-import { ThumbsUp, ThumbsDown, EyeOff, Inbox, Minus } from "lucide-react";
+import { ThumbsUp, ThumbsDown, EyeOff, Inbox } from "lucide-react";
 
 // ─── Shared response card ───────────────────────────────────────────────────
 
@@ -47,7 +47,7 @@ function ActionResponseCard({
 
       <div className="flex items-center gap-2">
         <button
-          onClick={onSupport}
+          onClick={response === "support" && onClear ? onClear : onSupport}
           className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
             response === "support"
               ? "bg-[#059669] text-white"
@@ -57,7 +57,7 @@ function ActionResponseCard({
           <ThumbsUp className="w-4 h-4" /> Support
         </button>
         <button
-          onClick={onOppose}
+          onClick={response === "oppose" && onClear ? onClear : onOppose}
           className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
             response === "oppose"
               ? "bg-[#DC2626] text-white"
@@ -66,15 +66,6 @@ function ActionResponseCard({
         >
           <ThumbsDown className="w-4 h-4" /> Oppose
         </button>
-        {response !== null && onClear && (
-          <button
-            onClick={onClear}
-            className="min-h-[44px] min-w-[44px] rounded-lg text-text-muted hover:text-text hover:bg-warm-gray transition-colors flex items-center justify-center"
-            title="Clear response"
-          >
-            <Minus className="w-4 h-4" />
-          </button>
-        )}
       </div>
     </div>
   );

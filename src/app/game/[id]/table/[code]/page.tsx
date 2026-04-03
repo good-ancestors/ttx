@@ -417,7 +417,7 @@ export default function TablePlayerPage({
         roundNumber: game.currentRound,
         roleId: role.id,
         text: draft.text.trim(),
-        priority: normaliseActions([draft])[0]?.priority ?? 3,
+        priority: 1, // Rank assigned server-side based on submission order
         secret: draft.secret || undefined,
       });
       // Remove from local drafts
@@ -523,8 +523,8 @@ export default function TablePlayerPage({
         className={`min-h-dvh bg-off-white overflow-x-hidden ${showTabs ? "pb-16" : ""}`}
         style={{ paddingBottom: showTabs ? "max(64px, calc(64px + env(safe-area-inset-bottom)))" : "max(env(safe-area-inset-bottom), 20px)" }}
       >
-        {/* Header */}
-        <div className="sticky top-0 z-10 bg-off-white/95 backdrop-blur-sm border-b border-border px-4 py-3 pt-[max(12px,env(safe-area-inset-top))]">
+        {/* Header — fixed so it's always visible */}
+        <div className="fixed top-0 left-0 right-0 z-10 bg-off-white/95 backdrop-blur-sm border-b border-border px-4 py-3 pt-[max(12px,env(safe-area-inset-top))]">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: role.color }} />
@@ -548,7 +548,7 @@ export default function TablePlayerPage({
           </div>
         </div>
 
-        <div className="px-4 pt-4">
+        <div className="px-4 pt-16">
           {/* Draft restored toast */}
           {draftRestored && (
             <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg p-2.5 mb-3 flex items-center gap-2">
@@ -602,6 +602,7 @@ export default function TablePlayerPage({
                 roundNarrative={roundNarrative}
                 roundLabel={round.label}
                 submissionsOpen={false}
+                labs={game.labs}
               />
               {/* Safety lead: read-only lab allocation during discuss */}
               {isLabSafety(role) && role.labId && (
@@ -628,6 +629,7 @@ export default function TablePlayerPage({
                   roundNarrative={roundNarrative}
                   roundLabel={round.label}
                   submissionsOpen={true}
+                  labs={game.labs}
                 />
               )}
 
