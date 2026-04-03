@@ -271,10 +271,12 @@ export function RoundPhase({
                 onClick={handleRollDice}
                 disabled={resolving || ungradedCount > 0}
                 className={`flex-1 py-3 rounded-lg font-extrabold text-base transition-colors flex items-center justify-center gap-2 ${
-                  ungradedCount === 0
-                    ? "bg-white text-navy hover:bg-off-white"
-                    : "bg-navy-light text-navy-muted cursor-default"
-                } disabled:opacity-50`}
+                  resolving
+                    ? "bg-navy-light text-navy-muted opacity-50"
+                    : ungradedCount === 0
+                      ? "bg-white text-navy hover:bg-off-white shadow-lg ring-1 ring-white/20"
+                      : "bg-navy-light text-navy-muted cursor-default"
+                }`}
               >
                 <Dices className="w-5 h-5" /> Roll Dice
               </button>

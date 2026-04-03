@@ -311,12 +311,23 @@ export default function FacilitatorPage({
                     {!isProjector && (
                       <div className="flex gap-1 mb-2">
                         {table.connected && table.controlMode === "human" ? (
-                          <button
-                            onClick={() => void kickToAI({ tableId: table._id })}
-                            className="text-[9px] px-2 py-1 rounded bg-navy-light text-text-light hover:bg-navy-muted font-medium transition-colors w-full"
-                          >
-                            Kick to AI
-                          </button>
+                          <div className="flex rounded overflow-hidden border border-navy-light w-full">
+                            <button className="text-[9px] px-2 py-1 font-semibold flex-1 bg-viz-safety text-navy cursor-default">
+                              Human
+                            </button>
+                            <button
+                              onClick={() => void kickToAI({ tableId: table._id })}
+                              className="text-[9px] px-2 py-1 font-semibold transition-colors flex-1 bg-navy-dark text-navy-muted hover:text-viz-capability hover:bg-navy-light"
+                            >
+                              AI
+                            </button>
+                            <button
+                              onClick={() => void setControlMode({ tableId: table._id, controlMode: "npc" })}
+                              className="text-[9px] px-2 py-1 font-semibold transition-colors flex-1 bg-navy-dark text-navy-muted hover:text-viz-warning hover:bg-navy-light"
+                            >
+                              NPC
+                            </button>
+                          </div>
                         ) : (
                           <div className="flex rounded overflow-hidden border border-navy-light w-full">
                             {(["human", "ai", "npc"] as const).map((mode) => (
