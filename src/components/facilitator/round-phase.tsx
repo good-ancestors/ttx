@@ -47,6 +47,7 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   finishGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
   forceClearLock: (args: { gameId: Id<"games"> }) => Promise<unknown>;
+  isTimerExpired?: boolean;
 }
 
 // eslint-disable-next-line complexity
@@ -79,6 +80,7 @@ export function RoundPhase({
   finishGame,
   addLab,
   forceClearLock,
+  isTimerExpired,
 }: RoundPhaseProps) {
   const phase = game.phase;
   const isResolvingPhase = phase === "rolling" || phase === "narrate";
@@ -170,7 +172,14 @@ export function RoundPhase({
       {/* ─── 5. Skip timer + Grade/Roll buttons (submit phase) ─── */}
       {phase === "submit" && !isProjector && (
         <div className="space-y-3">
-          {/* Close Submissions button removed — timer expiry + skip in nav bar handle this */}
+          {game.phaseEndsAt && !isTimerExpired && !resolving && (
+            <button
+              onClick={safeAction("Skip timer", () => skipTimer({ gameId }))}
+              className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1"
+            >
+              <SkipForward className="w-3 h-3" /> Close Submissions
+            </button>
+          )}
           {submittedActionCount > 0 && (
             <div className="flex gap-3">
               {/* Grade Remaining — AI grades actions without a probability */}

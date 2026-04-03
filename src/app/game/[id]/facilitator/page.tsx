@@ -461,6 +461,7 @@ export default function FacilitatorPage({
               finishGame={finishGame}
               addLab={addLab}
               forceClearLock={forceClearLock}
+              isTimerExpired={isExpired}
             />
           </div>
         </div>
