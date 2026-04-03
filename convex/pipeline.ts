@@ -533,8 +533,10 @@ export const rollAndNarrate = internalAction({
 
       // Generate nonce + snapshot before
       const nonce = generateNonce();
-      await ctx.runMutation(internal.rounds.setResolveNonce, { gameId, roundNumber, nonce });
-      await ctx.runMutation(internal.games.setResolveNonce, { gameId, nonce });
+      await Promise.all([
+        ctx.runMutation(internal.rounds.setResolveNonce, { gameId, roundNumber, nonce }),
+        ctx.runMutation(internal.games.setResolveNonce, { gameId, nonce }),
+      ]);
 
       const game = await ctx.runQuery(internal.games.getInternal, { gameId });
       if (!game) throw new Error("Game not found");
