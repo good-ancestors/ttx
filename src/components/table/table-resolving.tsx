@@ -1,8 +1,7 @@
 "use client";
 
 import type { Id } from "@convex/_generated/dataModel";
-import { getAiInfluencePower, type Role } from "@/lib/game-data";
-import { AiInfluencePanel } from "@/components/ai-influence-panel";
+import type { Role } from "@/lib/game-data";
 import { ResultActionCard, type ResultAction } from "./result-action-card";
 
 export interface TableResolvingProps {
@@ -26,28 +25,17 @@ export interface TableResolvingProps {
 }
 
 export function TableResolving({
-  gameId,
-  game,
-  role,
-  aiDisposition,
+  gameId: _gameId,
+  game: _game,
+  role: _role,
+  aiDisposition: _aiDisposition,
   phase,
   round,
   sortedResultActions,
 }: TableResolvingProps) {
   return (
     <div>
-      {/* AI Systems influence panel — shown during rolling phase */}
-      {role.tags.includes("ai-system") && phase === "rolling" && aiDisposition && (
-        <div className="mb-4">
-          <AiInfluencePanel
-            gameId={gameId}
-            roundNumber={game.currentRound}
-            disposition={aiDisposition}
-            influencePower={getAiInfluencePower(game.labs)}
-            ownRoleId={role.id}
-          />
-        </div>
-      )}
+      {/* AI influence panel is rendered by the parent page during submit+rolling phases */}
 
       {/* Narrative summary */}
       {phase === "narrate" && round?.summary && (
