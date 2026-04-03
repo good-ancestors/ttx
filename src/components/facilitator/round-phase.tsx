@@ -142,7 +142,6 @@ export function RoundPhase({
 }: RoundPhaseProps) {
   const phase = game.phase;
 
-  // Count submitted (not draft) actions and ungraded submitted actions
   const submittedActions = submissions.flatMap((s) =>
     s.actions.filter((a) => a.actionStatus === "submitted" || !a.actionStatus)
   );

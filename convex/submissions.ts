@@ -234,9 +234,8 @@ export const submitAction = mutation({
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) throw new Error("Submission not found");
-    const game = await ctx.db.get(sub.gameId);
-    if (game && game.phase !== "submit") throw new Error(`Cannot submit during ${game.phase} phase`);
-    if (game?.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) throw new Error("Submission deadline has passed");
+    const game = await assertPhase(ctx, sub.gameId, ["submit"], "submit actions");
+    if (game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) throw new Error("Submission deadline has passed");
 
     const action = sub.actions[args.actionIndex];
     if (!action) throw new Error("Action not found");
@@ -270,8 +269,7 @@ export const editSubmitted = mutation({
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
-    const game = await ctx.db.get(sub.gameId);
-    if (game && game.phase !== "submit") throw new Error("Cannot edit actions after submissions close");
+    await assertPhase(ctx, sub.gameId, ["submit"], "edit actions");
 
     const action = sub.actions[args.actionIndex];
     if (!action) return;
@@ -299,8 +297,7 @@ export const deleteAction = mutation({
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
-    const game = await ctx.db.get(sub.gameId);
-    if (game && game.phase !== "submit") throw new Error("Cannot delete actions after submissions close");
+    await assertPhase(ctx, sub.gameId, ["submit"], "delete actions");
 
     const action = sub.actions[args.actionIndex];
     if (!action) return;
@@ -336,8 +333,7 @@ export const updatePriority = mutation({
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
-    const game = await ctx.db.get(sub.gameId);
-    if (game && game.phase !== "submit") throw new Error("Cannot change priority after submissions close");
+    await assertPhase(ctx, sub.gameId, ["submit"], "change priority");
 
     const action = sub.actions[args.actionIndex];
     if (!action) return;

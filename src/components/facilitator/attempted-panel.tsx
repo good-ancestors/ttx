@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ROLES, cycleProbability } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { ProbabilityBadge } from "@/components/action-card";
@@ -77,34 +77,33 @@ export function AttemptedPanel({
   const displayActions = isRollingOrNarrate ? rollingActions : submitPhaseActions;
   const allRevealed = isRollingOrNarrate && revealedCount >= allActions.length;
 
-  // Pre-index endorsements by roleId and text for O(1) lookups
-  const acceptedProposals = proposals.filter((p) => p.status === "accepted");
-  const endorsementsByRole = new Map<string, Proposal[]>();
-  const endorsementsByText = new Map<string, Proposal[]>();
-  for (const p of acceptedProposals) {
-    for (const rId of [p.fromRoleId, p.toRoleId]) {
-      const list = endorsementsByRole.get(rId) ?? [];
-      list.push(p);
-      endorsementsByRole.set(rId, list);
+  const { endorsementsByRole, endorsementsByText } = useMemo(() => {
+    const byRole = new Map<string, Proposal[]>();
+    const byText = new Map<string, Proposal[]>();
+    for (const p of proposals.filter((p) => p.status === "accepted")) {
+      for (const rId of [p.fromRoleId, p.toRoleId]) {
+        const list = byRole.get(rId) ?? [];
+        list.push(p);
+        byRole.set(rId, list);
+      }
+      const key = p.actionText.toLowerCase().trim();
+      const textList = byText.get(key) ?? [];
+      textList.push(p);
+      byText.set(key, textList);
     }
-    const key = p.actionText.toLowerCase().trim();
-    const textList = endorsementsByText.get(key) ?? [];
-    textList.push(p);
-    endorsementsByText.set(key, textList);
-  }
+    return { endorsementsByRole: byRole, endorsementsByText: byText };
+  }, [proposals]);
 
   function getEndorsements(roleId: string, actionText: string): Proposal[] {
     const aText = actionText.toLowerCase().trim();
     const seen = new Set<string>();
     const matches: Proposal[] = [];
-    // Role-based matches with text proximity
     for (const p of endorsementsByRole.get(roleId) ?? []) {
       const pText = p.actionText.toLowerCase().trim();
       if (pText === aText || aText.includes(pText) || pText.includes(aText)) {
         if (!seen.has(p._id)) { seen.add(p._id); matches.push(p); }
       }
     }
-    // Exact text matches from any role
     for (const p of endorsementsByText.get(aText) ?? []) {
       if (!seen.has(p._id)) { seen.add(p._id); matches.push(p); }
     }

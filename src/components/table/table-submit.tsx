@@ -34,7 +34,6 @@ export interface TableSubmitProps {
   tableId: Id<"tables">;
   aiDisposition: string | undefined;
   computeStock: number;
-  // Submitted actions from Convex (per-action submit model)
   submittedActions: { text: string; priority: number; secret?: boolean; probability?: number; actionStatus?: string }[];
   timerDisplay: string;
   // Form state (local drafts — not yet submitted)

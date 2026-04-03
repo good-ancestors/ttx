@@ -63,6 +63,25 @@ function loadDraft(tableId: string, roundNumber: number): DraftData | null {
   }
 }
 
+/** Cancel endorsement requests for drafts being discarded. */
+function cancelDraftEndorsements(
+  drafts: ActionDraft[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  allRequests: any[] | undefined,
+  roleId: string | undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  cancelFn: (args: { requestId: any }) => unknown,
+) {
+  for (const draft of drafts.filter((a) => a.text.trim())) {
+    for (const targetId of draft.endorseTargets) {
+      const match = (allRequests ?? []).find(
+        (r) => r.fromRoleId === roleId && r.toRoleId === targetId && r.actionText === draft.text.trim()
+      );
+      if (match) void cancelFn({ requestId: match._id });
+    }
+  }
+}
+
 /** Map the Nth submitted action back to its actual index in the actions array. */
 function nthSubmittedIndex(actions: { actionStatus?: string }[], n: number): number {
   let count = 0;
@@ -307,15 +326,7 @@ export default function TablePlayerPage({
       if (draftWithText.length > 0) {
         autoSubmittedRef.current = true;
         setAutoSubmitMessage("Time's up — only submitted actions will count");
-        // Cancel endorsement requests attached to discarded drafts
-        for (const draft of draftWithText) {
-          for (const targetId of draft.endorseTargets) {
-            const match = (allRequests ?? []).find(
-              (r) => r.fromRoleId === role?.id && r.toRoleId === targetId && r.actionText === draft.text.trim()
-            );
-            if (match) void cancelRequest({ requestId: match._id });
-          }
-        }
+        cancelDraftEndorsements(draftWithText, allRequests, role?.id, cancelRequest);
         setActionDrafts([emptyAction()]);
       }
     }
@@ -333,15 +344,7 @@ export default function TablePlayerPage({
       !autoSubmittedRef.current
     ) {
       autoSubmittedRef.current = true;
-      // Cancel endorsement requests on discarded drafts
-      for (const draft of actionDrafts.filter((a) => a.text.trim())) {
-        for (const targetId of draft.endorseTargets) {
-          const match = (allRequests ?? []).find(
-            (r) => r.fromRoleId === role?.id && r.toRoleId === targetId && r.actionText === draft.text.trim()
-          );
-          if (match) void cancelRequest({ requestId: match._id });
-        }
-      }
+      cancelDraftEndorsements(actionDrafts, allRequests, role?.id, cancelRequest);
       setActionDrafts([emptyAction()]);
     }
     prevPhaseRef.current = phase;
