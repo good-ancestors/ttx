@@ -60,6 +60,146 @@ function defaultProbability(priority: number): number {
   return 30;
 }
 
+async function gradeSubmissionBatch(
+  ctx: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  opts: {
+    gameId: Id<"games">;
+    game: Game;
+    ungraded: Submission[];
+    allSubmissions: Submission[];
+    rounds: Round[];
+    requests: { fromRoleId: string; toRoleId: string; actionText: string; fromRoleName: string; toRoleName: string; requestType: string; computeAmount?: number; status: string }[];
+    enabledRoleNames: string[];
+    roundNumber: number;
+    aiDisposition?: { label: string; description: string };
+    onlyUngraded?: boolean; // If true, only grade actions without probability
+  },
+) {
+  const { gameId, game, ungraded, allSubmissions, rounds, requests, enabledRoleNames, roundNumber, aiDisposition, onlyUngraded } = opts;
+  const GRADING_CONCURRENCY = 12;
+  let completed = 0;
+  const total = ungraded.length;
+
+  for (let batch = 0; batch < ungraded.length; batch += GRADING_CONCURRENCY) {
+    const batchSubs = ungraded.slice(batch, batch + GRADING_CONCURRENCY);
+    const batchResults = await Promise.allSettled(batchSubs.map(async (sub) => {
+      const role = ROLES.find((r) => r.id === sub.roleId);
+      if (!role) return;
+
+      const otherSubs = allSubmissions
+        .filter((s) => s.roleId !== sub.roleId)
+        .map((s) => ({
+          roleName: ROLES.find((r) => r.id === s.roleId)?.name ?? s.roleId,
+          actions: s.actions.map((a) => ({ text: a.text, priority: a.priority })),
+        }));
+
+      const actionRequests: ActionRequest[] = (requests ?? [])
+        .filter((r) => r.fromRoleId === sub.roleId || r.toRoleId === sub.roleId)
+        .map((r) => ({
+          actionText: r.actionText, fromRoleName: r.fromRoleName, toRoleName: r.toRoleName,
+          requestType: r.requestType, computeAmount: r.computeAmount, status: r.status,
+        }));
+
+      const actionsToGrade = onlyUngraded
+        ? sub.actions.filter((a) => a.probability == null).map((a) => ({ text: a.text, priority: a.priority }))
+        : sub.actions.map((a) => ({ text: a.text, priority: a.priority }));
+
+      const prompt = buildGradingPrompt({
+        round: roundNumber,
+        roundLabel: rounds.find((r) => r.number === roundNumber)?.label ?? `Round ${roundNumber}`,
+        worldState: game.worldState,
+        roleName: role.name,
+        roleDescription: role.brief ?? "",
+        roleTags: [...role.tags],
+        actions: actionsToGrade,
+        labs: game.labs,
+        actionRequests,
+        enabledRoles: enabledRoleNames,
+        aiDisposition: sub.roleId === "ai-systems" ? aiDisposition : undefined,
+        otherSubmissions: otherSubs,
+        labSpec: game.labs.find((l) => l.roleId === sub.roleId)?.spec,
+      });
+
+      const gradedActions = await callGradingLLM(sub, prompt, onlyUngraded);
+      await ctx.runMutation(internal.submissions.applyGradingInternal, {
+        submissionId: sub._id,
+        actions: gradedActions,
+      });
+      completed++;
+    }));
+
+    for (const r of batchResults) {
+      if (r.status === "rejected") {
+        completed--;
+        console.error(`[pipeline] Grading failed for submission:`, r.reason);
+      }
+    }
+
+    await ctx.runMutation(internal.games.updatePipelineStatus, {
+      gameId,
+      status: { step: "grading", detail: `Evaluating submissions...`, progress: `${completed}/${total}`, startedAt: Date.now() },
+    });
+  }
+}
+
+// Call LLM for grading, with fallback to default probabilities
+async function callGradingLLM(
+  sub: Submission,
+  prompt: string,
+  onlyUngraded?: boolean,
+): Promise<Submission["actions"]> {
+  try {
+    const { output } = await callAnthropic<{ actions: { text: string; probability: number; reasoning?: string }[] }>({
+      models: GRADING_MODELS,
+      systemPrompt: SCENARIO_CONTEXT,
+      prompt,
+      maxTokens: 2048,
+      toolName: "grade_actions",
+      schema: {
+        type: "object",
+        properties: {
+          actions: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                text: { type: "string" },
+                probability: { type: "number", enum: [10, 30, 50, 70, 90] },
+                reasoning: { type: "string" },
+              },
+              required: ["text", "probability", "reasoning"],
+            },
+          },
+        },
+        required: ["actions"],
+      },
+    });
+
+    if (output?.actions) {
+      if (onlyUngraded) {
+        let gradedIdx = 0;
+        return sub.actions.map((action) => {
+          if (action.probability != null) return action;
+          const graded = output.actions[gradedIdx++];
+          return { ...action, probability: graded?.probability ?? defaultProbability(action.priority), reasoning: graded?.reasoning };
+        });
+      }
+      return sub.actions.map((action, i) => ({
+        ...action,
+        probability: output.actions[i]?.probability ?? defaultProbability(action.priority),
+        reasoning: output.actions[i]?.reasoning,
+      }));
+    }
+  } catch (err) {
+    console.error(`[pipeline] Grading LLM failed for ${sub.roleId}, using defaults:`, err);
+  }
+  // Fallback
+  return sub.actions.map((action) => ({
+    ...action,
+    probability: action.probability ?? defaultProbability(action.priority),
+  }));
+}
+
 // ─── Stage 1: Grade all ungraded submissions ──────────────────────────────────
 
 export const gradeAll = internalAction({
@@ -114,127 +254,10 @@ export const gradeAll = internalAction({
         status: { step: "grading", detail: `Evaluating ${total} submissions...`, progress: `0/${total}`, startedAt: Date.now() },
       });
 
-      // Grade in batches — progress updates at batch boundaries to avoid OCC conflicts
-      const GRADING_CONCURRENCY = 12;
-      let completed = 0;
-      for (let batch = 0; batch < ungraded.length; batch += GRADING_CONCURRENCY) {
-        const batchSubs = ungraded.slice(batch, batch + GRADING_CONCURRENCY);
-        const batchResults = await Promise.allSettled(batchSubs.map(async (sub) => {
-        const role = ROLES.find((r) => r.id === sub.roleId);
-        if (!role) return;
-
-        const otherSubs = submissions
-          .filter((s) => s.roleId !== sub.roleId)
-          .map((s) => ({
-            roleName: ROLES.find((r) => r.id === s.roleId)?.name ?? s.roleId,
-            actions: s.actions.map((a) => ({ text: a.text, priority: a.priority })),
-          }));
-
-        const actionRequests: ActionRequest[] = (requests ?? [])
-          .filter((r) => r.fromRoleId === sub.roleId || r.toRoleId === sub.roleId)
-          .map((r) => ({
-            actionText: r.actionText,
-            fromRoleName: r.fromRoleName,
-            toRoleName: r.toRoleName,
-            requestType: r.requestType,
-            computeAmount: r.computeAmount,
-            status: r.status,
-          }));
-
-        const labSpec = game.labs.find((l) => l.roleId === sub.roleId)?.spec;
-
-        const prompt = buildGradingPrompt({
-          round: roundNumber,
-          roundLabel: rounds.find((r) => r.number === roundNumber)?.label ?? `Round ${roundNumber}`,
-          worldState: game.worldState,
-          roleName: role.name,
-          roleDescription: role.brief ?? "",
-          roleTags: [...role.tags],
-          actions: sub.actions.map((a) => ({ text: a.text, priority: a.priority })),
-          labs: game.labs,
-          actionRequests,
-          enabledRoles: enabledRoleNames,
-          aiDisposition: sub.roleId === "ai-systems" ? aiDisposition : undefined,
-          otherSubmissions: otherSubs,
-          labSpec,
-        });
-
-        try {
-          const { output } = await callAnthropic<{ actions: { text: string; probability: number; reasoning?: string }[] }>({
-            models: GRADING_MODELS,
-            systemPrompt: SCENARIO_CONTEXT,
-            prompt,
-            maxTokens: 2048,
-            toolName: "grade_actions",
-            schema: {
-              type: "object",
-              properties: {
-                actions: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      text: { type: "string" },
-                      probability: { type: "number", enum: [10, 30, 50, 70, 90] },
-                      reasoning: { type: "string" },
-                    },
-                    required: ["text", "probability", "reasoning"],
-                  },
-                },
-              },
-              required: ["actions"],
-            },
-          });
-
-          if (output?.actions) {
-            const gradedActions = sub.actions.map((action, i) => ({
-              ...action,
-              probability: output.actions[i]?.probability ?? defaultProbability(action.priority),
-              reasoning: output.actions[i]?.reasoning,
-            }));
-            await ctx.runMutation(internal.submissions.applyGradingInternal, {
-              submissionId: sub._id,
-              actions: gradedActions,
-            });
-          } else {
-            // Fallback: assign default probabilities
-            const gradedActions = sub.actions.map((action) => ({
-              ...action,
-              probability: defaultProbability(action.priority),
-            }));
-            await ctx.runMutation(internal.submissions.applyGradingInternal, {
-              submissionId: sub._id,
-              actions: gradedActions,
-            });
-          }
-        } catch (err) {
-          console.error(`[pipeline] Grading LLM failed for ${sub.roleId}, using defaults:`, err);
-          const gradedActions = sub.actions.map((action) => ({
-            ...action,
-            probability: defaultProbability(action.priority),
-          }));
-          await ctx.runMutation(internal.submissions.applyGradingInternal, {
-            submissionId: sub._id,
-            actions: gradedActions,
-          });
-        }
-
-        completed++;
-      }));
-
-        for (const r of batchResults) {
-          if (r.status === "rejected") {
-            completed--;
-            console.error(`[pipeline] Grading failed for submission:`, r.reason);
-          }
-        }
-
-        // Update progress at batch boundary (single mutation per batch avoids OCC conflicts)
-        await ctx.runMutation(internal.games.updatePipelineStatus, {
-          gameId,
-          status: { step: "grading", detail: `Evaluating submissions...`, progress: `${completed}/${total}`, startedAt: Date.now() },
-        });
-      } // end batch loop
+      await gradeSubmissionBatch(ctx, {
+        gameId, game, ungraded, allSubmissions: submissions, rounds, requests: requests ?? [],
+        enabledRoleNames, roundNumber, aiDisposition,
+      });
 
       // Schedule next stage: influence
       await ctx.scheduler.runAfter(0, internal.pipeline.awaitInfluence, {
@@ -310,131 +333,10 @@ export const gradeOnly = internalAction({
         status: { step: "grading", detail: `Evaluating ${total} submissions...`, progress: `0/${total}`, startedAt: Date.now() },
       });
 
-      // Reuse the same grading logic as gradeAll
-      const GRADING_CONCURRENCY = 12;
-      let completed = 0;
-      for (let batch = 0; batch < ungraded.length; batch += GRADING_CONCURRENCY) {
-        const batchSubs = ungraded.slice(batch, batch + GRADING_CONCURRENCY);
-        const batchResults = await Promise.allSettled(batchSubs.map(async (sub) => {
-          const role = ROLES.find((r) => r.id === sub.roleId);
-          if (!role) return;
-
-          const otherSubs = submissions
-            .filter((s) => s.roleId !== sub.roleId)
-            .map((s) => ({
-              roleName: ROLES.find((r) => r.id === s.roleId)?.name ?? s.roleId,
-              actions: s.actions.map((a) => ({ text: a.text, priority: a.priority })),
-            }));
-
-          const actionRequests: ActionRequest[] = (requests ?? [])
-            .filter((r) => r.fromRoleId === sub.roleId || r.toRoleId === sub.roleId)
-            .map((r) => ({
-              actionText: r.actionText,
-              fromRoleName: r.fromRoleName,
-              toRoleName: r.toRoleName,
-              requestType: r.requestType,
-              computeAmount: r.computeAmount,
-              status: r.status,
-            }));
-
-          const labSpec = game.labs.find((l) => l.roleId === sub.roleId)?.spec;
-
-          const prompt = buildGradingPrompt({
-            round: roundNumber,
-            roundLabel: rounds.find((r) => r.number === roundNumber)?.label ?? `Round ${roundNumber}`,
-            worldState: game.worldState,
-            roleName: role.name,
-            roleDescription: role.brief ?? "",
-            roleTags: [...role.tags],
-            actions: sub.actions.filter((a) => a.probability == null).map((a) => ({ text: a.text, priority: a.priority })),
-            labs: game.labs,
-            actionRequests,
-            enabledRoles: enabledRoleNames,
-            aiDisposition: sub.roleId === "ai-systems" ? aiDisposition : undefined,
-            otherSubmissions: otherSubs,
-            labSpec,
-          });
-
-          try {
-            const { output } = await callAnthropic<{ actions: { text: string; probability: number; reasoning?: string }[] }>({
-              models: GRADING_MODELS,
-              systemPrompt: SCENARIO_CONTEXT,
-              prompt,
-              maxTokens: 2048,
-              toolName: "grade_actions",
-              schema: {
-                type: "object",
-                properties: {
-                  actions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        text: { type: "string" },
-                        probability: { type: "number", enum: [10, 30, 50, 70, 90] },
-                        reasoning: { type: "string" },
-                      },
-                      required: ["text", "probability", "reasoning"],
-                    },
-                  },
-                },
-                required: ["actions"],
-              },
-            });
-
-            if (output?.actions) {
-              // Only update ungraded actions, preserve manually-set probabilities
-              let gradedIdx = 0;
-              const gradedActions = sub.actions.map((action) => {
-                if (action.probability != null) return action; // Already graded, skip
-                const graded = output.actions[gradedIdx++];
-                return {
-                  ...action,
-                  probability: graded?.probability ?? defaultProbability(action.priority),
-                  reasoning: graded?.reasoning,
-                };
-              });
-              await ctx.runMutation(internal.submissions.applyGradingInternal, {
-                submissionId: sub._id,
-                actions: gradedActions,
-              });
-            } else {
-              const gradedActions = sub.actions.map((action) => ({
-                ...action,
-                probability: action.probability ?? defaultProbability(action.priority),
-              }));
-              await ctx.runMutation(internal.submissions.applyGradingInternal, {
-                submissionId: sub._id,
-                actions: gradedActions,
-              });
-            }
-          } catch (err) {
-            console.error(`[pipeline] Grading LLM failed for ${sub.roleId}, using defaults:`, err);
-            const gradedActions = sub.actions.map((action) => ({
-              ...action,
-              probability: action.probability ?? defaultProbability(action.priority),
-            }));
-            await ctx.runMutation(internal.submissions.applyGradingInternal, {
-              submissionId: sub._id,
-              actions: gradedActions,
-            });
-          }
-
-          completed++;
-        }));
-
-        for (const r of batchResults) {
-          if (r.status === "rejected") {
-            completed--;
-            console.error(`[pipeline] Grading failed for submission:`, r.reason);
-          }
-        }
-
-        await ctx.runMutation(internal.games.updatePipelineStatus, {
-          gameId,
-          status: { step: "grading", detail: `Evaluating submissions...`, progress: `${completed}/${total}`, startedAt: Date.now() },
-        });
-      }
+      await gradeSubmissionBatch(ctx, {
+        gameId, game, ungraded, allSubmissions: submissions, rounds, requests: requests ?? [],
+        enabledRoleNames, roundNumber, aiDisposition, onlyUngraded: true,
+      });
 
       // Done grading — release lock, don't proceed to roll
       await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });

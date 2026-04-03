@@ -77,33 +77,36 @@ export function AttemptedPanel({
   const displayActions = isRollingOrNarrate ? rollingActions : submitPhaseActions;
   const allRevealed = isRollingOrNarrate && revealedCount >= allActions.length;
 
-  // Build endorsement lookup: action text -> list of endorsing proposals
+  // Pre-index endorsements by roleId and text for O(1) lookups
   const acceptedProposals = proposals.filter((p) => p.status === "accepted");
-  const endorsementsByAction = new Map<string, Proposal[]>();
+  const endorsementsByRole = new Map<string, Proposal[]>();
+  const endorsementsByText = new Map<string, Proposal[]>();
   for (const p of acceptedProposals) {
+    for (const rId of [p.fromRoleId, p.toRoleId]) {
+      const list = endorsementsByRole.get(rId) ?? [];
+      list.push(p);
+      endorsementsByRole.set(rId, list);
+    }
     const key = p.actionText.toLowerCase().trim();
-    const list = endorsementsByAction.get(key) ?? [];
-    list.push(p);
-    endorsementsByAction.set(key, list);
+    const textList = endorsementsByText.get(key) ?? [];
+    textList.push(p);
+    endorsementsByText.set(key, textList);
   }
 
-  // Also match by roleId + close-enough text
   function getEndorsements(roleId: string, actionText: string): Proposal[] {
+    const aText = actionText.toLowerCase().trim();
+    const seen = new Set<string>();
     const matches: Proposal[] = [];
-    for (const p of acceptedProposals) {
-      if (p.toRoleId === roleId || p.fromRoleId === roleId) {
-        // Match by exact text or if the proposal action is a substring
-        const pText = p.actionText.toLowerCase().trim();
-        const aText = actionText.toLowerCase().trim();
-        if (pText === aText || aText.includes(pText) || pText.includes(aText)) {
-          matches.push(p);
-        }
+    // Role-based matches with text proximity
+    for (const p of endorsementsByRole.get(roleId) ?? []) {
+      const pText = p.actionText.toLowerCase().trim();
+      if (pText === aText || aText.includes(pText) || pText.includes(aText)) {
+        if (!seen.has(p._id)) { seen.add(p._id); matches.push(p); }
       }
     }
-    // Also include exact text matches from any role
-    const exactMatches = endorsementsByAction.get(actionText.toLowerCase().trim()) ?? [];
-    for (const m of exactMatches) {
-      if (!matches.includes(m)) matches.push(m);
+    // Exact text matches from any role
+    for (const p of endorsementsByText.get(aText) ?? []) {
+      if (!seen.has(p._id)) { seen.add(p._id); matches.push(p); }
     }
     return matches;
   }

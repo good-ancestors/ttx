@@ -6,6 +6,14 @@ import { logEvent } from "./events";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
 import { internal } from "./_generated/api";
 
+const LOCK_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+function assertNotResolving(game: { resolving?: boolean; resolvingStartedAt?: number }) {
+  if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
+    throw new Error("Resolution already in progress");
+  }
+}
+
 /** Pre-generate AI/NPC actions so they're ready before submissions open. */
 async function schedulePreGeneration(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
   await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, { gameId, roundNumber });
@@ -427,11 +435,7 @@ export const setResolving = mutation({
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
-    const LOCK_TTL_MS = 3 * 60 * 1000; // 3 minutes
-    if (args.resolving && game.resolving && game.resolvingStartedAt
-        && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
-      throw new Error("Resolution already in progress");
-    }
+    if (args.resolving) assertNotResolving(game);
     await ctx.db.patch(args.gameId, {
       resolving: args.resolving,
       resolvingStartedAt: args.resolving ? Date.now() : undefined,
@@ -511,7 +515,6 @@ export const setResolveNonce = internalMutation({
   },
 });
 
-// Legacy: runs full pipeline (grade → influence → roll → narrate) in one click
 export const triggerResolvePipeline = mutation({
   args: {
     gameId: v.id("games"),
@@ -524,10 +527,7 @@ export const triggerResolvePipeline = mutation({
     if (game.status !== "playing") throw new Error("Game is not in playing state");
 
     // Acquire lock (with TTL check)
-    const LOCK_TTL_MS = 3 * 60 * 1000;
-    if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
-      throw new Error("Resolution already in progress");
-    }
+    assertNotResolving(game);
     await ctx.db.patch(args.gameId, {
       resolving: true,
       resolvingStartedAt: Date.now(),
@@ -543,8 +543,6 @@ export const triggerResolvePipeline = mutation({
   },
 });
 
-/** Grade Remaining — only grades submitted actions that don't have a probability yet.
- *  Facilitator can manually set probabilities first, then hit this for the rest. */
 export const triggerGrading = mutation({
   args: {
     gameId: v.id("games"),
@@ -556,10 +554,7 @@ export const triggerGrading = mutation({
     if (!game) throw new Error("Game not found");
     if (game.status !== "playing") throw new Error("Game is not in playing state");
 
-    const LOCK_TTL_MS = 3 * 60 * 1000;
-    if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
-      throw new Error("Grading already in progress");
-    }
+    assertNotResolving(game);
     await ctx.db.patch(args.gameId, {
       resolving: true,
       resolvingStartedAt: Date.now(),
@@ -575,8 +570,6 @@ export const triggerGrading = mutation({
   },
 });
 
-/** Roll Dice — rolls all graded actions (with AI influence applied), then generates narrative.
- *  Requires all submitted actions to be graded first. */
 export const triggerRoll = mutation({
   args: {
     gameId: v.id("games"),
@@ -602,10 +595,7 @@ export const triggerRoll = mutation({
       throw new Error(`${ungradedCount} submitted actions still ungraded — grade them first`);
     }
 
-    const LOCK_TTL_MS = 3 * 60 * 1000;
-    if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
-      throw new Error("Resolution already in progress");
-    }
+    assertNotResolving(game);
 
     // Auto-generate AI influence for NPC/AI-controlled AI Systems before rolling
     const tables = await ctx.db
