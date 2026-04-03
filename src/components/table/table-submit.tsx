@@ -49,6 +49,7 @@ export interface TableSubmitProps {
   onSubmitAction: (index: number) => void;
   onEditAction: (actionIndex: number) => void;
   onDeleteAction: (actionIndex: number) => void;
+  isExpired?: boolean;
   submitError: string;
   // Suggestions
   shownSuggestions: SampleAction[];
@@ -74,6 +75,7 @@ export function TableSubmit({
   specSaved,
   onSaveSpec,
   enabledRoles,
+  isExpired,
   onSubmitAction,
   onEditAction,
   onDeleteAction,
@@ -86,7 +88,7 @@ export function TableSubmit({
   const submittedList = submittedActions.filter(
     (a) => a.actionStatus === "submitted" || (!a.actionStatus && a.text)
   );
-  const canEdit = game.phase === "submit";
+  const canEdit = game.phase === "submit" && !isExpired;
   const totalActions = submittedList.length + actionDrafts.filter((a) => a.text.trim()).length;
 
   return (

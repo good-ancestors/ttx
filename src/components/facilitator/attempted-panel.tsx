@@ -100,12 +100,18 @@ export function AttemptedPanel({
     const seen = new Set<string>();
     const matches: Proposal[] = [];
     for (const p of endorsementsByRole.get(roleId) ?? []) {
+      // Skip self-endorsements
+      if (p.fromRoleId === roleId && p.toRoleId === roleId) continue;
+      // AI Systems uses influence, not endorsements — skip any AI Systems endorsements
+      if (p.fromRoleId === "ai-systems" || p.toRoleId === "ai-systems") continue;
       const pText = p.actionText.toLowerCase().trim();
       if (pText === aText || aText.includes(pText) || pText.includes(aText)) {
         if (!seen.has(p._id)) { seen.add(p._id); matches.push(p); }
       }
     }
     for (const p of endorsementsByText.get(aText) ?? []) {
+      if (p.fromRoleId === roleId && p.toRoleId === roleId) continue;
+      if (p.fromRoleId === "ai-systems" || p.toRoleId === "ai-systems") continue;
       if (!seen.has(p._id)) { seen.add(p._id); matches.push(p); }
     }
     return matches;
@@ -358,5 +364,5 @@ function ActionOutcome({
     );
   }
 
-  return <span className="text-xs text-text-light font-mono">P{action.priority}</span>;
+  return null;
 }

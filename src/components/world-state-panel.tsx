@@ -45,7 +45,7 @@ export function WorldStatePanel({
               </span>
             </div>
             <div
-              className={`w-full h-1.5 rounded-full overflow-hidden ${
+              className={`w-full h-2.5 rounded-full overflow-hidden ${
                 isDark ? "bg-navy-light" : "bg-warm-gray"
               }`}
             >
@@ -66,7 +66,7 @@ export function WorldStatePanel({
   return (
     <>
     {fullScreen && (
-      <FullScreenOverlay title="World State" onClose={() => setFullScreen(false)} bodyClassName="flex-1 max-w-xl mx-auto w-full">
+      <FullScreenOverlay title="World State" onClose={() => setFullScreen(false)} bodyClassName="flex-1 max-w-3xl mx-auto w-full flex flex-col justify-center gap-5">
         {indicators}
       </FullScreenOverlay>
     )}

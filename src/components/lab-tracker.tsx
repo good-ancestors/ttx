@@ -34,8 +34,8 @@ export function LabTracker({
   return (
     <>
     {fullScreen && (
-      <FullScreenOverlay title="Lab State" onClose={() => setFullScreen(false)}>
-        {labGrid}
+      <FullScreenOverlay title="Lab State" onClose={() => setFullScreen(false)} bodyClassName="flex-1 max-w-5xl mx-auto w-full">
+        <LabGrid labs={labs} mergeSource={mergeSource} setMergeSource={setMergeSource} onMerge={onMerge} fullScreen />
       </FullScreenOverlay>
     )}
 
@@ -66,14 +66,16 @@ function LabGrid({
   mergeSource,
   setMergeSource,
   onMerge,
+  fullScreen,
 }: {
   labs: Lab[];
   mergeSource: string | null;
   setMergeSource: (v: string | null) => void;
   onMerge?: (survivorName: string, absorbedName: string) => Promise<void>;
+  fullScreen?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className={fullScreen ? "grid grid-cols-3 gap-5" : "grid grid-cols-2 gap-3"}>
       {labs.map((lab) => {
         const role = ROLES.find((r) => r.id === lab.roleId);
         const isMergeSource = mergeSource === lab.name;

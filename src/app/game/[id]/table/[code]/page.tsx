@@ -659,6 +659,7 @@ export default function TablePlayerPage({
               computeStock={table.computeStock ?? 0}
               submittedActions={submission?.actions ?? []}
               timerDisplay={timerDisplay}
+              isExpired={isExpired}
               actionDrafts={actionDrafts}
               onActionDraftsChange={setActionDrafts}
               computeAllocation={computeAllocation}

@@ -47,14 +47,14 @@ export function AiInfluencePanel({
   if (allActions.length === 0) return null;
 
   return (
-    <div className="bg-[#1E1B4B]/30 rounded-xl border border-[#A78BFA]/30 p-4 mt-4">
+    <div className="bg-navy rounded-xl border border-navy-light p-4 mt-4">
       <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-bold text-[#A78BFA]">AI Influence</span>
-        <span className="text-[10px] text-[#A78BFA]/70 font-mono">
+        <span className="text-sm font-bold text-white">AI Influence</span>
+        <span className="text-[10px] text-text-light font-mono">
           Power: {power}%
         </span>
       </div>
-      <p className="text-[11px] text-text-muted mb-3">
+      <p className="text-[11px] text-text-light mb-3">
         Secretly boost or sabotage actions. Your influence is hidden from other players.
       </p>
       <div className="space-y-2">
@@ -68,8 +68,8 @@ export function AiInfluencePanel({
           return (
             <div
               key={`${sub._id}-${i}`}
-              className={`bg-navy-dark/50 rounded-lg p-3 border ${
-                isBoosted ? "border-viz-safety/30" : isSabotaged ? "border-viz-danger/30" : "border-navy-light/30"
+              className={`bg-navy-dark rounded-lg p-3 border ${
+                isBoosted ? "border-viz-safety/30" : isSabotaged ? "border-viz-danger/30" : "border-navy-light"
               }`}
             >
               <div className="flex items-start gap-2 mb-2">
@@ -91,7 +91,7 @@ export function AiInfluencePanel({
                     className={`min-h-[44px] px-2 rounded text-sm flex items-center gap-1 transition-colors ${
                       isBoosted
                         ? "bg-viz-safety/20 text-viz-safety"
-                        : "text-text-light hover:text-viz-safety hover:bg-viz-safety/10"
+                        : "text-white/70 bg-navy-light/50 hover:text-viz-safety hover:bg-viz-safety/10"
                     }`}
                   >
                     <ThumbsUp className="w-3.5 h-3.5" />
@@ -119,7 +119,7 @@ export function AiInfluencePanel({
                       className={`min-h-[44px] px-2 rounded text-sm flex items-center gap-1 transition-colors ${
                         isSabotaged
                           ? "bg-viz-danger/20 text-viz-danger"
-                          : "text-text-light hover:text-viz-danger hover:bg-viz-danger/10"
+                          : "text-white/70 bg-navy-light/50 hover:text-viz-danger hover:bg-viz-danger/10"
                       }`}
                     >
                       <ThumbsDown className="w-3.5 h-3.5" />

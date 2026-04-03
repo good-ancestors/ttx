@@ -4,7 +4,6 @@ import { useState, useMemo } from "react";
 import { getCapabilityDescription, TOTAL_ROUNDS, isSubmittedAction } from "@/lib/game-data";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { NarrativeEditor, WorldStateEditor } from "@/components/manual-controls";
-import { PlayersPanel } from "./players-panel";
 import { AttemptedPanel } from "./attempted-panel";
 import { ExpandableSection } from "./expandable-section";
 import { ComputeEditor } from "./compute-editor";
@@ -42,8 +41,6 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   setSubmitDuration: (val: number) => void;
   openSubmissions: (args: { gameId: Id<"games">; durationSeconds: number }) => Promise<unknown>;
   skipTimer: (args: { gameId: Id<"games"> }) => Promise<unknown>;
-  kickToAI: (args: { tableId: Id<"tables"> }) => Promise<unknown>;
-  setControlMode: (args: { tableId: Id<"tables">; controlMode: "human" | "ai" | "npc" }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   advanceRound: (args: { gameId: Id<"games"> }) => Promise<unknown>;
@@ -76,8 +73,6 @@ export function RoundPhase({
   setSubmitDuration,
   openSubmissions,
   skipTimer,
-  kickToAI,
-  setControlMode,
   overrideProbability,
   rerollAction,
   advanceRound,
@@ -154,18 +149,7 @@ export function RoundPhase({
         </div>
       )}
 
-      {/* ─── 3. PLAYERS panel (visible from submit phase onwards) ─── */}
-      {phase !== "discuss" && (
-        <PlayersPanel
-          tables={tables}
-          submissions={submissions}
-          isProjector={isProjector}
-          onKickToAI={isProjector ? undefined : (id) => kickToAI({ tableId: id })}
-          onSetControlMode={isProjector ? undefined : (id, mode) => setControlMode({ tableId: id, controlMode: mode })}
-        />
-      )}
-
-      {/* ─── 4. WHAT WAS ATTEMPTED (collapsed, populates as submissions arrive) ─── */}
+      {/* ─── 3. WHAT WAS ATTEMPTED (collapsed, populates as submissions arrive) ─── */}
       {phase !== "discuss" && (
         <AttemptedPanel
           submissions={submissions}
@@ -186,14 +170,7 @@ export function RoundPhase({
       {/* ─── 5. Skip timer + Grade/Roll buttons (submit phase) ─── */}
       {phase === "submit" && !isProjector && (
         <div className="space-y-3">
-          {game.phaseEndsAt && (
-            <button
-              onClick={safeAction("Skip timer", () => skipTimer({ gameId }))}
-              className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1"
-            >
-              <SkipForward className="w-3 h-3" /> Close Submissions
-            </button>
-          )}
+          {/* Close Submissions button removed — timer expiry + skip in nav bar handle this */}
           {submittedActionCount > 0 && (
             <div className="flex gap-3">
               {/* Grade Remaining — AI grades actions without a probability */}

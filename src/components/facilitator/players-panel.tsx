@@ -42,9 +42,9 @@ export function PlayersPanel({
                 {table.roleName}
               </span>
               {sub ? (
-                <span className={`text-sm font-mono ${allGraded ? "text-viz-safety" : "text-viz-warning"}`}>
+                <span className={`text-sm font-mono ${allGraded ? "text-viz-safety" : "text-text-light"}`}>
                   {sub.actions.length} action{sub.actions.length !== 1 ? "s" : ""}
-                  {allGraded ? " \u2713" : " (grading...)"}
+                  {allGraded ? " \u2713" : ""}
                 </span>
               ) : (
                 <span className="text-sm text-navy-muted">Waiting...</span>

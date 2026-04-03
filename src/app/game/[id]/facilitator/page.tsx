@@ -455,8 +455,6 @@ export default function FacilitatorPage({
               setSubmitDuration={setSubmitDuration}
               openSubmissions={openSubmissions}
               skipTimer={skipTimer}
-              kickToAI={kickToAI}
-              setControlMode={setControlMode}
               overrideProbability={overrideProbability}
               rerollAction={rerollAction}
               advanceRound={advanceRound}
