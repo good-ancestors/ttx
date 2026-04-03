@@ -565,7 +565,7 @@ function FacilitatorNav({
             className="text-[11px] py-1 px-2.5 rounded-full font-mono font-semibold cursor-default"
             style={{ backgroundColor: colors.bg, color: colors.text, cursor: snapshots?.length ? "pointer" : "default" }}
           >
-            {phase.toUpperCase()}
+            {phase === "discuss" && !round ? "LOBBY" : phase.toUpperCase()}
           </button>
           {showSnapshots && snapshots && onRestore && (
             <div className="absolute right-0 top-full mt-1 bg-navy-dark border border-navy-light rounded-lg shadow-xl z-50 min-w-[180px] py-1">

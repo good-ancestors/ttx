@@ -61,70 +61,65 @@ export function LobbyPhase({
               <div className="flex items-center gap-2 mb-2">
                 <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role?.color }} />
                 <span className="text-sm md:text-base font-bold truncate">{table.roleName}</span>
-                <div className="ml-auto flex items-center gap-2 shrink-0">
-                  {table.connected && (
-                    <span className="text-xs text-viz-safety font-mono">Human</span>
-                  )}
-                  {!table.connected && table.controlMode === "ai" && table.enabled && (
-                    <span className="text-xs text-viz-capability font-mono">AI</span>
-                  )}
-                  {!table.connected && table.controlMode === "npc" && table.enabled && (
-                    <span className="text-xs text-viz-warning font-mono">NPC</span>
-                  )}
-                </div>
+                {isRequired && (
+                  <span title="Required role — cannot be disabled">
+                    <Lock className="w-3 h-3 text-navy-muted shrink-0" />
+                  </span>
+                )}
+                {table.connected && (
+                  <span className="ml-auto text-xs text-viz-safety font-mono shrink-0">Connected</span>
+                )}
               </div>
 
-              {/* Controls */}
-              <div className="flex gap-2 mb-3">
-                {!isRequired && (
-                  <button
-                    onClick={() => toggleEnabled({ tableId: table._id })}
-                    className={`text-xs px-3 py-1.5 rounded font-medium transition-colors ${
-                      table.enabled
-                        ? "bg-navy-light text-text-light hover:bg-navy-muted"
-                        : "bg-navy-dark text-navy-muted hover:bg-navy-light"
-                    }`}
-                  >
-                    {table.enabled ? "Disable" : "Enable"}
-                  </button>
-                )}
-                {isRequired && (
-                  <span className="text-xs text-navy-muted px-3 py-1.5">Required</span>
-                )}
-                {!isProjector && table.enabled && !table.connected && (
-                  <div className="flex rounded overflow-hidden border border-navy-light">
-                    {(["human", "ai", "npc"] as const).map((mode) => (
+              {/* Mode toggle — click active mode to disable (except required roles) */}
+              {!isProjector && !table.connected && (
+                <div className="flex rounded overflow-hidden border border-navy-light w-full mb-3">
+                  {(["human", "ai", "npc"] as const).map((mode) => {
+                    const isActive = table.enabled && table.controlMode === mode;
+                    return (
                       <button
                         key={mode}
-                        onClick={() => void setControlMode({ tableId: table._id, controlMode: mode })}
-                        className={`text-xs px-3 py-1.5 font-semibold transition-colors ${
-                          table.controlMode === mode
+                        onClick={() => {
+                          if (isActive && !isRequired) {
+                            void toggleEnabled({ tableId: table._id });
+                          } else if (!table.enabled) {
+                            void toggleEnabled({ tableId: table._id });
+                            void setControlMode({ tableId: table._id, controlMode: mode });
+                          } else {
+                            void setControlMode({ tableId: table._id, controlMode: mode });
+                          }
+                        }}
+                        className={`text-xs px-3 py-1.5 font-semibold transition-colors flex-1 ${
+                          isActive
                             ? mode === "human" ? "bg-viz-safety text-navy" : mode === "ai" ? "bg-viz-capability text-navy" : "bg-viz-warning text-navy"
-                            : "bg-navy-dark text-navy-muted hover:text-text-light"
+                            : !table.enabled
+                              ? "bg-navy-dark text-navy-muted/50"
+                              : "bg-navy-dark text-navy-muted hover:text-text-light"
                         }`}
                       >
                         {mode === "human" ? "Human" : mode === "ai" ? "AI" : "NPC"}
                       </button>
-                    ))}
-                  </div>
-                )}
-                {!isProjector && table.enabled && table.connected && table.controlMode === "human" && (
-                  <>
-                    <button
-                      onClick={() => kickToAI({ tableId: table._id })}
-                      className={tableActionBtn}
-                    >
-                      <Bot className="w-3.5 h-3.5" /> Kick to AI
-                    </button>
-                    <button
-                      onClick={() => toggleRejoin(table._id)}
-                      className={tableActionBtn}
-                    >
-                      <QrCode className="w-3.5 h-3.5" /> Rejoin
-                    </button>
-                  </>
-                )}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
+              {/* Connected player controls */}
+              {!isProjector && table.enabled && table.connected && table.controlMode === "human" && (
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={() => kickToAI({ tableId: table._id })}
+                    className={tableActionBtn}
+                  >
+                    <Bot className="w-3.5 h-3.5" /> Kick to AI
+                  </button>
+                  <button
+                    onClick={() => toggleRejoin(table._id)}
+                    className={tableActionBtn}
+                  >
+                    <QrCode className="w-3.5 h-3.5" /> Rejoin
+                  </button>
+                </div>
+              )}
 
               {table.enabled && table.controlMode === "human" && (!table.connected || showRejoin.has(table._id)) && (
                 <div className="bg-navy-dark rounded-lg p-3 flex flex-col items-center">
