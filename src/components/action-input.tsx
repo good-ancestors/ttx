@@ -44,7 +44,9 @@ interface Props {
 }
 
 export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitted, onSendRequest, onCancelRequest }: Props) {
-  const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId)).filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId : true);
+  // Filter out own role and AI Systems (AI Systems uses influence, not endorsements)
+  const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId))
+    .filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId && r.id !== "ai-systems" : true);
 
   const updateAction = (index: number, patch: Partial<ActionDraft>) => {
     const next = [...actions];

@@ -86,6 +86,9 @@ export default defineSchema({
         text: v.string(),
         priority: v.number(),
         secret: v.optional(v.boolean()),
+        // Per-action lifecycle: draft (player composing) → submitted (locked in, visible to facilitator)
+        // Graded/rolled are tracked by probability and rolled fields being set
+        actionStatus: v.optional(v.union(v.literal("draft"), v.literal("submitted"))),
         probability: v.optional(v.number()),
         reasoning: v.optional(v.string()),
         rolled: v.optional(v.number()),

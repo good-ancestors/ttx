@@ -91,7 +91,8 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   revealedSecrets: Set<string>;
   toggleReveal: (key: string) => void;
   revealAllSecrets: () => void;
-  handleResolveRound: () => Promise<void>;
+  handleGradeRemaining: () => Promise<void>;
+  handleRollDice: () => Promise<void>;
   handleReResolve: () => Promise<void>;
   safeAction: (label: string, fn: () => Promise<unknown>) => () => Promise<void>;
   submitDuration: number;
@@ -123,7 +124,8 @@ export function RoundPhase({
   revealedSecrets,
   toggleReveal,
   revealAllSecrets,
-  handleResolveRound,
+  handleGradeRemaining,
+  handleRollDice,
   handleReResolve,
   safeAction,
   submitDuration,
@@ -139,8 +141,13 @@ export function RoundPhase({
   addLab,
 }: RoundPhaseProps) {
   const phase = game.phase;
-  const enabledTables = tables.filter((t) => t.enabled);
-  const submissionCount = submissions.length;
+
+  // Count submitted (not draft) actions and ungraded submitted actions
+  const submittedActions = submissions.flatMap((s) =>
+    s.actions.filter((a) => a.actionStatus === "submitted" || !a.actionStatus)
+  );
+  const submittedActionCount = submittedActions.length;
+  const ungradedCount = submittedActions.filter((a) => a.probability == null).length;
 
   const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | "compute" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
@@ -231,7 +238,7 @@ export function RoundPhase({
         />
       )}
 
-      {/* ─── 5. Skip timer / Resolve button (submit phase) ─── */}
+      {/* ─── 5. Skip timer + Grade/Roll buttons (submit phase) ─── */}
       {phase === "submit" && !isProjector && (
         <div className="space-y-3">
           {game.phaseEndsAt && (
@@ -239,31 +246,43 @@ export function RoundPhase({
               onClick={safeAction("Skip timer", () => skipTimer({ gameId }))}
               className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1"
             >
-              <SkipForward className="w-3 h-3" /> Skip Timer
+              <SkipForward className="w-3 h-3" /> Close Submissions
             </button>
           )}
-          {submissionCount > 0 && (
-            <button
-              onClick={handleResolveRound}
-              disabled={resolving}
-              className={`w-full py-4 rounded-lg font-extrabold text-lg transition-colors flex items-center justify-center gap-2 ${
-                submissionCount === enabledTables.length
-                  ? "bg-white text-navy hover:bg-off-white"
-                  : "bg-navy-light text-text-light hover:bg-navy-muted"
-              } disabled:opacity-50`}
-            >
-              {resolving ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  {resolveStep}
-                </>
-              ) : (
-                <>
-                  <Dices className="w-5 h-5" />
-                  Resolve Round ({submissionCount}/{enabledTables.length} submitted)
-                </>
-              )}
-            </button>
+          {submittedActionCount > 0 && (
+            <div className="flex gap-3">
+              {/* Grade Remaining — AI grades actions without a probability */}
+              <button
+                onClick={handleGradeRemaining}
+                disabled={resolving || ungradedCount === 0}
+                className={`flex-1 py-3 rounded-lg font-bold text-base transition-colors flex items-center justify-center gap-2 ${
+                  ungradedCount > 0
+                    ? "bg-[#3D2F00] text-[#FCD34D] hover:bg-[#4D3D00]"
+                    : "bg-navy-light text-navy-muted cursor-default"
+                } disabled:opacity-50`}
+              >
+                {resolving ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> {resolveStep}</>
+                ) : ungradedCount > 0 ? (
+                  <>Grade Remaining ({ungradedCount})</>
+                ) : (
+                  <>All Graded</>
+                )}
+              </button>
+
+              {/* Roll Dice — only enabled when all submitted actions are graded */}
+              <button
+                onClick={handleRollDice}
+                disabled={resolving || ungradedCount > 0}
+                className={`flex-1 py-3 rounded-lg font-extrabold text-base transition-colors flex items-center justify-center gap-2 ${
+                  ungradedCount === 0
+                    ? "bg-white text-navy hover:bg-off-white"
+                    : "bg-navy-light text-navy-muted cursor-default"
+                } disabled:opacity-50`}
+              >
+                <Dices className="w-5 h-5" /> Roll Dice
+              </button>
+            </div>
           )}
         </div>
       )}

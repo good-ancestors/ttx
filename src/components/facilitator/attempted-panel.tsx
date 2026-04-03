@@ -12,6 +12,8 @@ import {
   CheckCircle,
   Clock,
   ChevronDown,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import type { Submission, Proposal } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
@@ -56,23 +58,23 @@ export function AttemptedPanel({
   const hasSubmissions = submissions.length > 0;
   const isRollingOrNarrate = phase === "rolling" || phase === "narrate";
 
-  // Build sorted action list (all actions that have been graded or rolled)
+  // Build sorted action list — only submitted actions (not drafts)
   const allActions = submissions.flatMap((sub) => {
     const role = ROLES.find((r) => r.id === sub.roleId);
     return sub.actions
       .map((action, i) => ({ action, i, sub, role }))
-      .filter(({ action }) => action.probability != null || action.rolled != null);
-  }).sort((a, b) => b.action.priority - a.action.priority);
+      .filter(({ action }) => action.actionStatus === "submitted" || !action.actionStatus);
+  });
 
-  // During submit phase, show ungraded actions too
-  const submitPhaseActions = phase === "submit"
-    ? submissions.flatMap((sub) => {
-        const role = ROLES.find((r) => r.id === sub.roleId);
-        return sub.actions.map((action, i) => ({ action, i, sub, role }));
-      }).sort((a, b) => b.action.priority - a.action.priority)
-    : [];
+  // During rolling/narrate, further filter to only graded/rolled
+  const rollingActions = allActions
+    .filter(({ action }) => action.probability != null || action.rolled != null)
+    .sort((a, b) => b.action.priority - a.action.priority);
 
-  const displayActions = isRollingOrNarrate ? allActions : submitPhaseActions;
+  // During submit phase, show all submitted actions (even ungraded)
+  const submitPhaseActions = allActions.sort((a, b) => b.action.priority - a.action.priority);
+
+  const displayActions = isRollingOrNarrate ? rollingActions : submitPhaseActions;
   const allRevealed = isRollingOrNarrate && revealedCount >= allActions.length;
 
   // Build endorsement lookup: action text -> list of endorsing proposals
@@ -193,6 +195,21 @@ export function AttemptedPanel({
                           </span>
                         ))}
                       </div>
+                    )}
+                    {/* AI Systems influence indicator (facilitator only) */}
+                    {!isProjector && action.aiInfluence != null && action.aiInfluence !== 0 && (
+                      <span
+                        className={`flex items-center gap-0.5 text-[9px] font-mono ${
+                          action.aiInfluence > 0 ? "text-viz-safety" : "text-viz-danger"
+                        }`}
+                        title={`AI influence: ${action.aiInfluence > 0 ? "+" : ""}${action.aiInfluence}`}
+                      >
+                        {action.aiInfluence > 0 ? (
+                          <ThumbsUp className="w-2.5 h-2.5" />
+                        ) : (
+                          <ThumbsDown className="w-2.5 h-2.5" />
+                        )}
+                      </span>
                     )}
                   </div>
                   <div className="flex items-center gap-2 mt-0.5 pl-4">

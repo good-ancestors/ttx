@@ -64,7 +64,8 @@ export default function FacilitatorPage({
   const clearResolution = useMutation(api.rounds.clearResolution);
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
-  const triggerPipeline = useMutation(api.games.triggerResolvePipeline);
+  const triggerGrading = useMutation(api.games.triggerGrading);
+  const triggerRoll = useMutation(api.games.triggerRoll);
   const openSubmissions = useMutation(api.games.openSubmissions);
 
   // Pipeline state: derive from game document (reactive)
@@ -166,26 +167,40 @@ export default function FacilitatorPage({
     ? { label: aiDispositionData.label, description: aiDispositionData.description }
     : undefined;
 
-  // ─── Resolve round: trigger server-side pipeline ─────────────────────────
-  const handleResolveRound = async () => {
+  // ─── Grade Remaining: AI grades only ungraded submitted actions ──────────
+  const handleGradeRemaining = async () => {
     setActionError(null);
     try {
-      await triggerPipeline({
+      await triggerGrading({
         gameId,
         roundNumber: game.currentRound,
         aiDisposition: aiDispositionPayload,
       });
     } catch (err) {
-      console.error("Resolve failed:", err);
-      setActionError(`Resolve failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+      console.error("Grading failed:", err);
+      setActionError(`Grading failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+    }
+  };
+
+  // ─── Roll Dice: roll all graded actions + generate narrative ────────────
+  const handleRollDice = async () => {
+    setActionError(null);
+    try {
+      await triggerRoll({
+        gameId,
+        roundNumber: game.currentRound,
+        aiDisposition: aiDispositionPayload,
+      });
+    } catch (err) {
+      console.error("Roll failed:", err);
+      setActionError(`Roll failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 
   const handleReResolve = async () => {
     try {
       await clearResolution({ gameId, roundNumber: game.currentRound });
-      // Re-trigger the resolve + narrate stages via pipeline
-      await triggerPipeline({
+      await triggerRoll({
         gameId,
         roundNumber: game.currentRound,
         aiDisposition: aiDispositionPayload,
@@ -395,7 +410,8 @@ export default function FacilitatorPage({
               revealedSecrets={revealedSecrets}
               toggleReveal={toggleReveal}
               revealAllSecrets={revealAllSecrets}
-              handleResolveRound={handleResolveRound}
+              handleGradeRemaining={handleGradeRemaining}
+              handleRollDice={handleRollDice}
               handleReResolve={handleReResolve}
               safeAction={safeAction}
               submitDuration={submitDuration}

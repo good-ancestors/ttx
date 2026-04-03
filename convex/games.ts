@@ -511,6 +511,7 @@ export const setResolveNonce = internalMutation({
   },
 });
 
+// Legacy: runs full pipeline (grade → influence → roll → narrate) in one click
 export const triggerResolvePipeline = mutation({
   args: {
     gameId: v.id("games"),
@@ -535,6 +536,96 @@ export const triggerResolvePipeline = mutation({
 
     // Schedule the first pipeline stage
     await ctx.scheduler.runAfter(0, internal.pipeline.gradeAll, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      aiDisposition: args.aiDisposition,
+    });
+  },
+});
+
+/** Grade Remaining — only grades submitted actions that don't have a probability yet.
+ *  Facilitator can manually set probabilities first, then hit this for the rest. */
+export const triggerGrading = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "playing") throw new Error("Game is not in playing state");
+
+    const LOCK_TTL_MS = 3 * 60 * 1000;
+    if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
+      throw new Error("Grading already in progress");
+    }
+    await ctx.db.patch(args.gameId, {
+      resolving: true,
+      resolvingStartedAt: Date.now(),
+      pipelineStatus: { step: "grading", detail: "Grading remaining actions...", startedAt: Date.now() },
+    });
+
+    // Schedule grading only (no roll/narrate after)
+    await ctx.scheduler.runAfter(0, internal.pipeline.gradeOnly, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      aiDisposition: args.aiDisposition,
+    });
+  },
+});
+
+/** Roll Dice — rolls all graded actions (with AI influence applied), then generates narrative.
+ *  Requires all submitted actions to be graded first. */
+export const triggerRoll = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "playing") throw new Error("Game is not in playing state");
+
+    // Verify all submitted actions are graded
+    const subs = await ctx.db
+      .query("submissions")
+      .withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
+      )
+      .collect();
+    const ungradedCount = subs.flatMap((s) =>
+      s.actions.filter((a) => a.actionStatus === "submitted" && a.probability == null)
+    ).length;
+    if (ungradedCount > 0) {
+      throw new Error(`${ungradedCount} submitted actions still ungraded — grade them first`);
+    }
+
+    const LOCK_TTL_MS = 3 * 60 * 1000;
+    if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
+      throw new Error("Resolution already in progress");
+    }
+
+    // Auto-generate AI influence for NPC/AI-controlled AI Systems before rolling
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const aiSystemsTable = tables.find((t) => t.roleId === "ai-systems" && t.enabled);
+    if (aiSystemsTable?.aiDisposition && aiSystemsTable.controlMode !== "human") {
+      // Schedule auto-influence generation before roll
+      // (handled inside rollAndNarrate for simplicity)
+    }
+
+    await ctx.db.patch(args.gameId, {
+      phase: "rolling",
+      resolving: true,
+      resolvingStartedAt: Date.now(),
+      pipelineStatus: { step: "rolling", detail: "Rolling dice...", startedAt: Date.now() },
+    });
+
+    await ctx.scheduler.runAfter(0, internal.pipeline.rollAndNarrate, {
       gameId: args.gameId,
       roundNumber: args.roundNumber,
       aiDisposition: args.aiDisposition,
