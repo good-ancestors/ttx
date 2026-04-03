@@ -149,7 +149,7 @@ export default function TablePlayerPage({
   // Sample actions for suggestions
   const [sampleActionsData, setSampleActionsData] = useState<SampleActionsData | null>(null);
   const [ideasOpen, setIdeasOpen] = useState(false);
-  const [shownSuggestions, setShownSuggestions] = useState<SampleAction[]>([]);
+  // shownSuggestions set via effect below
 
   useKeyboardScroll();
 
@@ -181,17 +181,15 @@ export default function TablePlayerPage({
   );
 
   // ── Session ID for seat conflict detection ────────────────────────────────
-  const sessionIdRef = useRef<string>("");
-  if (!sessionIdRef.current) {
+  const [sessionId] = useState(() => {
     const key = `ttx-session-${tableId}`;
     let stored = typeof window !== "undefined" ? sessionStorage.getItem(key) : null;
     if (!stored) {
       stored = crypto.randomUUID();
       if (typeof window !== "undefined") sessionStorage.setItem(key, stored);
     }
-    sessionIdRef.current = stored;
-  }
-  const sessionId = sessionIdRef.current;
+    return stored;
+  });
   const isConflict = table?.activeSessionId && table.activeSessionId !== sessionId;
 
   // ── Connection lifecycle ──────────────────────────────────────────────────
@@ -298,12 +296,12 @@ export default function TablePlayerPage({
   }, [actionDrafts, computeAllocation, artifact, game, tableId]);
 
   // ── Sample suggestions ──────────────────────────────────────────────────
+  const [shownSuggestions, setShownSuggestions] = useState<SampleAction[]>([]);
   useEffect(() => {
     if (!sampleActionsData || !role || !game) return;
     const all = getSampleActions(sampleActionsData, role.id, game.currentRound);
     if (all.length === 0) return;
-    const shuffled = pickRandom(all, 3);
-    setShownSuggestions(shuffled);
+    setShownSuggestions(pickRandom(all, 3));
   }, [sampleActionsData, role, game?.currentRound]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-expand ideas when timer low and no actions ─────────────────────

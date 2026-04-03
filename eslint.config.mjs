@@ -107,7 +107,9 @@ const eslintConfig = defineConfig([
     },
   },
 
-  // Large page components — monolithic by design (state + layout + handlers)
+  // Large page components — monolithic by design (state + layout + handlers).
+  // set-state-in-effect is suppressed because these pages sync local form state
+  // from async Convex queries and react to server-side phase/timer transitions.
   {
     files: [
       "**/game/*/facilitator/page.tsx",
@@ -117,6 +119,7 @@ const eslintConfig = defineConfig([
       "max-lines-per-function": "off",
       "max-lines": "off",
       complexity: "off",
+      "react-hooks/set-state-in-effect": "off",
     },
   },
 
