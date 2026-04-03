@@ -14,20 +14,17 @@ import { loadRoleHandouts } from "@/lib/role-handouts";
 import { ConnectionIndicator } from "@/components/connection-indicator";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
 import { usePendingProposalCount } from "@/components/proposals";
-import { HowToPlaySection } from "@/components/table/how-to-play-section";
 import { TableLobby, DispositionChooser } from "@/components/table/table-lobby";
-import { DispositionBadge } from "@/components/table/disposition-badge";
-import { LabSpecsPanel } from "@/components/table/lab-specs-panel";
 import { LabSpecEditor } from "@/components/table/lab-spec-editor";
 import { TableSubmit } from "@/components/table/table-submit";
 import { TableResolving } from "@/components/table/table-resolving";
-import { AiInfluencePanel } from "@/components/table/ai-influence-panel";
+import { BriefTab } from "@/components/table/brief-tab";
+import { RespondTab } from "@/components/table/respond-tab";
+import { PlayerTabBar, buildPlayerTabs, type PlayerTab } from "@/components/table/player-tabs";
 import type { ResultAction } from "@/components/table/result-action-card";
 import {
   Loader2,
   Clock,
-  Target,
-  Handshake,
   AlertTriangle,
   Info,
 } from "lucide-react";
@@ -146,6 +143,7 @@ export default function TablePlayerPage({
   const [submitError, setSubmitError] = useState("");
   const [draftRestored, setDraftRestored] = useState(false);
   const [autoSubmitMessage, setAutoSubmitMessage] = useState("");
+  const [activeTab, setActiveTab] = useState<PlayerTab>("brief");
 
   const autoSubmittedRef = useRef(false);
   const draftRestoredRef = useRef(false);
@@ -155,7 +153,6 @@ export default function TablePlayerPage({
   // Sample actions for suggestions
   const [sampleActionsData, setSampleActionsData] = useState<SampleActionsData | null>(null);
   const [ideasOpen, setIdeasOpen] = useState(false);
-  // shownSuggestions set via effect below
 
   useKeyboardScroll();
 
@@ -182,12 +179,23 @@ export default function TablePlayerPage({
   );
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
   const phase = game?.phase ?? "discuss";
+  const isAiSystem = role?.tags.includes("ai-system") ?? false;
+  const isLabCeoRole = role ? isLabCeo(role) : false;
 
   const pendingProposalCount = usePendingProposalCount(
     gameId,
     game?.currentRound ?? 1,
     role?.id ?? ""
   );
+
+  // ── Auto-switch to "actions" when submissions open ────────────────────────
+  const prevPhaseForTabRef = useRef(phase);
+  useEffect(() => {
+    if (phase === "submit" && prevPhaseForTabRef.current !== "submit") {
+      setActiveTab("actions");
+    }
+    prevPhaseForTabRef.current = phase;
+  }, [phase]);
 
   // ── Session ID for seat conflict detection ────────────────────────────────
   const [sessionId] = useState(() => {
@@ -275,6 +283,7 @@ export default function TablePlayerPage({
       setAutoSubmitMessage("");
       autoSubmittedRef.current = false;
       draftRestoredRef.current = false;
+      setActiveTab("brief");
       // Reload compute allocation from current game state (not defaults)
       if (role) {
         const lab = game.labs.find((l) => l.roleId === role.id);
@@ -336,7 +345,7 @@ export default function TablePlayerPage({
       const draftWithText = actionDrafts.filter((a) => a.text.trim());
       if (draftWithText.length > 0) {
         autoSubmittedRef.current = true;
-        setAutoSubmitMessage("Time's up — only submitted actions will count");
+        setAutoSubmitMessage("Time\u2019s up \u2014 only submitted actions will count");
         cancelDraftEndorsements(draftWithText, allRequests, role?.id, cancelRequest);
         setActionDrafts([emptyAction()]);
       }
@@ -396,7 +405,7 @@ export default function TablePlayerPage({
 
   // ─── Per-action handlers ────────────────────────────────────────────────────
 
-  const handleSubmitAction = useCallback(async (draftIndex: number) => {
+  const handleSubmitAction = async (draftIndex: number) => {
     const draft = actionDrafts[draftIndex];
     if (!draft?.text.trim() || !role || !game) return;
     setSubmitError("");
@@ -435,9 +444,9 @@ export default function TablePlayerPage({
     } catch (err) {
       setSubmitError(`Failed to submit action: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [actionDrafts, role, game, tableId, gameId, saveAndSubmitMut, sendRequest, allTables]);
+  };
 
-  const handleEditAction = useCallback(async (submittedIndex: number) => {
+  const handleEditAction = async (submittedIndex: number) => {
     if (!submission) return;
     setSubmitError("");
     try {
@@ -452,9 +461,9 @@ export default function TablePlayerPage({
     } catch (err) {
       setSubmitError(`Failed to edit: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [submission, editSubmittedMut]);
+  };
 
-  const handleDeleteAction = useCallback(async (submittedIndex: number) => {
+  const handleDeleteAction = async (submittedIndex: number) => {
     if (!submission) return;
     setSubmitError("");
     try {
@@ -464,7 +473,7 @@ export default function TablePlayerPage({
     } catch (err) {
       setSubmitError(`Failed to delete: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [submission, deleteActionMut]);
+  };
 
   // ── Loading & error states ────────────────────────────────────────────────
   const notFound = game === null || table === null || round === null;
@@ -500,12 +509,19 @@ export default function TablePlayerPage({
       })
     : [];
 
+  // ── Tab config ────────────────────────────────────────────────────────────
+  const showTabs = phase === "submit";
+  const tabs = buildPlayerTabs(role, phase, pendingProposalCount, isLabCeoRole);
+
+  // Previous round narrative for the brief tab
+  const roundNarrative = round.summary?.narrative;
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <InAppBrowserGate>
       <div
-        className="min-h-dvh bg-off-white pb-[env(safe-area-inset-bottom)] overflow-x-hidden"
-        style={{ paddingBottom: "max(env(safe-area-inset-bottom), 20px)" }}
+        className={`min-h-dvh bg-off-white overflow-x-hidden ${showTabs ? "pb-16" : ""}`}
+        style={{ paddingBottom: showTabs ? "max(64px, calc(64px + env(safe-area-inset-bottom)))" : "max(env(safe-area-inset-bottom), 20px)" }}
       >
         {/* Header */}
         <div className="sticky top-0 z-10 bg-off-white/95 backdrop-blur-sm border-b border-border px-4 py-3 pt-[max(12px,env(safe-area-inset-top))]">
@@ -522,15 +538,6 @@ export default function TablePlayerPage({
                   aria-label={`${timerDisplay} remaining`}
                 >
                   <Clock className="w-3.5 h-3.5" aria-hidden="true" /> {timerDisplay}
-                </span>
-              )}
-              {phase === "submit" && pendingProposalCount > 0 && !role.tags.includes("ai-system") && (
-                <span
-                  className="text-[10px] bg-viz-warning text-white px-1.5 py-0.5 rounded-full font-bold flex items-center gap-1"
-                  role="status"
-                  aria-label={`${pendingProposalCount} pending proposal${pendingProposalCount === 1 ? "" : "s"}`}
-                >
-                  <Handshake className="w-3 h-3" aria-hidden="true" /> {pendingProposalCount}
                 </span>
               )}
               <span className="text-[11px] text-text-muted font-mono">
@@ -569,7 +576,9 @@ export default function TablePlayerPage({
             </div>
           )}
 
-          {/* Phase routing */}
+          {/* ── Phase routing ── */}
+
+          {/* Lobby */}
           {game.status === "lobby" && (
             <TableLobby
               role={role}
@@ -579,46 +588,88 @@ export default function TablePlayerPage({
             />
           )}
 
-          {/* Discuss phase */}
+          {/* Discuss phase — show brief tab only */}
           {phase === "discuss" && game.status === "playing" && (
             <>
-              {/* 1. Disposition chooser (blocker if not yet chosen) */}
-              {role.tags.includes("ai-system") && !table.aiDisposition && (
+              {/* AI Systems disposition chooser (blocker) */}
+              {isAiSystem && !table.aiDisposition && (
+                <DispositionChooser tableId={tableId} onChosen={() => {}} />
+              )}
+              <BriefTab
+                role={role}
+                handoutData={handoutData}
+                aiDisposition={table.aiDisposition}
+                roundNarrative={roundNarrative}
+                roundLabel={round.label}
+                submissionsOpen={false}
+              />
+              {/* Safety lead: read-only lab allocation during discuss */}
+              {isLabSafety(role) && role.labId && (
+                <div className="mt-4">
+                  <LabAllocationReadOnly labId={role.labId} labs={game.labs} />
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Submit phase — tabbed UI */}
+          {phase === "submit" && (
+            <>
+              {/* AI Systems disposition chooser (blocker) */}
+              {isAiSystem && !table.aiDisposition && (
                 <DispositionChooser tableId={tableId} onChosen={() => {}} />
               )}
 
-              {/* 2. Your Mission (incl how to play) */}
-              <div className="bg-white rounded-xl p-5 border border-border">
-                <div className="flex items-center gap-2 mb-3">
-                  <Target className="w-5 h-5 text-text" />
-                  <h3 className="text-base font-bold text-text">Your Mission</h3>
-                </div>
-                <p className="text-sm font-semibold text-text mb-1">{role.name}</p>
-                <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
-                {handoutData?.[role.id] && (
-                  <details className="mt-3">
-                    <summary className="text-xs font-semibold text-text-muted cursor-pointer hover:text-text">
-                      Full Brief
-                    </summary>
-                    <div className="mt-2 text-xs text-text-muted whitespace-pre-line leading-relaxed">
-                      {handoutData[role.id]}
-                    </div>
-                  </details>
-                )}
-                <HowToPlaySection role={role} />
-              </div>
+              {activeTab === "brief" && (
+                <BriefTab
+                  role={role}
+                  handoutData={handoutData}
+                  aiDisposition={table.aiDisposition}
+                  roundNarrative={roundNarrative}
+                  roundLabel={round.label}
+                  submissionsOpen={true}
+                />
+              )}
 
-              {/* 3. Lab CEO controls — spec editor + compute allocation */}
-              {isLabCeo(role) && (
+              {activeTab === "actions" && (
+                <TableSubmit
+                  game={game}
+                  role={role}
+                  submittedActions={submission?.actions ?? []}
+                  isExpired={isExpired}
+                  actionDrafts={actionDrafts}
+                  onActionDraftsChange={setActionDrafts}
+                  enabledRoles={enabledRoles}
+                  onSubmitAction={handleSubmitAction}
+                  onEditAction={handleEditAction}
+                  onDeleteAction={handleDeleteAction}
+                  submitError={submitError}
+                  shownSuggestions={shownSuggestions}
+                  ideasOpen={ideasOpen}
+                  onIdeasOpenChange={setIdeasOpen}
+                  onSuggestionTap={handleSuggestionTap}
+                />
+              )}
+
+              {activeTab === "respond" && (
+                <RespondTab
+                  gameId={gameId}
+                  roundNumber={game.currentRound}
+                  roleId={role.id}
+                  isAiSystem={isAiSystem}
+                  aiInfluencePower={getAiInfluencePower(game.labs)}
+                  allRequests={allRequests}
+                />
+              )}
+
+              {activeTab === "lab" && isLabCeoRole && (
                 <>
-                  <div className="mt-4">
-                    <LabSpecEditor
-                      labSpec={labSpec}
-                      onLabSpecChange={(s) => { setLabSpec(s); setSpecSaved(false); }}
-                      specSaved={specSaved}
-                      onSaveSpec={() => void handleSaveSpec()}
-                    />
-                  </div>
+                  <LabSpecEditor
+                    labSpec={labSpec}
+                    onLabSpecChange={(spec) => { setLabSpec(spec); setSpecSaved(false); }}
+                    specSaved={specSaved}
+                    onSaveSpec={() => void handleSaveSpec()}
+                  />
                   <ComputeAllocation
                     allocation={computeAllocation}
                     onChange={setComputeAllocation}
@@ -627,66 +678,7 @@ export default function TablePlayerPage({
                   />
                 </>
               )}
-
-              {/* Safety lead: read-only lab allocation */}
-              {isLabSafety(role) && role.labId && (
-                <div className="mt-4">
-                  <LabAllocationReadOnly labId={role.labId} labs={game.labs} />
-                </div>
-              )}
-
-              {/* 4. Disposition (locked) */}
-              {role.tags.includes("ai-system") && table.aiDisposition && (
-                <DispositionBadge disposition={table.aiDisposition} className="mt-4" />
-              )}
-
-              {/* 4. Lab Specs — expanded by default during discussion */}
-              {role.tags.includes("ai-system") && (
-                <div className="mt-4">
-                  <LabSpecsPanel labs={game.labs} defaultOpen />
-                </div>
-              )}
             </>
-          )}
-
-          {/* Submit phase */}
-          {phase === "submit" && (
-            <TableSubmit
-              game={game}
-              role={role}
-              tableId={tableId}
-              aiDisposition={table.aiDisposition}
-              computeStock={table.computeStock ?? 0}
-              submittedActions={submission?.actions ?? []}
-              timerDisplay={timerDisplay}
-              isExpired={isExpired}
-              actionDrafts={actionDrafts}
-              onActionDraftsChange={setActionDrafts}
-              computeAllocation={computeAllocation}
-              onComputeAllocationChange={setComputeAllocation}
-              labSpec={labSpec}
-              onLabSpecChange={(spec) => { setLabSpec(spec); setSpecSaved(false); }}
-              specSaved={specSaved}
-              onSaveSpec={handleSaveSpec}
-              enabledRoles={enabledRoles}
-              onSubmitAction={handleSubmitAction}
-              onEditAction={handleEditAction}
-              onDeleteAction={handleDeleteAction}
-              submitError={submitError}
-              shownSuggestions={shownSuggestions}
-              ideasOpen={ideasOpen}
-              onIdeasOpenChange={setIdeasOpen}
-              onSuggestionTap={handleSuggestionTap}
-            />
-          )}
-
-          {/* AI Systems influence panel — visible during submit and rolling phases */}
-          {(phase === "submit" || phase === "rolling") && role.tags.includes("ai-system") && table.aiDisposition && game && (
-            <AiInfluencePanel
-              gameId={gameId}
-              roundNumber={game.currentRound}
-              power={getAiInfluencePower(game.labs)}
-            />
           )}
 
           {/* Rolling / Narrate phases */}
@@ -702,6 +694,15 @@ export default function TablePlayerPage({
             />
           )}
         </div>
+
+        {/* Tab bar — only during submit phase */}
+        {showTabs && (
+          <PlayerTabBar
+            tabs={tabs}
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+          />
+        )}
       </div>
     </InAppBrowserGate>
   );
