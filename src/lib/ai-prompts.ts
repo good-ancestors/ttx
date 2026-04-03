@@ -1,5 +1,10 @@
 // AI system prompts for the TTX game.
 
+/** Escape player text before embedding in LLM prompts (prevents injection via newlines/tags) */
+function escapeAction(text: string): string {
+  return text.replace(/\n/g, " ").replace(/</g, "&lt;");
+}
+
 interface Lab {
   name: string;
   computeStock: number;
@@ -163,10 +168,10 @@ ${args.roleDescription}${args.labSpec ? `\nLAB AI DIRECTIVE (set by CEO): "${arg
 ${requestSection}${incomingSection}
 
 SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resources/effort committed):
-${args.actions.map((a, i) => `${i + 1}. <action>${a.text.replace(/\n/g, ' ').replace(/</g, '&lt;')}</action> [priority: ${a.priority}/10]`).join("\n")}
+${args.actions.map((a, i) => `${i + 1}. <action>${escapeAction(a.text)}</action> [priority: ${a.priority}/10]`).join("\n")}
 ${args.otherSubmissions && args.otherSubmissions.length > 0 ? `
 OTHER PLAYERS' ACTIONS THIS ROUND (grade with awareness of competition and context):
-${args.otherSubmissions.map((s) => `${s.roleName}: ${s.actions.map((a) => `<action>${a.text.replace(/\n/g, ' ').replace(/</g, '&lt;')}</action> [P${a.priority}]`).join("; ")}`).join("\n")}
+${args.otherSubmissions.map((s) => `${s.roleName}: ${s.actions.map((a) => `<action>${escapeAction(a.text)}</action> [P${a.priority}]`).join("; ")}`).join("\n")}
 ` : ""}
 GRADING RULES:
 
@@ -294,7 +299,7 @@ export function buildRoundNarrativePrompt(args: {
   const secretSuccesses = sorted.filter((a) => a.secret && a.success);
   const secretFailures = sorted.filter((a) => a.secret && !a.success);
 
-  const escapeAction = (text: string) => text.replace(/\n/g, ' ').replace(/</g, '&lt;');
+
 
   let actionsSection = `SUCCESSFUL PUBLIC ACTIONS:\n${publicSuccesses.length > 0 ? publicSuccesses.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}`;
   actionsSection += `\n\nFAILED PUBLIC ACTIONS:\n${publicFailures.length > 0 ? publicFailures.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}`;
