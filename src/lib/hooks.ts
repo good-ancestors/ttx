@@ -105,7 +105,11 @@ export function useSessionExpiry(storageKey: string, redirectTo: string) {
 
     const check = () => {
       const expiryStr = localStorage.getItem(storageKey);
-      if (!expiryStr) return; // no session
+      if (!expiryStr) {
+        // Key was removed (by another tab or manual clear) — redirect
+        window.location.href = redirectTo;
+        return;
+      }
       const expiry = parseInt(expiryStr, 10);
       if (Date.now() > expiry) {
         localStorage.removeItem(storageKey);
@@ -113,10 +117,21 @@ export function useSessionExpiry(storageKey: string, redirectTo: string) {
       }
     };
 
+    // Cross-tab sync: if another tab removes the session key, redirect this tab too
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === storageKey && e.newValue === null) {
+        window.location.href = redirectTo;
+      }
+    };
+    window.addEventListener("storage", onStorage);
+
     // Check immediately + on interval
     check();
     const interval = setInterval(check, SESSION_CHECK_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("storage", onStorage);
+    };
   }, [storageKey, redirectTo]);
 }
 

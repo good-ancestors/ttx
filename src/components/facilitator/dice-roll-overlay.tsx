@@ -64,8 +64,8 @@ export function DiceRollOverlay({ onComplete }: { onComplete: () => void }) {
           initial={{ scale: 0.3, rotate: -180 }}
           animate={{
             scale: 1,
-            rotate: [0, -15, 15, -10, 10, 0, -15, 15, -10, 10, 0],
-            y: [0, -8, 0, -8, 0, -8, 0],
+            rotate: [0, -15, 15, -10, 10, 0, -12, 12, -8, 8, 0],
+            y: [0, -8, 0, -6, 0, -8, 0, -6, 0, -4, 0],
           }}
           transition={{
             scale: { duration: 0.4, delay: 0.2, type: "spring", stiffness: 200 },
