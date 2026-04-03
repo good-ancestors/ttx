@@ -254,6 +254,22 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       }
     }));
 
+    // Check which AI/NPC tables are missing from pending (generation failed silently)
+    const pendingRoleIds = new Set(pending.map((p) => p.roleId));
+    const failedGeneration = nonHumanTables.filter((t) => !pendingRoleIds.has(t.roleId));
+    if (failedGeneration.length > 0) {
+      const failedNames = failedGeneration.map((t) => t.roleName).join(", ");
+      console.error(`[aiGenerate] Generation failed for roles: ${failedNames}`);
+      await ctx.runMutation(internal.games.updatePipelineStatus, {
+        gameId,
+        status: {
+          step: "generating",
+          detail: `Warning: ${failedGeneration.length} role(s) failed to generate (${failedNames}). Continuing with available submissions.`,
+          startedAt: Date.now(),
+        },
+      });
+    }
+
     // Submit all actions in parallel (independent mutations, no conflicts)
     const results = await Promise.allSettled(
       pending.map((p) =>
@@ -274,6 +290,12 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
     const submitted = results
       .filter((r): r is PromiseFulfilledResult<typeof pending[number]> => r.status === "fulfilled")
       .map((r) => r.value);
+
+    // Log submission failures
+    const submissionFailures = results.filter((r) => r.status === "rejected");
+    if (submissionFailures.length > 0) {
+      console.error(`[aiGenerate] ${submissionFailures.length} submission mutation(s) failed`);
+    }
 
     // Send endorsement requests + schedule proactive outreach in parallel
     const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));

@@ -49,6 +49,7 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   advanceRound: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   finishGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
+  forceClearLock: (args: { gameId: Id<"games"> }) => Promise<unknown>;
 }
 
 // eslint-disable-next-line complexity
@@ -82,6 +83,7 @@ export function RoundPhase({
   advanceRound,
   finishGame,
   addLab,
+  forceClearLock,
 }: RoundPhaseProps) {
   const phase = game.phase;
   const isResolvingPhase = phase === "rolling" || phase === "narrate";
@@ -238,6 +240,14 @@ export function RoundPhase({
           <Loader2 className="w-4 h-4 animate-spin" />
           {resolveStep}
         </div>
+      )}
+      {!isProjector && resolveStep && (resolveStep.toLowerCase().includes("error") || resolveStep.toLowerCase().includes("failed")) && (
+        <button
+          onClick={() => void forceClearLock({ gameId })}
+          className="text-[11px] px-3 py-1.5 bg-viz-danger/20 text-viz-danger rounded font-medium hover:bg-viz-danger/30 transition-colors flex items-center gap-1 mt-2"
+        >
+          Clear Lock &amp; Retry
+        </button>
       )}
 
       {/* ─── 7. WHAT HAPPENED — narrative (rolling/narrate) ─── */}

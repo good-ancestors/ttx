@@ -44,7 +44,7 @@ async function failPipeline(ctx: any, gameId: string, stage: string, err: unknow
       gameId,
       status: { step: "error", error: message, startedAt: Date.now() },
     });
-    await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
+    await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false, resolvingStartedAt: undefined });
   } catch (cleanupErr) {
     console.error(`[pipeline] failPipeline cleanup also failed:`, cleanupErr);
     // Lock will auto-expire via 3-minute TTL
@@ -78,7 +78,7 @@ async function gradeSubmissionBatch(
   },
 ) {
   const { gameId, game, ungraded, allSubmissions, rounds, requests, enabledRoleNames, roundNumber, aiDisposition, onlyUngraded } = opts;
-  const GRADING_CONCURRENCY = 12;
+  const GRADING_CONCURRENCY = 6;
   let completed = 0;
   const total = ungraded.length;
 
@@ -133,17 +133,20 @@ async function gradeSubmissionBatch(
       });
     }));
 
+    let failedCount = 0;
     for (const r of batchResults) {
       if (r.status === "rejected") {
         console.error(`[pipeline] Grading failed for submission:`, r.reason);
+        failedCount++;
       } else {
         completed++;
       }
     }
 
+    const failedSuffix = failedCount > 0 ? ` (${failedCount} used defaults)` : "";
     await ctx.runMutation(internal.games.updatePipelineStatus, {
       gameId,
-      status: { step: "grading", detail: `Evaluating submissions...`, progress: `${completed}/${total}`, startedAt: Date.now() },
+      status: { step: "grading", detail: `Evaluating submissions...${failedSuffix}`, progress: `${completed}/${total}`, startedAt: Date.now() },
     });
   }
 }
@@ -588,57 +591,86 @@ export const rollAndNarrate = internalAction({
       });
 
       // Single merged call: narrative + worldState + labOperations
-      const { output, model: usedModel, timeMs, tokens } = await callAnthropic<{
+      type NarrativeOutput = {
         narrative: string;
         worldState: { capability: { reasoning: string; value: number }; alignment: { reasoning: string; value: number }; tension: { reasoning: string; value: number }; awareness: { reasoning: string; value: number }; regulation: { reasoning: string; value: number }; australia: { reasoning: string; value: number } };
         labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string }[];
-      }>({
-        models: RESOLVE_MODELS,
-        systemPrompt: SCENARIO_CONTEXT,
-        prompt,
-        maxTokens: 8192,
-        toolName: "resolve_round",
-        schema: {
-          type: "object",
-          properties: {
-            narrative: { type: "string", description: "6-8 dramatic sentences" },
-            worldState: (() => {
-              const dialSchema = { type: "object", properties: { reasoning: { type: "string", description: "1 sentence", maxLength: 150 }, value: { type: "number" } }, required: ["reasoning", "value"] };
-              const dials = ["capability", "alignment", "tension", "awareness", "regulation", "australia"];
-              return {
-                type: "object",
-                description: "For each dial, reason about the change BEFORE giving the value",
-                properties: Object.fromEntries(dials.map((d) => [d, dialSchema])),
-                required: dials,
-              };
-            })(),
-            labOperations: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  reason: { type: "string", description: "Why this operation is needed — reason BEFORE deciding type and values", maxLength: 200 },
-                  type: { type: "string", enum: ["merge", "create", "decommission", "rename", "computeChange", "multiplierOverride"] },
-                  labName: { type: "string" }, survivor: { type: "string" }, absorbed: { type: "string" },
-                  newName: { type: "string" }, name: { type: "string" },
-                  computeStock: { type: "number" }, rdMultiplier: { type: "number" },
-                  change: { type: "number" }, newMultiplier: { type: "number" },
-                  oldName: { type: "string" },
+      };
+
+      let narrativeOutput: NarrativeOutput;
+      let usedModel = "none";
+      let timeMs = 0;
+      let tokens = 0;
+
+      try {
+        const result = await callAnthropic<NarrativeOutput>({
+          models: RESOLVE_MODELS,
+          systemPrompt: SCENARIO_CONTEXT,
+          prompt,
+          maxTokens: 8192,
+          toolName: "resolve_round",
+          schema: {
+            type: "object",
+            properties: {
+              narrative: { type: "string", description: "6-8 dramatic sentences" },
+              worldState: (() => {
+                const dialSchema = { type: "object", properties: { reasoning: { type: "string", description: "1 sentence", maxLength: 150 }, value: { type: "number" } }, required: ["reasoning", "value"] };
+                const dials = ["capability", "alignment", "tension", "awareness", "regulation", "australia"];
+                return {
+                  type: "object",
+                  description: "For each dial, reason about the change BEFORE giving the value",
+                  properties: Object.fromEntries(dials.map((d) => [d, dialSchema])),
+                  required: dials,
+                };
+              })(),
+              labOperations: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    reason: { type: "string", description: "Why this operation is needed — reason BEFORE deciding type and values", maxLength: 200 },
+                    type: { type: "string", enum: ["merge", "create", "decommission", "rename", "computeChange", "multiplierOverride"] },
+                    labName: { type: "string" }, survivor: { type: "string" }, absorbed: { type: "string" },
+                    newName: { type: "string" }, name: { type: "string" },
+                    computeStock: { type: "number" }, rdMultiplier: { type: "number" },
+                    change: { type: "number" }, newMultiplier: { type: "number" },
+                    oldName: { type: "string" },
+                  },
+                  required: ["reason", "type"],
                 },
-                required: ["reason", "type"],
               },
             },
+            required: ["narrative", "worldState", "labOperations"],
           },
-          required: ["narrative", "worldState", "labOperations"],
-        },
-      });
+        });
 
-      if (!output) throw new Error("Narrative LLM returned no output");
+        if (!result.output) throw new Error("Narrative LLM returned no output");
+        narrativeOutput = result.output;
+        usedModel = result.model;
+        timeMs = result.timeMs;
+        tokens = result.tokens;
+      } catch (narrativeErr) {
+        console.error("[pipeline] Narrative LLM failed, using fallback:", narrativeErr);
+        const dials = ["capability", "alignment", "tension", "awareness", "regulation", "australia"] as const;
+        narrativeOutput = {
+          narrative: `Round ${roundNumber} resolved. ${resolvedActions.filter(a => a.success).length} of ${resolvedActions.length} actions succeeded. [Facilitator: edit this narrative manually using the Edit Narrative button.]`,
+          worldState: Object.fromEntries(
+            dials.map(k => [k, { reasoning: "LLM unavailable", value: game.worldState[k] }])
+          ) as NarrativeOutput["worldState"],
+          labOperations: [],
+        };
+        usedModel = "fallback";
+      }
 
       // Nonce check before applying changes
       const gameAfterRoll = await ctx.runQuery(internal.games.getInternal, { gameId });
       if (gameAfterRoll?.resolveNonce !== nonce) {
         console.warn("[pipeline] Nonce mismatch — another run won. Aborting.");
+        await ctx.runMutation(internal.games.updatePipelineStatus, {
+          gameId,
+          status: { step: "error", error: "Resolution superseded by another action — use Re-resolve", startedAt: Date.now() },
+        });
+        await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
         return;
       }
 
@@ -651,10 +683,10 @@ export const rollAndNarrate = internalAction({
         return Math.abs(delta) > maxDelta ? current + Math.sign(delta) * maxDelta : clamped;
       };
       const ws = game.worldState;
-      const ows = output.worldState;
-      const dials = ["capability", "alignment", "tension", "awareness", "regulation", "australia"] as const;
+      const ows = narrativeOutput.worldState;
+      const clampDials = ["capability", "alignment", "tension", "awareness", "regulation", "australia"] as const;
       const clampedWorldState = Object.fromEntries(
-        dials.map((d) => [d, clamp(ows[d]?.value ?? ws[d], ws[d])])
+        clampDials.map((d) => [d, clamp(ows[d]?.value ?? ws[d], ws[d])])
       ) as typeof ws;
       // Write narrative (rounds doc) + world state (games doc) in parallel
       await Promise.all([
@@ -662,7 +694,7 @@ export const rollAndNarrate = internalAction({
           gameId,
           roundNumber,
           summary: {
-            narrative: output.narrative,
+            narrative: narrativeOutput.narrative,
             headlines: [],
             geopoliticalEvents: [],
             aiStateOfPlay: [],
@@ -676,7 +708,7 @@ export const rollAndNarrate = internalAction({
       let updatedLabs = [...game.labs];
       const computeModifiers: { labName: string; change: number; reason: string }[] = [];
 
-      for (const op of output.labOperations ?? []) {
+      for (const op of narrativeOutput.labOperations ?? []) {
         switch (op.type) {
           case "merge":
             if (op.survivor && op.absorbed) {

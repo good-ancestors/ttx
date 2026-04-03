@@ -64,6 +64,7 @@ export default function FacilitatorPage({
   const adjustTimer = useMutation(api.games.adjustTimer);
   const restoreSnapshot = useMutation(api.games.restoreSnapshot);
   const clearResolution = useMutation(api.rounds.clearResolution);
+  const forceClearLock = useMutation(api.games.forceClearResolvingLock);
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
   const triggerGrading = useMutation(api.games.triggerGrading);
@@ -446,6 +447,7 @@ export default function FacilitatorPage({
               advanceRound={advanceRound}
               finishGame={finishGame}
               addLab={addLab}
+              forceClearLock={forceClearLock}
             />
           </div>
         </div>

@@ -499,11 +499,13 @@ export const advancePhaseInternal = internalMutation({
 });
 
 export const setResolvingInternal = internalMutation({
-  args: { gameId: v.id("games"), resolving: v.boolean() },
+  args: { gameId: v.id("games"), resolving: v.boolean(), resolvingStartedAt: v.optional(v.union(v.number(), v.null())) },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, {
       resolving: args.resolving,
-      resolvingStartedAt: args.resolving ? Date.now() : undefined,
+      resolvingStartedAt: args.resolvingStartedAt !== undefined
+        ? (args.resolvingStartedAt ?? undefined)
+        : (args.resolving ? Date.now() : undefined),
     });
   },
 });
@@ -623,6 +625,20 @@ export const updateLabsInternal = internalMutation({
   args: { gameId: v.id("games"), labs: v.array(labSnapshotValidator) },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, { labs: args.labs });
+  },
+});
+
+export const forceClearResolvingLock = mutation({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    await ctx.db.patch(args.gameId, {
+      resolving: false,
+      resolvingStartedAt: undefined,
+      pipelineStatus: undefined,
+    });
+    await logEvent(ctx, args.gameId, "force_unlock", undefined, {});
   },
 });
 

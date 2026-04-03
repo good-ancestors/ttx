@@ -41,15 +41,25 @@ export async function callAnthropic<T>(opts: {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY not set");
 
-  const { models, prompt, systemPrompt, schema, toolName = "respond", maxTokens = 4096, timeoutMs = 120_000 } = opts;
+  const { models, prompt, systemPrompt, schema, toolName = "respond", maxTokens = 4096, timeoutMs = 60_000 } = opts;
   const startTime = Date.now();
 
-  for (const model of models) {
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
+
+    // Backoff + jitter before retrying fallback models
+    if (i > 0) {
+      const backoffMs = Math.pow(2, i) * 500 + Math.random() * 500;
+      await new Promise(r => setTimeout(r, backoffMs));
+    }
+
     try {
-      console.log(`[llm] Calling ${model} with tool_use (promptLen=${prompt.length}, system=${systemPrompt ? "yes" : "no"})`);
+      // First model gets full timeout, fallback models get 30s
+      const effectiveTimeout = i === 0 ? timeoutMs : Math.min(timeoutMs, 30_000);
+      console.log(`[llm] Calling ${model} with tool_use (promptLen=${prompt.length}, system=${systemPrompt ? "yes" : "no"}, timeout=${effectiveTimeout}ms)`);
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), timeoutMs);
+      const timeout = setTimeout(() => controller.abort(), effectiveTimeout);
 
       // System prompt with cache_control for prompt caching
       const systemContent = systemPrompt
