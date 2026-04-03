@@ -2,6 +2,7 @@
 
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
+import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id, Doc } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
@@ -61,7 +62,7 @@ function defaultProbability(priority: number): number {
 }
 
 async function gradeSubmissionBatch(
-  ctx: any, // eslint-disable-line @typescript-eslint/no-explicit-any
+  ctx: ActionCtx,
   opts: {
     gameId: Id<"games">;
     game: Game;
@@ -125,13 +126,13 @@ async function gradeSubmissionBatch(
         submissionId: sub._id,
         actions: gradedActions,
       });
-      completed++;
     }));
 
     for (const r of batchResults) {
       if (r.status === "rejected") {
-        completed--;
         console.error(`[pipeline] Grading failed for submission:`, r.reason);
+      } else {
+        completed++;
       }
     }
 

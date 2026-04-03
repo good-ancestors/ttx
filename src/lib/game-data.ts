@@ -457,6 +457,7 @@ export const COMPUTE_CATEGORIES = [
 
 export const MAX_PRIORITY = 10;
 export const MAX_ACTIONS = 5;
+export const TOTAL_ROUNDS = ROUND_CONFIGS.length;
 
 /** Auto-decay priority table: position-based priority assignment.
  *  Key = number of actions, value = priority for each position (highest first). */

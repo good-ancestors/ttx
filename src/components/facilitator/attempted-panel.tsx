@@ -158,122 +158,24 @@ export function AttemptedPanel({
       {expanded && (
         <>
           <div className="space-y-1.5">
-            {displayActions.map(({ action, i, sub, role }, idx) => {
-              const secretKey = `${sub.roleId}-${i}`;
-              const isCovert = action.secret && !revealedSecrets.has(secretKey);
-              const isRolled = action.rolled != null;
-              const roleName = role?.name ?? sub.roleId;
-              const endorsements = getEndorsements(sub.roleId, action.text);
-
-              // During rolling/narrate, stagger reveal animation
-              const shouldAnimate = isRollingOrNarrate;
-              const isVisible = !shouldAnimate || idx < revealedCount;
-
-              return (
-                <div
-                  key={`${sub._id}-${i}`}
-                  className={`py-2 border-b border-navy-light/50 last:border-0 transition-all duration-300 ${
-                    isVisible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: role?.color }} />
-                    <span className="text-xs font-bold text-white shrink-0">{roleName}</span>
-                    {action.secret && (
-                      <Lock
-                        className="w-3 h-3 text-viz-warning shrink-0 mt-0.5 cursor-pointer"
-                        onClick={() => toggleReveal(secretKey)}
-                      />
-                    )}
-                    {/* Endorsement chips */}
-                    {endorsements.length > 0 && (
-                      <div className="flex flex-wrap gap-1 ml-1">
-                        {endorsements.map((p) => (
-                          <span
-                            key={p._id}
-                            className="text-[9px] px-1.5 py-0.5 rounded-full bg-viz-safety/20 text-viz-safety font-semibold"
-                            title={`${p.fromRoleName} \u2192 ${p.toRoleName}: ${p.actionText}`}
-                          >
-                            {p.fromRoleName} \u2713
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {/* AI Systems influence indicator (facilitator only) */}
-                    {!isProjector && action.aiInfluence != null && action.aiInfluence !== 0 && (
-                      <span
-                        className={`flex items-center gap-0.5 text-[9px] font-mono ${
-                          action.aiInfluence > 0 ? "text-viz-safety" : "text-viz-danger"
-                        }`}
-                        title={`AI influence: ${action.aiInfluence > 0 ? "+" : ""}${action.aiInfluence}`}
-                      >
-                        {action.aiInfluence > 0 ? (
-                          <ThumbsUp className="w-2.5 h-2.5" />
-                        ) : (
-                          <ThumbsDown className="w-2.5 h-2.5" />
-                        )}
-                      </span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2 mt-0.5 pl-4">
-                    <span
-                      className={`text-sm flex-1 min-w-0 ${
-                        isCovert
-                          ? "text-text-light italic cursor-pointer hover:text-white transition-colors"
-                          : action.secret
-                            ? "text-[#E2E8F0] cursor-pointer hover:text-text-light transition-colors"
-                            : "text-[#E2E8F0]"
-                      }`}
-                      onClick={action.secret ? () => toggleReveal(secretKey) : undefined}
-                      title={action.secret ? (isCovert ? "Click to reveal" : "Click to re-hide") : undefined}
-                    >
-                      {isCovert ? redactSecretAction(roleName, action) : action.text}
-                    </span>
-                    {/* Probability / roll display */}
-                    {isRolled ? (
-                      !isProjector ? (
-                        <span className="flex items-center gap-0.5 shrink-0">
-                          <button
-                            onClick={() => void rerollAction({ submissionId: sub._id, actionIndex: i })}
-                            className={`text-xs font-mono px-1 rounded hover:bg-navy-light ${action.success ? "text-viz-safety" : "text-viz-danger"}`}
-                            title="Click to reroll"
-                          >
-                            {action.rolled}
-                          </button>
-                          <span className={`text-xs ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>/</span>
-                          <button
-                            onClick={() => void overrideProbability({
-                              submissionId: sub._id,
-                              actionIndex: i,
-                              probability: cycleProbability(action.probability ?? 50),
-                            })}
-                            className="text-xs font-mono px-1 rounded hover:bg-navy-light text-text-light"
-                            title="Click to cycle probability"
-                          >
-                            {action.probability}%
-                          </button>
-                        </span>
-                      ) : (
-                        <span className={`text-xs font-mono shrink-0 ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>
-                          {action.rolled}/{action.probability}%
-                        </span>
-                      )
-                    ) : action.probability != null ? (
-                      <ProbabilityBadge
-                        probability={action.probability}
-                        onClick={!isProjector ? () => overrideProbability({
-                          submissionId: sub._id,
-                          actionIndex: i,
-                          probability: cycleProbability(action.probability!),
-                        }) : undefined}
-                      />
-                    ) : (
-                      <span className="text-xs text-text-light font-mono">P{action.priority}</span>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {displayActions.map(({ action, i, sub, role }, idx) => (
+              <ActionRow
+                key={`${sub._id}-${i}`}
+                action={action}
+                actionIndex={i}
+                sub={sub}
+                role={role}
+                idx={idx}
+                isProjector={isProjector}
+                isRollingOrNarrate={isRollingOrNarrate}
+                revealedCount={revealedCount}
+                revealedSecrets={revealedSecrets}
+                toggleReveal={toggleReveal}
+                getEndorsements={getEndorsements}
+                rerollAction={rerollAction}
+                overrideProbability={overrideProbability}
+              />
+            ))}
           </div>
           {!isProjector && hasRolled && isRollingOrNarrate && (
             <button
@@ -288,4 +190,175 @@ export function AttemptedPanel({
       )}
     </div>
   );
+}
+
+// ─── Action row (extracted to reduce complexity) ──────────────────────────────
+
+function ActionRow({
+  action,
+  actionIndex: i,
+  sub,
+  role,
+  idx,
+  isProjector,
+  isRollingOrNarrate,
+  revealedCount,
+  revealedSecrets,
+  toggleReveal,
+  getEndorsements,
+  rerollAction,
+  overrideProbability,
+}: {
+  action: Submission["actions"][number];
+  actionIndex: number;
+  sub: Submission;
+  role: { name: string; color: string } | undefined;
+  idx: number;
+  isProjector: boolean;
+  isRollingOrNarrate: boolean;
+  revealedCount: number;
+  revealedSecrets: Set<string>;
+  toggleReveal: (key: string) => void;
+  getEndorsements: (roleId: string, actionText: string) => Proposal[];
+  rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
+  overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+}) {
+  const secretKey = `${sub.roleId}-${i}`;
+  const isCovert = action.secret && !revealedSecrets.has(secretKey);
+  const roleName = role?.name ?? sub.roleId;
+  const endorsements = getEndorsements(sub.roleId, action.text);
+  const isVisible = !isRollingOrNarrate || idx < revealedCount;
+
+  return (
+    <div
+      className={`py-2 border-b border-navy-light/50 last:border-0 transition-all duration-300 ${
+        isVisible ? "opacity-100 translate-x-0" : "opacity-0 -translate-x-4"
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: role?.color }} />
+        <span className="text-xs font-bold text-white shrink-0">{roleName}</span>
+        {action.secret && (
+          <Lock
+            className="w-3 h-3 text-viz-warning shrink-0 mt-0.5 cursor-pointer"
+            onClick={() => toggleReveal(secretKey)}
+          />
+        )}
+        {endorsements.length > 0 && (
+          <div className="flex flex-wrap gap-1 ml-1">
+            {endorsements.map((p) => (
+              <span
+                key={p._id}
+                className="text-[9px] px-1.5 py-0.5 rounded-full bg-viz-safety/20 text-viz-safety font-semibold"
+                title={`${p.fromRoleName} \u2192 ${p.toRoleName}: ${p.actionText}`}
+              >
+                {p.fromRoleName} {"\u2713"}
+              </span>
+            ))}
+          </div>
+        )}
+        {!isProjector && action.aiInfluence != null && action.aiInfluence !== 0 && (
+          <span
+            className={`flex items-center gap-0.5 text-[9px] font-mono ${
+              action.aiInfluence > 0 ? "text-viz-safety" : "text-viz-danger"
+            }`}
+            title={`AI influence: ${action.aiInfluence > 0 ? "+" : ""}${action.aiInfluence}`}
+          >
+            {action.aiInfluence > 0 ? (
+              <ThumbsUp className="w-2.5 h-2.5" />
+            ) : (
+              <ThumbsDown className="w-2.5 h-2.5" />
+            )}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2 mt-0.5 pl-4">
+        <span
+          className={`text-sm flex-1 min-w-0 ${
+            isCovert
+              ? "text-text-light italic cursor-pointer hover:text-white transition-colors"
+              : action.secret
+                ? "text-[#E2E8F0] cursor-pointer hover:text-text-light transition-colors"
+                : "text-[#E2E8F0]"
+          }`}
+          onClick={action.secret ? () => toggleReveal(secretKey) : undefined}
+          title={action.secret ? (isCovert ? "Click to reveal" : "Click to re-hide") : undefined}
+        >
+          {isCovert ? redactSecretAction(roleName, action) : action.text}
+        </span>
+        <ActionOutcome
+          action={action}
+          submissionId={sub._id}
+          actionIndex={i}
+          isProjector={isProjector}
+          rerollAction={rerollAction}
+          overrideProbability={overrideProbability}
+        />
+      </div>
+    </div>
+  );
+}
+
+function ActionOutcome({
+  action,
+  submissionId,
+  actionIndex,
+  isProjector,
+  rerollAction,
+  overrideProbability,
+}: {
+  action: Submission["actions"][number];
+  submissionId: Id<"submissions">;
+  actionIndex: number;
+  isProjector: boolean;
+  rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
+  overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+}) {
+  if (action.rolled != null) {
+    if (!isProjector) {
+      return (
+        <span className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={() => void rerollAction({ submissionId, actionIndex })}
+            className={`text-xs font-mono px-1 rounded hover:bg-navy-light ${action.success ? "text-viz-safety" : "text-viz-danger"}`}
+            title="Click to reroll"
+          >
+            {action.rolled}
+          </button>
+          <span className={`text-xs ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>/</span>
+          <button
+            onClick={() => void overrideProbability({
+              submissionId,
+              actionIndex,
+              probability: cycleProbability(action.probability ?? 50),
+            })}
+            className="text-xs font-mono px-1 rounded hover:bg-navy-light text-text-light"
+            title="Click to cycle probability"
+          >
+            {action.probability}%
+          </button>
+        </span>
+      );
+    }
+    return (
+      <span className={`text-xs font-mono shrink-0 ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>
+        {action.rolled}/{action.probability}%
+      </span>
+    );
+  }
+
+  if (action.probability != null) {
+    return (
+      <ProbabilityBadge
+        probability={action.probability}
+        onClick={!isProjector ? () => overrideProbability({
+          submissionId,
+          actionIndex,
+          probability: cycleProbability(action.probability!),
+        }) : undefined}
+      />
+    );
+  }
+
+  return <span className="text-xs text-text-light font-mono">P{action.priority}</span>;
 }

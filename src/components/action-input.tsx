@@ -147,6 +147,7 @@ function ActionCard({
   onSendRequest,
   onCancelRequest,
   onAddNext,
+  onSubmit,
 }: {
   action: ActionDraft;
   index: number;

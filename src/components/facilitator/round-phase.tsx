@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { getCapabilityDescription } from "@/lib/game-data";
+import { getCapabilityDescription, TOTAL_ROUNDS } from "@/lib/game-data";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { NarrativeEditor, WorldStateEditor } from "@/components/manual-controls";
 import { PlayersPanel } from "./players-panel";
 import { AttemptedPanel } from "./attempted-panel";
 import { ExpandableSection } from "./expandable-section";
+import { AddLabForm } from "./add-lab-form";
 import {
   Loader2,
   Dices,
@@ -150,10 +151,6 @@ export function RoundPhase({
 
   const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | "compute" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
-  const [newLabName, setNewLabName] = useState("");
-  const [newLabRoleId, setNewLabRoleId] = useState("");
-  const [newLabCompute, setNewLabCompute] = useState(10);
-  const [newLabMultiplier, setNewLabMultiplier] = useState(1);
 
   return (
     <div className="space-y-4">
@@ -312,7 +309,7 @@ export function RoundPhase({
 
       {/* ─── 9. Advance / End button (narrate phase) ─── */}
       {phase === "narrate" && !isProjector && (
-        game.currentRound < 4 ? (
+        game.currentRound < TOTAL_ROUNDS ? (
           pendingConfirm === "advance" ? (
             <div className="flex gap-2">
               <button onClick={() => setPendingConfirm(null)} className="flex-1 py-4 bg-navy-light text-text-light rounded-lg font-bold text-base">Cancel</button>
@@ -352,14 +349,6 @@ export function RoundPhase({
           game={game}
           tables={tables}
           currentRound={currentRound}
-          newLabName={newLabName}
-          setNewLabName={setNewLabName}
-          newLabRoleId={newLabRoleId}
-          setNewLabRoleId={setNewLabRoleId}
-          newLabCompute={newLabCompute}
-          setNewLabCompute={setNewLabCompute}
-          newLabMultiplier={newLabMultiplier}
-          setNewLabMultiplier={setNewLabMultiplier}
           addLab={addLab}
         />
       )}
@@ -478,14 +467,6 @@ function EditModal({
   game,
   tables,
   currentRound,
-  newLabName,
-  setNewLabName,
-  newLabRoleId,
-  setNewLabRoleId,
-  newLabCompute,
-  setNewLabCompute,
-  newLabMultiplier,
-  setNewLabMultiplier,
   addLab,
 }: {
   editModal: "narrative" | "dials" | "addlab" | "compute";
@@ -494,18 +475,8 @@ function EditModal({
   game: RoundPhaseProps["game"];
   tables: RoundPhaseProps["tables"];
   currentRound: Round | undefined;
-  newLabName: string;
-  setNewLabName: (v: string) => void;
-  newLabRoleId: string;
-  setNewLabRoleId: (v: string) => void;
-  newLabCompute: number;
-  setNewLabCompute: (v: number) => void;
-  newLabMultiplier: number;
-  setNewLabMultiplier: (v: number) => void;
   addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
 }) {
-  const enabledTables = tables.filter((t) => t.enabled);
-
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8" onClick={onClose}>
       <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
@@ -522,42 +493,7 @@ function EditModal({
           <WorldStateEditor gameId={gameId} worldState={game.worldState} startOpen />
         )}
         {editModal === "addlab" && (
-          <div>
-            <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end">
-              <div>
-                <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Lab Name</label>
-                <input type="text" value={newLabName} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLabName(e.target.value)} placeholder="e.g. Sovereign Compute Centre" className="w-full text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white placeholder:text-navy-muted focus:outline-none focus:border-text-light" />
-              </div>
-              <div>
-                <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Controlled by</label>
-                <select value={newLabRoleId} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setNewLabRoleId(e.target.value)} className="w-full text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light">
-                  <option value="">Select role...</option>
-                  {enabledTables.map((t) => (
-                    <option key={t.roleId} value={t.roleId}>{t.roleName}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Compute</label>
-                <input type="number" value={newLabCompute} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLabCompute(Number(e.target.value))} className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light" />
-              </div>
-              <div>
-                <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Multiplier</label>
-                <input type="number" value={newLabMultiplier} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewLabMultiplier(Number(e.target.value))} step={0.1} className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light" />
-              </div>
-              <button
-                onClick={async () => {
-                  if (!newLabName || !newLabRoleId) return;
-                  await addLab({ gameId, name: newLabName, roleId: newLabRoleId, computeStock: newLabCompute, rdMultiplier: newLabMultiplier });
-                  setNewLabName(""); setNewLabRoleId(""); setNewLabCompute(10); setNewLabMultiplier(1); onClose();
-                }}
-                disabled={!newLabName || !newLabRoleId}
-                className="text-sm px-4 py-1.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Add
-              </button>
-            </div>
-          </div>
+          <AddLabForm gameId={gameId} tables={tables} addLab={addLab} onDone={onClose} />
         )}
         {editModal === "compute" && (
           <ComputeEditor labs={game.labs} gameId={gameId} computeChanges={currentRound?.computeChanges ?? undefined} onClose={onClose} />

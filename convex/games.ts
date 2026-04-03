@@ -597,17 +597,6 @@ export const triggerRoll = mutation({
 
     assertNotResolving(game);
 
-    // Auto-generate AI influence for NPC/AI-controlled AI Systems before rolling
-    const tables = await ctx.db
-      .query("tables")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    const aiSystemsTable = tables.find((t) => t.roleId === "ai-systems" && t.enabled);
-    if (aiSystemsTable?.aiDisposition && aiSystemsTable.controlMode !== "human") {
-      // Schedule auto-influence generation before roll
-      // (handled inside rollAndNarrate for simplicity)
-    }
-
     await ctx.db.patch(args.gameId, {
       phase: "rolling",
       resolving: true,

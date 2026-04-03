@@ -22,6 +22,7 @@ import {
 import { LobbyPhase } from "@/components/facilitator/lobby-phase";
 import { RoundPhase } from "@/components/facilitator/round-phase";
 import { TimerDisplay } from "@/components/facilitator/timer-display";
+import { AddLabForm } from "@/components/facilitator/add-lab-form";
 
 export default function FacilitatorPage({
   params,
@@ -587,12 +588,6 @@ function AddLabModal({
   addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
   onClose: () => void;
 }) {
-  const [name, setName] = useState("");
-  const [roleId, setRoleId] = useState("");
-  const [compute, setCompute] = useState(10);
-  const [multiplier, setMultiplier] = useState(1);
-  const enabledTables = tables.filter((t) => t.enabled);
-
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8" onClick={onClose}>
       <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
@@ -600,40 +595,7 @@ function AddLabModal({
           <span className="text-sm font-bold text-white">Add Lab</span>
           <button onClick={onClose} className="text-text-light hover:text-white text-sm">Close</button>
         </div>
-        <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end">
-          <div>
-            <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Lab Name</label>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sovereign Compute Centre" className="w-full text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white placeholder:text-navy-muted focus:outline-none focus:border-text-light" />
-          </div>
-          <div>
-            <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Controlled by</label>
-            <select value={roleId} onChange={(e) => setRoleId(e.target.value)} className="w-full text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light">
-              <option value="">Select role...</option>
-              {enabledTables.map((t) => (
-                <option key={t.roleId} value={t.roleId}>{t.roleName}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Compute</label>
-            <input type="number" value={compute} onChange={(e) => setCompute(Number(e.target.value))} className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light" />
-          </div>
-          <div>
-            <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Multiplier</label>
-            <input type="number" value={multiplier} onChange={(e) => setMultiplier(Number(e.target.value))} step={0.1} className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light" />
-          </div>
-          <button
-            onClick={async () => {
-              if (!name || !roleId) return;
-              await addLab({ gameId, name, roleId, computeStock: compute, rdMultiplier: multiplier });
-              onClose();
-            }}
-            disabled={!name || !roleId}
-            className="text-sm px-4 py-1.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Add
-          </button>
-        </div>
+        <AddLabForm gameId={gameId} tables={tables} addLab={addLab} onDone={onClose} />
       </div>
     </div>
   );
