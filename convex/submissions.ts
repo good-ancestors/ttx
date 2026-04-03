@@ -77,7 +77,8 @@ export const getByGameAndRoundRedacted = query({
     return subs.map((sub) => ({
       ...sub,
       actions: sub.actions.map((a) => {
-        if (a.secret && sub.roleId !== args.viewerRoleId) {
+        // AI Systems can see all secrets (needed for influence decisions)
+        if (a.secret && sub.roleId !== args.viewerRoleId && args.viewerRoleId !== "ai-systems") {
           return { ...a, text: "[Covert action]", reasoning: undefined };
         }
         return a;

@@ -510,7 +510,7 @@ export default function TablePlayerPage({
     : [];
 
   // ── Tab config ────────────────────────────────────────────────────────────
-  const showTabs = phase === "submit";
+  const showTabs = game.status === "playing";
   const tabs = buildPlayerTabs(role, phase, pendingProposalCount, isLabCeoRole);
 
   // Previous round narrative for the brief tab

@@ -12,8 +12,6 @@ import {
   CheckCircle,
   Clock,
   ChevronDown,
-  ThumbsUp,
-  ThumbsDown,
 } from "lucide-react";
 import type { Submission, Proposal } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
@@ -261,20 +259,7 @@ function ActionRow({
             ))}
           </div>
         )}
-        {!isProjector && action.aiInfluence != null && action.aiInfluence !== 0 && (
-          <span
-            className={`flex items-center gap-0.5 text-[9px] font-mono ${
-              action.aiInfluence > 0 ? "text-viz-safety" : "text-viz-danger"
-            }`}
-            title={`AI influence: ${action.aiInfluence > 0 ? "+" : ""}${action.aiInfluence}`}
-          >
-            {action.aiInfluence > 0 ? (
-              <ThumbsUp className="w-2.5 h-2.5" />
-            ) : (
-              <ThumbsDown className="w-2.5 h-2.5" />
-            )}
-          </span>
-        )}
+        {/* AI influence is secret — not shown on facilitator view */}
       </div>
       <div className="flex items-center gap-2 mt-0.5 pl-4">
         <span
