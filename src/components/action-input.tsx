@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { ROLES, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
-import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Lock } from "lucide-react";
+import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send } from "lucide-react";
 
 
 export type PriorityLevel = "low" | "medium" | "high";
@@ -39,12 +39,13 @@ interface Props {
   roleName: string;
   enabledRoles?: { id: string; name: string }[];
   isSubmitted: boolean;
-  onSendRequest?: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
-  onCancelRequest?: (targetRoleId: string, actionText: string) => void;
+  onSubmitAction?: (index: number) => void;
 }
 
-export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitted, onSendRequest, onCancelRequest }: Props) {
-  const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId)).filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId : true);
+export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitted, onSubmitAction }: Props) {
+  // Filter out own role and AI Systems (AI Systems uses influence, not endorsements)
+  const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId))
+    .filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId && r.id !== "ai-systems" : true);
 
   const updateAction = (index: number, patch: Partial<ActionDraft>) => {
     const next = [...actions];
@@ -107,10 +108,9 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
             } : undefined}
             otherRoles={otherRoles}
             isSubmitted={isSubmitted}
-            onSendRequest={onSendRequest}
-            onCancelRequest={onCancelRequest}
             canRemove={actions.length > 1 || action.text.trim() !== ""}
             onAddNext={actions.length < 5 && !isSubmitted ? addAction : undefined}
+            onSubmit={onSubmitAction && action.text.trim() ? () => onSubmitAction(i) : undefined}
           />
         ))}
       </div>
@@ -140,9 +140,8 @@ function ActionCard({
   otherRoles,
   isSubmitted,
   canRemove,
-  onSendRequest,
-  onCancelRequest,
   onAddNext,
+  onSubmit,
 }: {
   action: ActionDraft;
   index: number;
@@ -155,13 +154,10 @@ function ActionCard({
   otherRoles: { id: string; name: string }[];
   isSubmitted: boolean;
   canRemove: boolean;
-  onSendRequest?: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
-  onCancelRequest?: (targetRoleId: string, actionText: string) => void;
   onAddNext?: () => void;
+  onSubmit?: () => void;
 }) {
   const [showEndorse, setShowEndorse] = useState(false);
-  const hasEndorsements = action.endorseTargets.length > 0;
-  const isLocked = hasEndorsements && !isSubmitted;
 
   // Suggest endorsement targets based on action text keywords
   const activeRoleIds = otherRoles.map((r) => r.id);
@@ -170,23 +166,15 @@ function ActionCard({
     : [];
 
   return (
-    <div className={`bg-white rounded-xl border p-4 ${action.secret ? "border-viz-warning/40" : isLocked ? "border-[#059669]/30" : "border-border"}`}>
+    <div className={`bg-white rounded-xl border p-4 ${action.secret ? "border-viz-warning/40" : action.endorseTargets.length > 0 ? "border-[#059669]/30" : "border-border"}`}>
       {action.text.trim() && totalActions > 1 && (
         <ReorderBar index={index} onMoveUp={onMoveUp} onMoveDown={onMoveDown} />
-      )}
-
-      {isLocked && (
-        <div className="flex items-center gap-1.5 mb-2 text-[11px] text-[#059669]">
-          <Lock className="w-3 h-3" />
-          <span>Text locked — cancel support requests to edit</span>
-        </div>
       )}
 
       <textarea
         value={action.text}
         onChange={(e) => onUpdate({ text: e.target.value })}
         onKeyDown={(e) => {
-          if (isLocked) { e.preventDefault(); return; }
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
             if (action.text.trim() && onAddNext) onAddNext();
@@ -195,9 +183,8 @@ function ActionCard({
         placeholder={index === 0 ? "I do [action] so that [intended outcome]..." : "I do [action] so that [intended outcome]..."}
         rows={2}
         disabled={isSubmitted}
-        readOnly={isLocked}
         spellCheck={false}
-        className={`w-full bg-transparent text-sm text-text resize-none outline-none placeholder:text-text-muted/50 mb-2 ${isLocked ? "opacity-70 cursor-not-allowed" : ""}`}
+        className="w-full bg-transparent text-sm text-text resize-none outline-none placeholder:text-text-muted/50 mb-2"
       />
 
       {/* Controls row — only show when there's text */}
@@ -237,8 +224,17 @@ function ActionCard({
             </span>
           </button>
 
-          {/* Spacer + remove */}
+          {/* Spacer + submit + remove */}
           <div className="flex-1" />
+          {onSubmit && !isSubmitted && (
+            <button
+              onClick={onSubmit}
+              aria-label="Submit this action"
+              className="min-h-[44px] px-3 rounded-lg text-xs font-bold text-white bg-navy hover:bg-navy-light transition-colors flex items-center gap-1.5"
+            >
+              <Send className="w-3.5 h-3.5" /> Submit
+            </button>
+          )}
           {canRemove && !isSubmitted && (
             <button
               onClick={onRemove}
@@ -256,8 +252,6 @@ function ActionCard({
           action={action}
           otherRoles={otherRoles}
           onUpdate={onUpdate}
-          onSendRequest={onSendRequest}
-          onCancelRequest={onCancelRequest}
           onClose={() => setShowEndorse(false)}
         />
       )}
@@ -296,18 +290,13 @@ function EndorsementPicker({
   action,
   otherRoles,
   onUpdate,
-  onSendRequest,
-  onCancelRequest,
   onClose,
 }: {
   action: ActionDraft;
   otherRoles: { id: string; name: string }[];
   onUpdate: (patch: Partial<ActionDraft>) => void;
-  onSendRequest?: (targetRoleId: string, targetRoleName: string, actionText: string) => void;
-  onCancelRequest?: (targetRoleId: string, actionText: string) => void;
   onClose: () => void;
 }) {
-  const [justSent, setJustSent] = useState<Set<string>>(new Set());
 
   return (
     <div className="mt-2 pt-2 border-t border-border">
@@ -315,29 +304,19 @@ function EndorsementPicker({
       <div className="flex flex-wrap gap-1.5">
         {otherRoles.map((r) => {
           const selected = action.endorseTargets.includes(r.id);
-          const showSent = justSent.has(r.id);
           return (
             <button
               key={r.id}
               onClick={() => {
                 if (selected) {
                   onUpdate({ endorseTargets: action.endorseTargets.filter((id) => id !== r.id) });
-                  if (onCancelRequest && action.text.trim()) onCancelRequest(r.id, action.text.trim());
-                  setJustSent((s) => { const next = new Set(s); next.delete(r.id); return next; });
                 } else {
                   onUpdate({ endorseTargets: [...action.endorseTargets, r.id] });
-                  if (onSendRequest && action.text.trim()) {
-                    onSendRequest(r.id, r.name, action.text.trim());
-                    setJustSent((s) => new Set(s).add(r.id));
-                    setTimeout(() => setJustSent((s) => { const next = new Set(s); next.delete(r.id); return next; }), 1500);
-                  }
                 }
               }}
               className={`text-xs min-h-[36px] px-3 py-1.5 rounded-full font-medium transition-colors duration-200 ${
                 selected
-                  ? showSent
-                    ? "bg-[#047857] text-white ring-2 ring-[#059669]/50"
-                    : "bg-[#059669] text-white"
+                  ? "bg-[#059669] text-white"
                   : "bg-warm-gray text-text-muted hover:bg-border"
               }`}
             >
@@ -350,11 +329,7 @@ function EndorsementPicker({
       {action.endorseTargets.length > 0 && (
         <button
           onClick={() => {
-            if (onCancelRequest && action.text.trim()) {
-              for (const id of action.endorseTargets) onCancelRequest(id, action.text.trim());
-            }
             onUpdate({ endorseTargets: [] });
-            setJustSent(new Set());
             onClose();
           }}
           className="mt-1.5 text-[11px] text-text-muted hover:text-text flex items-center gap-1"

@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ROLES, DEFAULT_LABS, BACKGROUND_LABS } from "@/lib/game-data";
+import { FullScreenOverlay } from "@/components/full-screen-overlay";
+import { Maximize2 } from "lucide-react";
 
 interface Lab {
   name: string;
@@ -184,16 +186,14 @@ export function RdProgressChart({
     [rounds, currentLabs, currentRound, compact],
   );
   const { width, height, padLeft, padRight } = layout;
+  const [fullScreen, setFullScreen] = useState(false);
 
-  return (
-    <div className="bg-navy-dark rounded-xl border border-navy-light p-4">
-      <span className="text-sm font-semibold uppercase tracking-wider text-text-light mb-2 block">
-        R&D Progress
-      </span>
+  const chartContent = (maxH?: number) => (
+    <>
       <svg
         viewBox={`0 0 ${width} ${height}`}
         className="w-full"
-        style={{ maxHeight: compact ? 170 : 210 }}
+        style={{ maxHeight: maxH ?? (compact ? 170 : 210) }}
       >
         {/* Y-axis grid lines and labels */}
         {yTicks.map((v) => (
@@ -274,6 +274,28 @@ export function RdProgressChart({
           </span>
         ))}
       </div>
+    </>
+  );
+
+  return (
+    <>
+    {fullScreen && (
+      <FullScreenOverlay title="R&D Progress" onClose={() => setFullScreen(false)} bodyClassName="flex-1 flex flex-col justify-center max-w-4xl mx-auto w-full">
+        {chartContent(600)}
+      </FullScreenOverlay>
+    )}
+
+    <div className="bg-navy-dark rounded-xl border border-navy-light p-4">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
+          R&D Progress
+        </span>
+        <button onClick={() => setFullScreen(true)} className="text-text-light hover:text-white p-0.5 transition-colors" title="Full screen">
+          <Maximize2 className="w-3 h-3" />
+        </button>
+      </div>
+      {chartContent()}
     </div>
+    </>
   );
 }

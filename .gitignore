@@ -43,3 +43,5 @@ next-env.d.ts
 # convex local state
 .convex/
 .env*.local
+convex/_generated/convex/
+convex/_generated/src/

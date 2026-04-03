@@ -6,6 +6,14 @@ import { logEvent } from "./events";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
 import { internal } from "./_generated/api";
 
+const LOCK_TTL_MS = 3 * 60 * 1000; // 3 minutes
+
+function assertNotResolving(game: { resolving?: boolean; resolvingStartedAt?: number }) {
+  if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
+    throw new Error("Resolution already in progress");
+  }
+}
+
 /** Pre-generate AI/NPC actions so they're ready before submissions open. */
 async function schedulePreGeneration(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
   await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, { gameId, roundNumber });
@@ -348,6 +356,16 @@ export const skipTimer = mutation({
   },
 });
 
+export const adjustTimer = mutation({
+  args: { gameId: v.id("games"), deltaSeconds: v.number() },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game || !game.phaseEndsAt) return;
+    const newEnd = Math.max(Date.now() + 1000, game.phaseEndsAt + args.deltaSeconds * 1000);
+    await ctx.db.patch(args.gameId, { phaseEndsAt: newEnd });
+  },
+});
+
 export const addLab = mutation({
   args: {
     gameId: v.id("games"),
@@ -417,11 +435,7 @@ export const setResolving = mutation({
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
-    const LOCK_TTL_MS = 3 * 60 * 1000; // 3 minutes
-    if (args.resolving && game.resolving && game.resolvingStartedAt
-        && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
-      throw new Error("Resolution already in progress");
-    }
+    if (args.resolving) assertNotResolving(game);
     await ctx.db.patch(args.gameId, {
       resolving: args.resolving,
       resolvingStartedAt: args.resolving ? Date.now() : undefined,
@@ -513,10 +527,7 @@ export const triggerResolvePipeline = mutation({
     if (game.status !== "playing") throw new Error("Game is not in playing state");
 
     // Acquire lock (with TTL check)
-    const LOCK_TTL_MS = 3 * 60 * 1000;
-    if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
-      throw new Error("Resolution already in progress");
-    }
+    assertNotResolving(game);
     await ctx.db.patch(args.gameId, {
       resolving: true,
       resolvingStartedAt: Date.now(),
@@ -525,6 +536,75 @@ export const triggerResolvePipeline = mutation({
 
     // Schedule the first pipeline stage
     await ctx.scheduler.runAfter(0, internal.pipeline.gradeAll, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      aiDisposition: args.aiDisposition,
+    });
+  },
+});
+
+export const triggerGrading = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "playing") throw new Error("Game is not in playing state");
+
+    assertNotResolving(game);
+    await ctx.db.patch(args.gameId, {
+      resolving: true,
+      resolvingStartedAt: Date.now(),
+      pipelineStatus: { step: "grading", detail: "Grading remaining actions...", startedAt: Date.now() },
+    });
+
+    // Schedule grading only (no roll/narrate after)
+    await ctx.scheduler.runAfter(0, internal.pipeline.gradeOnly, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      aiDisposition: args.aiDisposition,
+    });
+  },
+});
+
+export const triggerRoll = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "playing") throw new Error("Game is not in playing state");
+
+    // Verify all submitted actions are graded
+    const subs = await ctx.db
+      .query("submissions")
+      .withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
+      )
+      .collect();
+    const ungradedCount = subs.flatMap((s) =>
+      s.actions.filter((a) => (a.actionStatus === "submitted" || !a.actionStatus) && a.probability == null)
+    ).length;
+    if (ungradedCount > 0) {
+      throw new Error(`${ungradedCount} submitted actions still ungraded — grade them first`);
+    }
+
+    assertNotResolving(game);
+
+    await ctx.db.patch(args.gameId, {
+      phase: "rolling",
+      resolving: true,
+      resolvingStartedAt: Date.now(),
+      pipelineStatus: { step: "rolling", detail: "Rolling dice...", startedAt: Date.now() },
+    });
+
+    await ctx.scheduler.runAfter(0, internal.pipeline.rollAndNarrate, {
       gameId: args.gameId,
       roundNumber: args.roundNumber,
       aiDisposition: args.aiDisposition,

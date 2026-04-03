@@ -1,12 +1,14 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { logEvent, assertPhase } from "./events";
-import { internal } from "./_generated/api";
+
+const PRIORITY_HARD_CAP = 12;
 
 const actionValidator = v.object({
   text: v.string(),
   priority: v.number(),
   secret: v.optional(v.boolean()),
+  actionStatus: v.optional(v.union(v.literal("draft"), v.literal("submitted"))),
   probability: v.optional(v.number()),
   reasoning: v.optional(v.string()),
   rolled: v.optional(v.number()),
@@ -92,7 +94,6 @@ export const submit = mutation({
 
     // Enforce action limit (max 5) and sanity-check priority budget
     // Auto-decay always sums to ≤10, but allow +2 tolerance for edge cases (e.g. manual override)
-    const PRIORITY_HARD_CAP = 12;
     const totalPriority = args.actions.reduce((s, a) => s + a.priority, 0);
     if (totalPriority > PRIORITY_HARD_CAP) {
       throw new Error(`Priority budget exceeded: ${totalPriority}/${PRIORITY_HARD_CAP}`);
@@ -111,13 +112,19 @@ export const submit = mutation({
       )
       .first();
 
+    // Ensure all actions have actionStatus set for the new per-action model
+    const stampedActions = args.actions.map((a) => ({
+      ...a,
+      actionStatus: "submitted" as const,
+    }));
+
     if (existing) {
       // Don't overwrite already-graded or resolved submissions
       if (existing.status === "graded" || existing.status === "resolved") {
         return existing._id;
       }
       await ctx.db.patch(existing._id, {
-        actions: args.actions,
+        actions: stampedActions,
         computeAllocation: args.computeAllocation,
         artifact: args.artifact,
         status: "submitted",
@@ -131,13 +138,291 @@ export const submit = mutation({
       gameId: args.gameId,
       roundNumber: args.roundNumber,
       roleId: args.roleId,
-      actions: args.actions,
+      actions: stampedActions,
       computeAllocation: args.computeAllocation,
       artifact: args.artifact,
       status: "submitted",
     });
     await logEvent(ctx, args.gameId, "submission", args.roleId, { round: args.roundNumber, actionCount: args.actions.length });
     return id;
+  },
+});
+
+// ─── Per-action mutations (draft-in-Convex model) ────────────────────────────
+
+/** Save a draft action to Convex. Creates submission doc if needed. */
+export const saveDraft = mutation({
+  args: {
+    tableId: v.id("tables"),
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    roleId: v.string(),
+    text: v.string(),
+    priority: v.number(),
+    secret: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.phase !== "submit" && game.phase !== "discuss") {
+      throw new Error(`Cannot save drafts during ${game.phase} phase`);
+    }
+
+    const existing = await ctx.db
+      .query("submissions")
+      .withIndex("by_table_and_round", (q) =>
+        q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber)
+      )
+      .first();
+
+    const newAction = {
+      text: args.text,
+      priority: args.priority,
+      secret: args.secret,
+      actionStatus: "draft" as const,
+    };
+
+    if (existing) {
+      // Enforce max 5 actions total
+      if (existing.actions.length >= 5) throw new Error("Maximum 5 actions per round");
+      const actions = [...existing.actions, newAction];
+      await ctx.db.patch(existing._id, { actions });
+      return { submissionId: existing._id, actionIndex: actions.length - 1 };
+    }
+
+    const id = await ctx.db.insert("submissions", {
+      tableId: args.tableId,
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      roleId: args.roleId,
+      actions: [newAction],
+      status: "draft",
+    });
+    return { submissionId: id, actionIndex: 0 };
+  },
+});
+
+/** Update a draft action's text or secret flag. Only works on draft actions. */
+export const updateDraft = mutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actionIndex: v.number(),
+    text: v.optional(v.string()),
+    secret: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db.get(args.submissionId);
+    if (!sub) return;
+    const action = sub.actions[args.actionIndex];
+    if (!action) return;
+    if (action.actionStatus === "submitted") throw new Error("Cannot edit submitted action — use editSubmitted first");
+
+    const actions = [...sub.actions];
+    actions[args.actionIndex] = {
+      ...action,
+      text: args.text ?? action.text,
+      secret: args.secret ?? action.secret,
+    };
+    await ctx.db.patch(args.submissionId, { actions });
+  },
+});
+
+/** Submit a single draft action — locks it in, visible to facilitator + AI Systems. */
+export const submitAction = mutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actionIndex: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db.get(args.submissionId);
+    if (!sub) throw new Error("Submission not found");
+    const game = await assertPhase(ctx, sub.gameId, ["submit"], "submit actions");
+    if (game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) throw new Error("Submission deadline has passed");
+
+    const action = sub.actions[args.actionIndex];
+    if (!action) throw new Error("Action not found");
+    if (!action.text.trim()) throw new Error("Action text cannot be empty");
+
+    // Enforce priority budget across submitted actions
+    const submittedPriority = sub.actions
+      .filter((a, i) => i !== args.actionIndex && a.actionStatus === "submitted")
+      .reduce((s, a) => s + a.priority, 0);
+    if (submittedPriority + action.priority > PRIORITY_HARD_CAP) {
+      throw new Error(`Priority budget exceeded: ${submittedPriority + action.priority}/${PRIORITY_HARD_CAP}`);
+    }
+
+    const actions = [...sub.actions];
+    actions[args.actionIndex] = { ...action, actionStatus: "submitted" as const };
+    await ctx.db.patch(args.submissionId, { actions, status: "submitted" });
+    await logEvent(ctx, sub.gameId, "action_submitted", sub.roleId, {
+      actionIndex: args.actionIndex,
+      text: action.text,
+    });
+  },
+});
+
+/** Save a draft and immediately submit it in a single mutation (avoids two round-trips). */
+export const saveAndSubmit = mutation({
+  args: {
+    tableId: v.id("tables"),
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    roleId: v.string(),
+    text: v.string(),
+    priority: v.number(),
+    secret: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.phase !== "submit" && game.phase !== "discuss") {
+      throw new Error(`Cannot save drafts during ${game.phase} phase`);
+    }
+    if (game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) throw new Error("Submission deadline has passed");
+    if (!args.text.trim()) throw new Error("Action text cannot be empty");
+
+    const existing = await ctx.db
+      .query("submissions")
+      .withIndex("by_table_and_round", (q) =>
+        q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber)
+      )
+      .first();
+
+    const newAction = {
+      text: args.text,
+      priority: args.priority,
+      secret: args.secret,
+      actionStatus: "submitted" as const,
+    };
+
+    // Enforce priority budget across already-submitted actions
+    const existingSubmittedPriority = existing
+      ? existing.actions.filter((a) => a.actionStatus === "submitted").reduce((s, a) => s + a.priority, 0)
+      : 0;
+    if (existingSubmittedPriority + args.priority > PRIORITY_HARD_CAP) {
+      throw new Error(`Priority budget exceeded: ${existingSubmittedPriority + args.priority}/${PRIORITY_HARD_CAP}`);
+    }
+
+    if (existing) {
+      if (existing.actions.length >= 5) throw new Error("Maximum 5 actions per round");
+      const actions = [...existing.actions, newAction];
+      await ctx.db.patch(existing._id, { actions, status: "submitted" });
+      await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
+        actionIndex: actions.length - 1,
+        text: args.text,
+      });
+      return { submissionId: existing._id, actionIndex: actions.length - 1 };
+    }
+
+    const id = await ctx.db.insert("submissions", {
+      tableId: args.tableId,
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      roleId: args.roleId,
+      actions: [newAction],
+      status: "submitted",
+    });
+    await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
+      actionIndex: 0,
+      text: args.text,
+    });
+    return { submissionId: id, actionIndex: 0 };
+  },
+});
+
+/** Pull a submitted action back to draft for editing. Clears probability and influence. */
+export const editSubmitted = mutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actionIndex: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db.get(args.submissionId);
+    if (!sub) return;
+    await assertPhase(ctx, sub.gameId, ["submit"], "edit actions");
+
+    const action = sub.actions[args.actionIndex];
+    if (!action) return;
+    if (action.rolled != null) throw new Error("Cannot edit rolled actions");
+
+    const actions = [...sub.actions];
+    actions[args.actionIndex] = {
+      text: action.text,
+      priority: action.priority,
+      secret: action.secret,
+      actionStatus: "draft" as const,
+      // Clear grading and influence — action changed, needs re-evaluation
+    };
+    // Revert submission status if it was graded (action needs re-evaluation)
+    const newStatus = sub.status === "graded" || sub.status === "resolved" ? "submitted" as const : sub.status;
+    await ctx.db.patch(args.submissionId, { actions, status: newStatus });
+    await logEvent(ctx, sub.gameId, "action_edit", sub.roleId, { actionIndex: args.actionIndex });
+  },
+});
+export const deleteAction = mutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actionIndex: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db.get(args.submissionId);
+    if (!sub) return;
+    await assertPhase(ctx, sub.gameId, ["submit"], "delete actions");
+
+    const action = sub.actions[args.actionIndex];
+    if (!action) return;
+    if (action.rolled != null) throw new Error("Cannot delete rolled actions");
+
+    const actions = sub.actions.filter((_, i) => i !== args.actionIndex);
+    if (actions.length === 0) {
+      await ctx.db.delete(args.submissionId);
+    } else {
+      await ctx.db.patch(args.submissionId, { actions });
+    }
+
+    // Cancel endorsement requests for this action
+    const requests = await ctx.db
+      .query("requests")
+      .withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", sub.gameId).eq("roundNumber", sub.roundNumber)
+      )
+      .collect();
+    for (const req of requests) {
+      if (req.fromRoleId === sub.roleId && req.actionText === action.text) {
+        await ctx.db.delete(req._id);
+      }
+    }
+
+    await logEvent(ctx, sub.gameId, "action_deleted", sub.roleId, { actionIndex: args.actionIndex });
+  },
+});
+
+/** Update priority on a submitted action. No need to resubmit. */
+export const updatePriority = mutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actionIndex: v.number(),
+    priority: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db.get(args.submissionId);
+    if (!sub) return;
+    await assertPhase(ctx, sub.gameId, ["submit"], "change priority");
+
+    const action = sub.actions[args.actionIndex];
+    if (!action) return;
+
+    // Enforce priority budget
+    const otherPriority = sub.actions
+      .filter((a, i) => i !== args.actionIndex && a.actionStatus === "submitted")
+      .reduce((s, a) => s + a.priority, 0);
+    if (otherPriority + args.priority > PRIORITY_HARD_CAP) {
+      throw new Error(`Priority budget exceeded: ${otherPriority + args.priority}/${PRIORITY_HARD_CAP}`);
+    }
+
+    const actions = [...sub.actions];
+    actions[args.actionIndex] = { ...action, priority: args.priority };
+    await ctx.db.patch(args.submissionId, { actions });
   },
 });
 
@@ -267,7 +552,7 @@ export const overrideOutcome = mutation({
   },
 });
 
-// Apply AI Systems secret influence on other players' actions
+// Apply AI Systems secret influence on other players' actions (batch — used by pipeline)
 export const applyAiInfluence = mutation({
   args: {
     gameId: v.id("games"),
@@ -279,9 +564,9 @@ export const applyAiInfluence = mutation({
     })),
   },
   handler: async (ctx, args) => {
-    for (const inf of args.influences) {
+    await Promise.all(args.influences.map(async (inf) => {
       const sub = await ctx.db.get(inf.submissionId);
-      if (!sub) continue;
+      if (!sub) return;
       const actions = [...sub.actions];
       if (actions[inf.actionIndex]) {
         actions[inf.actionIndex] = {
@@ -290,25 +575,50 @@ export const applyAiInfluence = mutation({
         };
       }
       await ctx.db.patch(sub._id, { actions });
-    }
+    }));
     await logEvent(ctx, args.gameId, "ai_influence", "ai-systems", {
       round: args.roundNumber,
       count: args.influences.length,
     });
+  },
+});
 
-    // If pipeline is waiting for influence, advance step atomically to prevent
-    // the 30s timeout from also scheduling rollAndNarrate (race condition fix)
-    const game = await ctx.db.get(args.gameId);
-    if (game?.pipelineStatus?.step === "influence") {
-      await ctx.db.patch(args.gameId, {
-        pipelineStatus: { step: "rolling", detail: "Rolling dice...", startedAt: Date.now() },
-      });
-      await ctx.scheduler.runAfter(0, internal.pipeline.rollAndNarrate, {
-        gameId: args.gameId,
-        roundNumber: args.roundNumber,
-        aiDisposition: undefined,
-      });
+/** AI Systems continuous influence — thumbs up/down a single action.
+ *  Works from submit phase until dice are rolled. Modifier is +power (boost) or -power (sabotage).
+ *  Can be changed at any time until roll. Set to 0 to remove influence. */
+export const setActionInfluence = mutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actionIndex: v.number(),
+    modifier: v.number(), // +power = boost, -power = sabotage, 0 = remove
+  },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db.get(args.submissionId);
+    if (!sub) throw new Error("Submission not found");
+
+    const game = await ctx.db.get(sub.gameId);
+    if (!game) throw new Error("Game not found");
+    // Allow during submit and rolling phases (until dice are actually rolled)
+    if (game.phase !== "submit" && game.phase !== "rolling") {
+      throw new Error("Cannot set influence after dice are rolled");
     }
+
+    const action = sub.actions[args.actionIndex];
+    if (!action) throw new Error("Action not found");
+    if (action.actionStatus && action.actionStatus !== "submitted") throw new Error("Can only influence submitted actions");
+    if (action.rolled != null) throw new Error("Cannot influence already-rolled actions");
+
+    const actions = [...sub.actions];
+    actions[args.actionIndex] = {
+      ...action,
+      aiInfluence: args.modifier === 0 ? undefined : args.modifier,
+    };
+    await ctx.db.patch(args.submissionId, { actions });
+    await logEvent(ctx, sub.gameId, "ai_influence_single", "ai-systems", {
+      actionIndex: args.actionIndex,
+      roleId: sub.roleId,
+      modifier: args.modifier,
+    });
   },
 });
 
@@ -343,7 +653,7 @@ export const rollAllActions = mutation({
         // AI influence secretly modifies the dice roll — probability stays truthful
         // Display the influenced roll so outcomes always visually make sense
         const rawRoll = Math.floor(Math.random() * 100) + 1;
-        const displayRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
+        const displayRoll = applyInfluence(rawRoll, action.aiInfluence);
         return { ...action, probability, rolled: displayRoll, success: displayRoll <= probability };
       });
 
@@ -389,14 +699,16 @@ export const rollAllInternal = internalMutation({
       // Skip if already rolled (idempotent)
       if (sub.actions.every((a) => a.rolled != null)) continue;
       const actions = sub.actions.map((action) => {
+        // Skip draft actions — only roll submitted actions
+        if (action.actionStatus === "draft") return action;
         const probability = action.probability ?? 50;
         const rawRoll = Math.floor(Math.random() * 100) + 1;
-        const displayRoll = Math.max(1, Math.min(100, rawRoll - (action.aiInfluence ?? 0)));
+        const displayRoll = applyInfluence(rawRoll, action.aiInfluence);
         return { ...action, probability, rolled: displayRoll, success: displayRoll <= probability };
       });
       await ctx.db.patch(sub._id, { actions, status: "resolved" });
-      const successes = actions.filter((a) => a.success).length;
-      await logEvent(ctx, args.gameId, "roll", sub.roleId, { round: args.roundNumber, total: actions.length, successes });
+      const rolled = actions.filter((a) => a.rolled != null);
+      await logEvent(ctx, args.gameId, "roll", sub.roleId, { round: args.roundNumber, total: rolled.length, successes: rolled.filter((a) => a.success).length });
     }
   },
 });
@@ -422,15 +734,15 @@ export const applyAiInfluenceInternal = internalMutation({
     })),
   },
   handler: async (ctx, args) => {
-    for (const inf of args.influences) {
+    await Promise.all(args.influences.map(async (inf) => {
       const sub = await ctx.db.get(inf.submissionId);
-      if (!sub) continue;
+      if (!sub) return;
       const actions = [...sub.actions];
       if (actions[inf.actionIndex]) {
         actions[inf.actionIndex] = { ...actions[inf.actionIndex], aiInfluence: inf.modifier };
       }
       await ctx.db.patch(inf.submissionId, { actions });
-    }
+    }));
   },
 });
 
@@ -449,9 +761,11 @@ export const submitInternal = internalMutation({
       .withIndex("by_table_and_round", (q) => q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber))
       .first();
 
+    const stampedActions = args.actions.map((a) => ({ ...a, actionStatus: "submitted" as const }));
+
     if (existing) {
       if (existing.status === "graded" || existing.status === "resolved") return existing._id;
-      await ctx.db.patch(existing._id, { actions: args.actions, computeAllocation: args.computeAllocation, status: "submitted" });
+      await ctx.db.patch(existing._id, { actions: stampedActions, computeAllocation: args.computeAllocation, status: "submitted" });
       return existing._id;
     }
 
@@ -460,7 +774,7 @@ export const submitInternal = internalMutation({
       gameId: args.gameId,
       roundNumber: args.roundNumber,
       roleId: args.roleId,
-      actions: args.actions,
+      actions: stampedActions,
       computeAllocation: args.computeAllocation,
       status: "submitted",
     });
