@@ -320,7 +320,9 @@ function WhereWeAreNow({
   onEditNarrative: () => void;
   onEditCompute: () => void;
 }) {
-  const leading = game.labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b), game.labs[0]);
+  const leading = game.labs.length > 0
+    ? game.labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b))
+    : null;
   const cap = leading ? getCapabilityDescription(leading.rdMultiplier) : null;
   const alignmentColor = game.worldState.alignment <= 3 ? "#EF4444" : game.worldState.alignment >= 7 ? "#22C55E" : "#F59E0B";
   const trajectory = game.worldState.alignment <= 3 ? "RACE" : game.worldState.alignment >= 6 ? "SLOWDOWN" : "UNCERTAIN";
