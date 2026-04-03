@@ -63,6 +63,18 @@ function loadDraft(tableId: string, roundNumber: number): DraftData | null {
   }
 }
 
+/** Map the Nth submitted action back to its actual index in the actions array. */
+function nthSubmittedIndex(actions: { actionStatus?: string }[], n: number): number {
+  let count = 0;
+  for (let i = 0; i < actions.length; i++) {
+    if (actions[i].actionStatus === "submitted" || !actions[i].actionStatus) {
+      if (count === n) return i;
+      count++;
+    }
+  }
+  return -1;
+}
+
 // ─── Main page component ─────────────────────────────────────────────────────
 
 export default function TablePlayerPage({
@@ -295,14 +307,22 @@ export default function TablePlayerPage({
       if (draftWithText.length > 0) {
         autoSubmittedRef.current = true;
         setAutoSubmitMessage("Time's up — only submitted actions will count");
-        // Clear local drafts (they're discarded, not submitted)
+        // Cancel endorsement requests attached to discarded drafts
+        for (const draft of draftWithText) {
+          for (const targetId of draft.endorseTargets) {
+            const match = (allRequests ?? []).find(
+              (r) => r.fromRoleId === role?.id && r.toRoleId === targetId && r.actionText === draft.text.trim()
+            );
+            if (match) void cancelRequest({ requestId: match._id });
+          }
+        }
         setActionDrafts([emptyAction()]);
       }
     }
     if (!isExpired) {
       autoSubmittedRef.current = false;
     }
-  }, [isExpired, phase, actionDrafts]);
+  }, [isExpired, phase, actionDrafts, allRequests, role?.id, cancelRequest]);
 
   // ── Phase change (submit → rolling): discard remaining drafts ──────────
   const prevPhaseRef = useRef(phase);
@@ -312,12 +332,20 @@ export default function TablePlayerPage({
       phase === "rolling" &&
       !autoSubmittedRef.current
     ) {
-      // Discard remaining drafts — only submitted actions count
       autoSubmittedRef.current = true;
+      // Cancel endorsement requests on discarded drafts
+      for (const draft of actionDrafts.filter((a) => a.text.trim())) {
+        for (const targetId of draft.endorseTargets) {
+          const match = (allRequests ?? []).find(
+            (r) => r.fromRoleId === role?.id && r.toRoleId === targetId && r.actionText === draft.text.trim()
+          );
+          if (match) void cancelRequest({ requestId: match._id });
+        }
+      }
       setActionDrafts([emptyAction()]);
     }
     prevPhaseRef.current = phase;
-  }, [phase]);
+  }, [phase, actionDrafts, allRequests, role?.id, cancelRequest]);
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
 
@@ -400,18 +428,13 @@ export default function TablePlayerPage({
     if (!submission) return;
     setSubmitError("");
     try {
-      const action = submission.actions.filter(
-        (a) => a.actionStatus === "submitted" || !a.actionStatus
-      )[submittedIndex];
-      if (!action) return;
-      // Find actual index in submission.actions array
-      const actualIndex = submission.actions.indexOf(action);
+      const actualIndex = nthSubmittedIndex(submission.actions, submittedIndex);
+      if (actualIndex === -1) return;
+      const action = submission.actions[actualIndex];
       await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex });
-      // Add back to local drafts for editing
       setActionDrafts((prev) => [
         ...prev.filter((a) => a.text.trim()),
         { text: action.text, priority: "medium" as const, secret: !!action.secret, endorseTargets: [] },
-        ...(prev.every((a) => a.text.trim()) ? [] : []),
       ]);
     } catch (err) {
       setSubmitError(`Failed to edit: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -422,11 +445,8 @@ export default function TablePlayerPage({
     if (!submission) return;
     setSubmitError("");
     try {
-      const action = submission.actions.filter(
-        (a) => a.actionStatus === "submitted" || !a.actionStatus
-      )[submittedIndex];
-      if (!action) return;
-      const actualIndex = submission.actions.indexOf(action);
+      const actualIndex = nthSubmittedIndex(submission.actions, submittedIndex);
+      if (actualIndex === -1) return;
       await deleteActionMut({ submissionId: submission._id, actionIndex: actualIndex });
     } catch (err) {
       setSubmitError(`Failed to delete: ${err instanceof Error ? err.message : "Unknown error"}`);

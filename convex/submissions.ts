@@ -111,13 +111,19 @@ export const submit = mutation({
       )
       .first();
 
+    // Ensure all actions have actionStatus set for the new per-action model
+    const stampedActions = args.actions.map((a) => ({
+      ...a,
+      actionStatus: "submitted" as const,
+    }));
+
     if (existing) {
       // Don't overwrite already-graded or resolved submissions
       if (existing.status === "graded" || existing.status === "resolved") {
         return existing._id;
       }
       await ctx.db.patch(existing._id, {
-        actions: args.actions,
+        actions: stampedActions,
         computeAllocation: args.computeAllocation,
         artifact: args.artifact,
         status: "submitted",
@@ -131,7 +137,7 @@ export const submit = mutation({
       gameId: args.gameId,
       roundNumber: args.roundNumber,
       roleId: args.roleId,
-      actions: args.actions,
+      actions: stampedActions,
       computeAllocation: args.computeAllocation,
       artifact: args.artifact,
       status: "submitted",
@@ -530,7 +536,7 @@ export const setActionInfluence = mutation({
 
     const action = sub.actions[args.actionIndex];
     if (!action) throw new Error("Action not found");
-    if (action.actionStatus !== "submitted") throw new Error("Can only influence submitted actions");
+    if (action.actionStatus && action.actionStatus !== "submitted") throw new Error("Can only influence submitted actions");
     if (action.rolled != null) throw new Error("Cannot influence already-rolled actions");
 
     const actions = [...sub.actions];
@@ -684,9 +690,11 @@ export const submitInternal = internalMutation({
       .withIndex("by_table_and_round", (q) => q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber))
       .first();
 
+    const stampedActions = args.actions.map((a) => ({ ...a, actionStatus: "submitted" as const }));
+
     if (existing) {
       if (existing.status === "graded" || existing.status === "resolved") return existing._id;
-      await ctx.db.patch(existing._id, { actions: args.actions, computeAllocation: args.computeAllocation, status: "submitted" });
+      await ctx.db.patch(existing._id, { actions: stampedActions, computeAllocation: args.computeAllocation, status: "submitted" });
       return existing._id;
     }
 
@@ -695,7 +703,7 @@ export const submitInternal = internalMutation({
       gameId: args.gameId,
       roundNumber: args.roundNumber,
       roleId: args.roleId,
-      actions: args.actions,
+      actions: stampedActions,
       computeAllocation: args.computeAllocation,
       status: "submitted",
     });

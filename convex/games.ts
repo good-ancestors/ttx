@@ -589,7 +589,7 @@ export const triggerRoll = mutation({
       )
       .collect();
     const ungradedCount = subs.flatMap((s) =>
-      s.actions.filter((a) => a.actionStatus === "submitted" && a.probability == null)
+      s.actions.filter((a) => (a.actionStatus === "submitted" || !a.actionStatus) && a.probability == null)
     ).length;
     if (ungradedCount > 0) {
       throw new Error(`${ungradedCount} submitted actions still ungraded — grade them first`);
