@@ -348,6 +348,16 @@ export const skipTimer = mutation({
   },
 });
 
+export const adjustTimer = mutation({
+  args: { gameId: v.id("games"), deltaSeconds: v.number() },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game || !game.phaseEndsAt) return;
+    const newEnd = Math.max(Date.now() + 1000, game.phaseEndsAt + args.deltaSeconds * 1000);
+    await ctx.db.patch(args.gameId, { phaseEndsAt: newEnd });
+  },
+});
+
 export const addLab = mutation({
   args: {
     gameId: v.id("games"),

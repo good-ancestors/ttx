@@ -14,17 +14,14 @@ import { QRCode } from "@/components/qr-codes";
 import { WorldStateEditor, FacilitatorCopilot } from "@/components/manual-controls";
 import { DebugPanel } from "@/components/debug-panel";
 import {
-  Clock,
   Loader2,
   Dices,
   RotateCcw,
 } from "lucide-react";
 
 import { LobbyPhase } from "@/components/facilitator/lobby-phase";
-import { DiscussPhase } from "@/components/facilitator/discuss-phase";
-import { SubmitPhase } from "@/components/facilitator/submit-phase";
-import { RollingPhase } from "@/components/facilitator/rolling-phase";
-import { NarratePhase } from "@/components/facilitator/narrate-phase";
+import { RoundPhase } from "@/components/facilitator/round-phase";
+import { TimerDisplay } from "@/components/facilitator/timer-display";
 
 export default function FacilitatorPage({
   params,
@@ -62,6 +59,7 @@ export default function FacilitatorPage({
   const kickToAI = useMutation(api.tables.kickToAI);
   const addLab = useMutation(api.games.addLab);
   const mergeLabs = useMutation(api.games.mergeLabs);
+  const adjustTimer = useMutation(api.games.adjustTimer);
   const restoreSnapshot = useMutation(api.games.restoreSnapshot);
   const clearResolution = useMutation(api.rounds.clearResolution);
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
@@ -91,6 +89,8 @@ export default function FacilitatorPage({
   const [focusedQR, setFocusedQR] = useState<string | null>(null);
   const [submitDuration, setSubmitDuration] = useState(4);
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
+  const [editDials, setEditDials] = useState(false);
+  const [addLabOpen, setAddLabOpen] = useState(false);
 
   // Staggered dice reveal animation
   const [revealedCount, setRevealedCount] = useState(0);
@@ -146,6 +146,8 @@ export default function FacilitatorPage({
   }
 
   const currentRound = rounds.find((r) => r.number === game.currentRound);
+  const prevRound = rounds.find(r => r.number === game.currentRound - 1);
+  const previousNarrative = prevRound?.summary?.narrative ?? (game.currentRound === 1 ? currentRound?.narrative : undefined);
   const phase = game.phase;
   const connectedCount = tables.filter((t) => t.connected).length;
   const snapshotOptions = isProjector ? [] : rounds.flatMap(r => {
@@ -198,7 +200,7 @@ export default function FacilitatorPage({
   if (game.status === "lobby") {
     return (
       <div className="min-h-screen bg-navy-dark text-white">
-        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} />
+        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
         <LobbyPhase
           gameId={gameId}
           game={game}
@@ -220,7 +222,7 @@ export default function FacilitatorPage({
   if (game.status === "finished") {
     return (
       <div className="min-h-screen bg-navy-dark text-white">
-        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} />
+        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
         <div className="p-6 max-w-[1400px] mx-auto">
           <div className="text-center mb-8">
             <Dices className="w-12 h-12 text-text-light mx-auto mb-4" />
@@ -240,7 +242,7 @@ export default function FacilitatorPage({
   // ─── PLAYING ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-navy-dark text-white">
-      <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} />
+      <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
 
       {/* QR codes overlay — accessible during any phase */}
       {/* Fullscreen single QR code */}
@@ -351,109 +353,63 @@ export default function FacilitatorPage({
       )}
 
       <div className="p-6 max-w-[1400px] mx-auto">
-        {/* Show previous round's AI narrative, or R1 hardcoded intro — never current round's hardcoded text */}
-        {(() => {
-          const prevRound = rounds.find(r => r.number === game.currentRound - 1);
-          const storyText = prevRound?.summary?.narrative ?? (game.currentRound === 1 ? currentRound?.narrative : undefined);
-          if (!storyText) return null;
-          return (
-            <div className="bg-navy rounded-xl border border-navy-light p-6 mb-6">
-              <p className="text-sm text-text-light leading-relaxed">{storyText}</p>
-            </div>
-          );
-        })()}
-
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
           {/* Left sidebar */}
           <div className="flex flex-col gap-4">
             <RdProgressChart rounds={rounds} currentLabs={game.labs} currentRound={game.currentRound} />
-            <div>
-              <WorldStatePanel worldState={game.worldState} variant="dark" />
-              {!isProjector && <WorldStateEditor gameId={gameId} worldState={game.worldState} />}
-            </div>
+            <WorldStatePanel worldState={game.worldState} variant="dark" onEdit={isProjector ? undefined : () => setEditDials(true)} />
+            {editDials && !isProjector && <WorldStateEditor gameId={gameId} worldState={game.worldState} startOpen />}
             <LabTracker
               labs={game.labs}
               onMerge={isProjector ? undefined : async (survivor, absorbed) => {
                 await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
               }}
+              onAddLab={isProjector ? undefined : () => setAddLabOpen(true)}
             />
           </div>
 
-          {/* Main content area */}
+      {/* Add Lab modal (triggered from sidebar + button) */}
+      {addLabOpen && !isProjector && (
+        <AddLabModal
+          gameId={gameId}
+          tables={tables}
+          addLab={addLab}
+          onClose={() => setAddLabOpen(false)}
+        />
+      )}
+
+          {/* Main content area — single progressive view for all phases */}
           <div className="min-w-0 overflow-hidden">
-            {/* ─── DISCUSS ─── */}
-            {phase === "discuss" && (
-              <DiscussPhase
-                gameId={gameId}
-                game={game}
-                tables={tables}
-                isProjector={isProjector}
-                submitDuration={submitDuration}
-                setSubmitDuration={setSubmitDuration}
-                openSubmissions={openSubmissions}
-                safeAction={safeAction}
-                skipTimer={skipTimer}
-              />
-            )}
-
-            {/* ─── SUBMIT ─── */}
-            {phase === "submit" && (
-              <SubmitPhase
-                gameId={gameId}
-                game={game}
-                tables={tables}
-                isProjector={isProjector}
-                submissions={submissions ?? []}
-                proposals={proposals ?? []}
-                currentRound={currentRound}
-                resolving={resolving}
-                resolveStep={resolveStep}
-                revealedSecrets={revealedSecrets}
-                toggleReveal={toggleReveal}
-                revealAllSecrets={revealAllSecrets}
-                handleResolveRound={handleResolveRound}
-                safeAction={safeAction}
-                skipTimer={skipTimer}
-                kickToAI={kickToAI}
-                setControlMode={setControlMode}
-                overrideProbability={overrideProbability}
-              />
-            )}
-
-            {/* ─── RESOLVE VIEW (rolling + narrate unified) ─── */}
-            {(phase === "rolling" || phase === "narrate") && (
-              <div className="space-y-4">
-                <RollingPhase
-                  gameId={gameId}
-                  game={game}
-                  tables={tables}
-                  isProjector={isProjector}
-                  submissions={submissions ?? []}
-                  resolving={resolving}
-                  revealedCount={revealedCount}
-                  revealedSecrets={revealedSecrets}
-                  toggleReveal={toggleReveal}
-                  revealAllSecrets={revealAllSecrets}
-                  handleReResolve={handleReResolve}
-                  rerollAction={rerollAction}
-                  overrideProbability={overrideProbability}
-                />
-
-                <NarratePhase
-                  gameId={gameId}
-                  game={game}
-                  tables={tables}
-                  isProjector={isProjector}
-                  currentRound={currentRound}
-                  resolving={resolving}
-                  resolveStep={resolveStep}
-                  safeAction={safeAction}
-                  advanceRound={advanceRound}
-                  finishGame={finishGame}
-                  addLab={addLab}
-                />
-              </div>
-            )}
+            <RoundPhase
+              gameId={gameId}
+              game={game}
+              tables={tables}
+              isProjector={isProjector}
+              submissions={submissions ?? []}
+              proposals={proposals ?? []}
+              currentRound={currentRound}
+              previousNarrative={previousNarrative}
+              resolving={resolving}
+              resolveStep={resolveStep}
+              revealedCount={revealedCount}
+              revealedSecrets={revealedSecrets}
+              toggleReveal={toggleReveal}
+              revealAllSecrets={revealAllSecrets}
+              handleResolveRound={handleResolveRound}
+              handleReResolve={handleReResolve}
+              safeAction={safeAction}
+              submitDuration={submitDuration}
+              setSubmitDuration={setSubmitDuration}
+              openSubmissions={openSubmissions}
+              skipTimer={skipTimer}
+              kickToAI={kickToAI}
+              setControlMode={setControlMode}
+              overrideProbability={overrideProbability}
+              rerollAction={rerollAction}
+              advanceRound={advanceRound}
+              finishGame={finishGame}
+              addLab={addLab}
+            />
           </div>
         </div>
 
@@ -496,6 +452,9 @@ function FacilitatorNav({
   isProjector,
   snapshots,
   onRestore,
+  gameId,
+  skipTimer,
+  adjustTimer,
 }: {
   round: { label: string; number: number } | undefined;
   phase: string;
@@ -506,6 +465,9 @@ function FacilitatorNav({
   isProjector?: boolean;
   snapshots?: { number: number; label: string; useBefore: boolean; desc: string }[];
   onRestore?: (roundNumber: number, useBefore: boolean) => Promise<void>;
+  gameId: Id<"games">;
+  skipTimer: (args: { gameId: Id<"games"> }) => Promise<unknown>;
+  adjustTimer: (args: { gameId: Id<"games">; deltaSeconds: number }) => Promise<unknown>;
 }) {
   const [showSnapshots, setShowSnapshots] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -581,11 +543,81 @@ function FacilitatorNav({
             Tables
           </button>
         )}
-        {timerDisplay !== "0:00" && (
-          <span className={`text-sm font-mono flex items-center gap-1 ${isExpired ? "text-viz-danger" : isUrgent ? "text-viz-danger animate-pulse" : "text-text-light"}`}>
-            <Clock className="w-4 h-4" /> {timerDisplay}
-          </span>
+        {timerDisplay !== "0:00" && timerDisplay !== "" && (
+          <TimerDisplay
+            timerDisplay={timerDisplay}
+            isExpired={isExpired}
+            isUrgent={isUrgent}
+            isProjector={isProjector ?? false}
+            gameId={gameId}
+            hasTimer={timerDisplay !== "" && timerDisplay !== "0:00"}
+            skipTimer={skipTimer}
+            adjustTimer={adjustTimer}
+          />
         )}
+      </div>
+    </div>
+  );
+}
+
+function AddLabModal({
+  gameId,
+  tables,
+  addLab,
+  onClose,
+}: {
+  gameId: Id<"games">;
+  tables: { roleId: string; roleName: string; enabled: boolean }[];
+  addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [roleId, setRoleId] = useState("");
+  const [compute, setCompute] = useState(10);
+  const [multiplier, setMultiplier] = useState(1);
+  const enabledTables = tables.filter((t) => t.enabled);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8" onClick={onClose}>
+      <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-sm font-bold text-white">Add Lab</span>
+          <button onClick={onClose} className="text-text-light hover:text-white text-sm">Close</button>
+        </div>
+        <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end">
+          <div>
+            <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Lab Name</label>
+            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Sovereign Compute Centre" className="w-full text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white placeholder:text-navy-muted focus:outline-none focus:border-text-light" />
+          </div>
+          <div>
+            <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Controlled by</label>
+            <select value={roleId} onChange={(e) => setRoleId(e.target.value)} className="w-full text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light">
+              <option value="">Select role...</option>
+              {enabledTables.map((t) => (
+                <option key={t.roleId} value={t.roleId}>{t.roleName}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Compute</label>
+            <input type="number" value={compute} onChange={(e) => setCompute(Number(e.target.value))} className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light" />
+          </div>
+          <div>
+            <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">Multiplier</label>
+            <input type="number" value={multiplier} onChange={(e) => setMultiplier(Number(e.target.value))} step={0.1} className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light" />
+          </div>
+          <button
+            onClick={async () => {
+              if (!name || !roleId) return;
+              await addLab({ gameId, name, roleId, computeStock: compute, rdMultiplier: multiplier });
+              onClose();
+            }}
+            disabled={!name || !roleId}
+            className="text-sm px-4 py-1.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Add
+          </button>
+        </div>
       </div>
     </div>
   );
