@@ -23,6 +23,7 @@ import { LobbyPhase } from "@/components/facilitator/lobby-phase";
 import { RoundPhase } from "@/components/facilitator/round-phase";
 import { TimerDisplay } from "@/components/facilitator/timer-display";
 import { AddLabForm } from "@/components/facilitator/add-lab-form";
+import { DiceRollOverlay } from "@/components/facilitator/dice-roll-overlay";
 
 export default function FacilitatorPage({
   params,
@@ -93,6 +94,7 @@ export default function FacilitatorPage({
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
   const [editDials, setEditDials] = useState(false);
   const [addLabOpen, setAddLabOpen] = useState(false);
+  const [showDiceAnimation, setShowDiceAnimation] = useState(false);
 
   // Staggered dice reveal animation
   const [revealedCount, setRevealedCount] = useState(0);
@@ -186,6 +188,7 @@ export default function FacilitatorPage({
   // ─── Roll Dice: roll all graded actions + generate narrative ────────────
   const handleRollDice = async () => {
     setActionError(null);
+    setShowDiceAnimation(true);
     try {
       await triggerRoll({
         gameId,
@@ -194,6 +197,7 @@ export default function FacilitatorPage({
       });
     } catch (err) {
       console.error("Roll failed:", err);
+      setShowDiceAnimation(false);
       setActionError(`Roll failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
@@ -404,6 +408,11 @@ export default function FacilitatorPage({
           onClose={() => setAddLabOpen(false)}
         />
       )}
+
+          {/* Dice roll animation overlay */}
+          {showDiceAnimation && (
+            <DiceRollOverlay onComplete={() => setShowDiceAnimation(false)} />
+          )}
 
           {/* Main content area — single progressive view for all phases */}
           <div className="min-w-0 overflow-hidden">
