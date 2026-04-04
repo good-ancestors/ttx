@@ -7,6 +7,7 @@ import type { Id } from "../convex/_generated/dataModel";
 // Start with: npx convex dev
 
 const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
+const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET || "coral-ember-drift-sage";
 const convex = new ConvexHttpClient(CONVEX_URL);
 
 describe("Game Creation", () => {
@@ -161,7 +162,7 @@ describe("Game Phase Flow", () => {
   });
 
   it("should start the game", async () => {
-    await convex.mutation(api.games.startGame, { gameId });
+    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     const game = await convex.query(api.games.get, { gameId });
     expect(game!.status).toBe("playing");
     expect(game!.phase).toBe("discuss");
@@ -169,7 +170,7 @@ describe("Game Phase Flow", () => {
   });
 
   it("should advance to submit phase", async () => {
-    await convex.mutation(api.games.advancePhase, {
+    await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       phase: "submit",
       durationSeconds: 240,
@@ -180,7 +181,7 @@ describe("Game Phase Flow", () => {
   });
 
   it("should advance to rolling phase", async () => {
-    await convex.mutation(api.games.advancePhase, {
+    await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       phase: "rolling",
     });
@@ -189,7 +190,7 @@ describe("Game Phase Flow", () => {
   });
 
   it("should advance to narrate phase", async () => {
-    await convex.mutation(api.games.advancePhase, {
+    await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       phase: "narrate",
     });
@@ -198,7 +199,7 @@ describe("Game Phase Flow", () => {
   });
 
   it("should advance to round 2", async () => {
-    await convex.mutation(api.games.advanceRound, { gameId });
+    await convex.mutation(api.games.advanceRound, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     const game = await convex.query(api.games.get, { gameId });
     expect(game!.currentRound).toBe(2);
     expect(game!.phase).toBe("discuss");
@@ -206,23 +207,23 @@ describe("Game Phase Flow", () => {
 
   it("should not advance past round 4", async () => {
     // Advance to round 3
-    await convex.mutation(api.games.advanceRound, { gameId });
+    await convex.mutation(api.games.advanceRound, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     const game3 = await convex.query(api.games.get, { gameId });
     expect(game3!.currentRound).toBe(3);
 
     // Advance to round 4
-    await convex.mutation(api.games.advanceRound, { gameId });
+    await convex.mutation(api.games.advanceRound, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     const game4 = await convex.query(api.games.get, { gameId });
     expect(game4!.currentRound).toBe(4);
 
     // Try to advance again — should stay at 4
-    await convex.mutation(api.games.advanceRound, { gameId });
+    await convex.mutation(api.games.advanceRound, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     const game4b = await convex.query(api.games.get, { gameId });
     expect(game4b!.currentRound).toBe(4);
   });
 
   it("should finish the game", async () => {
-    await convex.mutation(api.games.finishGame, { gameId });
+    await convex.mutation(api.games.finishGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     const game = await convex.query(api.games.get, { gameId });
     expect(game!.status).toBe("finished");
   });
@@ -248,8 +249,8 @@ describe("Submission Flow", () => {
 
   beforeAll(async () => {
     gameId = await convex.mutation(api.games.create, {});
-    await convex.mutation(api.games.startGame, { gameId });
-    await convex.mutation(api.games.advancePhase, {
+    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       phase: "submit",
     });
@@ -333,8 +334,8 @@ describe("Dice Rolling", () => {
 
   beforeAll(async () => {
     gameId = await convex.mutation(api.games.create, {});
-    await convex.mutation(api.games.startGame, { gameId });
-    await convex.mutation(api.games.advancePhase, {
+    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       phase: "submit",
     });
@@ -355,7 +356,7 @@ describe("Dice Rolling", () => {
   });
 
   it("should roll all actions and assign default probabilities", async () => {
-    await convex.mutation(api.submissions.rollAllActions, {
+    await convex.mutation(api.submissions.rollAllActions, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       roundNumber: 1,
     });
@@ -400,8 +401,8 @@ describe("Probability Override", () => {
 
   beforeAll(async () => {
     gameId = await convex.mutation(api.games.create, {});
-    await convex.mutation(api.games.startGame, { gameId });
-    await convex.mutation(api.games.advancePhase, {
+    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       phase: "submit",
     });
@@ -419,7 +420,7 @@ describe("Probability Override", () => {
   });
 
   it("should override probability on a specific action", async () => {
-    await convex.mutation(api.submissions.overrideProbability, {
+    await convex.mutation(api.submissions.overrideProbability, { facilitatorToken: FACILITATOR_TOKEN,
       submissionId: subId,
       actionIndex: 0,
       probability: 90,
@@ -434,7 +435,7 @@ describe("Probability Override", () => {
   });
 
   it("should not crash on invalid action index", async () => {
-    await convex.mutation(api.submissions.overrideProbability, {
+    await convex.mutation(api.submissions.overrideProbability, { facilitatorToken: FACILITATOR_TOKEN,
       submissionId: subId,
       actionIndex: 99,
       probability: 50,
@@ -448,8 +449,8 @@ describe("Proposals", () => {
 
   beforeAll(async () => {
     gameId = await convex.mutation(api.games.create, {});
-    await convex.mutation(api.games.startGame, { gameId });
-    await convex.mutation(api.games.advancePhase, {
+    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       phase: "submit",
       durationSeconds: 240,
@@ -539,7 +540,7 @@ describe("World State Updates", () => {
   });
 
   it("should update world state", async () => {
-    await convex.mutation(api.games.updateWorldState, {
+    await convex.mutation(api.games.updateWorldState, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       worldState: {
         capability: 5,
@@ -565,7 +566,7 @@ describe("Lab Updates", () => {
   });
 
   it("should update lab data", async () => {
-    await convex.mutation(api.games.updateLabs, {
+    await convex.mutation(api.games.updateLabs, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       labs: [
         {
