@@ -50,7 +50,13 @@ export const getCurrent = query({
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
       .collect();
 
-    return rounds.find((r) => r.number === game.currentRound) ?? null;
+    const round = rounds.find((r) => r.number === game.currentRound);
+    if (!round) return null;
+
+    const { facilitatorNotes: _, summary, ...rest } = round;
+    if (!summary) return { ...rest, summary: undefined };
+    const { facilitatorNotes: __, ...summaryRest } = summary;
+    return { ...rest, summary: summaryRest };
   },
 });
 

@@ -189,9 +189,10 @@ export default function FacilitatorPage({
   });
 
   // Get AI Systems disposition for passing to grading/narrate/AI player prompts
-  const aiSystemsTable = tables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID);
-  const aiDispositionData = aiSystemsTable?.aiDisposition
-    ? getDisposition(aiSystemsTable.aiDisposition)
+  // Use enabledTables (from getFacilitatorState) which includes aiDisposition — only available during playing
+  const aiSystemsEnabled = enabledTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID);
+  const aiDispositionData = aiSystemsEnabled?.aiDisposition
+    ? getDisposition(aiSystemsEnabled.aiDisposition)
     : undefined;
   const aiDispositionPayload = aiDispositionData
     ? { label: aiDispositionData.label, description: aiDispositionData.description }

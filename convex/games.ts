@@ -274,6 +274,9 @@ export const startGame = mutation({
       status: "playing",
       phase: "discuss",
       phaseEndsAt: undefined,
+      resolving: false,
+      resolvingStartedAt: undefined,
+      pipelineStatus: undefined,
     });
     await logEvent(ctx, args.gameId, "game_start");
     await schedulePreGeneration(ctx, args.gameId, 1);

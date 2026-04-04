@@ -78,7 +78,7 @@ export async function POST(request: Request) {
     // Parallel context fetch — all depend on game.currentRound
     const [allRounds, currentSubmissions] = await Promise.all([
       convex.query(api.rounds.getByGame, { gameId: gameId as Id<"games"> }),
-      convex.query(api.submissions.getByGameAndRound, { gameId: gameId as Id<"games">, roundNumber: game.currentRound }),
+      convex.query(api.submissions.getByGameAndRound, { gameId: gameId as Id<"games">, roundNumber: game.currentRound, facilitatorToken: process.env.FACILITATOR_SECRET }),
     ]);
     const currentRound = allRounds?.find((r) => r.number === game.currentRound);
     const currentNarrative = currentRound?.summary?.narrative ?? "";

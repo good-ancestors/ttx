@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Bug, ChevronDown, ChevronUp } from "lucide-react";
+import { useFacilitatorToken } from "@/lib/hooks";
 
 // Rough token pricing (USD per 1M tokens) — for cost estimation
 const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
@@ -23,7 +24,8 @@ export function DebugPanel({ gameId, roundNumber }: Props) {
   const [expanded, setExpanded] = useState(false);
   // Only subscribe when panel is expanded — saves bandwidth when collapsed
   const events = useQuery(api.events.getByGame, expanded ? { gameId, limit: 25 } : "skip");
-  const submissions = useQuery(api.submissions.getByGameAndRound, expanded ? { gameId, roundNumber } : "skip");
+  const facilitatorToken = useFacilitatorToken();
+  const submissions = useQuery(api.submissions.getByGameAndRound, expanded ? { gameId, roundNumber, facilitatorToken } : "skip");
   const round = useQuery(api.rounds.getCurrent, expanded ? { gameId } : "skip");
 
   // Calculate total tokens and estimated cost

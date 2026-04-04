@@ -60,10 +60,11 @@ const persistedActionValidator = v.object({
   aiInfluence: v.optional(v.number()),
 });
 
-// Full query — facilitator only (includes secret action text)
+// Full query — includes secret text and reasoning. Requires facilitator token.
 export const getByGameAndRound = query({
-  args: { gameId: v.id("games"), roundNumber: v.number() },
+  args: { gameId: v.id("games"), roundNumber: v.number(), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     return await ctx.db
       .query("submissions")
       .withIndex("by_game_and_round", (q) =>
@@ -607,37 +608,6 @@ export const overrideOutcome = mutation({
     await logEvent(ctx, sub.gameId, "override_outcome", sub.roleId, {
       actionIndex: args.actionIndex,
       success: args.success,
-    });
-  },
-});
-
-// Apply AI Systems secret influence on other players' actions (batch — used by pipeline)
-export const applyAiInfluence = mutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    influences: v.array(v.object({
-      submissionId: v.id("submissions"),
-      actionIndex: v.number(),
-      modifier: v.number(),
-    })),
-  },
-  handler: async (ctx, args) => {
-    await Promise.all(args.influences.map(async (inf) => {
-      const sub = await ctx.db.get(inf.submissionId);
-      if (!sub) return;
-      const actions = [...sub.actions];
-      if (actions[inf.actionIndex]) {
-        actions[inf.actionIndex] = {
-          ...actions[inf.actionIndex],
-          aiInfluence: inf.modifier,
-        };
-      }
-      await ctx.db.patch(sub._id, { actions });
-    }));
-    await logEvent(ctx, args.gameId, "ai_influence", AI_SYSTEMS_ROLE_ID, {
-      round: args.roundNumber,
-      count: args.influences.length,
     });
   },
 });

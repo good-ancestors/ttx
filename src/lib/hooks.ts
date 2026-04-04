@@ -139,7 +139,7 @@ export function useKeyboardScroll() {
 const FACILITATOR_TOKEN_KEY = "ttx-facilitator-token";
 
 /** Read the facilitator token from localStorage (SSR-safe, cross-tab sync). */
-function useFacilitatorToken(): string | undefined {
+export function useFacilitatorToken(): string | undefined {
   const subscribe = useCallback((cb: () => void) => {
     window.addEventListener("storage", cb);
     return () => window.removeEventListener("storage", cb);

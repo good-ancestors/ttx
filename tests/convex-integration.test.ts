@@ -321,7 +321,7 @@ describe("Submission Flow", () => {
   });
 
   it("should get all submissions for a round", async () => {
-    const subs = await convex.query(api.submissions.getByGameAndRound, {
+    const subs = await convex.query(api.submissions.getByGameAndRound, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       roundNumber: 1,
     });
@@ -361,7 +361,7 @@ describe("Dice Rolling", () => {
       roundNumber: 1,
     });
 
-    const subs = await convex.query(api.submissions.getByGameAndRound, {
+    const subs = await convex.query(api.submissions.getByGameAndRound, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       roundNumber: 1,
     });
@@ -380,7 +380,7 @@ describe("Dice Rolling", () => {
   });
 
   it("success should be correct (rolled <= probability)", async () => {
-    const subs = await convex.query(api.submissions.getByGameAndRound, {
+    const subs = await convex.query(api.submissions.getByGameAndRound, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       roundNumber: 1,
     });
@@ -426,7 +426,7 @@ describe("Probability Override", () => {
       probability: 90,
     });
 
-    const subs = await convex.query(api.submissions.getByGameAndRound, {
+    const subs = await convex.query(api.submissions.getByGameAndRound, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
       roundNumber: 1,
     });

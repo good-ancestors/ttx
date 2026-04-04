@@ -171,6 +171,7 @@ export default function SplashPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [passphrase, setPassphrase] = useState("");
+  const [passphraseError, setPassphraseError] = useState(false);
   const storedAuth = useFacilitatorAuth();
   const [localAuth, setLocalAuth] = useState(false);
   const authenticated = storedAuth || localAuth;
@@ -266,14 +267,19 @@ export default function SplashPage() {
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value.toLowerCase())}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && passphrase.trim() === FACILITATOR_PASSPHRASE) {
-                setLocalAuth(true);
-                localStorage.setItem("ttx-facilitator", "true");
-                localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
-                storeFacilitatorToken(passphrase.trim());
+              if (e.key === "Enter") {
+                if (passphrase.trim() === FACILITATOR_PASSPHRASE) {
+                  setPassphraseError(false);
+                  setLocalAuth(true);
+                  localStorage.setItem("ttx-facilitator", "true");
+                  localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
+                  storeFacilitatorToken(passphrase.trim());
+                } else if (passphrase.trim()) {
+                  setPassphraseError(true);
+                }
               }
             }}
-            placeholder="Facilitator passphrase"
+            placeholder="Password"
             autoFocus
             spellCheck={false}
             autoComplete="off"
@@ -281,13 +287,19 @@ export default function SplashPage() {
                        rounded-lg border border-navy-light focus:border-text-light
                        outline-none placeholder:text-navy-muted mb-3"
           />
+          {passphraseError && (
+            <p className="text-viz-danger text-sm mb-2">Incorrect password</p>
+          )}
           <button
             onClick={() => {
               if (passphrase.trim() === FACILITATOR_PASSPHRASE) {
+                setPassphraseError(false);
                 setLocalAuth(true);
                 localStorage.setItem("ttx-facilitator", "true");
                 localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
                 storeFacilitatorToken(passphrase.trim());
+              } else if (passphrase.trim()) {
+                setPassphraseError(true);
               }
             }}
             className="w-full py-3.5 px-6 bg-white text-navy rounded-lg text-base font-bold

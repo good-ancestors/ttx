@@ -187,10 +187,16 @@ function ActionCard({
         }}
         placeholder={index === 0 ? "I do [action] so that [intended outcome]..." : "I do [action] so that [intended outcome]..."}
         rows={2}
+        maxLength={500}
         disabled={isSubmitted}
         spellCheck={false}
         className="w-full bg-transparent text-sm text-text resize-none outline-none placeholder:text-text-muted/50 mb-2"
       />
+      {action.text.length > 400 && !isSubmitted && (
+        <p className="text-[11px] text-text-muted text-right -mt-1 mb-1">
+          {action.text.length}/500
+        </p>
+      )}
 
       {/* Controls row — only show when there's text */}
       {(action.text.trim() || isSubmitted) && (

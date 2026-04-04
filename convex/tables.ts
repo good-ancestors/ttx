@@ -5,10 +5,11 @@ import { logEvent, assertFacilitator } from "./events";
 export const getByGame = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const tables = await ctx.db
       .query("tables")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
       .collect();
+    return tables.map(({ aiDisposition: _, ...rest }) => rest);
   },
 });
 
@@ -35,12 +36,15 @@ export const getEnabledRoleNames = query({
 export const getByJoinCode = query({
   args: { joinCode: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const table = await ctx.db
       .query("tables")
       .withIndex("by_joinCode", (q) =>
         q.eq("joinCode", args.joinCode.toUpperCase())
       )
       .first();
+    if (!table) return null;
+    const { aiDisposition: _, ...rest } = table;
+    return rest;
   },
 });
 
@@ -139,6 +143,11 @@ export const setDisposition = mutation({
     if (!table) return;
     if (table.aiDisposition) {
       throw new Error("AI disposition already set — cannot change");
+    }
+    // Only allow setting disposition before actions are submitted
+    const game = await ctx.db.get(table.gameId);
+    if (game && game.phase !== "discuss" && game.phase !== "submit" && game.status !== "lobby") {
+      throw new Error("Cannot set disposition during resolve — choose before submissions close");
     }
     await ctx.db.patch(args.tableId, { aiDisposition: args.disposition });
     await logEvent(ctx, table.gameId, "disposition_set", table.roleId, {
