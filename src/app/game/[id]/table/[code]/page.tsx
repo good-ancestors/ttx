@@ -4,9 +4,9 @@ import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, isLabSafety, getAiInfluencePower, isSubmittedAction } from "@/lib/game-data";
+import { ROLES, isLabCeo, getAiInfluencePower, isSubmittedAction } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
-import { LabAllocationReadOnly } from "@/components/lab-allocation-readonly";
+// Lab allocation read-only moved to Lab tab for safety leads
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
 import { normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
@@ -27,6 +27,9 @@ import {
   Clock,
   AlertTriangle,
   Info,
+  Zap,
+  Vote,
+  FlaskConical,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -181,7 +184,7 @@ export default function TablePlayerPage({
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
   const phase = game?.phase ?? "discuss";
   const isAiSystem = role?.tags.includes("ai-system") ?? false;
-  const isLabCeoRole = role ? isLabCeo(role) : false;
+  // isLabCeo used for compute/spec editor rendering inside Lab tab
 
   const pendingProposalCount = usePendingProposalCount(
     gameId,
@@ -512,7 +515,8 @@ export default function TablePlayerPage({
 
   // ── Tab config ────────────────────────────────────────────────────────────
   const showTabs = game.status === "playing";
-  const tabs = buildPlayerTabs(role, phase, pendingProposalCount, isLabCeoRole);
+  const controlsLab = game.labs.some(l => l.roleId === role.id);
+  const tabs = buildPlayerTabs(role, phase, pendingProposalCount, controlsLab);
 
   // Previous round narrative for the brief tab
   const roundNarrative = round?.summary?.narrative;
@@ -589,26 +593,43 @@ export default function TablePlayerPage({
             />
           )}
 
-          {/* Discuss phase — show brief tab only */}
+          {/* Discuss phase — tab content */}
           {phase === "discuss" && game.status === "playing" && (
             <>
               {/* AI Systems disposition chooser (blocker) */}
               {isAiSystem && !table.aiDisposition && (
                 <DispositionChooser tableId={tableId} onChosen={() => {}} />
               )}
-              <BriefTab
-                role={role}
-                handoutData={handoutData}
-                aiDisposition={table.aiDisposition}
-                roundNarrative={roundNarrative}
-                roundLabel={round?.label ?? "Q1 2028"}
-                submissionsOpen={false}
-                labs={game.labs}
-              />
-              {/* Safety lead: read-only lab allocation during discuss */}
-              {isLabSafety(role) && role.labId && (
-                <div className="mt-4">
-                  <LabAllocationReadOnly labId={role.labId} labs={game.labs} />
+              {activeTab === "brief" && (
+                <BriefTab
+                  role={role}
+                  handoutData={handoutData}
+                  aiDisposition={table.aiDisposition}
+                  roundNarrative={roundNarrative}
+                  roundLabel={round?.label ?? "Q1 2028"}
+                  submissionsOpen={false}
+                  labs={game.labs}
+                />
+              )}
+              {activeTab === "actions" && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <Zap className="w-10 h-10 text-border mb-3" />
+                  <p className="text-sm font-bold text-text mb-1">Actions</p>
+                  <p className="text-xs text-text-muted max-w-xs">When the facilitator opens submissions, you&apos;ll draft and submit your actions here.</p>
+                </div>
+              )}
+              {activeTab === "respond" && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <Vote className="w-10 h-10 text-border mb-3" />
+                  <p className="text-sm font-bold text-text mb-1">Respond</p>
+                  <p className="text-xs text-text-muted max-w-xs">When other players submit actions, you&apos;ll be able to support or oppose them here.</p>
+                </div>
+              )}
+              {activeTab === "lab" && controlsLab && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <FlaskConical className="w-10 h-10 text-border mb-3" />
+                  <p className="text-sm font-bold text-text mb-1">Lab Controls</p>
+                  <p className="text-xs text-text-muted max-w-xs">When submissions open, you&apos;ll set your compute allocation and lab spec here.</p>
                 </div>
               )}
             </>
@@ -665,7 +686,7 @@ export default function TablePlayerPage({
                 />
               )}
 
-              {activeTab === "lab" && isLabCeoRole && (
+              {activeTab === "lab" && controlsLab && (
                 <>
                   <LabSpecEditor
                     labSpec={labSpec}

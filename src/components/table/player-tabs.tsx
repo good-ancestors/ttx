@@ -29,12 +29,12 @@ export function PlayerTabBar({
           return (
             <button
               key={tab.id}
-              onClick={() => !tab.disabled && onTabChange(tab.id)}
+              onClick={() => onTabChange(tab.id)}
               className={`flex-1 flex flex-col items-center gap-0.5 py-2 px-1 min-h-[52px] transition-colors relative ${
-                tab.disabled
-                  ? "text-border opacity-50 cursor-default"
-                  : isActive
-                    ? "text-navy"
+                isActive
+                  ? "text-navy"
+                  : tab.disabled
+                    ? "text-text-muted/60"
                     : "text-text-muted hover:text-text"
               }`}
             >
@@ -62,7 +62,7 @@ export function buildPlayerTabs(
   role: { tags: string[] },
   phase: string,
   pendingCount: number,
-  isLabCeoRole: boolean,
+  controlsLab: boolean,
 ): TabDef[] {
   const submissionsOpen = phase === "submit";
   const tabs: TabDef[] = [
@@ -81,11 +81,11 @@ export function buildPlayerTabs(
       id: "respond",
       label: "Respond",
       icon: <Vote className="w-5 h-5" />,
-      badge: pendingCount > 0 ? pendingCount : undefined,
+      badge: submissionsOpen && pendingCount > 0 ? pendingCount : undefined,
       disabled: !submissionsOpen,
     },
   ];
-  if (isLabCeoRole) {
+  if (controlsLab) {
     tabs.push({
       id: "lab",
       label: "Lab",
