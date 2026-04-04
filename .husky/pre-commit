@@ -1,0 +1,15 @@
+npx tsc --noEmit
+npm run lint --silent
+npx knip --no-exit-code 2>&1 | grep -q "^Unused" && { echo "❌ Dead code detected:"; npx knip; exit 1; } || true
+
+# Flag new lint suppressions in staged files (warning, not blocking)
+STAGED=$(git diff --cached --name-only --diff-filter=ACM | grep -E '\.(ts|tsx)$' | grep -v '^tests/' || true)
+if [ -n "$STAGED" ]; then
+  SUPPRESSIONS=$(echo "$STAGED" | xargs grep -n '@ts-ignore\|@ts-expect-error\|eslint-disable' 2>/dev/null || true)
+  if [ -n "$SUPPRESSIONS" ]; then
+    echo "⚠️  Lint suppressions found in staged files — fix the root cause if possible:"
+    echo "$SUPPRESSIONS"
+  fi
+fi
+
+npx vitest run --reporter=dot

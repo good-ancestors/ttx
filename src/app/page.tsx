@@ -219,7 +219,7 @@ export default function SplashPage() {
     return (
       <div className="min-h-dvh bg-navy flex flex-col items-center justify-center p-8 text-center">
         <div className="max-w-md w-full">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- static SVG, no optimization benefit from next/image */}
           <img src="/good-ancestors-logo.svg" alt="Good Ancestors" className="h-10 mx-auto mb-8" />
           <h1 className="text-2xl font-extrabold text-white mb-6">Join a Game</h1>
           <input
@@ -257,7 +257,7 @@ export default function SplashPage() {
     return (
       <div className="min-h-dvh bg-navy flex flex-col items-center justify-center p-8 text-center">
         <div className="max-w-md w-full">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- static SVG, no optimization benefit from next/image */}
           <img src="/good-ancestors-logo.svg" alt="Good Ancestors" className="h-10 mx-auto mb-8" />
           <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">The Race to AGI</h1>
           <p className="text-sm text-text-light mb-8">A Tabletop Scenario Exercise</p>
@@ -309,7 +309,7 @@ export default function SplashPage() {
       <div className="max-w-2xl w-full">
         {/* Header */}
         <div className="text-center mb-8 pt-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- static SVG, no optimization benefit from next/image */}
           <img src="/good-ancestors-logo.svg" alt="Good Ancestors" className="h-10 mx-auto mb-6" />
           <h1 className="text-3xl font-extrabold text-white mb-1 tracking-tight">The Race to AGI</h1>
           <p className="text-sm text-text-light">A Tabletop Scenario Exercise</p>

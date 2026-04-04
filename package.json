@@ -9,7 +9,8 @@
     "lint": "eslint",
     "lint:dead": "knip",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "prepare": "husky"
   },
   "dependencies": {
     "ai": "^6.0.138",
@@ -35,6 +36,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-compiler": "^19.1.0-rc.2",
     "eslint-plugin-react-hooks": "^7.0.1",
+    "husky": "^9.1.7",
     "jsdom": "^29.0.1",
     "knip": "^6.3.0",
     "tailwindcss": "^4",

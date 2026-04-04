@@ -102,6 +102,8 @@ export const generateAll = internalAction({
       : [];
     const allRequests: Request[] = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
 
+    // Complexity is inherent: builds rich context per AI table (previous round,
+    // safety lead info, proposals, disposition) for realistic LLM-generated actions.
     // eslint-disable-next-line complexity
     await Promise.all(aiTables.map(async (table) => {
       const role = ROLES.find((r) => r.id === table.roleId);

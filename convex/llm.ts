@@ -56,7 +56,7 @@ export async function callAnthropic<T>(opts: {
     try {
       // First model gets full timeout, fallback models get 30s
       const effectiveTimeout = i === 0 ? timeoutMs : Math.min(timeoutMs, 30_000);
-      console.log(`[llm] Calling ${model} with tool_use (promptLen=${prompt.length}, system=${systemPrompt ? "yes" : "no"}, timeout=${effectiveTimeout}ms)`);
+      console.info(`[llm] Calling ${model} with tool_use (promptLen=${prompt.length}, system=${systemPrompt ? "yes" : "no"}, timeout=${effectiveTimeout}ms)`);
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), effectiveTimeout);
@@ -122,7 +122,7 @@ export async function callAnthropic<T>(opts: {
         continue;
       }
 
-      console.log(`[llm] ${model} responded: ${tokens} tokens via tool_use${cacheInfo}`);
+      console.info(`[llm] ${model} responded: ${tokens} tokens via tool_use${cacheInfo}`);
       return { output: toolUse.input as T, model, timeMs: Date.now() - startTime, tokens };
     } catch (err) {
       console.error(`[llm] ${model} failed:`, err instanceof Error ? err.message : String(err));

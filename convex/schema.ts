@@ -68,9 +68,8 @@ export default defineSchema({
     enabled: v.boolean(),
     computeStock: v.optional(v.number()),
     aiDisposition: v.optional(v.string()),
-    // Session tracking: random ID per browser tab, used to detect seat conflicts
-    // TODO Phase 2: Add playerName (nickname entered on first join) for facilitator visibility
-    // TODO Phase 3: Replace with Convex Auth identity for persistent accounts + game history
+    // Session tracking: random ID per browser tab, used to detect seat conflicts.
+    // Future: add playerName for facilitator visibility; replace with Convex Auth for persistent accounts.
     activeSessionId: v.optional(v.string()),
   })
     .index("by_game", ["gameId"])

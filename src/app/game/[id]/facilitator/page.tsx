@@ -138,6 +138,7 @@ export default function FacilitatorPage({
 
   // Warm up API routes on facilitator page load (for copilot)
   useEffect(() => {
+    // Fire-and-forget: warming up API route, failure is non-critical
     fetch("/api/warm").catch(() => {});
   }, []);
 

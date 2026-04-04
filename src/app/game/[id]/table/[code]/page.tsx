@@ -166,6 +166,7 @@ export default function TablePlayerPage({
   // Load role handouts on mount
   const [handoutData, setHandoutData] = useState<Record<string, string> | null>(null);
   useEffect(() => {
+    // Fire-and-forget: handout data is supplementary, failure is non-critical
     loadRoleHandouts().then(setHandoutData).catch(() => {});
   }, []);
 
@@ -279,10 +280,17 @@ export default function TablePlayerPage({
   }, [game, tableId]);
 
   // ── Reset form when round advances ─────────────────────────────────────
+  // Refs for values read inside the effect but that should not trigger it.
+  // Synced via effects to satisfy react-compiler's no-ref-writes-during-render rule.
+  const gameRef = useRef(game);
+  useEffect(() => { gameRef.current = game; }, [game]);
+  const roleRef = useRef(role);
+  useEffect(() => { roleRef.current = role; }, [role]);
+
+  const currentRound = game?.currentRound;
   useEffect(() => {
-    if (!game) return;
-    const round = game.currentRound;
-    if (lastRoundRef.current !== null && lastRoundRef.current !== round) {
+    if (currentRound == null) return;
+    if (lastRoundRef.current !== null && lastRoundRef.current !== currentRound) {
       // Round changed — clear form state and allow draft restore for new round
       setActionDrafts([emptyAction()]);
       setArtifact("");
@@ -292,15 +300,17 @@ export default function TablePlayerPage({
       draftRestoredRef.current = false;
       setActiveTab("brief");
       // Reload compute allocation from current game state (not defaults)
-      if (role) {
-        const lab = game.labs.find((l) => l.roleId === role.id);
+      const currentRole = roleRef.current;
+      const currentGame = gameRef.current;
+      if (currentRole && currentGame) {
+        const lab = currentGame.labs.find((l) => l.roleId === currentRole.id);
         if (lab?.allocation) {
           setComputeAllocation({ ...lab.allocation });
         }
       }
     }
-    lastRoundRef.current = round;
-  }, [game?.currentRound]); // eslint-disable-line react-hooks/exhaustive-deps
+    lastRoundRef.current = currentRound;
+  }, [currentRound]);
 
   // Auto-clear draft restored message
   useEffect(() => {
@@ -327,11 +337,11 @@ export default function TablePlayerPage({
   // ── Sample suggestions ──────────────────────────────────────────────────
   const [shownSuggestions, setShownSuggestions] = useState<SampleAction[]>([]);
   useEffect(() => {
-    if (!sampleActionsData || !role || !game) return;
-    const all = getSampleActions(sampleActionsData, role.id, game.currentRound);
+    if (!sampleActionsData || !role || currentRound == null) return;
+    const all = getSampleActions(sampleActionsData, role.id, currentRound);
     if (all.length === 0) return;
     setShownSuggestions(pickRandom(all, 3));
-  }, [sampleActionsData, role, game?.currentRound]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [sampleActionsData, role, currentRound]);
 
   // ── Auto-expand ideas when timer low and no actions ─────────────────────
   useEffect(() => {

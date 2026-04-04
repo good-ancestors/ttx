@@ -53,6 +53,8 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   adjustTimer: (args: { gameId: Id<"games">; deltaSeconds: number }) => Promise<unknown>;
 }
 
+// Complexity is inherent: this is the top-level facilitator view orchestrating
+// discuss, submit, rolling, and narrate phases in a single progressive layout.
 // eslint-disable-next-line complexity
 export function RoundPhase({
   gameId,

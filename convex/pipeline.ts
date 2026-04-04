@@ -305,6 +305,8 @@ export const rollAndNarrate = internalAction({
     roundNumber: v.number(),
     aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
   },
+  // Complexity is inherent: multi-step pipeline (roll, narrate, apply world state,
+  // compute lab growth, snapshot) that must run as a single atomic action.
   // eslint-disable-next-line complexity
   handler: async (ctx, args) => {
     const { gameId, roundNumber } = args;
