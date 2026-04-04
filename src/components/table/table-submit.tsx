@@ -63,7 +63,7 @@ export function TableSubmit({
   onSuggestionTap,
 }: TableSubmitProps) {
   const submittedList = submittedActions.filter(
-    (a) => a.actionStatus === "submitted" || (!a.actionStatus && a.text),
+    (a) => a.actionStatus === "submitted",
   );
   const canEdit = game.phase === "submit" && !isExpired;
   const totalActions =

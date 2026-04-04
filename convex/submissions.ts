@@ -33,11 +33,26 @@ async function findExistingSubmission(
   return raw && raw.gameId === gameId ? raw : null;
 }
 
+// actionStatus is optional here because submit/submitInternal stamp it server-side
+// before writing. Required in the schema — every persisted action has actionStatus.
 const actionValidator = v.object({
   text: v.string(),
   priority: v.number(),
   secret: v.optional(v.boolean()),
   actionStatus: v.optional(v.union(v.literal("draft"), v.literal("submitted"))),
+  probability: v.optional(v.number()),
+  reasoning: v.optional(v.string()),
+  rolled: v.optional(v.number()),
+  success: v.optional(v.boolean()),
+  aiInfluence: v.optional(v.number()),
+});
+
+// Validator for actions that already have actionStatus set (e.g. grading pipeline output).
+const persistedActionValidator = v.object({
+  text: v.string(),
+  priority: v.number(),
+  secret: v.optional(v.boolean()),
+  actionStatus: v.union(v.literal("draft"), v.literal("submitted")),
   probability: v.optional(v.number()),
   reasoning: v.optional(v.string()),
   rolled: v.optional(v.number()),
@@ -495,7 +510,7 @@ export const applyGrading = mutation({
   },
 });
 
-export const setAiMeta = mutation({
+export const setAiMeta = internalMutation({
   args: {
     submissionId: v.id("submissions"),
     aiMeta: v.object({
@@ -650,7 +665,7 @@ export const setActionInfluence = mutation({
 
     const action = sub.actions[args.actionIndex];
     if (!action) throw new Error("Action not found");
-    if (action.actionStatus && action.actionStatus !== "submitted") throw new Error("Can only influence submitted actions");
+    if (action.actionStatus !== "submitted") throw new Error("Can only influence submitted actions");
     if (action.rolled != null) throw new Error("Cannot influence already-rolled actions");
 
     const actions = [...sub.actions];
@@ -755,7 +770,7 @@ export const rollAllInternal = internalMutation({
 export const applyGradingInternal = internalMutation({
   args: {
     submissionId: v.id("submissions"),
-    actions: v.array(actionValidator),
+    actions: v.array(persistedActionValidator),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.submissionId, { actions: args.actions, status: "graded" as const });

@@ -30,7 +30,7 @@ export type Submission = Pick<
     text: string;
     priority: number;
     secret?: boolean;
-    actionStatus?: "draft" | "submitted";
+    actionStatus: "draft" | "submitted";
     probability?: number;
     rolled?: number;
     success?: boolean;

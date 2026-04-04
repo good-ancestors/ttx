@@ -53,6 +53,9 @@ export async function POST(request: Request) {
   const authError = checkApiAuth(request);
   if (authError) return authError;
 
+  // Server-side routes pass the facilitator secret directly to Convex mutations
+  const facilitatorToken = process.env.FACILITATOR_SECRET;
+
   try {
     const body = await request.json();
     const {
@@ -163,6 +166,7 @@ YOUR BEHAVIOR:
         await convex.mutation(api.games.updateWorldState, {
           gameId: gameId as Id<"games">,
           worldState: ws,
+          facilitatorToken,
         });
       }
 
@@ -179,6 +183,7 @@ YOUR BEHAVIOR:
             roleId: newLab.roleId ?? newLab.name.toLowerCase().replace(/\s+/g, "-"),
             computeStock: newLab.computeStock ?? 10,
             rdMultiplier: newLab.rdMultiplier ?? 1,
+            facilitatorToken,
           });
         }
 
@@ -204,6 +209,7 @@ YOUR BEHAVIOR:
             await convex.mutation(api.games.updateLabs, {
               gameId: gameId as Id<"games">,
               labs: updatedLabs,
+              facilitatorToken,
             });
           }
         }
@@ -215,6 +221,7 @@ YOUR BEHAVIOR:
           gameId: gameId as Id<"games">,
           survivorName: output.labMerge.survivorLab,
           absorbedName: output.labMerge.absorbedLab,
+          facilitatorToken,
         });
       }
 
@@ -223,6 +230,7 @@ YOUR BEHAVIOR:
         await convex.mutation(api.games.restoreSnapshot, {
           gameId: gameId as Id<"games">,
           roundNumber: output.restoreSnapshot,
+          facilitatorToken,
         });
       }
 
@@ -238,6 +246,7 @@ YOUR BEHAVIOR:
               ...(freshRound.summary ?? { geopoliticalEvents: [], aiStateOfPlay: [], headlines: [] }),
               narrative: output.narrativeUpdate,
             },
+            facilitatorToken,
           });
         }
       }

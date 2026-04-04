@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useSyncExternalStore } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { Plus, Smartphone, Loader2, Trash2, Play, Clock, CheckCircle2, Pencil } from "lucide-react";
@@ -159,7 +159,7 @@ function GameCard({
 export default function SplashPage() {
   const router = useRouter();
   const games = useQuery(api.games.list);
-  const createGame = useMutation(api.games.create);
+  const createGame = useAuthMutation(api.games.create);
   const removeGame = useAuthMutation(api.games.remove);
   const renameGame = useAuthMutation(api.games.rename);
   const [creating, setCreating] = useState(false);

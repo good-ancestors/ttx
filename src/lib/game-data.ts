@@ -466,9 +466,8 @@ export const MAX_PRIORITY = 10;
 export const MAX_ACTIONS = 5;
 export const TOTAL_ROUNDS = ROUND_CONFIGS.length;
 
-/** Check if an action counts as submitted (handles legacy records without actionStatus) */
-export function isSubmittedAction(action: { actionStatus?: string }): boolean {
-  return action.actionStatus === "submitted" || !action.actionStatus;
+export function isSubmittedAction(action: { actionStatus: string }): boolean {
+  return action.actionStatus === "submitted";
 }
 
 /** Auto-decay priority table: position-based priority assignment.

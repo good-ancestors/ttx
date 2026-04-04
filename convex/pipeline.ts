@@ -249,7 +249,7 @@ export const gradeOnly = internalAction({
 
       // Only grade actions that don't have a probability yet
       const ungraded = submissions.filter((s) =>
-        s.actions.some((a) => (a.actionStatus === "submitted" || !a.actionStatus) && a.probability == null)
+        s.actions.some((a) => a.actionStatus === "submitted" && a.probability == null)
       );
       const total = ungraded.length;
 

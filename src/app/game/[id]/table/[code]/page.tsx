@@ -101,7 +101,7 @@ function cancelDraftEndorsements(
 }
 
 /** Map the Nth submitted action back to its actual index in the actions array. */
-function nthSubmittedIndex(actions: { actionStatus?: string }[], n: number): number {
+function nthSubmittedIndex(actions: { actionStatus: string }[], n: number): number {
   let count = 0;
   for (let i = 0; i < actions.length; i++) {
     if (isSubmittedAction(actions[i])) {

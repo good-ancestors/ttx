@@ -96,8 +96,10 @@ export const applyResolution = mutation({
       })
     ),
     facilitatorNotes: v.optional(v.string()),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const rounds = await ctx.db
       .query("rounds")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
@@ -127,7 +129,7 @@ export const clearResolution = mutation({
   },
 });
 
-export const setAiMeta = mutation({
+export const setAiMeta = internalMutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
@@ -158,8 +160,10 @@ export const updateFallbackNarrative = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     fallbackNarrative: v.string(),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const rounds = await ctx.db
       .query("rounds")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))

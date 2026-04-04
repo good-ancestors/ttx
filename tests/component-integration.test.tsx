@@ -109,8 +109,8 @@ describe("game-data pure functions", () => {
       expect(isSubmittedAction({ actionStatus: "draft" })).toBe(false);
     });
 
-    it("returns true for legacy records without actionStatus", () => {
-      expect(isSubmittedAction({})).toBe(true);
+    it("returns false when actionStatus is not submitted", () => {
+      expect(isSubmittedAction({ actionStatus: "other" })).toBe(false);
     });
   });
 

@@ -14,7 +14,7 @@ describe("Game Creation", () => {
   let gameId: Id<"games">;
 
   it("should create a game with 6 tables", async () => {
-    gameId = await convex.mutation(api.games.create, { tableCount: 6 });
+    gameId = await convex.mutation(api.games.create, { tableCount: 6, facilitatorToken: FACILITATOR_TOKEN });
     expect(gameId).toBeTruthy();
 
     const game = await convex.query(api.games.get, { gameId });
@@ -81,7 +81,7 @@ describe("Game Creation", () => {
 
 describe("Game with fewer tables", () => {
   it("should handle tableCount of 3", async () => {
-    const gameId = await convex.mutation(api.games.create, { tableCount: 3 });
+    const gameId = await convex.mutation(api.games.create, { tableCount: 3, facilitatorToken: FACILITATOR_TOKEN });
     const tables = await convex.query(api.tables.getByGame, { gameId });
     // Creates all 17 roles, but only enables up to tableCount + required
     expect(tables).toHaveLength(17);
@@ -92,7 +92,7 @@ describe("Game with fewer tables", () => {
   });
 
   it("should handle tableCount of 1", async () => {
-    const gameId = await convex.mutation(api.games.create, { tableCount: 1 });
+    const gameId = await convex.mutation(api.games.create, { tableCount: 1, facilitatorToken: FACILITATOR_TOKEN });
     const tables = await convex.query(api.tables.getByGame, { gameId });
     const enabled = tables.filter((t) => t.enabled);
     // At minimum, the 3 required roles
@@ -106,7 +106,7 @@ describe("Table Join Flow", () => {
   let joinCode: string;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, {});
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
     const tables = await convex.query(api.tables.getByGame, { gameId });
     const openbrainTable = tables.find((t) => t.roleId === "openbrain-ceo")!;
     tableId = openbrainTable._id;
@@ -158,7 +158,7 @@ describe("Game Phase Flow", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, {});
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
   });
 
   it("should start the game", async () => {
@@ -248,7 +248,7 @@ describe("Submission Flow", () => {
   let tableId: Id<"tables">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, {});
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
@@ -333,7 +333,7 @@ describe("Dice Rolling", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, {});
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
@@ -400,7 +400,7 @@ describe("Probability Override", () => {
   let subId: Id<"submissions">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, {});
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
@@ -448,7 +448,7 @@ describe("Proposals", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, {});
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
@@ -536,7 +536,7 @@ describe("World State Updates", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, {});
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
   });
 
   it("should update world state", async () => {
@@ -562,7 +562,7 @@ describe("Lab Updates", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, {});
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
   });
 
   it("should update lab data", async () => {

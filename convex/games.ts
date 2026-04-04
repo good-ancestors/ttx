@@ -50,8 +50,10 @@ export const create = mutation({
   args: {
     tableCount: v.optional(v.number()),
     name: v.optional(v.string()),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const tableCount = Math.min(17, Math.max(1, args.tableCount ?? 6));
 
     const gameId = await ctx.db.insert("games", {
@@ -227,7 +229,8 @@ export const updateLabSpec = mutation({
     spec: v.string(),
   },
   handler: async (ctx, args) => {
-    // No facilitator auth — called by lab CEO players to describe their lab focus
+    // No facilitator auth — intentionally unprotected because BOTH facilitators
+    // and lab CEO players call this (players set their lab's focus description).
     if (args.spec.length > 2000) {
       throw new Error(`Lab spec too long: ${args.spec.length}/2000 characters`);
     }
@@ -600,7 +603,7 @@ export const triggerRoll = mutation({
       )
       .collect();
     const ungradedCount = subs.flatMap((s) =>
-      s.actions.filter((a) => (a.actionStatus === "submitted" || !a.actionStatus) && a.probability == null)
+      s.actions.filter((a) => a.actionStatus === "submitted" && a.probability == null)
     ).length;
     if (ungradedCount > 0) {
       throw new Error(`${ungradedCount} submitted actions still ungraded — grade them first`);
