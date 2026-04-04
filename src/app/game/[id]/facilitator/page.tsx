@@ -462,6 +462,9 @@ export default function FacilitatorPage({
               addLab={addLab}
               forceClearLock={forceClearLock}
               isTimerExpired={isExpired}
+              timerDisplay={timerDisplay}
+              isUrgent={isUrgent}
+              adjustTimer={adjustTimer}
             />
           </div>
         </div>

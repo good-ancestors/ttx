@@ -48,6 +48,9 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
   forceClearLock: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   isTimerExpired?: boolean;
+  timerDisplay?: string;
+  isUrgent?: boolean;
+  adjustTimer: (args: { gameId: Id<"games">; deltaSeconds: number }) => Promise<unknown>;
 }
 
 // eslint-disable-next-line complexity
@@ -81,6 +84,9 @@ export function RoundPhase({
   addLab,
   forceClearLock,
   isTimerExpired,
+  timerDisplay,
+  isUrgent,
+  adjustTimer,
 }: RoundPhaseProps) {
   const phase = game.phase;
   const isResolvingPhase = phase === "rolling" || phase === "narrate";
@@ -151,6 +157,37 @@ export function RoundPhase({
         </div>
       )}
 
+      {/* ─── Large inline timer (during submit phase with active timer) ─── */}
+      {phase === "submit" && game.phaseEndsAt && timerDisplay && !isTimerExpired && (
+        <div className={`rounded-xl p-6 text-center ${isUrgent ? "bg-viz-danger/10 border border-viz-danger/30" : "bg-navy border border-navy-light"}`}>
+          <span className={`text-6xl font-mono font-black tabular-nums ${isUrgent ? "text-viz-danger animate-pulse" : "text-white"}`}>
+            {timerDisplay}
+          </span>
+          {!isProjector && (
+            <div className="flex items-center justify-center gap-3 mt-4">
+              <button
+                onClick={() => void adjustTimer({ gameId, deltaSeconds: -30 })}
+                className="px-4 py-2 bg-navy-light text-text-light rounded-lg font-bold text-sm hover:bg-navy-muted transition-colors"
+              >
+                −30s
+              </button>
+              <button
+                onClick={safeAction("End early", () => skipTimer({ gameId }))}
+                className="px-6 py-2 bg-viz-danger/20 text-viz-danger rounded-lg font-bold text-sm hover:bg-viz-danger/30 transition-colors"
+              >
+                End Early
+              </button>
+              <button
+                onClick={() => void adjustTimer({ gameId, deltaSeconds: 30 })}
+                className="px-4 py-2 bg-navy-light text-text-light rounded-lg font-bold text-sm hover:bg-navy-muted transition-colors"
+              >
+                +30s
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ─── 3. WHAT WAS ATTEMPTED (collapsed, populates as submissions arrive) ─── */}
       {phase !== "discuss" && (
         <AttemptedPanel
@@ -172,14 +209,7 @@ export function RoundPhase({
       {/* ─── 5. Skip timer + Grade/Roll buttons (submit phase) ─── */}
       {phase === "submit" && !isProjector && (
         <div className="space-y-3">
-          {game.phaseEndsAt && !isTimerExpired && !resolving && (
-            <button
-              onClick={safeAction("Skip timer", () => skipTimer({ gameId }))}
-              className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1"
-            >
-              <SkipForward className="w-3 h-3" /> Close Submissions
-            </button>
-          )}
+          {/* Close Submissions moved to inline timer above */}
           {submittedActionCount > 0 && (
             <div className="flex gap-3">
               {/* Grade Remaining — AI grades actions without a probability */}
