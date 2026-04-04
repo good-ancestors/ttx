@@ -6,7 +6,6 @@
 - Next.js 16.2 (App Router) — params/searchParams are async Promises, must be awaited
 - Convex for real-time state + persistence
 - Tailwind CSS with custom brand tokens (see globals.css)
-- Framer Motion 12 for transitions only; CSS transitions for input-driven updates
 - Lucide React for icons (never use emoji in UI)
 - Vercel AI SDK 6 for AI calls
 
@@ -23,12 +22,22 @@ npx convex dev          # Start Convex dev server (in one terminal)
 npm run dev             # Start Next.js dev server (in another terminal)
 ```
 
-## Testing
+## Verification (run all before committing)
 ```bash
-npx tsc --noEmit        # Type check
-npm run lint            # ESLint
-npm run build           # Full build
+npx tsc --noEmit        # Type check (strict: noUnusedLocals, noUnusedParameters)
+npm run lint            # ESLint (includes react-compiler plugin)
+npm run lint:dead       # knip — dead files, exports, dependencies
+npm test                # vitest — 150 unit + component integration tests
 ```
+
+## Rules for AI agents
+- NEVER suppress lint/type errors with `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, or `as any` — fix the root cause
+- NEVER skip hooks (`--no-verify`) or bypass signing
+- NEVER add dead code "for future use" — delete it, git has history
+- NEVER disable tests or write tests that always pass
+- Run `npm run lint:dead` (knip) after any refactor that moves/renames/deletes components
+- Prefer deleting code over commenting it out
+- If a function is unused, delete it — don't prefix with underscore
 
 <!-- convex-ai-start -->
 This project uses [Convex](https://convex.dev) as its backend.
