@@ -478,7 +478,7 @@ function ComputeFlowPanel({ currentRound }: { currentRound: Round }) {
 
       <div className="space-y-2">
         {computeChanges.distribution
-          .sort((a, b) => b.stockAfter - a.stockAfter)
+          .toSorted((a, b) => b.stockAfter - a.stockAfter)
           .map((entry) => (
             <div
               key={entry.labName}

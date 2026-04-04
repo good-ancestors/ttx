@@ -7,7 +7,7 @@ import { internal } from "./_generated/api";
 import type { Id, Doc } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS, RESOLVE_MODELS } from "./aiModels";
-import { defaultProbability } from "./gameData";
+import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 import {
   buildGradingPrompt,
   buildRoundNarrativePrompt,
@@ -122,7 +122,7 @@ async function gradeSubmissionBatch(
         labs: game.labs,
         actionRequests,
         enabledRoles: enabledRoleNames,
-        aiDisposition: sub.roleId === "ai-systems" ? aiDisposition : undefined,
+        aiDisposition: sub.roleId === AI_SYSTEMS_ROLE_ID ? aiDisposition : undefined,
         otherSubmissions: otherSubs,
         labSpec: labMap.get(sub.roleId)?.spec,
       });
@@ -318,7 +318,7 @@ export const rollAndNarrate = internalAction({
 
       // Resolve aiDisposition from table if not passed
       if (!aiDisposition) {
-        const aiTable = tablesBeforeResolve.find((t) => t.roleId === "ai-systems" && t.aiDisposition);
+        const aiTable = tablesBeforeResolve.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID && t.aiDisposition);
         if (aiTable?.aiDisposition) {
           const { getDisposition } = await import("@/lib/game-data");
           const disp = getDisposition(aiTable.aiDisposition);
@@ -330,7 +330,7 @@ export const rollAndNarrate = internalAction({
       // Quick check: only proceed if an enabled AI Systems table exists with a disposition and is not human-controlled
       {
         const aiSystemsTable = tablesBeforeResolve.find(
-          (t) => t.roleId === "ai-systems" && t.enabled && t.aiDisposition && t.controlMode !== "human"
+          (t) => t.roleId === AI_SYSTEMS_ROLE_ID && t.enabled && t.aiDisposition && t.controlMode !== "human"
         );
         if (aiSystemsTable) {
           const game = await ctx.runQuery(internal.games.getInternal, { gameId });

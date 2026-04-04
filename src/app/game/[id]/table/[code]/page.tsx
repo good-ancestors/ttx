@@ -4,7 +4,7 @@ import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, getAiInfluencePower, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
+import { ROLES, isLabCeo, getAiInfluencePower, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
 // Lab allocation read-only moved to Lab tab for safety leads
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
@@ -60,6 +60,27 @@ function loadDraft(tableId: string, roundNumber: number): DraftData | null {
   } catch {
     return null;
   }
+}
+
+/** Read-only lab view shared by submit (non-CEO) and resolving phases. */
+function ReadOnlyLabView({ lab, roleName }: { lab: { spec?: string; allocation: { users: number; capability: number; safety: number } }; roleName: string }) {
+  return (
+    <>
+      <LabSpecEditor
+        labSpec={lab.spec ?? ""}
+        onLabSpecChange={() => {}}
+        specSaved={false}
+        onSaveSpec={() => {}}
+        readOnly
+      />
+      <ComputeAllocation
+        allocation={lab.allocation}
+        onChange={() => {}}
+        isSubmitted={true}
+        roleName={roleName}
+      />
+    </>
+  );
 }
 
 /** Cancel endorsement requests for drafts being discarded. */
@@ -565,7 +586,7 @@ export default function TablePlayerPage({
                 </span>
               )}
               <span className="text-[11px] text-text-muted font-mono">
-                {round?.label ?? "Q1 2028"} — Turn {round?.number ?? 1}/4
+                {round?.label ?? DEFAULT_ROUND_LABEL} — Turn {round?.number ?? 1}/4
               </span>
               <ConnectionIndicator />
             </div>
@@ -625,7 +646,7 @@ export default function TablePlayerPage({
                   handoutData={handoutData}
                   aiDisposition={table.aiDisposition}
                   roundNarrative={roundNarrative}
-                  roundLabel={round?.label ?? "Q1 2028"}
+                  roundLabel={round?.label ?? DEFAULT_ROUND_LABEL}
                   submissionsOpen={false}
                   labs={game.labs}
                 />
@@ -672,7 +693,7 @@ export default function TablePlayerPage({
                   handoutData={handoutData}
                   aiDisposition={table.aiDisposition}
                   roundNarrative={roundNarrative}
-                  roundLabel={round?.label ?? "Q1 2028"}
+                  roundLabel={round?.label ?? DEFAULT_ROUND_LABEL}
                   submissionsOpen={true}
                   labs={game.labs}
                 />
@@ -727,21 +748,7 @@ export default function TablePlayerPage({
                 </>
               )}
               {activeTab === "lab" && !controlsLab && hasLabAccess && currentLab && (
-                <>
-                  <LabSpecEditor
-                    labSpec={currentLab.spec ?? ""}
-                    onLabSpecChange={() => {}}
-                    specSaved={false}
-                    onSaveSpec={() => {}}
-                    readOnly
-                  />
-                  <ComputeAllocation
-                    allocation={currentLab.allocation}
-                    onChange={() => {}}
-                    isSubmitted={true}
-                    roleName={role.name}
-                  />
-                </>
+                <ReadOnlyLabView lab={currentLab} roleName={role.name} />
               )}
             </>
           )}
@@ -778,21 +785,7 @@ export default function TablePlayerPage({
               )}
 
               {activeTab === "lab" && hasLabAccess && currentLab && (
-                <>
-                  <LabSpecEditor
-                    labSpec={currentLab.spec ?? labSpec}
-                    onLabSpecChange={() => {}}
-                    specSaved={false}
-                    onSaveSpec={() => {}}
-                    readOnly
-                  />
-                  <ComputeAllocation
-                    allocation={currentLab.allocation}
-                    onChange={() => {}}
-                    isSubmitted={true}
-                    roleName={role.name}
-                  />
-                </>
+                <ReadOnlyLabView lab={currentLab} roleName={role.name} />
               )}
             </>
           )}

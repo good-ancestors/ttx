@@ -3,7 +3,7 @@ import { mutation, query, internalMutation, internalQuery } from "./_generated/s
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen } from "./events";
-import { defaultProbability } from "./gameData";
+import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 
 const PRIORITY_HARD_CAP = 12;
 
@@ -63,7 +63,7 @@ export const getByGameAndRoundRedacted = query({
       ...sub,
       actions: sub.actions.map((a) => {
         // AI Systems can see all secrets (needed for influence decisions)
-        if (a.secret && sub.roleId !== args.viewerRoleId && args.viewerRoleId !== "ai-systems") {
+        if (a.secret && sub.roleId !== args.viewerRoleId && args.viewerRoleId !== AI_SYSTEMS_ROLE_ID) {
           return { ...a, text: "[Covert action]", reasoning: undefined };
         }
         return a;
@@ -587,7 +587,7 @@ export const applyAiInfluence = mutation({
       }
       await ctx.db.patch(sub._id, { actions });
     }));
-    await logEvent(ctx, args.gameId, "ai_influence", "ai-systems", {
+    await logEvent(ctx, args.gameId, "ai_influence", AI_SYSTEMS_ROLE_ID, {
       round: args.roundNumber,
       count: args.influences.length,
     });
@@ -626,7 +626,7 @@ export const setActionInfluence = mutation({
       aiInfluence: args.modifier === 0 ? undefined : args.modifier,
     };
     await ctx.db.patch(args.submissionId, { actions });
-    await logEvent(ctx, sub.gameId, "ai_influence_single", "ai-systems", {
+    await logEvent(ctx, sub.gameId, "ai_influence_single", AI_SYSTEMS_ROLE_ID, {
       actionIndex: args.actionIndex,
       roleId: sub.roleId,
       modifier: args.modifier,

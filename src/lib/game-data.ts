@@ -29,6 +29,8 @@ export interface Role {
 
 export const AI_SYSTEMS_ROLE_ID = "ai-systems";
 
+export const DEFAULT_ROUND_LABEL = ROUND_CONFIGS[0].label;
+
 // Phase helpers
 export function isResolvingPhase(phase: string): phase is "rolling" | "narrate" {
   return phase === "rolling" || phase === "narrate";
@@ -765,7 +767,3 @@ export function getDisposition(id: string) {
   return AI_DISPOSITIONS.find((d) => d.id === id);
 }
 
-// ─── AI INFLUENCE (agent added — replaced by getAiInfluencePower above) ─────
-// Kept as legacy export for backward compat during this session
-/** @deprecated Use getAiInfluencePower(game.labs) instead */
-export const AI_INFLUENCE_POWER: Record<number, number> = { 1: 5, 2: 10, 3: 20, 4: 30 };

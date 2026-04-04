@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS } from "./gameData";
+import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { logEvent } from "./events";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
 import { internal } from "./_generated/api";
@@ -67,7 +67,7 @@ export const create = mutation({
     // Create tables for all roles — required roles are always enabled,
     // optional roles enabled up to tableCount. All start as AI-controlled
     // until a human joins. Roles are ordered by priority in the ROLES array.
-    const requiredIds = new Set(["openbrain-ceo", "deepcent-ceo", "ai-systems"]);
+    const requiredIds = new Set(["openbrain-ceo", "deepcent-ceo", AI_SYSTEMS_ROLE_ID]);
     let enabledCount = 0;
 
     for (let i = 0; i < ROLES.length; i++) {

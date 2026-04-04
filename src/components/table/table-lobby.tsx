@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { AI_DISPOSITIONS, type Role } from "@/lib/game-data";
+import { AI_DISPOSITIONS, DEFAULT_ROUND_LABEL, type Role } from "@/lib/game-data";
 import { BriefTab } from "./brief-tab";
 import { Clock, Dices } from "lucide-react";
 
@@ -145,7 +145,7 @@ export function TableLobby({ role, tableId, aiDisposition, handoutData }: TableL
         handoutData={handoutData}
         aiDisposition={aiDisposition}
         roundNarrative={undefined}
-        roundLabel="Q1 2028"
+        roundLabel={DEFAULT_ROUND_LABEL}
         submissionsOpen={false}
       />
 

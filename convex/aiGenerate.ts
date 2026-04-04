@@ -7,6 +7,7 @@ import type { Doc } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS } from "./aiModels";
 import { ROLES, PRIORITY_DECAY, isLabCeo, isLabSafety, hasCompute, getDisposition } from "@/lib/game-data";
+import { AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
 import { getSampleActions, pickRandom } from "@/lib/sample-actions";
 
@@ -46,7 +47,7 @@ export const generateAll = internalAction({
     const aiTables = nonHumanTables.filter((t) => t.controlMode === "ai");
 
     // Auto-roll disposition for AI Systems if needed
-    const aiSystemsTable = nonHumanTables.find((t) => t.roleId === "ai-systems" && !t.aiDisposition);
+    const aiSystemsTable = nonHumanTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID && !t.aiDisposition);
     if (aiSystemsTable) {
       const rollable = (await import("@/lib/game-data")).AI_DISPOSITIONS.filter((d) => d.id !== "other");
       const idx = Math.floor(Math.random() * rollable.length);
@@ -173,7 +174,7 @@ export const generateAll = internalAction({
         proposalContext += `\nIncorporate these agreements into your actions where relevant.`;
       }
 
-      const aiDisposition = table.roleId === "ai-systems" && table.aiDisposition
+      const aiDisposition = table.roleId === AI_SYSTEMS_ROLE_ID && table.aiDisposition
         ? getDisposition(table.aiDisposition)
         : undefined;
 
