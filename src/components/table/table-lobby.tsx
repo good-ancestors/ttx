@@ -5,9 +5,8 @@ import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { AI_DISPOSITIONS, type Role } from "@/lib/game-data";
-import { HowToPlaySection } from "./how-to-play-section";
-import { DispositionBadge } from "./disposition-badge";
-import { Target, Clock, Dices } from "lucide-react";
+import { BriefTab } from "./brief-tab";
+import { Clock, Dices } from "lucide-react";
 
 // ─── AI Systems disposition chooser ──────────────────────────────────────────
 
@@ -131,7 +130,7 @@ export function DispositionChooser({ tableId, onChosen }: { tableId: Id<"tables"
 
 // ─── Lobby phase view ────────────────────────────────────────────────────────
 
-export interface TableLobbyProps {
+interface TableLobbyProps {
   role: Role;
   tableId: Id<"tables">;
   aiDisposition: string | undefined;
@@ -141,32 +140,17 @@ export interface TableLobbyProps {
 export function TableLobby({ role, tableId, aiDisposition, handoutData }: TableLobbyProps) {
   return (
     <div>
-      <div className="bg-white rounded-xl p-5 border border-border mb-4">
-        <div className="flex items-center gap-2 mb-3">
-          <Target className="w-5 h-5 text-text" />
-          <h3 className="text-base font-bold text-text">Your Role</h3>
-        </div>
-        <p className="text-sm font-semibold text-text mb-1">{role.name}</p>
-        <p className="text-[14px] text-text leading-relaxed mb-1">{role.brief}</p>
-        {handoutData?.[role.id] && (
-          <details className="mt-3">
-            <summary className="text-xs font-semibold text-text-muted cursor-pointer hover:text-text">
-              Full Brief
-            </summary>
-            <div className="mt-2 text-xs text-text-muted whitespace-pre-line leading-relaxed">
-              {handoutData[role.id]}
-            </div>
-          </details>
-        )}
-        <HowToPlaySection role={role} />
-      </div>
+      <BriefTab
+        role={role}
+        handoutData={handoutData}
+        aiDisposition={aiDisposition}
+        roundNarrative={undefined}
+        roundLabel="Q1 2028"
+        submissionsOpen={false}
+      />
 
       {role.tags.includes("ai-system") && !aiDisposition && (
         <DispositionChooser tableId={tableId} onChosen={() => {}} />
-      )}
-
-      {role.tags.includes("ai-system") && aiDisposition && (
-        <DispositionBadge disposition={aiDisposition} className="mb-4" />
       )}
 
       <div className="text-center py-8 text-text-muted">

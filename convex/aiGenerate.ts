@@ -299,6 +299,8 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
 
     // Send endorsement requests + schedule proactive outreach in parallel
     const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));
+    // Fetch pending requests to check which roles actually have something to respond to
+    const pendingRequests: Request[] = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
     await Promise.all(submitted.flatMap((p) => {
       const endorsements = (p.endorseHints ?? []).flatMap((hint) =>
         hint.targetRoleIds.slice(0, 1).map((targetId) =>
@@ -314,12 +316,18 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
           }).catch(() => { /* request already exists */ })
         )
       );
-      const outreach = ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
-        gameId,
-        roundNumber,
-        roleId: p.roleId,
-      });
-      return [...endorsements, outreach];
+      // Only schedule AI proposals if this role has pending requests to respond to
+      const hasPending = pendingRequests.some(
+        (r) => r.toRoleId === p.roleId && r.status === "pending"
+      );
+      const outreach = hasPending
+        ? [ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
+            gameId,
+            roundNumber,
+            roleId: p.roleId,
+          })]
+        : [];
+      return [...endorsements, ...outreach];
     }));
   },
 });

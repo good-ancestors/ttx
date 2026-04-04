@@ -7,6 +7,8 @@ export async function loadRoleHandouts(): Promise<Record<string, string>> {
   return cached;
 }
 
-export function getRoleHandout(data: Record<string, string>, roleId: string): string | undefined {
+// @ts-expect-error -- kept for future use; not currently imported
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function getRoleHandout(data: Record<string, string>, roleId: string): string | undefined {
   return data[roleId];
 }

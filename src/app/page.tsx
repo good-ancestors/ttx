@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { Plus, Smartphone, Loader2, Trash2, Play, Clock, CheckCircle2, Pencil } from "lucide-react";
+import { SESSION_TTL_MS } from "@/lib/hooks";
 
 /** Read facilitator auth from localStorage without hydration mismatch. */
 function useFacilitatorAuth() {
@@ -268,7 +269,7 @@ export default function SplashPage() {
               if (e.key === "Enter" && passphrase.trim() === FACILITATOR_PASSPHRASE) {
                 setLocalAuth(true);
                 localStorage.setItem("ttx-facilitator", "true");
-                localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + 4 * 60 * 60 * 1000));
+                localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
               }
             }}
             placeholder="Facilitator passphrase"
@@ -284,7 +285,7 @@ export default function SplashPage() {
               if (passphrase.trim() === FACILITATOR_PASSPHRASE) {
                 setLocalAuth(true);
                 localStorage.setItem("ttx-facilitator", "true");
-                localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + 4 * 60 * 60 * 1000));
+                localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
               }
             }}
             className="w-full py-3.5 px-6 bg-white text-navy rounded-lg text-base font-bold

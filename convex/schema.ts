@@ -127,9 +127,6 @@ export default defineSchema({
     gameId: v.id("games"),
     number: v.number(),
     label: v.string(),
-    title: v.string(),
-    narrative: v.string(),
-    capabilityLevel: v.string(),
     // Structured resolution output — what happened this round
     resolvedEvents: v.optional(
       v.array(
@@ -167,16 +164,39 @@ export default defineSchema({
     // Pre-resolve snapshot — captured before resolve runs (safe revert point)
     worldStateBefore: v.optional(worldStateValidator),
     labsBefore: v.optional(v.array(labSnapshotValidator)),
+    roleComputeBefore: v.optional(
+      v.array(
+        v.object({
+          roleId: v.string(),
+          roleName: v.string(),
+          computeStock: v.number(),
+        })
+      )
+    ),
     // Compute changes applied this round (for facilitator review UI)
     computeChanges: v.optional(v.object({
       newComputeTotal: v.number(),
       baselineTotal: v.number(),
+      stockBeforeTotal: v.number(),
+      stockAfterTotal: v.number(),
       distribution: v.array(v.object({
         labName: v.string(),
+        stockBefore: v.number(),
+        stockAfter: v.number(),
+        stockChange: v.number(),
         baseline: v.number(),
         modifier: v.number(),
+        sharePct: v.number(),
+        active: v.boolean(),
         reason: v.optional(v.string()),
         newTotal: v.number(),
+      })),
+      nonCompetitive: v.array(v.object({
+        roleId: v.string(),
+        roleName: v.string(),
+        stockBefore: v.number(),
+        stockAfter: v.number(),
+        stockChange: v.number(),
       })),
     })),
     // Post-resolve snapshot — for post-game review and restore

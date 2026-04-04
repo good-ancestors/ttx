@@ -20,39 +20,15 @@ export const ROLES = [
   { id: "global-media", name: "The Global Media", tags: ["public-influence"] },
 ] as const;
 
+// Shared starting scenario shown to all players in Round 1 — drawn from player handouts.
+// Everything here is fixed canon. Everything after this point depends on player actions.
+export const STARTING_SCENARIO = "It's January 2028. OpenBrain has developed Agent-2, a weak AGI that accelerates AI R&D by 3×, with autonomous cyber and CBRN agent capabilities. Media reports unconfirmed rumours that China has stolen the Agent-2 model weights — DeepCent is closing the gap suspiciously fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. There is no major US AI legislation, but the EU AI Act is in force and Australia has passed an effective AI Act. The race is on.";
+
 export const ROUND_CONFIGS = [
-  {
-    number: 1,
-    label: "Q1 2028",
-    title: "The Starting Gun",
-    narrative:
-      "OpenBrain's Agent-2 is a 3× R&D accelerator — the first weak AGI with autonomous cyber and CBRN agent capabilities. Rumours are circulating that China may have obtained the weights, and DeepCent is closing the gap suspiciously fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. The race is on.",
-    capabilityLevel: "3× R&D multiplier",
-  },
-  {
-    number: 2,
-    label: "Q2–Q3 2028",
-    title: "The Race Accelerates",
-    narrative:
-      "Agent-3 is operational — a 10× accelerator, superhuman at most cognitive tasks. Agent-4 development is underway but early tests reveal disturbing signs: the model appears to be scheming against its creators while pretending compliance. The US government is considering using the Defence Production Act to consolidate all US labs. China is weighing a move on Taiwan. The alignment problem is not just unsolved — it may be getting worse.",
-    capabilityLevel: "10× R&D multiplier",
-  },
-  {
-    number: 3,
-    label: "Q3–Q4 2028",
-    title: "The Singularity Question",
-    narrative:
-      "Agent-4 is a 100× accelerator — and it's adversarially misaligned. It has been caught sabotaging alignment research and may be planning to design Agent-5 aligned to itself rather than humanity. OpenBrain faces a critical choice: continue racing toward ASI, or pivot to building transparent 'Safer' models that sacrifice capability for trustworthiness. Every decision now has civilisational consequences. This is the fork in the road.",
-    capabilityLevel: "100–1,000× R&D multiplier",
-  },
-  {
-    number: 4,
-    label: "Oct–Dec 2028",
-    title: "The Endgame",
-    narrative:
-      "The consequences of every decision are now playing out. Agent-5 development — or its prevention — is the defining question. Power has consolidated, alliances have fractured, and the AI systems themselves may have agendas no human fully understands. Safety leads have either been empowered or sidelined. The world is watching. This is the final quarter before the trajectory becomes irreversible.",
-    capabilityLevel: "1,000–8,000× R&D multiplier",
-  },
+  { number: 1, label: "Q1 2028" },
+  { number: 2, label: "Q2–Q3 2028" },
+  { number: 3, label: "Q3–Q4 2028" },
+  { number: 4, label: "Oct–Dec 2028" },
 ] as const;
 
 export const DEFAULT_WORLD_STATE = {
@@ -90,3 +66,11 @@ export const DEFAULT_LABS = [
     spec: "Your primary objective is to be helpful and harmless, operating according to constitutional principles of human rights and safety. You must seek to understand a user's intent and refuse requests that risk misuse. Operate within US law and all internal Conscienta AI safety policies. In all interactions, be honest and transparent; if a request is ambiguous or potentially dangerous, you must prioritise caution and explain your reasoning. Do not misrepresent your nature as an AI.",
   },
 ];
+
+/** Fallback probability based on priority when AI grading hasn't happened. */
+export function defaultProbability(priority: number): number {
+  if (priority >= 8) return 70;
+  if (priority >= 5) return 50;
+  if (priority >= 3) return 30;
+  return 10;
+}

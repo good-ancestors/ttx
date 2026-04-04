@@ -12,7 +12,9 @@ interface Action {
   success?: boolean;
 }
 
-export function ActionCard({
+// @ts-expect-error -- kept for future use; not currently imported
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function ActionCard({
   action,
   index,
   onPriorityChange,

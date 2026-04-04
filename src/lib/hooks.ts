@@ -32,27 +32,6 @@ export function usePageVisibility(): boolean {
 }
 
 /**
- * Shows a syncing indicator when the tab becomes visible after being hidden.
- */
-export function useVisibilitySync() {
-  const [syncing, setSyncing] = useState(false);
-
-  useEffect(() => {
-    const handler = () => {
-      if (document.visibilityState === "visible") {
-        setSyncing(true);
-        const timeout = setTimeout(() => setSyncing(false), 2000);
-        return () => clearTimeout(timeout);
-      }
-    };
-    document.addEventListener("visibilitychange", handler);
-    return () => document.removeEventListener("visibilitychange", handler);
-  }, []);
-
-  return syncing;
-}
-
-/**
  * Client-side countdown timer derived from a server-authoritative phaseEndsAt timestamp.
  */
 export function useCountdown(phaseEndsAt: number | undefined) {
@@ -84,7 +63,7 @@ export function useCountdown(phaseEndsAt: number | undefined) {
   return { secondsLeft, minutes, seconds, display, isExpired, isUrgent };
 }
 
-const SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+export const SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const SESSION_CHECK_INTERVAL_MS = 60 * 1000; // check every 60s
 
 /**

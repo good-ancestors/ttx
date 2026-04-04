@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ROLES } from "@/lib/game-data";
+import { ROLES, AI_SYSTEMS_ROLE_ID } from "@/lib/game-data";
 import { QRCode } from "@/components/qr-codes";
 import { Play, Lock, QrCode } from "lucide-react";
 import type { FacilitatorPhaseProps } from "./types";
@@ -92,8 +92,10 @@ export function LobbyPhase({
                           if (isActive && !isRequired) {
                             void toggleEnabled({ tableId: table._id });
                           } else if (!table.enabled) {
-                            void toggleEnabled({ tableId: table._id });
-                            void setControlMode({ tableId: table._id, controlMode: mode });
+                            void (async () => {
+                              await toggleEnabled({ tableId: table._id });
+                              await setControlMode({ tableId: table._id, controlMode: mode });
+                            })();
                           } else if (table.connected && table.controlMode === "human" && mode === "ai") {
                             // Connected human → kick to AI
                             void kickToAI({ tableId: table._id });
@@ -138,7 +140,7 @@ export function LobbyPhase({
                 </div>
               )}
               {/* AI Systems disposition status in lobby */}
-              {table.roleId === "ai-systems" && table.enabled && (
+              {table.roleId === AI_SYSTEMS_ROLE_ID && table.enabled && (
                 <div className={`text-xs mt-2 px-2 py-1.5 rounded ${
                   table.aiDisposition
                     ? "bg-[#1E1B4B]/50 text-[#A78BFA]"

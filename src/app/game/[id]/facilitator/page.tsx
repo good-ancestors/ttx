@@ -4,7 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, getDisposition } from "@/lib/game-data";
+import { ROLES, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
 import { useCountdown, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { WorldStatePanel } from "@/components/world-state-panel";
@@ -23,7 +23,6 @@ import { LobbyPhase } from "@/components/facilitator/lobby-phase";
 import { RoundPhase } from "@/components/facilitator/round-phase";
 import { TimerDisplay } from "@/components/facilitator/timer-display";
 import { AddLabForm } from "@/components/facilitator/add-lab-form";
-import { DiceRollOverlay } from "@/components/facilitator/dice-roll-overlay";
 
 export default function FacilitatorPage({
   params,
@@ -117,7 +116,6 @@ export default function FacilitatorPage({
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
   const [editDials, setEditDials] = useState(false);
   const [addLabOpen, setAddLabOpen] = useState(false);
-  const [showDiceAnimation, setShowDiceAnimation] = useState(false);
 
   // Staggered dice reveal animation
   const [revealedCount, setRevealedCount] = useState(0);
@@ -179,8 +177,7 @@ export default function FacilitatorPage({
   const rounds = roundsLite ?? [];
   // Previous narrative from lightweight rounds (summaryNarrative) or current round's narrative for round 1
   const prevRoundLite = rounds.find(r => r.number === game.currentRound - 1);
-  const currentRoundLite = rounds.find(r => r.number === game.currentRound);
-  const previousNarrative = prevRoundLite?.summaryNarrative ?? (game.currentRound === 1 ? currentRoundLite?.narrative : undefined);
+  const previousNarrative = prevRoundLite?.summaryNarrative ?? (game.currentRound === 1 ? STARTING_SCENARIO : undefined);
   const phase = game.phase;
   const connectedCount = tables.filter((t) => t.connected).length;
   const snapshotOptions = isProjector ? [] : rounds.flatMap(r => {
@@ -191,7 +188,7 @@ export default function FacilitatorPage({
   });
 
   // Get AI Systems disposition for passing to grading/narrate/AI player prompts
-  const aiSystemsTable = tables.find((t) => t.roleId === "ai-systems");
+  const aiSystemsTable = tables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID);
   const aiDispositionData = aiSystemsTable?.aiDisposition
     ? getDisposition(aiSystemsTable.aiDisposition)
     : undefined;
@@ -217,7 +214,6 @@ export default function FacilitatorPage({
   // ─── Roll Dice: roll all graded actions + generate narrative ────────────
   const handleRollDice = async () => {
     setActionError(null);
-    setShowDiceAnimation(true);
     try {
       await triggerRoll({
         gameId,
@@ -226,7 +222,6 @@ export default function FacilitatorPage({
       });
     } catch (err) {
       console.error("Roll failed:", err);
-      setShowDiceAnimation(false);
       setActionError(`Roll failed: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
@@ -326,7 +321,7 @@ export default function FacilitatorPage({
 
             {/* Table management grid — same card style as lobby */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
-              {tables.filter((t) => t.enabled).map((table) => {
+              {tables.map((table) => {
                 const role = ROLES.find((r) => r.id === table.roleId);
                 return (
                   <div key={table._id} className="bg-navy rounded-lg border border-navy-light p-3">
@@ -424,11 +419,6 @@ export default function FacilitatorPage({
           onClose={() => setAddLabOpen(false)}
         />
       )}
-
-          {/* Dice roll animation overlay */}
-          {showDiceAnimation && (
-            <DiceRollOverlay onComplete={() => setShowDiceAnimation(false)} />
-          )}
 
           {/* Main content area — single progressive view for all phases */}
           <div className="min-w-0 overflow-hidden">
@@ -619,7 +609,7 @@ function AddLabModal({
   onClose,
 }: {
   gameId: Id<"games">;
-  tables: { roleId: string; roleName: string; enabled: boolean }[];
+  tables: { roleId: string; roleName: string; enabled?: boolean }[];
   addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
   onClose: () => void;
 }) {

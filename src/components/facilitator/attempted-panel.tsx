@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { ROLES, cycleProbability, isSubmittedAction } from "@/lib/game-data";
+import { useState, useEffect, useMemo } from "react";
+import { ROLES, AI_SYSTEMS_ROLE_ID, cycleProbability, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { ProbabilityBadge } from "@/components/action-card";
 import {
@@ -12,6 +12,7 @@ import {
   CheckCircle,
   Clock,
   ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import type { Submission, Proposal } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
@@ -54,7 +55,7 @@ export function AttemptedPanel({
   const hasRolled = submissions.some((s) => s.actions.some((a) => a.rolled != null));
   const hasGraded = submissions.some((s) => s.actions.some((a) => a.probability != null));
   const hasSubmissions = submissions.length > 0;
-  const isRollingOrNarrate = phase === "rolling" || phase === "narrate";
+  const isRollingOrNarrate = isResolvingPhase(phase);
 
   const allActions = useMemo(() =>
     submissions.flatMap((sub) => {
@@ -76,43 +77,29 @@ export function AttemptedPanel({
 
   const allRevealed = isRollingOrNarrate && revealedCount >= allActions.length;
 
-  const { endorsementsByRole, endorsementsByText } = useMemo(() => {
-    const byRole = new Map<string, Proposal[]>();
-    const byText = new Map<string, Proposal[]>();
-    for (const p of proposals.filter((p) => p.status === "accepted")) {
-      for (const rId of [p.fromRoleId, p.toRoleId]) {
-        const list = byRole.get(rId) ?? [];
-        list.push(p);
-        byRole.set(rId, list);
-      }
-      const key = p.actionText.toLowerCase().trim();
-      const textList = byText.get(key) ?? [];
-      textList.push(p);
-      byText.set(key, textList);
+  const isExpanded = isRollingOrNarrate && hasSubmissions ? true : expanded;
+
+  const endorsementsByOwner = useMemo(() => {
+    const map = new Map<string, Proposal[]>();
+    // Self-endorsement is rejected server-side (requests.ts send/sendInternal).
+    // The toRoleId !== fromRoleId check below is kept as a safety net.
+    for (const proposal of proposals.filter((item) => (
+      item.status === "accepted" &&
+      item.requestType === "endorsement" &&
+      item.toRoleId !== item.fromRoleId &&
+      item.toRoleId !== AI_SYSTEMS_ROLE_ID
+    ))) {
+      const key = `${proposal.fromRoleId}::${proposal.actionText.toLowerCase().trim()}`;
+      const list = map.get(key) ?? [];
+      list.push(proposal);
+      map.set(key, list);
     }
-    return { endorsementsByRole: byRole, endorsementsByText: byText };
+    return map;
   }, [proposals]);
 
   function getEndorsements(roleId: string, actionText: string): Proposal[] {
     const aText = actionText.toLowerCase().trim();
-    const seen = new Set<string>();
-    const matches: Proposal[] = [];
-    for (const p of endorsementsByRole.get(roleId) ?? []) {
-      // Skip self-endorsements
-      if (p.fromRoleId === roleId && p.toRoleId === roleId) continue;
-      // AI Systems uses influence, not endorsements — skip any AI Systems endorsements
-      if (p.fromRoleId === "ai-systems" || p.toRoleId === "ai-systems") continue;
-      const pText = p.actionText.toLowerCase().trim();
-      if (pText === aText || aText.includes(pText) || pText.includes(aText)) {
-        if (!seen.has(p._id)) { seen.add(p._id); matches.push(p); }
-      }
-    }
-    for (const p of endorsementsByText.get(aText) ?? []) {
-      if (p.fromRoleId === roleId && p.toRoleId === roleId) continue;
-      if (p.fromRoleId === "ai-systems" || p.toRoleId === "ai-systems") continue;
-      if (!seen.has(p._id)) { seen.add(p._id); matches.push(p); }
-    }
-    return matches;
+    return endorsementsByOwner.get(`${roleId}::${aText}`) ?? [];
   }
 
   if (!hasSubmissions) return null;
@@ -122,10 +109,10 @@ export function AttemptedPanel({
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setExpanded(!expanded)}
+            onClick={() => setExpanded(!isExpanded)}
             className="flex items-center gap-2"
           >
-            <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${expanded ? "" : "-rotate-90"}`} />
+            <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
             <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
               What Was Attempted
             </span>
@@ -149,7 +136,7 @@ export function AttemptedPanel({
             </span>
           )}
         </div>
-        {expanded && (
+        {isExpanded && (
           <button
             onClick={revealAllSecrets}
             className="text-[10px] text-viz-warning hover:text-white transition-colors flex items-center gap-1"
@@ -159,9 +146,12 @@ export function AttemptedPanel({
         )}
       </div>
 
-      {expanded && (
+      {isExpanded && (
         <>
           <div className="space-y-1.5">
+            {isRollingOrNarrate && !allRevealed && (
+              <InlineRollStatus />
+            )}
             {displayActions.map(({ action, i, sub, role }, idx) => (
               <ActionRow
                 key={`${sub._id}-${i}`}
@@ -178,6 +168,7 @@ export function AttemptedPanel({
                 getEndorsements={getEndorsements}
                 rerollAction={rerollAction}
                 overrideProbability={overrideProbability}
+                allowPregrade={!isProjector && !isRollingOrNarrate}
               />
             ))}
           </div>
@@ -210,6 +201,7 @@ function ActionRow({
   getEndorsements,
   rerollAction,
   overrideProbability,
+  allowPregrade,
 }: {
   action: Submission["actions"][number];
   actionIndex: number;
@@ -224,6 +216,7 @@ function ActionRow({
   getEndorsements: (roleId: string, actionText: string) => Proposal[];
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+  allowPregrade: boolean;
 }) {
   const secretKey = `${sub.roleId}-${i}`;
   const isCovert = action.secret && !revealedSecrets.has(secretKey);
@@ -252,9 +245,9 @@ function ActionRow({
               <span
                 key={p._id}
                 className="text-[9px] px-1.5 py-0.5 rounded-full bg-viz-safety/20 text-viz-safety font-semibold"
-                title={`${p.fromRoleName} \u2192 ${p.toRoleName}: ${p.actionText}`}
+                title={`${p.toRoleName} endorsed ${p.fromRoleName}: ${p.actionText}`}
               >
-                {p.fromRoleName} {"\u2713"}
+                {p.toRoleName} {"\u2713"}
               </span>
             ))}
           </div>
@@ -282,6 +275,7 @@ function ActionRow({
           isProjector={isProjector}
           rerollAction={rerollAction}
           overrideProbability={overrideProbability}
+          allowPregrade={allowPregrade}
         />
       </div>
     </div>
@@ -295,6 +289,7 @@ function ActionOutcome({
   isProjector,
   rerollAction,
   overrideProbability,
+  allowPregrade,
 }: {
   action: Submission["actions"][number];
   submissionId: Id<"submissions">;
@@ -302,6 +297,7 @@ function ActionOutcome({
   isProjector: boolean;
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+  allowPregrade: boolean;
 }) {
   if (action.rolled != null) {
     if (!isProjector) {
@@ -349,5 +345,43 @@ function ActionOutcome({
     );
   }
 
+  if (allowPregrade) {
+    return (
+      <button
+        onClick={() => void overrideProbability({
+          submissionId,
+          actionIndex,
+          probability: 50,
+        })}
+        className="shrink-0 rounded-full bg-[#FEF3C7] px-2 py-0.5 text-xs font-semibold text-[#92400E] hover:bg-[#FDE68A] transition-colors flex items-center gap-1"
+      >
+        <ChevronRight className="w-3 h-3" /> Grade
+      </button>
+    );
+  }
+
   return null;
+}
+
+function InlineRollStatus() {
+  const [displayNumber, setDisplayNumber] = useState(1);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDisplayNumber(Math.floor(Math.random() * 100) + 1);
+    }, 90);
+    return () => clearInterval(interval);
+  }, []);
+
+  return (
+    <div className="mb-2 flex items-center gap-3 rounded-lg border border-navy-light bg-navy-dark px-3 py-2">
+      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-light text-white">
+        <Dices className="h-4 w-4 animate-pulse" />
+      </div>
+      <div>
+        <div className="text-[10px] uppercase tracking-[0.2em] text-text-light/70">Rolling</div>
+        <div className="font-mono text-lg font-black text-white tabular-nums">{displayNumber}</div>
+      </div>
+    </div>
+  );
 }

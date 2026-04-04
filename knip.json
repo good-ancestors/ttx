@@ -1,0 +1,15 @@
+{
+  "ignore": [
+    "scripts/**",
+    "tests/adversarial-grading.mjs",
+    "tests/full-playthrough.ts"
+  ],
+  "ignoreDependencies": [
+    "@typescript-eslint/parser",
+    "eslint-plugin-import",
+    "eslint-plugin-react",
+    "eslint-plugin-react-hooks",
+    "postcss",
+    "vite"
+  ]
+}

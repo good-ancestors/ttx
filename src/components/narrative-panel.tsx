@@ -21,7 +21,6 @@ const LOADING_VERBS = [
 interface Round {
   _id: string;
   label: string;
-  title: string;
   summary?: {
     narrative?: string;
     geopoliticalEvents: string[];

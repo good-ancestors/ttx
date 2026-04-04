@@ -16,7 +16,7 @@ import {
 
 // ─── Submit phase props ──────────────────────────────────────────────────────
 
-export interface TableSubmitProps {
+interface TableSubmitProps {
   game: {
     currentRound: number;
     phase: string;

@@ -1,4 +1,4 @@
-import { generateText, streamText, Output, createGateway } from "ai";
+import { generateText, Output, createGateway } from "ai";
 import type { ZodSchema } from "zod";
 import { EMERGENCY_FALLBACK } from "./ai-models";
 
@@ -63,62 +63,3 @@ export async function generateWithFallback<T>(opts: {
   return { output: null, model: "none", timeMs: 0 };
 }
 
-/**
- * Stream structured output from an AI model as SSE.
- * Sends partial objects as `data:` lines, then a final `__complete` message
- * with the full output and metadata. No fallback during streaming — uses primary only.
- */
-/** Stream structured output from primary model. No fallback during streaming — errors surface to caller. */
-export function streamPrimary<T>(opts: {
-  primary: string;
-  fallback: string;
-  prompt: string;
-  schema: ZodSchema<T>;
-}): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder();
-  const start = performance.now();
-
-  const result = streamText({
-    model: gw(opts.primary),
-    output: Output.object({ schema: opts.schema }),
-    prompt: opts.prompt,
-  });
-
-  return new ReadableStream({
-    async start(controller) {
-      try {
-        for await (const partial of result.partialOutputStream) {
-          controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(partial)}\n\n`),
-          );
-        }
-        const output = await result.output;
-        const timeMs = Math.round(performance.now() - start);
-        const usage = await result.usage;
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({
-              __complete: true,
-              output,
-              model: opts.primary,
-              timeMs,
-              tokens: usage?.totalTokens,
-            })}\n\n`,
-          ),
-        );
-        controller.close();
-      } catch (error) {
-        controller.enqueue(
-          encoder.encode(
-            `data: ${JSON.stringify({
-              __error: true,
-              message:
-                error instanceof Error ? error.message : String(error),
-            })}\n\n`,
-          ),
-        );
-        controller.close();
-      }
-    },
-  });
-}

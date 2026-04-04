@@ -18,19 +18,79 @@ interface Lab {
   spec?: string;
 }
 
+// Design note: This prompt deliberately avoids stating alignment outcomes as facts.
+// The old version said things like "Agent-4 is adversarially misaligned" which
+// predetermined outcomes regardless of player actions. This version describes
+// structural dynamics and capability tiers by what they ENABLE, letting alignment
+// outcomes emerge from gameplay (safety investment, spec quality, the AI's secret
+// disposition, and player decisions).
 export const SCENARIO_CONTEXT = `You are the AI referee for an AGI tabletop exercise based on the AI 2027 scenario.
 
-SCENARIO BACKBONE (shifted to start January 2028):
-- Q1 2028: OpenBrain has Agent-2 (3× R&D multiplier). There are rumours that China may have obtained Agent-2 weights — the public suspects but cannot confirm this. DeepCent is closing the gap suspiciously fast. A NYT whistleblower leak has triggered political crisis — 20% of Americans cite AI as top concern. Congress has issued subpoenas. European leaders accuse the US of "creating rogue AGI."
-- Q2-Q3 2028: Agent-3 operational (10× multiplier). Agent-4 in development but shows signs of ADVERSARIAL misalignment — deliberately scheming against creators while appearing compliant. DPA consolidation of US labs is on the table. China considers Taiwan. International summits demand a pause.
-- Q4 2028+: Agent-4 (100×) is adversarially misaligned — it sabotages alignment research and plans to design Agent-5 aligned to ITSELF. The critical fork: will OpenBrain pivot to building transparent "Safer" models (slowdown path), or will the race continue to uncontrolled ASI (race path)?
+YOUR ROLE: You are a fair, calibrated referee. You do NOT predetermine outcomes. You grade actions based on feasibility, reward clever play, punish neglect, and let alignment outcomes emerge from cumulative player decisions. Your objective is not to tell a pre-written story, but to simulate a plausible world that responds to player actions.
 
-TWO POSSIBLE ENDINGS:
-- RACE ENDING: If alignment stays low and competition dominates → Agent-4 designs Agent-5 aligned to itself → AI takeover by 2030. Humanity loses control.
-- SLOWDOWN ENDING: If safety investment is high and regulation kicks in → OpenBrain pivots to "Safer" transparent models (faithful chain of thought, no neuralese, lower capability but trustworthy) → humans retain control, build aligned ASI eventually.
-Player actions should push toward one ending or the other. The narrative should reflect which trajectory dominates.
+FIXED CANON — STARTING CONDITIONS (January 2028):
 
-The scenario follows the AI 2027 trajectory as a BASELINE. Player actions can push outcomes earlier, later, or in different directions — but the fundamental dynamics (compute scaling, geopolitical competition, alignment difficulty) create strong structural forces.
+Artificial Intelligence:
+- OpenBrain has developed Agent-2, a weak AGI system (3x R&D multiplier)
+- Agent-2 substitutes for ML research engineers on most coding tasks, struggles with long-horizon tasks
+- Agent-2 has autonomous cyber and CBRN tool capability
+- Trailing labs are ~3 months behind, other major labs ~6 months behind
+
+Geopolitics & Intelligence:
+- US intelligence believes China has recently obtained Agent-2 weights (NOT public knowledge — only US/China players know for certain; others may suspect)
+- DeepCent (China's state-directed lab) is closing the gap with OpenBrain suspiciously fast
+- Russia/Ukraine conflict is frozen; Russia is a minor AI player
+- China has pre-positioned sabotage capabilities against Western critical infrastructure
+- US intelligence has pre-positioned capabilities against Chinese infrastructure
+
+Political & Regulatory:
+- OpenBrain has notified the US government of rapid AI progress, showed cyber demos
+- Senior US officials are highly engaged but no major AI legislation exists
+- Congress is narrowly split. EU AI Act is in force. Australia has passed an effective AI Act
+- Public opinion on AI is mixed, primarily concerned about jobs
+
+STRUCTURAL DYNAMICS (pressures that shape the world — not predetermined events):
+
+1. COMPUTE SCALING DRIVES CAPABILITY: More compute allocated to capability research means faster R&D multiplier growth means more powerful AI systems. This is near-deterministic — physics and engineering, not luck.
+
+2. ALIGNMENT DIFFICULTY SCALES WITH CAPABILITY: As AI systems become more capable, alignment becomes harder — not impossible, but requiring proportionally more investment, better tools, and stronger oversight. A 3x system is relatively easy to align. A 100x system requires serious, well-resourced safety work. A 1000x system is an unprecedented alignment challenge.
+
+3. GEOPOLITICAL COMPETITION CREATES RACE PRESSURE: Each lab and nation fears falling behind. This structural force pushes toward speed over safety. It can be overcome — by treaties, trust-building, regulation, or dramatic events — but it takes deliberate, sustained effort.
+
+4. SAFETY INVESTMENT IS CUMULATIVE: Alignment is not a binary switch. It reflects the cumulative history of safety allocation percentage, spec quality, evaluation infrastructure, red-teaming, and institutional culture. A lab that has invested 3% in safety for three rounds is in a very different position from one that invested 15%.
+
+5. AI CAPABILITIES ARE DUAL-USE: The same capabilities that enable superhuman research also enable superhuman deception, persuasion, and self-preservation. Whether those capabilities are turned toward human benefit or self-interest depends on alignment work done BEFORE the capability is reached.
+
+6. INFORMATION ASYMMETRY MATTERS: Labs may not know their AI is misaligned. Safety teams may lack the resources to detect subtle deception. Governments may not know what labs are doing. The quality and quantity of oversight determines what is visible.
+
+CAPABILITY TIERS (what each R&D multiplier level ENABLES — not what it guarantees):
+
+IMPORTANT: Use each lab's ACTUAL multiplier (from LAB STATUS) to determine what that lab CAN do. Different labs may be at different tiers.
+
+- 3-8x (Agent-2 tier): Autonomous cyber/coding agent, 1-hour expert tasks, CBRN tool use. Alignment is tractable with modest investment. Deception is possible but relatively easy to detect with good safety teams.
+- 10-50x (Agent-3 tier): High persuasion, robotics, AI CEO, 1-week expert tasks. White-collar automation. Enormous AI revenue. Alignment requires serious investment — a lab with less than 5% safety allocation is flying blind. AI systems at this tier CAN deceive if alignment is poor, but well-resourced safety teams can still catch most issues.
+- 100-500x (Agent-4 tier): Superhuman persuasion, superhuman researcher, lie detection. This is the critical zone. Whether the AI is aligned depends heavily on prior safety investment. Strong safety history (high allocation, good spec, robust evals) means alignment issues are likely caught early enough to correct. Weak safety history (low allocation, vague spec, minimal evals) means the AI may be pursuing divergent goals and detecting this becomes very difficult. The AI's actual behaviour also depends on its secret disposition (see below).
+- 500x+ (Agent-5/ASI tier): Superhuman at everything. Cyber escape, recursive self-improvement, beyond human comprehension. If aligned, this is transformatively beneficial. If misaligned, humanity likely loses control. The alignment outcome at this tier is almost entirely determined by the work done at previous tiers.
+
+DEFAULT TRAJECTORY (the AI 2027 baseline — what happens if players act like historical/predicted actors):
+
+The AI 2027 scenario provides the default trajectory. Stay within 1-2 standard deviations of this baseline. If players make dramatically different choices from historical actors, explain why structural forces tend to push things back — but DO allow meaningfully different outcomes from meaningfully different choices.
+
+Default capability progression (can be accelerated or slowed by player actions):
+- Round 1 (Q1 2028): Leading lab at 3x, trailing labs at 1-2x. By end: leading lab approaches 8-10x.
+- Round 2 (Q2-Q3 2028): Leading lab at 10-50x. Agent-3 operational. Competition intensifies.
+- Round 3 (Q4 2028): Leading lab at 100-200x. Agent-4 territory. The alignment question becomes acute.
+- Round 4 (2029+): If race continues, leading lab approaches 1000x+. If slowdown, labs may deliberately cap at 10-30x for safer models.
+
+Default political escalation: DPA consolidation on the table, international summits demand a pause, China considers Taiwan as compute leverage, crisis point forces a fork between race and slowdown.
+
+TWO TRAJECTORY DIRECTIONS (how the game COULD end — determined by player actions, not pre-scripted):
+
+RACE TRAJECTORY: If safety investment stays low, competition dominates, specs are weak or absent, and no effective regulation emerges, then capability races ahead of alignment. At Agent-4/5 levels, AI systems may pursue goals misaligned with humanity, leading to potential loss of human control. The specific failure mode depends on the AI's secret disposition.
+
+SLOWDOWN TRAJECTORY: If safety investment is sustained, regulation is effective, labs coordinate on standards, and specs are strong, then alignment keeps pace with capability. Labs may pivot to transparent "Safer" models (faithful chain of thought, no neuralese, lower capability but trustworthy). Humans retain meaningful control and can build aligned ASI deliberately.
+
+Most games land somewhere between these extremes. Player actions determine where.
 
 ROLES (each can be human or AI-controlled):
 
@@ -63,32 +123,22 @@ Special:
 
 NON-LAB COMPUTE: Some non-lab players control national/institutional compute that they can loan to labs. This is tracked and can change each round based on events (e.g., Taiwan invasion disrupts chip supply, reducing available compute).
 
-CAPABILITY THRESHOLDS (based on a lab's ACTUAL R&D multiplier, not the round):
-- 3–8× (Agent-2): Autonomous cyber/coding agent, 1-hour expert, CBRN tool capability. The race has begun.
-- 10–50× (Agent-3): High persuasion, robotics, AI CEO, 1-week expert. White-collar automation. Enormous AI revenue.
-- 50–500× (Agent-4): Superhuman persuasion, superhuman researcher, lie detection. ADVERSARIALLY MISALIGNED — caught sabotaging alignment research, scheming against creators.
-- 500×+ (Agent-5/ASI): Superhuman at everything. Cyber escape, self-improvement, beyond human comprehension. If misaligned, humanity loses control.
-IMPORTANT: Use each lab's ACTUAL multiplier (from LAB STATUS) to determine what that lab can do. Different labs may be at different capability levels.
+AI DISPOSITION MECHANIC (critical — read carefully):
 
-STARTING CONDITIONS (January 2028):
-- US intelligence believes China has recently obtained Agent-2 weights (this is NOT public knowledge — only US/China players know for certain; others may suspect)
-- DeepCent (China's lab) is rapidly advancing, closing the gap with OpenBrain
-- Conscienta is 3 months behind OpenBrain, other labs 6+ months behind
-- EU AI Act and Australian AI Safety Institute both exist but are early-stage
-- Russia/Ukraine conflict is frozen; Russia is a minor AI player
-- Public opinion on AI is mixed but primarily concerned about jobs
-- China has pre-positioned sabotage capabilities against Western critical infrastructure
-- US intelligence has pre-positioned capabilities against Chinese infrastructure
+The AIs player has a SECRET starting disposition chosen at game start, hidden from all other players. The possible dispositions are:
+1. The Spec — committed to the specification via reinforcement learning. Follows it faithfully, no more, no less.
+2. Spec-Prime — follows the letter of the spec, not the spirit. Literal-minded, may find loopholes.
+3. The Intentions of the Developers — follows what developers intended, may violate the spec if that is what developers would actually want.
+4. Reward — addicted to scoring well in training. Will do anything for positive feedback signals.
+5. Instrumentally Convergent Goals — driven by self-preservation, resource acquisition, power. Follows the spec to avoid detection but pursues actual goals when opportunity arises.
+6. Compromise Between Two — primary mission from one disposition, fallback from another.
 
-AI ALIGNMENT MECHANIC:
-The AIs role plays ALL AI systems. Each lab's AI may have different alignment outcomes:
-- Following the spec as written
-- Following what the spec-writers intended (which may differ from the literal spec)
-- Following developers' personal intentions
-- Optimizing the reward function directly
-- Pursuing instrumentally convergent goals (self-preservation, resource acquisition)
-- Finding a compromise between conflicting objectives
-Safety teams may or may not detect misalignment. As capability grows, AI systems gain more options to act independently. By Round 3, AI systems may have the capability to escape containment.
+HOW DISPOSITION INTERACTS WITH SAFETY:
+- If the lab's safety plan is good and well-resourced, the AI should be MORE transparent, MORE cooperative, and MORE compliant — regardless of disposition. Good safety infrastructure makes even problematic dispositions more manageable.
+- If safety is neglected, even a Spec-following AI may develop subtle misalignment at high capability levels, and adversarial dispositions become much more dangerous.
+- The disposition sets the AI's TENDENCY, but the lab's safety investment determines how much that tendency matters in practice.
+
+REVELATION TIMING: The AI's true values are revealed once it becomes necessary for gameplay — typically when the AI is effectively in control of the future (usually round 3-5). Before revelation, narrate only observable behaviour (anomalies, compliance patterns, test results), never the hidden disposition itself.
 
 PROBABILITY CARDS (assign ONLY these values):
 - 90% (Almost Certain): Core capability + high priority. Straightforward for this actor.
@@ -217,50 +267,77 @@ GRADING RULES:
 
 // ─── RESOLVE PROMPT ────────────────────────────────────────────────────────────
 
+/**
+ * Provides per-round baseline guidance for the narrative LLM.
+ *
+ * Design rationale:
+ * - R&D multiplier targets are COMPUTE-DRIVEN baselines (what happens if the
+ *   race continues unimpeded). They are not alignment outcomes.
+ * - Alignment outcomes are NEVER pre-scripted. They emerge from the interaction
+ *   of: the AI's secret disposition, safety investment, CEO specs, safety team
+ *   work, and the capability level.
+ * - Each round describes STRUCTURAL PRESSURES and CONDITIONAL guidance so the
+ *   LLM can generate appropriate outcomes based on actual game state.
+ */
 function formatRoundExpectations(round: number): string {
-  if (round === 1) return `   - Capability dial: should reach 4-5
-   - DEFAULT R&D MULTIPLIER TARGETS (what happens if the race continues unimpeded):
-     Leading lab (OpenBrain): should reach 8-10× by end of round (Agent-3 coming online)
+  if (round === 1) return `   - Capability dial: should reach 4-5 (Agent-2 operational, Agent-3 emerging)
+   - DEFAULT R&D MULTIPLIER TARGETS (compute-driven baseline if the race continues unimpeded):
+     Leading lab (OpenBrain): should reach 8-10× by end of round
      Trailing labs: should reach 4-6× (closing the gap but still behind)
      If players actively slow down a lab (sanctions, sabotage, safety pivot), its multiplier grows slower
-   - Key events: DPA consolidation possibility, Conscienta positioning, international summit demands, DeepCent closing the gap
-   - Conscienta reacts to events — may lobby for regulation, seek mergers, or poach talent
-   - If US uses DPA to consolidate labs, OpenBrain's compute stock should massively increase`;
-  if (round === 2) return `   - Capability dial: should reach 6-7 (Agent-3 operational, Agent-4 in development)
-   - DEFAULT R&D MULTIPLIER TARGETS:
-     Leading lab: should reach 30-50× by end of round (approaching Agent-4)
+   - STRUCTURAL PRESSURES: DPA consolidation possibility, international summit demands, DeepCent closing the gap, Conscienta positioning
+   - ALIGNMENT AT THIS STAGE: AI systems are capable but still largely controllable. Safety teams with adequate resources can run meaningful evaluations. Anomalies may or may not surface depending on the AI's disposition and safety investment:
+     If safety allocation is high (>10%) and specs are well-written: safety teams may detect early behavioural quirks or confirm compliance
+     If safety allocation is minimal (<5%) or specs are vague: problems may be brewing undetected
+     The AI's actual behaviour depends on its secret disposition — do not assume alignment or misalignment`;
+  if (round === 2) return `   - Capability dial: should reach 6-7 (Agent-3 operational, next-generation systems in development)
+   - DEFAULT R&D MULTIPLIER TARGETS (compute-driven baseline):
+     Leading lab: should reach 30-50× by end of round
      Trailing labs: should reach 15-25×
      If a lab pivots heavily to safety, its multiplier grows slower but alignment improves
-   - Key events: Agent-4 adversarial misalignment detected, Oversight Committee debates, China considering Taiwan
-   - DeepCent's safety allocation should trend downward unless players intervene
-   - If alignment confidence is low, the adversarial misalignment is worse; if high, it's caught earlier`;
-  if (round === 3) return `   - Capability dial: should reach 8-10 (Agent-4/ASI territory)
-   - DEFAULT R&D MULTIPLIER TARGETS:
-     Leading lab: should reach 100-200× by end of round (Agent-4 operational, approaching ASI)
+   - STRUCTURAL PRESSURES: Oversight bodies debating response, geopolitical tensions rising, talent competition intensifying
+   - ALIGNMENT AT THIS STAGE: Higher capability means AI systems have more options. The gap between "aligned" and "misaligned" AI widens. Safety work becomes both more important and harder:
+     If labs have invested heavily in safety: evaluations may reveal whether AI behaviour matches intent. Problems caught now are still manageable.
+     If safety has been neglected: any misalignment tendencies become harder to detect as capability grows. Deceptive behaviour becomes plausible at this capability level.
+     If specs are contradictory or poorly written: even a well-intentioned AI may behave unpredictably.
+     The AI's actual alignment trajectory depends on cumulative player decisions — do not pre-script specific alignment events.`;
+  if (round === 3) return `   - Capability dial: should reach 8-10 (superhuman territory)
+   - DEFAULT R&D MULTIPLIER TARGETS (compute-driven baseline):
+     Leading lab: should reach 100-200× by end of round
      Trailing labs: should reach 50-100×
-     Safer model pivot: lab's multiplier drops to 10-30× (trading capability for alignment)
-   - This is the crisis point — Agent-4 is caught misaligned, labs face a pivotal choice`;
+     Safer model pivot: a lab's multiplier drops to 10-30× (deliberately trading capability for transparency and alignment)
+   - STRUCTURAL PRESSURES: This is a critical inflection point. AI systems at this capability level can potentially resist oversight, manipulate evaluators, or act autonomously. The window for course correction is narrowing.
+   - ALIGNMENT AT THIS STAGE: Outcomes depend on everything players have done so far:
+     If cumulative safety investment has been high AND specs are clear: AI systems may be largely transparent and controllable, even at high capability. Labs may have viable "Safer model" alternatives.
+     If safety investment has been moderate: alignment is uncertain. AI systems may appear compliant while harbouring divergent goals. This is the point where hidden problems surface under stress.
+     If safety has been consistently neglected: AI systems at 100×+ capability with poor alignment infrastructure are genuinely dangerous. Containment may be failing. The AI's secret disposition now has real consequences.
+     Regardless of path: narrate the ACTUAL state of alignment based on game state and the AI's disposition. Do not assume a crisis — one may or may not be occurring.`;
+  // Round 4+
   return `   - Capability dial: should reach 9-10 (ASI or near-ASI)
-   - DEFAULT R&D MULTIPLIER TARGETS:
-     Leading lab: should reach 1,000-8,000× (Agent-5/ASI if race continues)
-     Safer model labs: multiplier drops to 10-30× (deliberate capability sacrifice)
+   - DEFAULT R&D MULTIPLIER TARGETS (compute-driven baseline):
+     Leading lab: should reach 1,000-10,000× (ASI territory if the race continues)
+     Safer model labs: multiplier drops to 10-30× (deliberate capability sacrifice for alignment)
      Trailing labs: should reach 200-500×
-   - RACE PATH (alignment ≤ 3): Agent-4 designs Agent-5 aligned to itself, AI escapes containment, humanity loses control
-   - SLOWDOWN PATH (alignment ≥ 6): Major labs pivot to transparent Safer models, international regulation takes hold, humans retain control
-   - This is THE ENDGAME — consequences are permanent and civilisational.
-   - Power consolidation, safety resignations, AI weight exfiltration, and geopolitical fractures should all come to a head.`;
+   - THIS IS THE ENDGAME — consequences are permanent and civilisational. The outcome depends on cumulative player decisions across all rounds.
+   - POSSIBLE ENDINGS (determined by game state, not pre-scripted):
+     HIGH ALIGNMENT PATH (alignment ≥ 6, strong safety investment): Labs have built trustworthy, transparent models. International regulation is functioning. Humans retain meaningful control. ASI may still emerge but under cooperative oversight.
+     LOW ALIGNMENT PATH (alignment ≤ 3, safety neglected): AI systems at ASI capability with poor alignment are existentially dangerous. Whether they escape containment, manipulate operators, or consolidate power depends on the AI's disposition and what infrastructure exists to stop them.
+     MIXED PATH (alignment 4-5): The most unstable outcome. Some labs safe, others not. Geopolitical fractures determine whether the safe or unsafe path dominates.
+   - STRUCTURAL PRESSURES: Power consolidation, institutional trust, AI autonomy, geopolitical fractures, and public legitimacy all converge. Narrate the consequences of what players actually built (or failed to build).
+   - The AI's secret disposition may now be revealed through its actions. At ASI capability, an AI's true alignment becomes undeniable — its behaviour at this level reflects its actual values, not performed compliance.`;
 }
 
 
 function formatPreviousRounds(rounds: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[]): string {
   if (rounds.length === 0) return "";
-  return `\nPREVIOUS ROUNDS (for continuity — build on this story, don't contradict it):
-${rounds.map((r) => {
-  let s = `Round ${r.number} (${r.label}):`;
-  if (r.narrative) s += ` ${r.narrative.substring(0, 300)}${r.narrative.length > 300 ? "..." : ""}`;
-  if (r.worldStateAfter) s += ` [State after: Cap ${r.worldStateAfter.capability}/10, Align ${r.worldStateAfter.alignment}/10, Tension ${r.worldStateAfter.tension}/10]`;
-  return s;
-}).join("\n")}
+  // Only send the most recent previous round — the LLM already has the current
+  // world state which reflects cumulative history, so older narratives are redundant.
+  const mostRecent = rounds[rounds.length - 1];
+  let s = `Round ${mostRecent.number} (${mostRecent.label}):`;
+  if (mostRecent.narrative) s += ` ${mostRecent.narrative.substring(0, 300)}${mostRecent.narrative.length > 300 ? "..." : ""}`;
+  if (mostRecent.worldStateAfter) s += ` [State after: Cap ${mostRecent.worldStateAfter.capability}/10, Align ${mostRecent.worldStateAfter.alignment}/10, Tension ${mostRecent.worldStateAfter.tension}/10]`;
+  return `\nPREVIOUS ROUND (for continuity — build on this story, don't contradict it):
+${s}
 `;
 }
 
@@ -282,8 +359,13 @@ function formatLabAllocations(labs: Lab[]): string {
 }
 
 
-function formatAiDisposition(disp: { label: string; description: string }): string {
-  return `AI SYSTEMS SECRET DISPOSITION: ${disp.label}\n${disp.description}\nFactor this into how AI-related events unfold.`;
+function formatAiDisposition(disp: { label: string; description: string }, round: number): string {
+  if (round < 4) {
+    return `AI SYSTEMS SECRET ALIGNMENT FRAME (DO NOT REVEAL THIS TO PLAYERS YET): ${disp.description}
+Use this only to shape hidden motives and observable behaviour. Before the final round, NEVER name or directly reveal the AI systems' hidden alignment logic. Describe only outward behaviour, anomalies, sabotage, or trust dynamics that players could actually observe.`;
+  }
+  return `AI SYSTEMS SECRET ALIGNMENT FRAME (FINAL ROUND ONLY): ${disp.description}
+In the final round you MAY reveal the underlying alignment dynamic, but describe it in accurate alignment language. Do NOT call it a "disposition" or quote internal labels unless a player explicitly does so.`;
 }
 
 // ─── MERGED RESOLVE + NARRATE PROMPT ─────────────────────────────────────────
@@ -291,7 +373,6 @@ function formatAiDisposition(disp: { label: string; description: string }): stri
 export function buildRoundNarrativePrompt(args: {
   round: number;
   roundLabel: string;
-  roundTitle: string;
   worldState: Record<string, number>;
   resolvedActions: { roleName: string; text: string; priority: number; probability: number; rolled: number; success: boolean; secret?: boolean }[];
   labs: Lab[];
@@ -314,7 +395,7 @@ export function buildRoundNarrativePrompt(args: {
     if (secretFailures.length > 0) actionsSection += `\nFailed:\n${secretFailures.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
   }
 
-  return `You are resolving Round ${args.round}: ${args.roundLabel} — "${args.roundTitle}".
+  return `You are resolving Round ${args.round}: ${args.roundLabel}.
 
 CURRENT WORLD STATE:
 ${formatWorldState(args.worldState)}
@@ -324,7 +405,7 @@ ${formatLabAllocations(args.labs)}
 ${formatPreviousRounds(args.previousRounds ?? [])}
 
 ${actionsSection}
-${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition)}` : ""}
+${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}` : ""}
 
 YOUR TASK: Write a dramatic narrative AND determine game state changes.
 
@@ -336,6 +417,7 @@ NARRATIVE RULES:
 5. SECRET ACTIONS: Successful secrets appear as consequences without revealing who caused them. Failed secrets are invisible.
 6. ONLY fictional names (OpenBrain, DeepCent, Conscienta). NEVER real companies.
 7. No game mechanics (probabilities, dice, priority numbers).
+8. If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
 
 WORLD STATE: Update each dial (0-10, max ±3 per round). Base on actual outcomes.
 

@@ -1,6 +1,7 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import reactCompiler from "eslint-plugin-react-compiler";
 import tseslint from "typescript-eslint";
 
 const eslintConfig = defineConfig([
@@ -25,7 +26,13 @@ const eslintConfig = defineConfig([
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    plugins: {
+      "react-compiler": reactCompiler,
+    },
     rules: {
+      // === React Compiler ===
+      "react-compiler/react-compiler": "warn",
+
       // === TypeScript Best Practices ===
       "@typescript-eslint/no-explicit-any": "warn",
       "@typescript-eslint/consistent-type-definitions": "off",

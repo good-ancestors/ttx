@@ -13,7 +13,7 @@ export function AddLabForm({
   onDone,
 }: {
   gameId: Id<"games">;
-  tables: { roleId: string; roleName: string; enabled: boolean }[];
+  tables: { roleId: string; roleName: string; enabled?: boolean }[];
   addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
   onDone: () => void;
 }) {
@@ -21,7 +21,7 @@ export function AddLabForm({
   const [roleId, setRoleId] = useState("");
   const [compute, setCompute] = useState(10);
   const [multiplier, setMultiplier] = useState(1);
-  const enabledTables = tables.filter((t) => t.enabled);
+  const enabledTables = tables.filter((t) => t.enabled !== false);
 
   return (
     <div className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end">

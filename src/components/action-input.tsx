@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ROLES, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
+import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
 import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send } from "lucide-react";
 
 
@@ -45,7 +45,7 @@ interface Props {
 export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitted, onSubmitAction }: Props) {
   // Filter out own role and AI Systems (AI Systems uses influence, not endorsements)
   const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId))
-    .filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId && r.id !== "ai-systems" : true);
+    .filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId && r.id !== AI_SYSTEMS_ROLE_ID : true);
 
   const updateAction = (index: number, patch: Partial<ActionDraft>) => {
     const next = [...actions];
@@ -270,7 +270,7 @@ function ActionCard({
             return (
               <button
                 key={roleId}
-                onClick={() => onUpdate({ endorseTargets: [...action.endorseTargets, roleId] })}
+                onClick={() => onUpdate({ endorseTargets: [...new Set([...action.endorseTargets, roleId])] })}
                 className="text-[11px] px-2 py-1 bg-[#ECFDF5] text-[#059669] rounded-full font-medium hover:bg-[#D1FAE5] transition-colors flex items-center gap-1"
               >
                 <Handshake className="w-3 h-3" />
@@ -316,7 +316,7 @@ function EndorsementPicker({
                 if (selected) {
                   onUpdate({ endorseTargets: action.endorseTargets.filter((id) => id !== r.id) });
                 } else {
-                  onUpdate({ endorseTargets: [...action.endorseTargets, r.id] });
+                  onUpdate({ endorseTargets: [...new Set([...action.endorseTargets, r.id])] });
                 }
               }}
               className={`text-xs min-h-[36px] px-3 py-1.5 rounded-full font-medium transition-colors duration-200 ${

@@ -5,6 +5,13 @@ import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { logEvent, assertPhase } from "./events";
 
+function assertSubmitWindowOpen(game: { phase: string; phaseEndsAt?: number | null }) {
+  if (game.phase !== "submit") return;
+  if (game.phaseEndsAt != null && Date.now() > game.phaseEndsAt + 5000) {
+    throw new Error("Submission deadline has passed");
+  }
+}
+
 /** Transfer compute between two roles' tables. Positive amount = giver→requester, negative = reverse. */
 async function transferCompute(
   db: DatabaseWriter,
@@ -74,16 +81,44 @@ export const send = mutation({
     computeAmount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    await assertPhase(ctx, args.gameId, ["submit"], "send request");
+    const game = await assertPhase(ctx, args.gameId, ["submit"], "send request");
+    assertSubmitWindowOpen(game);
+
+    // Reject self-endorsement / self-requests
+    if (args.fromRoleId === args.toRoleId) {
+      throw new Error("Cannot send a request to yourself");
+    }
 
     // Validate compute amount is positive
     if (args.computeAmount !== undefined && args.computeAmount <= 0) {
       throw new Error("Compute amount must be positive");
     }
-    const id = await ctx.db.insert("requests", {
-      ...args,
-      status: "pending",
-    });
+    const existing = await ctx.db
+      .query("requests")
+      .withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
+      )
+      .collect();
+    const match = existing.find((request) =>
+      request.fromRoleId === args.fromRoleId &&
+      request.toRoleId === args.toRoleId &&
+      request.actionText === args.actionText &&
+      request.requestType === args.requestType
+    );
+    let id = match?._id;
+    if (match) {
+      await ctx.db.patch(match._id, {
+        fromRoleName: args.fromRoleName,
+        toRoleName: args.toRoleName,
+        computeAmount: args.computeAmount,
+        status: "pending",
+      });
+    } else {
+      id = await ctx.db.insert("requests", {
+        ...args,
+        status: "pending",
+      });
+    }
     await logEvent(ctx, args.gameId, "request_sent", args.fromRoleId, {
       toRoleId: args.toRoleId,
       requestType: args.requestType,
@@ -92,6 +127,9 @@ export const send = mutation({
     });
 
     // Auto-respond if target is AI/NPC
+    if (!id) {
+      throw new Error("Failed to create or update request");
+    }
     await triggerAutoResponse(ctx, args.gameId, args.roundNumber, args.toRoleId, id);
 
     return id;
@@ -136,7 +174,8 @@ export const respond = mutation({
     const proposal = await ctx.db.get(args.proposalId);
     if (!proposal) return;
 
-    await assertPhase(ctx, proposal.gameId, ["submit"], "respond to requests");
+    const game = await assertPhase(ctx, proposal.gameId, ["submit"], "respond to requests");
+    assertSubmitWindowOpen(game);
 
     // Allow changing response (pending→accepted, pending→declined, accepted↔declined)
     const oldStatus = proposal.status;
@@ -219,7 +258,34 @@ export const sendInternal = internalMutation({
     computeAmount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const requestId = await ctx.db.insert("requests", { ...args, status: "pending" });
+    // Reject self-endorsement / self-requests
+    if (args.fromRoleId === args.toRoleId) {
+      throw new Error("Cannot send a request to yourself");
+    }
+
+    const existing = await ctx.db
+      .query("requests")
+      .withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
+      )
+      .collect();
+    const match = existing.find((request) =>
+      request.fromRoleId === args.fromRoleId &&
+      request.toRoleId === args.toRoleId &&
+      request.actionText === args.actionText &&
+      request.requestType === args.requestType
+    );
+    const requestId = match
+      ? match._id
+      : await ctx.db.insert("requests", { ...args, status: "pending" });
+    if (match) {
+      await ctx.db.patch(match._id, {
+        fromRoleName: args.fromRoleName,
+        toRoleName: args.toRoleName,
+        computeAmount: args.computeAmount,
+        status: "pending",
+      });
+    }
 
     // Auto-respond if target is AI/NPC (reactive — no waiting for scheduled poll)
     await triggerAutoResponse(ctx, args.gameId, args.roundNumber, args.toRoleId, requestId);

@@ -1,8 +1,34 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { logEvent, assertPhase } from "./events";
+import { defaultProbability } from "./gameData";
 
 const PRIORITY_HARD_CAP = 12;
+
+/** Find existing submission for a table+round, ignoring stale docs from prior game sessions. */
+async function findExistingSubmission(
+  ctx: MutationCtx | QueryCtx,
+  tableId: Id<"tables">,
+  gameId: Id<"games">,
+  roundNumber: number,
+) {
+  const raw = await ctx.db
+    .query("submissions")
+    .withIndex("by_table_and_round", (q) =>
+      q.eq("tableId", tableId).eq("roundNumber", roundNumber)
+    )
+    .first();
+  return raw && raw.gameId === gameId ? raw : null;
+}
+
+function assertSubmitWindowOpen(game: { phase: string; phaseEndsAt?: number | null }) {
+  if (game.phase !== "submit") return;
+  if (game.phaseEndsAt != null && Date.now() > game.phaseEndsAt + 5000) {
+    throw new Error("Submission deadline has passed");
+  }
+}
 
 const actionValidator = v.object({
   text: v.string(),
@@ -26,40 +52,6 @@ export const getByGameAndRound = query({
         q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
       )
       .collect();
-  },
-});
-
-// Lightweight summary — facilitator Players/Attempted panels only need these fields.
-// Excludes aiMeta, reasoning, artifact, computeAllocation to reduce bandwidth.
-export const getByGameAndRoundSummary = query({
-  args: { gameId: v.id("games"), roundNumber: v.number() },
-  handler: async (ctx, args) => {
-    const subs = await ctx.db
-      .query("submissions")
-      .withIndex("by_game_and_round", (q) =>
-        q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
-      )
-      .collect();
-
-    return subs.map((sub) => ({
-      _id: sub._id,
-      _creationTime: sub._creationTime,
-      tableId: sub.tableId,
-      gameId: sub.gameId,
-      roundNumber: sub.roundNumber,
-      roleId: sub.roleId,
-      status: sub.status,
-      actions: sub.actions.map((a) => ({
-        text: a.text,
-        priority: a.priority,
-        secret: a.secret,
-        actionStatus: a.actionStatus,
-        probability: a.probability,
-        rolled: a.rolled,
-        success: a.success,
-        aiInfluence: a.aiInfluence,
-      })),
-    }));
   },
 });
 
@@ -140,15 +132,7 @@ export const submit = mutation({
       if (a.text.length > 500) throw new Error(`Action text too long: ${a.text.length}/500 characters`);
     }
 
-    const existingRaw = await ctx.db
-      .query("submissions")
-      .withIndex("by_table_and_round", (q) =>
-        q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber)
-      )
-      .first();
-
-    // Ignore stale submissions from a prior game session (reused tableId)
-    const existing = existingRaw && existingRaw.gameId === args.gameId ? existingRaw : null;
+    const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
 
     // Ensure all actions have actionStatus set for the new per-action model
     const stampedActions = args.actions.map((a) => ({
@@ -205,16 +189,9 @@ export const saveDraft = mutation({
     if (game.phase !== "submit" && game.phase !== "discuss") {
       throw new Error(`Cannot save drafts during ${game.phase} phase`);
     }
+    assertSubmitWindowOpen(game);
 
-    const existingRaw = await ctx.db
-      .query("submissions")
-      .withIndex("by_table_and_round", (q) =>
-        q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber)
-      )
-      .first();
-
-    // Ignore stale submissions from a prior game session (reused tableId)
-    const existing = existingRaw && existingRaw.gameId === args.gameId ? existingRaw : null;
+    const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
 
     const newAction = {
       text: args.text,
@@ -254,6 +231,9 @@ export const updateDraft = mutation({
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
+    const game = await ctx.db.get(sub.gameId);
+    if (!game) return;
+    assertSubmitWindowOpen(game);
     const action = sub.actions[args.actionIndex];
     if (!action) return;
     if (action.actionStatus === "submitted") throw new Error("Cannot edit submitted action — use editSubmitted first");
@@ -278,7 +258,7 @@ export const submitAction = mutation({
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) throw new Error("Submission not found");
     const game = await assertPhase(ctx, sub.gameId, ["submit"], "submit actions");
-    if (game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) throw new Error("Submission deadline has passed");
+    assertSubmitWindowOpen(game);
 
     const action = sub.actions[args.actionIndex];
     if (!action) throw new Error("Action not found");
@@ -319,18 +299,10 @@ export const saveAndSubmit = mutation({
     if (game.phase !== "submit" && game.phase !== "discuss") {
       throw new Error(`Cannot save drafts during ${game.phase} phase`);
     }
-    if (game.phaseEndsAt && Date.now() > game.phaseEndsAt + 5000) throw new Error("Submission deadline has passed");
+    assertSubmitWindowOpen(game);
     if (!args.text.trim()) throw new Error("Action text cannot be empty");
 
-    const existingRaw = await ctx.db
-      .query("submissions")
-      .withIndex("by_table_and_round", (q) =>
-        q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber)
-      )
-      .first();
-
-    // Ignore stale submissions from a prior game session (reused tableId)
-    const existing = existingRaw && existingRaw.gameId === args.gameId ? existingRaw : null;
+    const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
 
     // Priority is assigned by rank order — 1st submitted gets highest priority.
     // Calculated server-side during grading, not enforced on submit.
@@ -382,7 +354,8 @@ export const editSubmitted = mutation({
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
-    await assertPhase(ctx, sub.gameId, ["submit"], "edit actions");
+    const game = await assertPhase(ctx, sub.gameId, ["submit"], "edit actions");
+    assertSubmitWindowOpen(game);
 
     const action = sub.actions[args.actionIndex];
     if (!action) return;
@@ -410,7 +383,8 @@ export const deleteAction = mutation({
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
-    await assertPhase(ctx, sub.gameId, ["submit"], "delete actions");
+    const game = await assertPhase(ctx, sub.gameId, ["submit"], "delete actions");
+    assertSubmitWindowOpen(game);
 
     const action = sub.actions[args.actionIndex];
     if (!action) return;
@@ -450,7 +424,8 @@ export const updatePriority = mutation({
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
-    await assertPhase(ctx, sub.gameId, ["submit"], "change priority");
+    const game = await assertPhase(ctx, sub.gameId, ["submit"], "change priority");
+    assertSubmitWindowOpen(game);
 
     const action = sub.actions[args.actionIndex];
     if (!action) return;
@@ -645,6 +620,7 @@ export const setActionInfluence = mutation({
     if (game.phase !== "submit" && game.phase !== "rolling") {
       throw new Error("Cannot set influence after dice are rolled");
     }
+    assertSubmitWindowOpen(game);
 
     const action = sub.actions[args.actionIndex];
     if (!action) throw new Error("Action not found");
@@ -670,13 +646,6 @@ function applyInfluence(rawRoll: number, aiInfluence?: number): number {
   return Math.max(1, Math.min(100, rawRoll - (aiInfluence ?? 0)));
 }
 
-// Fallback probability based on priority when AI grading hasn't happened
-function defaultProbability(priority: number): number {
-  if (priority >= 8) return 70;
-  if (priority >= 5) return 50;
-  if (priority >= 3) return 30;
-  return 10;
-}
 
 export const rollAllActions = mutation({
   args: { gameId: v.id("games"), roundNumber: v.number() },
@@ -799,13 +768,7 @@ export const submitInternal = internalMutation({
     computeAllocation: v.optional(v.object({ users: v.number(), capability: v.number(), safety: v.number() })),
   },
   handler: async (ctx, args) => {
-    const existingRaw = await ctx.db
-      .query("submissions")
-      .withIndex("by_table_and_round", (q) => q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber))
-      .first();
-
-    // Ignore stale submissions from a prior game session (reused tableId)
-    const existing = existingRaw && existingRaw.gameId === args.gameId ? existingRaw : null;
+    const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
 
     const stampedActions = args.actions.map((a) => ({ ...a, actionStatus: "submitted" as const }));
 

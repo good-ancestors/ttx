@@ -171,14 +171,10 @@ describe("Round Configs", () => {
     expect(ROUND_CONFIGS.map((r) => r.number)).toEqual([1, 2, 3, 4]);
   });
 
-  it("round narratives should reference scenario correctly", () => {
-    expect(ROUND_CONFIGS[0].narrative).toContain("whistleblower");
-    expect(ROUND_CONFIGS[1].narrative).toContain("Agent-3");
-    expect(ROUND_CONFIGS[1].narrative).toContain("scheming");
-    expect(ROUND_CONFIGS[2].narrative).toContain("adversarially misaligned");
-    expect(ROUND_CONFIGS[2].narrative).toContain("Safer");
-    expect(ROUND_CONFIGS[3].narrative).toContain("Agent-5");
-    expect(ROUND_CONFIGS[3].narrative).toContain("irreversible");
+  it("each round should have a label", () => {
+    for (const round of ROUND_CONFIGS) {
+      expect(round.label).toBeTruthy();
+    }
   });
 });
 

@@ -32,7 +32,6 @@ interface LabSnapshot {
 interface RoundData {
   number: number;
   label: string;
-  title: string;
   summary?: {
     headlines: string[];
     geopoliticalEvents: string[];

@@ -177,24 +177,6 @@ export function NarrativeEditor({
   );
 }
 
-// ─── Facilitator AI Copilot ─────────────────────────────────────────────────
-// Thin wrappers around CopilotChat for modal and bar variants.
-
-/** Modal version — for use inside edit modals */
-export function FacilitatorAdjust({
-  gameId,
-  currentWorldState,
-  currentLabs,
-}: {
-  gameId: Id<"games">;
-  currentWorldState: Snapshot["worldState"];
-  currentLabs: Snapshot["labs"];
-}) {
-  return (
-    <CopilotChat gameId={gameId} currentWorldState={currentWorldState} currentLabs={currentLabs} variant="modal" />
-  );
-}
-
 /** Persistent copilot — always visible during gameplay */
 export function FacilitatorCopilot({
   gameId,

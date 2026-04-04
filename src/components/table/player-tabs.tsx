@@ -1,5 +1,6 @@
 "use client";
 
+import { isResolvingPhase } from "@/lib/game-data";
 import { Zap, Vote, FlaskConical, BookOpen } from "lucide-react";
 
 export type PlayerTab = "brief" | "actions" | "respond" | "lab";
@@ -29,7 +30,11 @@ export function PlayerTabBar({
           return (
             <button
               key={tab.id}
-              onClick={() => onTabChange(tab.id)}
+              onClick={() => {
+                if (tab.disabled) return;
+                onTabChange(tab.id);
+              }}
+              disabled={tab.disabled}
               className={`flex-1 flex flex-col items-center gap-0.5 py-2 px-1 min-h-[52px] transition-colors relative ${
                 isActive
                   ? "text-navy"
@@ -59,12 +64,13 @@ export function PlayerTabBar({
 }
 
 export function buildPlayerTabs(
-  role: { tags: string[] },
+  _role: { tags: string[] },
   phase: string,
   pendingCount: number,
-  controlsLab: boolean,
+  hasLabAccess: boolean,
 ): TabDef[] {
   const submissionsOpen = phase === "submit";
+  const showRoundResults = isResolvingPhase(phase);
   const tabs: TabDef[] = [
     {
       id: "brief",
@@ -75,22 +81,22 @@ export function buildPlayerTabs(
       id: "actions",
       label: "Actions",
       icon: <Zap className="w-5 h-5" />,
-      disabled: !submissionsOpen,
+      disabled: !submissionsOpen && !showRoundResults,
     },
     {
       id: "respond",
       label: "Respond",
       icon: <Vote className="w-5 h-5" />,
       badge: submissionsOpen && pendingCount > 0 ? pendingCount : undefined,
-      disabled: !submissionsOpen,
+      disabled: !submissionsOpen && !showRoundResults,
     },
   ];
-  if (controlsLab) {
+  if (hasLabAccess) {
     tabs.push({
       id: "lab",
       label: "Lab",
       icon: <FlaskConical className="w-5 h-5" />,
-      disabled: !submissionsOpen,
+      disabled: !submissionsOpen && !showRoundResults,
     });
   }
   return tabs;

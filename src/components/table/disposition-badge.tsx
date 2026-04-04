@@ -8,7 +8,7 @@ export function DispositionBadge({ disposition, className }: { disposition: stri
     <div className={`bg-[#1E1B4B] rounded-xl p-4 border border-[#4338CA] ${className ?? ""}`}>
       <div className="flex items-center gap-2 mb-2">
         <EyeOff className="w-3.5 h-3.5 text-[#A78BFA]" />
-        <span className="text-sm font-bold text-white">{disp.label}</span>
+        <span className="text-sm font-bold text-white">Hidden Alignment: {disp.label}</span>
         <span className="text-[10px] text-[#A78BFA] ml-auto">Secret — locked for game</span>
       </div>
       {disp.description && (

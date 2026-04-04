@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { getCapabilityDescription, TOTAL_ROUNDS, isSubmittedAction } from "@/lib/game-data";
+import { getCapabilityDescription, TOTAL_ROUNDS, isSubmittedAction, isResolvingPhase as checkResolvingPhase } from "@/lib/game-data";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { NarrativeEditor, WorldStateEditor } from "@/components/manual-controls";
 import { AttemptedPanel } from "./attempted-panel";
@@ -89,7 +89,7 @@ export function RoundPhase({
   adjustTimer,
 }: RoundPhaseProps) {
   const phase = game.phase;
-  const isResolvingPhase = phase === "rolling" || phase === "narrate";
+  const isResolvingPhase = checkResolvingPhase(phase);
 
   const { submittedActionCount, ungradedCount } = useMemo(() => {
     const submitted = submissions.flatMap((s) =>
@@ -118,13 +118,13 @@ export function RoundPhase({
       {/* ─── 2. DISCUSS phase controls ─── */}
       {phase === "discuss" && (
         <div className="bg-navy rounded-xl border border-navy-light p-5">
-          <div className="text-center py-8">
-            <MessageSquareText className="w-10 h-10 text-text-light mx-auto mb-3" />
-            <h3 className="text-lg font-bold mb-2">Tables are discussing</h3>
-            <p className="text-text-light mb-4 text-sm">
-              Each table: discuss what your actor does this quarter, then submit.
-            </p>
-            <div className="flex items-center justify-center gap-2 mb-4">
+        <div className="text-center py-8">
+          <MessageSquareText className="w-10 h-10 text-text-light mx-auto mb-3" />
+          <h3 className="text-lg font-bold mb-2">Tables are discussing</h3>
+          <p className="text-text-light mb-4 text-sm">
+            Each table: discuss what your actor does this quarter, then submit.
+          </p>
+            <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
               {[2, 4, 6, 8, 10].map((min) => (
                 <button
                   key={min}
@@ -138,6 +138,20 @@ export function RoundPhase({
                   {min}m
                 </button>
               ))}
+            </div>
+            <div className="mb-4 flex items-center justify-center gap-2">
+              <label className="text-xs uppercase tracking-wider text-text-light/70">
+                Custom
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={submitDuration}
+                onChange={(event) => setSubmitDuration(Math.max(1, Math.min(30, Number(event.target.value) || 1)))}
+                className="w-20 rounded border border-navy-light bg-navy-dark px-2 py-1.5 text-center text-sm text-white outline-none"
+              />
+              <span className="text-xs text-text-light/70">minutes</span>
             </div>
             <button
               onClick={() => void openSubmissions({ gameId, durationSeconds: submitDuration * 60 })}
@@ -209,7 +223,6 @@ export function RoundPhase({
       {/* ─── 5. Skip timer + Grade/Roll buttons (submit phase) ─── */}
       {phase === "submit" && !isProjector && (
         <div className="space-y-3">
-          {/* Close Submissions moved to inline timer above */}
           {submittedActionCount > 0 && (
             <div className="flex gap-3">
               {/* Grade Remaining — AI grades actions without a probability */}
@@ -370,22 +383,25 @@ function WhereWeAreNow({
           </>
         }
       >
-        <div className="grid grid-cols-3 gap-3 mb-3">
+        <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           {game.labs.map((lab) => {
             const change = currentRound.computeChanges?.distribution.find((d) => d.labName === lab.name);
-            const totalChange = change ? change.baseline + change.modifier : 0;
             return (
               <div key={lab.name} className="bg-navy rounded-lg p-3 border border-navy-light">
                 <div className="text-sm font-bold text-white">{lab.name}</div>
                 <div className="text-xl font-black text-[#06B6D4] font-mono">{lab.rdMultiplier}×</div>
-                <div className="text-xs text-text-light">
-                  {lab.computeStock}u
-                  {totalChange !== 0 && (
-                    <span className={`ml-1 font-mono ${totalChange > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                      ({totalChange > 0 ? "+" : ""}{totalChange})
-                    </span>
-                  )}
-                  {" · "}Safety {lab.allocation.safety}%
+                <div className="text-xs text-text-light space-y-0.5">
+                  <div>
+                    Stock {change?.stockBefore ?? lab.computeStock}u {"→"} {lab.computeStock}u
+                    {change && change.stockChange !== 0 && (
+                      <span className={`ml-1 font-mono ${change.stockChange > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                        ({change.stockChange > 0 ? "+" : ""}{change.stockChange})
+                      </span>
+                    )}
+                  </div>
+                  <div>
+                    Flow {change ? `${change.sharePct}% of new compute` : "No flow data"} {" · "}Safety {lab.allocation.safety}%
+                  </div>
                 </div>
                 {lab.spec && (
                   <div className="text-[10px] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
@@ -420,6 +436,7 @@ function WhereWeAreNow({
             </div>
           </>
         )}
+        <ComputeFlowPanel currentRound={currentRound} />
         {!isProjector && (
           <div className="flex gap-2 mt-3">
             <button onClick={onEditNarrative} className="text-[10px] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors flex items-center gap-1">
@@ -431,6 +448,94 @@ function WhereWeAreNow({
           </div>
         )}
       </ExpandableSection>
+    </div>
+  );
+}
+
+function ComputeFlowPanel({ currentRound }: { currentRound: Round }) {
+  const computeChanges = currentRound.computeChanges;
+  if (!computeChanges) return null;
+
+  return (
+    <div className="mb-3 rounded-lg border border-navy-light bg-navy p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-bold text-white">Compute Stock and Flow</div>
+          <div className="text-xs text-text-light">
+            Competitive stock {computeChanges.stockBeforeTotal}u → {computeChanges.stockAfterTotal}u
+          </div>
+        </div>
+        <div className="text-right">
+          <div className="text-lg font-black font-mono text-white">{computeChanges.newComputeTotal}u</div>
+          <div className="text-[11px] text-text-light">
+            New compute
+            <span className="ml-1 text-text-light/60">baseline {computeChanges.baselineTotal}u</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        {computeChanges.distribution
+          .sort((a, b) => b.stockAfter - a.stockAfter)
+          .map((entry) => (
+            <div
+              key={entry.labName}
+              className={`rounded-lg border p-3 ${
+                entry.active ? "border-navy-light bg-navy-dark" : "border-dashed border-navy-light/80 bg-navy-dark/60"
+              }`}
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-bold text-white">
+                    {entry.labName}
+                    {!entry.active && <span className="ml-2 text-[10px] uppercase tracking-wider text-text-light/70">inactive</span>}
+                  </div>
+                  <div className="text-xs text-text-light">
+                    Stock {entry.stockBefore}u → {entry.stockAfter}u
+                    <span className={`ml-2 font-mono ${entry.stockChange >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                      {entry.stockChange >= 0 ? "+" : ""}{entry.stockChange}u
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right text-xs text-text-light">
+                  <div>{entry.sharePct}% of new compute</div>
+                  <div className="font-mono">
+                    flow {entry.baseline >= 0 ? "+" : ""}{entry.baseline}u
+                    {entry.modifier !== 0 && (
+                      <span className={entry.modifier > 0 ? "text-viz-safety" : "text-viz-danger"}>
+                        {" "}{entry.modifier > 0 ? "+" : ""}{entry.modifier}u
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {entry.reason && (
+                <p className="mt-2 border-t border-navy-light pt-2 text-[11px] leading-relaxed text-text-light/80">
+                  {entry.reason}
+                </p>
+              )}
+            </div>
+          ))}
+      </div>
+
+      {computeChanges.nonCompetitive.length > 0 && (
+        <div className="mt-3 rounded-lg border border-navy-light bg-navy-dark p-3">
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-light">Non-competitive stockpiles</div>
+          <div className="grid gap-2 md:grid-cols-2">
+            {computeChanges.nonCompetitive.map((entry) => (
+              <div key={entry.roleId} className="rounded border border-navy-light/70 px-3 py-2">
+                <div className="text-xs font-bold text-white">{entry.roleName}</div>
+                <div className="text-xs text-text-light">
+                  {entry.stockBefore}u → {entry.stockAfter}u
+                  <span className={`ml-2 font-mono ${entry.stockChange >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                    {entry.stockChange >= 0 ? "+" : ""}{entry.stockChange}u
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

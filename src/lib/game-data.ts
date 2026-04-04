@@ -3,6 +3,7 @@ import {
   ROUND_CONFIGS,
   DEFAULT_WORLD_STATE,
   DEFAULT_LABS,
+  STARTING_SCENARIO,
 } from "@convex/gameData";
 
 // Signal string sent by the copilot UI to confirm a proposed change
@@ -24,6 +25,13 @@ export interface Role {
   artifactPrompt: string;
   defaultCompute?: { users: number; capability: number; safety: number };
   startingComputeStock?: number;
+}
+
+export const AI_SYSTEMS_ROLE_ID = "ai-systems";
+
+// Phase helpers
+export function isResolvingPhase(phase: string): phase is "rolling" | "narrate" {
+  return phase === "rolling" || phase === "narrate";
 }
 
 // Tag helpers — gate UI features and AI context
@@ -306,12 +314,9 @@ export const ROLES: Role[] = [
 export interface RoundConfig {
   number: number;
   label: string;
-  title: string;
-  narrative: string;
-  capabilityLevel: string;
 }
 
-export { ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS };
+export { ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, STARTING_SCENARIO };
 
 // ─── CAPABILITY DESCRIPTIONS (from source material + slides) ─────────────────
 // Maps the leading lab's R&D multiplier range to human-readable capability descriptions
@@ -627,25 +632,36 @@ export const DEFAULT_COMPUTE_SHARES: Record<number, Record<string, number>> = {
 
 // Lab progression tuning constants
 export const LAB_PROGRESSION = {
-  /** Below this ratio of baseline R&D allocation, the recursive loop breaks */
-  RECURSIVE_LOOP_THRESHOLD: 0.6,
-  /** Safer path: growth coefficient per unit of allocRatio */
-  SAFER_GROWTH_COEFFICIENT: 2.5,
-  /** Safer path: max growth rate per round */
-  SAFER_GROWTH_CAP: 3.5,
-  /** Race path: exponent when allocation is below baseline (penalty) */
-  RACE_ALLOC_PENALTY_EXP: 1.3,
-  /** Race path: exponent when allocation is above baseline (diminishing returns) */
-  RACE_ALLOC_BOOST_EXP: 0.5,
-  /** Compute sensitivity exponent */
-  COMPUTE_SENSITIVITY: 0.3,
-  /** Allocation weight in combined ratio (vs compute) */
-  ALLOC_WEIGHT: 0.7,
-  /** Min multiplier floor after event modifiers */
+  /** Converts effective R&D advantage into faster/slower growth around the baseline curve. */
+  PERFORMANCE_SENSITIVITY: 0.55,
+  /** Keep growth responsive without letting one good round explode unrealistically. */
+  MIN_GROWTH_FACTOR: 0.5,
+  /** Cap growth so the curve still feels dramatic but not fully hard-coded. */
+  MAX_GROWTH_FACTOR: 3.5,
+  /** Min multiplier floor after event modifiers. */
   MIN_MULTIPLIER: 0.1,
-  /** Max multiplier caps per round range */
+  /** Max multiplier caps per round range. */
   maxMultiplier: (round: number) => round <= 2 ? 200 : round === 3 ? 2000 : 15000,
 };
+
+function getBaselineStockAfterRound(labName: string, roundNumber: number): number {
+  const startingStock = DEFAULT_LABS.find((lab) => lab.name === labName)?.computeStock ?? 0;
+  let total = startingStock;
+  for (let round = 1; round <= roundNumber; round++) {
+    const share = DEFAULT_COMPUTE_SHARES[round]?.[labName] ?? 0;
+    total += Math.round((NEW_COMPUTE_PER_GAME_ROUND[round] ?? 0) * share / 100);
+  }
+  return Math.max(0, total);
+}
+
+function getBaselineMultiplierBeforeRound(labName: string, roundNumber: number): number {
+  if (roundNumber <= 1) {
+    return DEFAULT_LABS.find((lab) => lab.name === labName)?.rdMultiplier ?? 1;
+  }
+  return BASELINE_RD_TARGETS[labName]?.[roundNumber - 1]
+    ?? DEFAULT_LABS.find((lab) => lab.name === labName)?.rdMultiplier
+    ?? 1;
+}
 
 /** Strip lab fields to only those accepted by the round snapshot validator */
 export function stripLabForSnapshot(lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }) {
@@ -700,23 +716,20 @@ export function computeLabGrowth(
     let newMultiplier: number;
 
     if (baselineTarget) {
-      const defaultAlloc = ROLES.find(r => r.id === lab.roleId)?.defaultCompute;
-      const baselineRdPct = defaultAlloc?.capability ?? 50;
-      const allocRatio = lab.allocation.capability / Math.max(1, baselineRdPct);
-      const startingCompute = DEFAULT_LABS.find((l: { name: string; computeStock: number }) => l.name === lab.name)?.computeStock ?? lab.computeStock;
-      const computeRatio = lab.computeStock / Math.max(1, startingCompute);
-      const computeFactor = Math.pow(computeRatio, P.COMPUTE_SENSITIVITY);
-
-      if (allocRatio < P.RECURSIVE_LOOP_THRESHOLD) {
-        const saferGrowthRate = 1 + allocRatio * P.SAFER_GROWTH_COEFFICIENT * computeFactor;
-        newMultiplier = Math.round(lab.rdMultiplier * Math.min(P.SAFER_GROWTH_CAP, saferGrowthRate) * 10) / 10;
-      } else {
-        const allocExponent = allocRatio < 1 ? P.RACE_ALLOC_PENALTY_EXP : P.RACE_ALLOC_BOOST_EXP;
-        const allocFactor = Math.pow(allocRatio, allocExponent);
-        const combinedRatio = Math.pow(allocFactor, P.ALLOC_WEIGHT) * Math.pow(computeFactor, 1 - P.ALLOC_WEIGHT);
-        const baseGrowthRatio = baselineTarget / lab.rdMultiplier;
-        newMultiplier = Math.round(lab.rdMultiplier * (1 + (baseGrowthRatio - 1) * combinedRatio) * 10) / 10;
-      }
+      const baselineStock = getBaselineStockAfterRound(lab.name, roundNumber);
+      const baselineMultiplier = getBaselineMultiplierBeforeRound(lab.name, roundNumber);
+      const defaultAlloc = ROLES.find((role) => role.id === lab.roleId)?.defaultCompute;
+      const baselineCapabilityPct = defaultAlloc?.capability ?? 50;
+      const baselineEffectiveRd = baselineStock * (baselineCapabilityPct / 100) * baselineMultiplier;
+      const performanceRatio = effectiveRd[i] / Math.max(1, baselineEffectiveRd);
+      const growthModifier = Math.min(
+        P.MAX_GROWTH_FACTOR,
+        Math.max(P.MIN_GROWTH_FACTOR, Math.pow(performanceRatio, P.PERFORMANCE_SENSITIVITY)),
+      );
+      const baselineGrowthFactor = baselineTarget / Math.max(P.MIN_MULTIPLIER, baselineMultiplier);
+      newMultiplier = Math.round(
+        Math.max(P.MIN_MULTIPLIER, lab.rdMultiplier * baselineGrowthFactor * growthModifier) * 10,
+      ) / 10;
     } else {
       const poolGrowth: Record<number, number> = { 1: 3, 2: 10, 3: 10, 4: 10 };
       newMultiplier = Math.round(lab.rdMultiplier * (1 + rdShare * (poolGrowth[roundNumber] ?? 5)) * 10) / 10;

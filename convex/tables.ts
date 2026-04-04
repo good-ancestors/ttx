@@ -28,7 +28,6 @@ export const getEnabledRoleNames = query({
         _id: t._id,
         roleId: t.roleId,
         roleName: t.roleName,
-        enabled: t.enabled,
       }));
   },
 });

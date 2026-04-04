@@ -37,7 +37,12 @@ const MILESTONES = [
 ];
 
 function labColor(roleId: string): string {
-  return ROLES.find((r) => r.id === roleId)?.color ?? "#94A3B8";
+  const known = ROLES.find((r) => r.id === roleId)?.color;
+  if (known) return known;
+  let hash = 0;
+  for (const char of roleId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  const colors = ["#14B8A6", "#F97316", "#E11D48", "#0EA5E9", "#84CC16", "#F59E0B"];
+  return colors[hash % colors.length];
 }
 
 // Dynamic scale: adapts to the peak value
@@ -57,13 +62,13 @@ function makeScaleY(ceiling: number) {
 
 // ─── Data preparation (pure, testable) ──────────────────────────────────────
 
-export interface ChartPoint { x: number; y: number; value: number }
-export interface LabSeries {
+interface ChartPoint { x: number; y: number; value: number }
+interface LabSeries {
   name: string;
   roleId: string;
   points: ChartPoint[];
   isBackground: boolean;
-  isAbsorbed: boolean;
+  isInactive: boolean;
 }
 
 interface ChartLayout {
@@ -89,13 +94,23 @@ interface ChartData {
   layout: ChartLayout;
 }
 
-export function buildChartData(
+function buildChartData(
   rounds: Round[],
   currentLabs: Lab[],
   currentRound: number,
   compact: boolean,
 ): ChartData {
-  const allLabs = [...DEFAULT_LABS, ...BACKGROUND_LABS.map((l, i) => ({ ...l, roleId: `bg-${i}` }))];
+  const snapshotLabs = rounds.flatMap((round) => round.labsAfter ?? []);
+  const allLabs = [
+    ...DEFAULT_LABS,
+    ...currentLabs,
+    ...snapshotLabs,
+    ...BACKGROUND_LABS.map((l, i) => ({ ...l, roleId: `bg-${i}` })),
+  ].reduce<Lab[]>((labs, lab) => {
+    if (labs.some((existing) => existing.name === lab.name)) return labs;
+    labs.push(lab);
+    return labs;
+  }, []);
   const completedRounds = rounds.filter((r) => r.labsAfter && r.labsAfter.length > 0);
 
   const width = 340;
@@ -121,8 +136,8 @@ export function buildChartData(
   const series: LabSeries[] = [];
 
   for (const lab of allLabs) {
-    const isBackground = !DEFAULT_LABS.some((d) => d.roleId === lab.roleId);
-    const isAbsorbed = !isBackground && !currentLabs.some((l) => l.name === lab.name);
+    const isBackground = lab.roleId.startsWith("bg-");
+    const isInactive = !isBackground && !currentLabs.some((l) => l.name === lab.name);
     const points: ChartPoint[] = [];
 
     points.push({ x: xPos(0), y: 0, value: PRE_GAME_MULTIPLIERS[lab.name] ?? 1.1 });
@@ -130,13 +145,17 @@ export function buildChartData(
 
     for (let i = 0; i < completedRounds.length; i++) {
       const roundLab = completedRounds[i].labsAfter?.find((l) => l.name === lab.name);
-      if (!roundLab && isAbsorbed) break;
-      points.push({ x: xPos(2 + i), y: 0, value: roundLab?.rdMultiplier ?? lab.rdMultiplier });
+      if (!roundLab && isInactive) break;
+      points.push({
+        x: xPos(2 + i),
+        y: 0,
+        value: roundLab?.rdMultiplier ?? points[points.length - 1]?.value ?? lab.rdMultiplier,
+      });
     }
 
     // Only plot round data from actual snapshots — no live fallbacks
 
-    series.push({ name: lab.name, roleId: lab.roleId, points, isBackground, isAbsorbed });
+    series.push({ name: lab.name, roleId: lab.roleId, points, isBackground, isInactive });
   }
 
   // Scale
@@ -237,25 +256,25 @@ export function RdProgressChart({
           const color = labColor(s.roleId);
           const last = s.points[s.points.length - 1];
           return (
-          <g key={s.roleId} opacity={s.isAbsorbed ? 0.35 : 1}>
+          <g key={s.roleId}>
             <polyline
               points={linePoints}
               fill="none" stroke={color}
-              strokeWidth={s.isAbsorbed ? 1.5 : 2.5}
+              strokeWidth={s.isInactive ? 2 : 2.5}
               strokeLinejoin="round" strokeLinecap="round"
-              strokeDasharray={s.isAbsorbed ? "4,3" : undefined}
+              strokeDasharray={s.isInactive ? "6,4" : undefined}
             />
             {s.points.map((p, i) => (
               <circle
                 key={`${s.roleId}-pt-${i}`} cx={p.x} cy={p.y}
-                r={i === s.points.length - 1 ? (s.isAbsorbed ? 3 : 4.5) : 2.5}
+                r={i === s.points.length - 1 ? (s.isInactive ? 3.5 : 4.5) : 2.5}
                 fill={color}
               />
             ))}
             <text
               x={last.x + 7} y={last.y + 4} fill={color}
-              fontSize={s.isAbsorbed ? 9 : 11}
-              fontWeight={s.isAbsorbed ? 400 : 700}
+              fontSize={s.isInactive ? 9 : 11}
+              fontWeight={s.isInactive ? 500 : 700}
               fontFamily="monospace"
             >
               {last.value < 10 ? `${Math.round(last.value * 10) / 10}×` : `${Math.round(last.value)}×`}
@@ -268,9 +287,9 @@ export function RdProgressChart({
       {/* Legend */}
       <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
         {series.filter((s) => !s.isBackground).map((s) => (
-          <span key={s.roleId} className={`flex items-center gap-1.5 text-xs ${s.isAbsorbed ? "text-navy-muted line-through" : "text-text-light"}`}>
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: labColor(s.roleId), opacity: s.isAbsorbed ? 0.35 : 1 }} />
-            {s.name}{s.isAbsorbed ? " (merged)" : ""}
+          <span key={s.roleId} className={`flex items-center gap-1.5 text-xs ${s.isInactive ? "text-text-light/80" : "text-text-light"}`}>
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: labColor(s.roleId) }} />
+            {s.name}{s.isInactive ? " (inactive)" : ""}
           </span>
         ))}
       </div>

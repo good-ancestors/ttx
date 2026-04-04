@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { type Role, isLabCeo, hasCompute, getDisposition } from "@/lib/game-data";
+import { type Role, isLabCeo, hasCompute, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
 import { DispositionBadge } from "@/components/table/disposition-badge";
 import { ChevronDown, ChevronUp, Zap, Vote, FlaskConical, MessageSquare, Send, Dices, BookText } from "lucide-react";
 
-export interface BriefTabProps {
+interface BriefTabProps {
   role: Role;
   handoutData: Record<string, string> | null;
   aiDisposition: string | undefined;
@@ -100,14 +100,14 @@ export function BriefTab({
       </div>
 
       {/* ─── Where Things Stand ─── */}
-      {roundNarrative && (
-        <div className="bg-[#FEFCE8] rounded-xl p-4 border border-[#FDE68A]">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-bold text-[#92400E]">Where Things Stand</span>
-            <span className="text-[11px] text-[#A16207] font-mono">{roundLabel}</span>
-          </div>
+      {(roundNarrative != null) ? (
+        <ScenarioCard title="Where Things Stand" label={roundLabel}>
           <p className="text-sm text-[#78350F] leading-relaxed">{roundNarrative}</p>
-        </div>
+        </ScenarioCard>
+      ) : (
+        <ScenarioCard title="Starting Scenario" label={roundLabel}>
+          <p className="text-sm text-[#78350F] leading-relaxed">{STARTING_SCENARIO}</p>
+        </ScenarioCard>
       )}
 
       {/* ─── How to Play ─── */}
@@ -171,6 +171,7 @@ export function BriefTab({
 
       {/* Note when submissions aren't open */}
       {!submissionsOpen && (
+
         <div className="bg-warm-gray rounded-xl p-4 border border-border text-center">
           <div className="flex items-center justify-center gap-2 text-text-muted">
             <Zap className="w-4 h-4" />
@@ -180,6 +181,18 @@ export function BriefTab({
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function ScenarioCard({ title, label, children }: { title: string; label: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-[#FEFCE8] rounded-xl p-4 border border-[#FDE68A]">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-sm font-bold text-[#92400E]">{title}</span>
+        <span className="text-[11px] text-[#A16207] font-mono">{label}</span>
+      </div>
+      {children}
     </div>
   );
 }

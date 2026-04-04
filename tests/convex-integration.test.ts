@@ -165,7 +165,7 @@ describe("Game Phase Flow", () => {
     const game = await convex.query(api.games.get, { gameId });
     expect(game!.status).toBe("playing");
     expect(game!.phase).toBe("discuss");
-    expect(game!.phaseEndsAt).toBeDefined();
+    expect(game!.phaseEndsAt).toBeUndefined();
   });
 
   it("should advance to submit phase", async () => {
@@ -448,6 +448,12 @@ describe("Proposals", () => {
 
   beforeAll(async () => {
     gameId = await convex.mutation(api.games.create, {});
+    await convex.mutation(api.games.startGame, { gameId });
+    await convex.mutation(api.games.advancePhase, {
+      gameId,
+      phase: "submit",
+      durationSeconds: 240,
+    });
   });
 
   it("should send a proposal", async () => {

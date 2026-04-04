@@ -1,10 +1,11 @@
 "use client";
 
+import { useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
-import { ROLES, isSubmittedAction } from "@/lib/game-data";
-import { ThumbsUp, ThumbsDown, EyeOff, Inbox } from "lucide-react";
+import { ROLES, AI_SYSTEMS_ROLE_ID, isSubmittedAction } from "@/lib/game-data";
+import { ThumbsUp, ThumbsDown, EyeOff, Inbox, CheckCircle2, XCircle, MinusCircle } from "lucide-react";
 
 // ─── Shared response card ───────────────────────────────────────────────────
 
@@ -17,6 +18,7 @@ function ActionResponseCard({
   onSupport,
   onOppose,
   onClear,
+  disabled,
 }: {
   roleName: string;
   roleColor?: string;
@@ -26,6 +28,7 @@ function ActionResponseCard({
   onSupport: () => void;
   onOppose: () => void;
   onClear?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="bg-white rounded-xl border border-border p-4">
@@ -48,21 +51,23 @@ function ActionResponseCard({
       <div className="flex items-center gap-2">
         <button
           onClick={response === "support" && onClear ? onClear : onSupport}
+          disabled={disabled}
           className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
             response === "support"
               ? "bg-[#059669] text-white"
               : "bg-[#ECFDF5] text-[#059669] hover:bg-[#D1FAE5]"
-          }`}
+          } disabled:opacity-50 disabled:cursor-default`}
         >
           <ThumbsUp className="w-4 h-4" /> Support
         </button>
         <button
           onClick={response === "oppose" && onClear ? onClear : onOppose}
+          disabled={disabled}
           className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
             response === "oppose"
               ? "bg-[#DC2626] text-white"
               : "bg-[#FEF2F2] text-[#DC2626] hover:bg-[#FECACA]"
-          }`}
+          } disabled:opacity-50 disabled:cursor-default`}
         >
           <ThumbsDown className="w-4 h-4" /> Oppose
         </button>
@@ -76,13 +81,15 @@ function ActionResponseCard({
 function EndorsementRespondTab({
   allRequests,
   roleId,
+  allowEdits,
 }: {
   allRequests: Doc<"requests">[];
   roleId: string;
+  allowEdits: boolean;
 }) {
   const respondToProposal = useMutation(api.requests.respond);
 
-  const incoming = allRequests.filter((r) => r.toRoleId === roleId);
+  const incoming = allRequests.filter((r) => r.toRoleId === roleId && r.requestType === "endorsement");
   // Changeable: answered at top, unanswered at bottom (near thumbs)
   const answered = incoming.filter((r) => r.status !== "pending");
   const unanswered = incoming.filter((r) => r.status === "pending");
@@ -101,7 +108,9 @@ function EndorsementRespondTab({
   return (
     <div className="space-y-3">
       <p className="text-xs text-text-muted">
-        Do you support or oppose these actions? You can change your response until submissions close.
+        {allowEdits
+          ? "Do you support or oppose these actions? You can change your response until submissions close."
+          : "Submissions are closed. Your responses are locked in below."}
       </p>
 
       {answered.length > 0 && (
@@ -129,6 +138,7 @@ function EndorsementRespondTab({
                 onClear={() =>
                   void respondToProposal({ proposalId: req._id, status: "pending" })
                 }
+                disabled={!allowEdits}
               />
             );
           })}
@@ -157,6 +167,7 @@ function EndorsementRespondTab({
                 onOppose={() =>
                   void respondToProposal({ proposalId: req._id, status: "declined" })
                 }
+                disabled={!allowEdits}
               />
             );
           })}
@@ -172,15 +183,17 @@ function AiRespondTab({
   gameId,
   roundNumber,
   power,
+  allowEdits,
 }: {
   gameId: Id<"games">;
   roundNumber: number;
   power: number;
+  allowEdits: boolean;
 }) {
   const submissions = useQuery(api.submissions.getByGameAndRoundRedacted, {
     gameId,
     roundNumber,
-    viewerRoleId: "ai-systems",
+    viewerRoleId: AI_SYSTEMS_ROLE_ID,
   });
   const setInfluence = useMutation(api.submissions.setActionInfluence);
 
@@ -196,7 +209,7 @@ function AiRespondTab({
   }
 
   const allActions = submissions
-    .filter((s) => s.roleId !== "ai-systems")
+    .filter((s) => s.roleId !== AI_SYSTEMS_ROLE_ID)
     .flatMap((sub) => {
       const role = ROLES.find((r) => r.id === sub.roleId);
       return sub.actions
@@ -233,7 +246,9 @@ function AiRespondTab({
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <p className="text-xs text-text-muted italic">
-          Your responses secretly affect the dice rolls. Change anytime until dice are rolled.
+          {allowEdits
+            ? "Your responses secretly affect the dice rolls. Change anytime until dice are rolled."
+            : "Submissions are closed. Your influence choices are locked for this round."}
         </p>
         <span className="text-[10px] text-text-muted font-mono shrink-0 ml-2">
           Power: {power}%
@@ -248,24 +263,24 @@ function AiRespondTab({
             <div className="flex-1 h-px bg-border" />
           </div>
           {influenced.map(({ action, i, sub, role }) => (
-            <ActionResponseCard
-              key={`${sub._id}-${i}`}
-              roleName={role?.name ?? sub.roleId}
-              roleColor={role?.color}
-              actionText={action.text}
-              isSecret={action.secret}
-              response={(action.aiInfluence ?? 0) > 0 ? "support" : "oppose"}
-              onSupport={() =>
-                void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: power })
+              <ActionResponseCard
+                key={`${sub._id}-${i}`}
+                roleName={role?.name ?? sub.roleId}
+                roleColor={role?.color}
+                actionText={action.text}
+                response={(action.aiInfluence ?? 0) > 0 ? "support" : "oppose"}
+                onSupport={() =>
+                  void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: power })
               }
               onOppose={() =>
                 void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: -power })
               }
-              onClear={() =>
-                void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: 0 })
-              }
-            />
-          ))}
+                onClear={() =>
+                  void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: 0 })
+                }
+                disabled={!allowEdits}
+              />
+            ))}
         </>
       )}
 
@@ -284,7 +299,6 @@ function AiRespondTab({
                 roleName={role?.name ?? sub.roleId}
                 roleColor={role?.color}
                 actionText={action.text}
-                isSecret={action.secret}
                 response={null}
                 onSupport={() =>
                   void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: power })
@@ -292,6 +306,7 @@ function AiRespondTab({
                 onOppose={() =>
                   void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: -power })
                 }
+                disabled={!allowEdits}
               />
             );
           })}
@@ -301,15 +316,148 @@ function AiRespondTab({
   );
 }
 
+function ResultStatusChip({
+  success,
+}: {
+  success: boolean | undefined;
+}) {
+  if (success === true) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#D1FAE5] px-2 py-0.5 text-[11px] font-bold text-[#047857]">
+        <CheckCircle2 className="h-3 w-3" /> Succeeded
+      </span>
+    );
+  }
+  if (success === false) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#FEE2E2] px-2 py-0.5 text-[11px] font-bold text-[#B91C1C]">
+        <XCircle className="h-3 w-3" /> Failed
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-warm-gray px-2 py-0.5 text-[11px] font-bold text-text-muted">
+      <MinusCircle className="h-3 w-3" /> No result
+    </span>
+  );
+}
+
+export function RespondResultsTab({
+  gameId,
+  roundNumber,
+  roleId,
+  isAiSystem,
+  allRequests,
+}: {
+  gameId: Id<"games">;
+  roundNumber: number;
+  roleId: string;
+  isAiSystem: boolean;
+  allRequests: Doc<"requests">[];
+}) {
+  const submissions = useQuery(api.submissions.getByGameAndRoundRedacted, {
+    gameId,
+    roundNumber,
+    viewerRoleId: isAiSystem ? AI_SYSTEMS_ROLE_ID : roleId,
+  });
+
+  const results = useMemo(() => {
+    if (!submissions) return [];
+
+    if (isAiSystem) {
+      return submissions
+        .filter((sub) => sub.roleId !== AI_SYSTEMS_ROLE_ID)
+        .flatMap((sub) => {
+          const role = ROLES.find((entry) => entry.id === sub.roleId);
+          return sub.actions
+            .map((action, index) => ({ action, index, sub, role }))
+            .filter(({ action }) => isSubmittedAction(action) && action.aiInfluence != null && action.aiInfluence !== 0)
+            .map(({ action, index, sub, role }) => ({
+              key: `${sub._id}-${index}`,
+              roleName: role?.name ?? sub.roleId,
+              roleColor: role?.color,
+              actionText: action.text,
+              responseLabel: (action.aiInfluence ?? 0) > 0 ? "You boosted this action" : "You sabotaged this action",
+              success: action.success,
+              rolled: action.rolled,
+              probability: action.probability,
+            }));
+        });
+    }
+
+    return allRequests
+      .filter((request) => request.toRoleId === roleId && request.status !== "pending")
+      .map((request) => {
+        const sub = submissions.find((entry) => entry.roleId === request.fromRoleId);
+        // Match by exact action text. No fallback to "first secret action" — showing
+        // the wrong outcome is worse than showing "No result".
+        const matchedAction = sub?.actions.find((action) =>
+          isSubmittedAction(action) && action.text === request.actionText
+        );
+        const role = ROLES.find((entry) => entry.id === request.fromRoleId);
+        return {
+          key: request._id,
+          roleName: request.fromRoleName,
+          roleColor: role?.color,
+          actionText: request.actionText,
+          responseLabel: request.status === "accepted" ? "You supported this action" : "You opposed this action",
+          success: matchedAction?.success,
+          rolled: matchedAction?.rolled,
+          probability: matchedAction?.probability,
+        };
+      });
+  }, [allRequests, isAiSystem, roleId, submissions]);
+
+  if (!submissions || results.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Inbox className="w-10 h-10 text-border mb-3" />
+        <p className="text-sm text-text-muted max-w-xs">
+          No resolved response items yet for this round.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-text-muted">
+        {isAiSystem
+          ? "These are the actions you secretly influenced and how they resolved."
+          : "These are the actions you supported or opposed and how they resolved."}
+      </p>
+      {results.map((result) => (
+        <div key={result.key} className="bg-white rounded-xl border border-border p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: result.roleColor }} />
+            <span className="text-sm font-bold text-text">{result.roleName}</span>
+            <ResultStatusChip success={result.success} />
+          </div>
+          <p className="text-sm text-text leading-relaxed mb-2">{result.actionText}</p>
+          <div className="flex items-center justify-between gap-3 text-[11px] text-text-muted">
+            <span>{result.responseLabel}</span>
+            {result.rolled != null && result.probability != null && (
+              <span className="font-mono">
+                rolled {result.rolled} vs {result.probability}%
+              </span>
+            )}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Main respond tab (dispatches based on role type) ───────────────────────
 
-export interface RespondTabProps {
+interface RespondTabProps {
   gameId: Id<"games">;
   roundNumber: number;
   roleId: string;
   isAiSystem: boolean;
   aiInfluencePower: number;
   allRequests: Doc<"requests">[] | undefined;
+  allowEdits?: boolean;
 }
 
 export function RespondTab({
@@ -319,6 +467,7 @@ export function RespondTab({
   isAiSystem,
   aiInfluencePower,
   allRequests,
+  allowEdits = true,
 }: RespondTabProps) {
   if (isAiSystem) {
     return (
@@ -326,6 +475,7 @@ export function RespondTab({
         gameId={gameId}
         roundNumber={roundNumber}
         power={aiInfluencePower}
+        allowEdits={allowEdits}
       />
     );
   }
@@ -334,6 +484,7 @@ export function RespondTab({
     <EndorsementRespondTab
       allRequests={allRequests ?? []}
       roleId={roleId}
+      allowEdits={allowEdits}
     />
   );
 }

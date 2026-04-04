@@ -8,7 +8,17 @@ import type { Id } from "@convex/_generated/dataModel";
 export function ComputeEditor({ labs, gameId, computeChanges, onClose }: {
   labs: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
   gameId: Id<"games">;
-  computeChanges?: { distribution: { labName: string; baseline: number; modifier: number; newTotal: number }[] };
+  computeChanges?: {
+    distribution: {
+      labName: string;
+      stockBefore: number;
+      stockAfter: number;
+      stockChange: number;
+      baseline: number;
+      modifier: number;
+      newTotal: number;
+    }[];
+  };
   onClose: () => void;
 }) {
   const updateLabs = useMutation(api.games.updateLabs);
@@ -29,16 +39,15 @@ export function ComputeEditor({ labs, gameId, computeChanges, onClose }: {
       <div className="space-y-3">
         {labs.map((lab) => {
           const change = computeChanges?.distribution.find((d) => d.labName === lab.name);
-          const before = change ? change.newTotal - change.baseline - change.modifier : null;
           return (
             <div key={lab.name} className="flex items-center gap-3">
               <span className="text-sm text-white min-w-[120px]">{lab.name}</span>
-              {before !== null && (
-                <span className="text-[10px] text-navy-muted font-mono w-16 text-right">was {before}u</span>
+              {change && (
+                <span className="text-[10px] text-navy-muted font-mono w-16 text-right">was {change.stockBefore}u</span>
               )}
               {change && (
-                <span className={`text-[10px] font-mono ${change.baseline + change.modifier >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                  {change.baseline + change.modifier >= 0 ? "+" : ""}{change.baseline + change.modifier}
+                <span className={`text-[10px] font-mono ${change.stockChange >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                  {change.stockChange >= 0 ? "+" : ""}{change.stockChange}
                 </span>
               )}
               <span className="text-navy-muted">→</span>

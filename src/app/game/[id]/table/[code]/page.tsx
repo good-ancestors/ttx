@@ -4,7 +4,7 @@ import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, getAiInfluencePower, isSubmittedAction } from "@/lib/game-data";
+import { ROLES, isLabCeo, getAiInfluencePower, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
 // Lab allocation read-only moved to Lab tab for safety leads
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
@@ -13,13 +13,12 @@ import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, typ
 import { loadRoleHandouts } from "@/lib/role-handouts";
 import { ConnectionIndicator } from "@/components/connection-indicator";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
-import { usePendingProposalCount } from "@/components/proposals";
 import { TableLobby, DispositionChooser } from "@/components/table/table-lobby";
 import { LabSpecEditor } from "@/components/table/lab-spec-editor";
 import { TableSubmit } from "@/components/table/table-submit";
 import { TableResolving } from "@/components/table/table-resolving";
 import { BriefTab } from "@/components/table/brief-tab";
-import { RespondTab } from "@/components/table/respond-tab";
+import { RespondTab, RespondResultsTab } from "@/components/table/respond-tab";
 import { PlayerTabBar, buildPlayerTabs, type PlayerTab } from "@/components/table/player-tabs";
 import type { ResultAction } from "@/components/table/result-action-card";
 import {
@@ -71,7 +70,7 @@ function cancelDraftEndorsements(
   cancelFn: (args: { requestId: Id<"requests"> }) => unknown,
 ) {
   for (const draft of drafts.filter((a) => a.text.trim())) {
-    for (const targetId of draft.endorseTargets) {
+    for (const targetId of new Set(draft.endorseTargets)) {
       const match = (allRequests ?? []).find(
         (r) => r.fromRoleId === roleId && r.toRoleId === targetId && r.actionText === draft.text.trim()
       );
@@ -127,9 +126,8 @@ export default function TablePlayerPage({
   // Lightweight query — only enabled tables' roleId/roleName (for endorsement targets)
   const allTables = useQuery(api.tables.getEnabledRoleNames, isVisible ? { gameId } : "skip");
   // Requests only needed during submit phase (endorsement tracking + cleanup)
-  const playerPhase = game?.phase;
   const allRequests = useQuery(api.requests.getByGameAndRound,
-    isVisible && (playerPhase === "submit" || playerPhase === "discuss")
+    isVisible && game?.status === "playing"
       ? { gameId, roundNumber: game?.currentRound ?? 1 }
       : "skip"
   );
@@ -177,25 +175,30 @@ export default function TablePlayerPage({
   const role = table ? ROLES.find((r) => r.id === table.roleId) : null;
   const enabledRoles = useMemo(() =>
     (allTables ?? [])
-      .filter((t) => t.enabled && t.roleId !== table?.roleId)
+      .filter((t) => t.roleId !== table?.roleId)
       .map((t) => ({ id: t.roleId, name: t.roleName })),
     [allTables, table?.roleId]
   );
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
   const phase = game?.phase ?? "discuss";
   const isAiSystem = role?.tags.includes("ai-system") ?? false;
+  const submissionsClosed = phase === "submit" && isExpired;
+  const currentLab = game?.labs.find((lab) => lab.roleId === role?.id)
+    ?? (role?.labId ? game?.labs.find((lab) => lab.name.toLowerCase() === role.labId) : undefined);
   // isLabCeo used for compute/spec editor rendering inside Lab tab
 
-  const pendingProposalCount = usePendingProposalCount(
-    gameId,
-    game?.currentRound ?? 1,
-    role?.id ?? ""
+  const pendingProposalCount = useMemo(
+    () => (allRequests ?? []).filter(p => p.toRoleId === role?.id && p.status === "pending").length,
+    [allRequests, role?.id]
   );
 
   // ── Auto-switch to "actions" when submissions open ────────────────────────
   const prevPhaseForTabRef = useRef(phase);
   useEffect(() => {
     if (phase === "submit" && prevPhaseForTabRef.current !== "submit") {
+      setActiveTab("actions");
+    }
+    if (isResolvingPhase(phase) && prevPhaseForTabRef.current !== phase) {
       setActiveTab("actions");
     }
     prevPhaseForTabRef.current = phase;
@@ -409,7 +412,7 @@ export default function TablePlayerPage({
 
   // ─── Per-action handlers ────────────────────────────────────────────────────
 
-  const handleSubmitAction = async (draftIndex: number) => {
+  const handleSubmitAction = useCallback(async (draftIndex: number) => {
     const draft = actionDrafts[draftIndex];
     if (!draft?.text.trim() || !role || !game) return;
     setSubmitError("");
@@ -430,7 +433,7 @@ export default function TablePlayerPage({
         return next.length === 0 ? [emptyAction()] : next;
       });
       // Send endorsement requests
-      for (const targetId of draft.endorseTargets) {
+      for (const targetId of new Set(draft.endorseTargets)) {
         const targetRole = (allTables ?? []).find((t) => t.roleId === targetId);
         if (targetRole) {
           void sendRequest({
@@ -448,9 +451,9 @@ export default function TablePlayerPage({
     } catch (err) {
       setSubmitError(`Failed to submit action: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  };
+  }, [actionDrafts, role, game, tableId, gameId, saveAndSubmitMut, sendRequest, allTables]);
 
-  const handleEditAction = async (submittedIndex: number) => {
+  const handleEditAction = useCallback(async (submittedIndex: number) => {
     if (!submission) return;
     setSubmitError("");
     try {
@@ -465,9 +468,9 @@ export default function TablePlayerPage({
     } catch (err) {
       setSubmitError(`Failed to edit: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  };
+  }, [submission, editSubmittedMut]);
 
-  const handleDeleteAction = async (submittedIndex: number) => {
+  const handleDeleteAction = useCallback(async (submittedIndex: number) => {
     if (!submission) return;
     setSubmitError("");
     try {
@@ -477,7 +480,7 @@ export default function TablePlayerPage({
     } catch (err) {
       setSubmitError(`Failed to delete: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  };
+  }, [submission, deleteActionMut]);
 
   // ── Loading & error states ────────────────────────────────────────────────
   const notFound = game === null || table === null || round === null;
@@ -504,7 +507,9 @@ export default function TablePlayerPage({
 
   // ── Sort result actions for resolving/narrate phases ──────────────────────
   const sortedResultActions: ResultAction[] = submission?.actions
-    ? [...submission.actions].sort((a, b) => {
+    ? [...submission.actions]
+        .filter((action) => isSubmittedAction(action))
+        .sort((a, b) => {
         if (a.success === true && b.success !== true) return -1;
         if (a.success !== true && b.success === true) return 1;
         if (a.success === false && b.success == null) return -1;
@@ -515,8 +520,12 @@ export default function TablePlayerPage({
 
   // ── Tab config ────────────────────────────────────────────────────────────
   const showTabs = game.status === "playing";
+  // CEO roles have full lab control (edit allocation, spec); safety leads get read-only access
   const controlsLab = game.labs.some(l => l.roleId === role.id);
-  const tabs = buildPlayerTabs(role, phase, pendingProposalCount, controlsLab);
+  const hasLabAccess = controlsLab || (
+    !!role.labId && game.labs.some(l => l.name.toLowerCase() === role.labId)
+  );
+  const tabs = buildPlayerTabs(role, phase, pendingProposalCount, hasLabAccess);
 
   // Previous round narrative for the brief tab
   const roundNarrative = round?.summary?.narrative;
@@ -625,11 +634,15 @@ export default function TablePlayerPage({
                   <p className="text-xs text-text-muted max-w-xs">When other players submit actions, you&apos;ll be able to support or oppose them here.</p>
                 </div>
               )}
-              {activeTab === "lab" && controlsLab && (
+              {activeTab === "lab" && hasLabAccess && (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <FlaskConical className="w-10 h-10 text-border mb-3" />
                   <p className="text-sm font-bold text-text mb-1">Lab Controls</p>
-                  <p className="text-xs text-text-muted max-w-xs">When submissions open, you&apos;ll set your compute allocation and lab spec here.</p>
+                  <p className="text-xs text-text-muted max-w-xs">
+                    {controlsLab
+                      ? "When submissions open, you\u2019ll set your compute allocation and lab spec here."
+                      : "When submissions open, you\u2019ll be able to view your lab\u2019s data here."}
+                  </p>
                 </div>
               )}
             </>
@@ -683,6 +696,7 @@ export default function TablePlayerPage({
                   isAiSystem={isAiSystem}
                   aiInfluencePower={getAiInfluencePower(game.labs)}
                   allRequests={allRequests}
+                  allowEdits={!submissionsClosed}
                 />
               )}
 
@@ -702,20 +716,75 @@ export default function TablePlayerPage({
                   />
                 </>
               )}
+              {activeTab === "lab" && !controlsLab && hasLabAccess && currentLab && (
+                <>
+                  <LabSpecEditor
+                    labSpec={currentLab.spec ?? ""}
+                    onLabSpecChange={() => {}}
+                    specSaved={false}
+                    onSaveSpec={() => {}}
+                    readOnly
+                  />
+                  <ComputeAllocation
+                    allocation={currentLab.allocation}
+                    onChange={() => {}}
+                    isSubmitted={true}
+                    roleName={role.name}
+                  />
+                </>
+              )}
             </>
           )}
 
           {/* Rolling / Narrate phases */}
-          {(phase === "rolling" || phase === "narrate") && round && (
-            <TableResolving
-              gameId={gameId}
-              game={game}
-              role={role}
-              aiDisposition={table.aiDisposition}
-              phase={phase}
-              round={round}
-              sortedResultActions={sortedResultActions}
-            />
+          {isResolvingPhase(phase) && round && (
+            <>
+              {activeTab === "brief" && (
+                <TableResolving
+                  phase={phase}
+                  round={round}
+                  sortedResultActions={sortedResultActions}
+                  showResults={false}
+                />
+              )}
+
+              {activeTab === "actions" && (
+                <TableResolving
+                  phase={phase}
+                  round={round}
+                  sortedResultActions={sortedResultActions}
+                  showNarrative={false}
+                />
+              )}
+
+              {activeTab === "respond" && (
+                <RespondResultsTab
+                  gameId={gameId}
+                  roundNumber={game.currentRound}
+                  roleId={role.id}
+                  isAiSystem={isAiSystem}
+                  allRequests={allRequests ?? []}
+                />
+              )}
+
+              {activeTab === "lab" && hasLabAccess && currentLab && (
+                <>
+                  <LabSpecEditor
+                    labSpec={currentLab.spec ?? labSpec}
+                    onLabSpecChange={() => {}}
+                    specSaved={false}
+                    onSaveSpec={() => {}}
+                    readOnly
+                  />
+                  <ComputeAllocation
+                    allocation={currentLab.allocation}
+                    onChange={() => {}}
+                    isSubmitted={true}
+                    roleName={role.name}
+                  />
+                </>
+              )}
+            </>
           )}
         </div>
 

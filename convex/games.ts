@@ -30,6 +30,7 @@ async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber:
   await ctx.db.patch(round._id, {
     worldStateAfter: game.worldState,
     labsAfter: game.labs,
+    roleComputeBefore: round.roleComputeBefore,
     roleComputeAfter: tables.filter((t) => t.computeStock != null).map((t) => ({
       roleId: t.roleId, roleName: t.roleName, computeStock: t.computeStock ?? 0,
     })),
@@ -94,9 +95,6 @@ export const create = mutation({
         gameId,
         number: config.number,
         label: config.label,
-        title: config.title,
-        narrative: config.narrative,
-        capabilityLevel: config.capabilityLevel,
       });
     }
 
@@ -311,6 +309,7 @@ export const restoreSnapshot = mutation({
       labs,
       currentRound: args.roundNumber,
       phase: args.useBefore ? "submit" : "narrate",
+      phaseEndsAt: undefined,
       resolving: false,
       pipelineStatus: undefined,
     });
@@ -328,12 +327,12 @@ export const restoreSnapshot = mutation({
       });
     }
 
-    // Restore role compute (only available on "after" snapshots)
-    if (!args.useBefore && round.roleComputeAfter) {
+    const roleComputeSnapshot = args.useBefore ? round.roleComputeBefore : round.roleComputeAfter;
+    if (roleComputeSnapshot) {
       const tables = await ctx.db.query("tables")
         .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
         .collect();
-      for (const rc of round.roleComputeAfter) {
+      for (const rc of roleComputeSnapshot) {
         const table = tables.find((t) => t.roleId === rc.roleId);
         if (table) {
           await ctx.db.patch(table._id, { computeStock: rc.computeStock });
@@ -351,7 +350,13 @@ export const restoreSnapshot = mutation({
 export const skipTimer = mutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.gameId, { phaseEndsAt: undefined });
+    const game = await ctx.db.get(args.gameId);
+    if (!game) return;
+    await ctx.db.patch(args.gameId, {
+      // Set phaseEndsAt in the past beyond the 5-second clock-drift grace window
+      // so that the guards in submissions.ts and requests.ts reject late submissions.
+      phaseEndsAt: game.phase === "submit" ? Date.now() - 5001 : undefined,
+    });
     await logEvent(ctx, args.gameId, "timer_skipped");
   },
 });
@@ -499,13 +504,11 @@ export const advancePhaseInternal = internalMutation({
 });
 
 export const setResolvingInternal = internalMutation({
-  args: { gameId: v.id("games"), resolving: v.boolean(), resolvingStartedAt: v.optional(v.union(v.number(), v.null())) },
+  args: { gameId: v.id("games"), resolving: v.boolean() },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, {
       resolving: args.resolving,
-      resolvingStartedAt: args.resolvingStartedAt !== undefined
-        ? (args.resolvingStartedAt ?? undefined)
-        : (args.resolving ? Date.now() : undefined),
+      resolvingStartedAt: args.resolving ? Date.now() : undefined,
     });
   },
 });
@@ -514,34 +517,6 @@ export const setResolveNonce = internalMutation({
   args: { gameId: v.id("games"), nonce: v.string() },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, { resolveNonce: args.nonce });
-  },
-});
-
-export const triggerResolvePipeline = mutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
-  },
-  handler: async (ctx, args) => {
-    const game = await ctx.db.get(args.gameId);
-    if (!game) throw new Error("Game not found");
-    if (game.status !== "playing") throw new Error("Game is not in playing state");
-
-    // Acquire lock (with TTL check)
-    assertNotResolving(game);
-    await ctx.db.patch(args.gameId, {
-      resolving: true,
-      resolvingStartedAt: Date.now(),
-      pipelineStatus: { step: "starting", startedAt: Date.now() },
-    });
-
-    // Schedule the first pipeline stage
-    await ctx.scheduler.runAfter(0, internal.pipeline.gradeAll, {
-      gameId: args.gameId,
-      roundNumber: args.roundNumber,
-      aiDisposition: args.aiDisposition,
-    });
   },
 });
 
@@ -683,7 +658,6 @@ export const getFacilitatorState = query({
         joinCode: t.joinCode,
         connected: t.connected,
         controlMode: t.controlMode,
-        enabled: t.enabled,
         computeStock: t.computeStock,
         aiDisposition: t.aiDisposition,
       })),
