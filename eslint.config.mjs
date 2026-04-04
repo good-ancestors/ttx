@@ -22,7 +22,10 @@ const eslintConfig = defineConfig([
     extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       parserOptions: {
-        projectService: true,
+        projectService: {
+          defaultProject: "tsconfig.json",
+          allowDefaultProject: ["tests/*.ts", "tests/*.tsx", "tests/*.mjs", "scripts/*.mjs"],
+        },
         tsconfigRootDir: import.meta.dirname,
       },
     },
@@ -148,6 +151,8 @@ const eslintConfig = defineConfig([
     rules: {
       "@typescript-eslint/no-unused-vars": "off",
       "@typescript-eslint/no-explicit-any": "off",
+      "@typescript-eslint/no-unnecessary-type-assertion": "off",
+      "@typescript-eslint/consistent-type-imports": "off",
       "max-lines": "off",
       "max-lines-per-function": "off",
       complexity: "off",

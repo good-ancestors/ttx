@@ -396,10 +396,10 @@ export const rollAndNarrate = internalAction({
         status: { step: "narrating", detail: "Writing the story...", startedAt: Date.now() },
       });
 
-      const [submissions, rounds, tables] = await Promise.all([
-        ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }) as Promise<Submission[]>,
-        ctx.runQuery(internal.rounds.getAllForPipeline, { gameId }) as Promise<Round[]>,
-        ctx.runQuery(internal.tables.getByGameInternal, { gameId }) as Promise<Table[]>,
+      const [submissions, rounds, tables]: [Submission[], Round[], Table[]] = await Promise.all([
+        ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }),
+        ctx.runQuery(internal.rounds.getAllForPipeline, { gameId }),
+        ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
       ]);
       const currentRound = rounds.find((r) => r.number === roundNumber);
 

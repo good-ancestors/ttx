@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React from "react";
+/// <reference types="@testing-library/jest-dom" />
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import * as matchers from "@testing-library/jest-dom/matchers";
@@ -8,7 +8,7 @@ expect.extend(matchers);
 // ─── Mock convex/react ──────────────────────────────────────────────────────
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(),
-  useMutation: vi.fn(() => vi.fn()),
+  useMutation: vi.fn(() => Object.assign(vi.fn(), { withOptimisticUpdate: vi.fn() })),
 }));
 
 // ─── Mock lucide-react icons as simple spans ────────────────────────────────
