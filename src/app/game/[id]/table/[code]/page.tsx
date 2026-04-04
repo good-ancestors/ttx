@@ -490,7 +490,7 @@ export default function TablePlayerPage({
     );
   }
 
-  if (!game || !table || !round || !role) {
+  if (!game || !table || !role || (game.status === "playing" && !round)) {
     return (
       <div className="min-h-dvh flex items-center justify-center bg-off-white">
         <Loader2 className="w-8 h-8 text-text-muted animate-spin" />
@@ -514,7 +514,7 @@ export default function TablePlayerPage({
   const tabs = buildPlayerTabs(role, phase, pendingProposalCount, isLabCeoRole);
 
   // Previous round narrative for the brief tab
-  const roundNarrative = round.summary?.narrative;
+  const roundNarrative = round?.summary?.narrative;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -541,7 +541,7 @@ export default function TablePlayerPage({
                 </span>
               )}
               <span className="text-[11px] text-text-muted font-mono">
-                {round.label} — Turn {round.number}/4
+                {round?.label ?? "Q1 2028"} — Turn {round?.number ?? 1}/4
               </span>
               <ConnectionIndicator />
             </div>
@@ -600,7 +600,7 @@ export default function TablePlayerPage({
                 handoutData={handoutData}
                 aiDisposition={table.aiDisposition}
                 roundNarrative={roundNarrative}
-                roundLabel={round.label}
+                roundLabel={round?.label ?? "Q1 2028"}
                 submissionsOpen={false}
                 labs={game.labs}
               />
@@ -627,7 +627,7 @@ export default function TablePlayerPage({
                   handoutData={handoutData}
                   aiDisposition={table.aiDisposition}
                   roundNarrative={roundNarrative}
-                  roundLabel={round.label}
+                  roundLabel={round?.label ?? "Q1 2028"}
                   submissionsOpen={true}
                   labs={game.labs}
                 />
@@ -684,7 +684,7 @@ export default function TablePlayerPage({
           )}
 
           {/* Rolling / Narrate phases */}
-          {(phase === "rolling" || phase === "narrate") && (
+          {(phase === "rolling" || phase === "narrate") && round && (
             <TableResolving
               gameId={gameId}
               game={game}
