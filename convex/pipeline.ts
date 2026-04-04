@@ -36,9 +36,7 @@ type Table = Doc<"tables">;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-// Shared error handler for pipeline stages — avoids 4x duplication
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function failPipeline(ctx: any, gameId: string, stage: string, err: unknown) {
+async function failPipeline(ctx: ActionCtx, gameId: Id<"games">, stage: string, err: unknown) {
   const message = `${stage} failed: ${err instanceof Error ? err.message : String(err)}`;
   console.error(`[pipeline] ${message}`);
   try {
