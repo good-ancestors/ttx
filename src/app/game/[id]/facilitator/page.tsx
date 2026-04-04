@@ -1,11 +1,11 @@
 "use client";
 
 import { use, useState, useEffect, useRef } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLES, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
-import { useCountdown, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
+import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { WorldStatePanel } from "@/components/world-state-panel";
 import { LabTracker } from "@/components/lab-tracker";
@@ -70,27 +70,27 @@ export default function FacilitatorPage({
     isVisible && needsCurrentRound ? { gameId } : "skip"
   );
 
-  const startGame = useMutation(api.games.startGame);
-  const lockGame = useMutation(api.games.lock);
-  const advanceRound = useMutation(api.games.advanceRound);
-  const finishGame = useMutation(api.games.finishGame);
-  const overrideProbability = useMutation(api.submissions.overrideProbability);
-  const rerollAction = useMutation(api.submissions.rerollAction);
-  const setControlMode = useMutation(api.tables.setControlMode);
-  const toggleEnabled = useMutation(api.tables.toggleEnabled);
-  const skipTimer = useMutation(api.games.skipTimer);
-  const kickToAI = useMutation(api.tables.kickToAI);
-  const addLab = useMutation(api.games.addLab);
-  const mergeLabs = useMutation(api.games.mergeLabs);
-  const adjustTimer = useMutation(api.games.adjustTimer);
-  const restoreSnapshot = useMutation(api.games.restoreSnapshot);
-  const clearResolution = useMutation(api.rounds.clearResolution);
-  const forceClearLock = useMutation(api.games.forceClearResolvingLock);
+  const startGame = useAuthMutation(api.games.startGame);
+  const lockGame = useAuthMutation(api.games.lock);
+  const advanceRound = useAuthMutation(api.games.advanceRound);
+  const finishGame = useAuthMutation(api.games.finishGame);
+  const overrideProbability = useAuthMutation(api.submissions.overrideProbability);
+  const rerollAction = useAuthMutation(api.submissions.rerollAction);
+  const setControlMode = useAuthMutation(api.tables.setControlMode);
+  const toggleEnabled = useAuthMutation(api.tables.toggleEnabled);
+  const skipTimer = useAuthMutation(api.games.skipTimer);
+  const kickToAI = useAuthMutation(api.tables.kickToAI);
+  const addLab = useAuthMutation(api.games.addLab);
+  const mergeLabs = useAuthMutation(api.games.mergeLabs);
+  const adjustTimer = useAuthMutation(api.games.adjustTimer);
+  const restoreSnapshot = useAuthMutation(api.games.restoreSnapshot);
+  const clearResolution = useAuthMutation(api.rounds.clearResolution);
+  const forceClearLock = useAuthMutation(api.games.forceClearResolvingLock);
   const { display: timerDisplay, isExpired, isUrgent } = useCountdown(game?.phaseEndsAt);
 
-  const triggerGrading = useMutation(api.games.triggerGrading);
-  const triggerRoll = useMutation(api.games.triggerRoll);
-  const openSubmissions = useMutation(api.games.openSubmissions);
+  const triggerGrading = useAuthMutation(api.games.triggerGrading);
+  const triggerRoll = useAuthMutation(api.games.triggerRoll);
+  const openSubmissions = useAuthMutation(api.games.openSubmissions);
 
   // Pipeline state: derive from game document (reactive)
   const pipelineStatus = game?.pipelineStatus;

@@ -31,6 +31,7 @@ export function LobbyPhase({
   kickToAI,
 }: LobbyPhaseProps) {
 
+  const [pendingStart, setPendingStart] = useState(false);
   const [showRejoin, setShowRejoin] = useState<Set<string>>(new Set());
   const toggleRejoin = (id: string) => setShowRejoin((prev) => {
     const next = new Set(prev);
@@ -164,12 +165,32 @@ export function LobbyPhase({
               <Lock className="w-4 h-4" /> Lock Game
             </button>
           )}
-          <button
-            onClick={safeAction("Start game", () => startGame({ gameId }))}
-            className="py-3 px-8 bg-white text-navy rounded-lg font-extrabold text-lg hover:bg-off-white transition-colors flex items-center gap-2"
-          >
-            <Play className="w-5 h-5" /> Start Game
-          </button>
+          {pendingStart ? (
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPendingStart(false)}
+                className="py-3 px-6 bg-navy-light text-text-light rounded-lg font-bold hover:bg-navy-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { setPendingStart(false); void safeAction("Start game", () => startGame({ gameId }))(); }}
+                className="py-3 px-8 bg-white text-navy rounded-lg font-extrabold text-lg hover:bg-off-white transition-colors flex items-center gap-2"
+              >
+                <Play className="w-5 h-5" /> Confirm Start
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setPendingStart(true)}
+              className="py-3 px-8 bg-white text-navy rounded-lg font-extrabold text-lg hover:bg-off-white transition-colors flex items-center gap-2"
+            >
+              <Play className="w-5 h-5" /> Start Game
+            </button>
+          )}
+          {pendingStart && (
+            <p className="text-xs text-text-light mt-2 text-center">Are you sure? All tables will be locked.</p>
+          )}
         </div>
       )}
     </div>

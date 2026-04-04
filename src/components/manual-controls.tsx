@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { WORLD_STATE_INDICATORS } from "@/lib/game-data";
+import { useAuthMutation } from "@/lib/hooks";
 import { Pencil, Save, Minus, Plus, AlertTriangle } from "lucide-react";
 import { CopilotChat } from "@/components/copilot-chat";
 import type { Snapshot } from "@/components/copilot-chat";
@@ -19,7 +19,7 @@ export function WorldStateEditor({
   worldState: Record<string, number>;
   startOpen?: boolean;
 }) {
-  const updateWorldState = useMutation(api.games.updateWorldState);
+  const updateWorldState = useAuthMutation(api.games.updateWorldState);
   const [editing, setEditing] = useState(startOpen);
   const [local, setLocal] = useState(worldState);
 
@@ -110,7 +110,7 @@ export function NarrativeEditor({
   };
   startOpen?: boolean;
 }) {
-  const applySummary = useMutation(api.rounds.applySummary);
+  const applySummary = useAuthMutation(api.rounds.applySummary);
   const [editing, setEditing] = useState(startOpen);
   // Derive current narrative from summary, updating when summary changes reactively
   const existingNarrative = currentSummary?.narrative

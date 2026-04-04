@@ -319,7 +319,7 @@ function EndorsementPicker({
                   onUpdate({ endorseTargets: [...new Set([...action.endorseTargets, r.id])] });
                 }
               }}
-              className={`text-xs min-h-[36px] px-3 py-1.5 rounded-full font-medium transition-colors duration-200 ${
+              className={`text-xs min-h-[44px] px-3 py-1.5 rounded-full font-medium transition-colors duration-200 ${
                 selected
                   ? "bg-[#059669] text-white"
                   : "bg-warm-gray text-text-muted hover:bg-border"

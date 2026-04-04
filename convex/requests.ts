@@ -116,6 +116,16 @@ export const send = mutation({
     const game = await assertPhase(ctx, args.gameId, ["submit"], "send request");
     assertSubmitWindowOpen(game);
 
+    // Verify the sender's table exists and is enabled
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const senderTable = tables.find((t) => t.roleId === args.fromRoleId);
+    if (!senderTable || !senderTable.enabled) {
+      throw new Error("Sender role not found or not enabled in this game");
+    }
+
     // Reject self-endorsement / self-requests
     if (args.fromRoleId === args.toRoleId) {
       throw new Error("Cannot send a request to yourself");

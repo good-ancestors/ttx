@@ -112,7 +112,7 @@ export function RoundPhase({
       {previousNarrative && (
         <div className="bg-navy rounded-xl border border-navy-light p-5">
           <ExpandableSection title="Where Things Start" defaultOpen>
-            <p className="text-sm text-text-light leading-relaxed">{previousNarrative}</p>
+            <p className={`${isProjector ? "text-lg" : "text-sm"} text-text-light leading-relaxed`}>{previousNarrative}</p>
           </ExpandableSection>
         </div>
       )}
@@ -283,7 +283,7 @@ export function RoundPhase({
 
       {/* ─── 7. WHAT HAPPENED — narrative (rolling/narrate) ─── */}
       {isResolvingPhase && (resolving || currentRound?.summary) && (
-        <NarrativePanel round={currentRound} />
+        <NarrativePanel round={currentRound} isProjector={isProjector} />
       )}
 
       {/* ─── 8. WHERE WE ARE NOW — lab state + capability (narrate) ─── */}
@@ -390,8 +390,8 @@ function WhereWeAreNow({
             const change = currentRound.computeChanges?.distribution.find((d) => d.labName === lab.name);
             return (
               <div key={lab.name} className="bg-navy rounded-lg p-3 border border-navy-light">
-                <div className="text-sm font-bold text-white">{lab.name}</div>
-                <div className="text-xl font-black text-[#06B6D4] font-mono">{lab.rdMultiplier}×</div>
+                <div className={`${isProjector ? "text-base" : "text-sm"} font-bold text-white`}>{lab.name}</div>
+                <div className={`${isProjector ? "text-3xl" : "text-xl"} font-black text-[#06B6D4] font-mono`}>{lab.rdMultiplier}×</div>
                 <div className="text-xs text-text-light space-y-0.5">
                   <div>
                     Stock {change?.stockBefore ?? lab.computeStock}u {"→"} {lab.computeStock}u
@@ -421,10 +421,10 @@ function WhereWeAreNow({
                 <span className="text-sm font-bold text-white">How Capable is AI?</span>
                 <span className="text-xs text-viz-capability font-mono ml-auto">{cap.agent} · {cap.rdRange}</span>
               </div>
-              <p className="text-sm text-[#E2E8F0] mb-2">{cap.generalCapability}</p>
+              <p className={`${isProjector ? "text-base" : "text-sm"} text-[#E2E8F0] mb-2`}>{cap.generalCapability}</p>
               <div className="space-y-1 mb-2">
                 {cap.specificCapabilities.map((c: string, i: number) => (
-                  <p key={`cap-${i}`} className="text-sm text-text-light flex items-start gap-1.5">
+                  <p key={`cap-${i}`} className={`${isProjector ? "text-base" : "text-sm"} text-text-light flex items-start gap-1.5`}>
                     <span className="text-viz-capability mt-0.5">●</span> {c}
                   </p>
                 ))}
@@ -434,7 +434,7 @@ function WhereWeAreNow({
               </div>
             </div>
             <div className="bg-navy rounded-lg p-3 border border-navy-light">
-              <p className="text-sm text-[#E2E8F0]">{cap.implication}</p>
+              <p className={`${isProjector ? "text-base" : "text-sm"} text-[#E2E8F0]`}>{cap.implication}</p>
             </div>
           </>
         )}

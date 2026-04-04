@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
+import { assertFacilitator } from "./events";
 
 export const getByGame = query({
   args: { gameId: v.id("games") },
@@ -64,8 +65,10 @@ export const applySummary = mutation({
       headlines: v.array(v.string()),
       facilitatorNotes: v.optional(v.string()),
     }),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const rounds = await ctx.db
       .query("rounds")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
@@ -111,8 +114,9 @@ export const applyResolution = mutation({
 });
 
 export const clearResolution = mutation({
-  args: { gameId: v.id("games"), roundNumber: v.number() },
+  args: { gameId: v.id("games"), roundNumber: v.number(), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const rounds = await ctx.db
       .query("rounds")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))

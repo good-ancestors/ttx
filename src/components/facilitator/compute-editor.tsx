@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { useAuthMutation } from "@/lib/hooks";
 
 export function ComputeEditor({ labs, gameId, computeChanges, onClose }: {
   labs: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
@@ -21,7 +21,7 @@ export function ComputeEditor({ labs, gameId, computeChanges, onClose }: {
   };
   onClose: () => void;
 }) {
-  const updateLabs = useMutation(api.games.updateLabs);
+  const updateLabs = useAuthMutation(api.games.updateLabs);
   const [stocks, setStocks] = useState<Record<string, number>>(
     Object.fromEntries(labs.map((l) => [l.name, l.computeStock]))
   );

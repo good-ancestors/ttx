@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { COPILOT_APPLY_SIGNAL } from "@/lib/game-data";
+import { useAuthMutation } from "@/lib/hooks";
 import { Wand2, Loader2, Check, Undo2, Send } from "lucide-react";
 
 export interface Snapshot {
@@ -32,8 +32,8 @@ export function CopilotChat({
   currentLabs: Snapshot["labs"];
   variant: "modal" | "bar";
 }) {
-  const updateWorldState = useMutation(api.games.updateWorldState);
-  const updateLabs = useMutation(api.games.updateLabs);
+  const updateWorldState = useAuthMutation(api.games.updateWorldState);
+  const updateLabs = useAuthMutation(api.games.updateLabs);
 
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
   const [input, setInput] = useState("");

@@ -2,6 +2,15 @@ import { v } from "convex/values";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
+/** Validate facilitator token against env var. Throws if invalid. */
+export function assertFacilitator(token: string | undefined) {
+  const secret = process.env.FACILITATOR_SECRET;
+  if (!secret) return; // No secret configured = no auth enforcement (dev mode)
+  if (!token || token !== secret) {
+    throw new Error("Unauthorized: invalid facilitator token");
+  }
+}
+
 /** Assert the submission window hasn't closed (5s grace for clock drift). */
 export function assertSubmitWindowOpen(game: { phase: string; phaseEndsAt?: number | null }) {
   if (game.phase !== "submit") return;

@@ -63,7 +63,7 @@ export const generateAll = internalAction({
     const { SAMPLE_ACTIONS_DATA: sampleData } = await import("./sampleActionsData");
 
     // Prepare all submissions
-    type PendingAction = { tableId: string; roleId: string; actions: { text: string; priority: number; secret?: boolean }[]; endorseHints?: { actionText: string; targetRoleIds: string[] }[] };
+    type PendingAction = { tableId: string; roleId: string; actions: { text: string; priority: number; secret?: boolean }[]; computeAllocation?: { users: number; capability: number; safety: number }; endorseHints?: { actionText: string; targetRoleIds: string[] }[] };
     const pending: PendingAction[] = [];
 
     // NPC tables: use sample actions
@@ -250,7 +250,21 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
             const scale = 10 / totalPriority;
             actions = actions.map((a) => ({ ...a, priority: Math.max(1, Math.round(a.priority * scale)) }));
           }
-          pending.push({ tableId: table._id, roleId: table.roleId, actions });
+          // Normalize compute allocation to sum to 100
+          let computeAllocation = output.computeAllocation;
+          if (computeAllocation) {
+            const rawSum = computeAllocation.users + computeAllocation.capability + computeAllocation.safety;
+            if (rawSum > 0 && rawSum !== 100) {
+              const scale = 100 / rawSum;
+              const users = Math.round(computeAllocation.users * scale);
+              const capability = Math.round(computeAllocation.capability * scale);
+              const safety = 100 - users - capability;
+              computeAllocation = { users, capability, safety };
+            } else if (rawSum <= 0) {
+              computeAllocation = { users: 34, capability: 33, safety: 33 };
+            }
+          }
+          pending.push({ tableId: table._id, roleId: table.roleId, actions, computeAllocation });
         }
       } catch {
         console.error(`[aiGenerate] Failed for ${table.roleId}`);
@@ -282,6 +296,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
           roundNumber,
           roleId: p.roleId,
           actions: p.actions,
+          computeAllocation: p.computeAllocation,
         }).then(() => p)
       )
     );

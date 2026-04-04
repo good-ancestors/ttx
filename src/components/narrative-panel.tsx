@@ -34,9 +34,11 @@ interface Round {
 export function NarrativePanel({
   round,
   defaultExpanded = true,
+  isProjector = false,
 }: {
   round: Round | undefined;
   defaultExpanded?: boolean;
+  isProjector?: boolean;
 }) {
   const [verbIdx, setVerbIdx] = useState(0);
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -89,7 +91,7 @@ export function NarrativePanel({
         )}
       </button>
       {expanded && storyText && (
-        <p className="text-base text-[#E2E8F0] leading-relaxed mt-3">
+        <p className={`${isProjector ? "text-xl" : "text-base"} text-[#E2E8F0] leading-relaxed mt-3`}>
           {storyText}
         </p>
       )}

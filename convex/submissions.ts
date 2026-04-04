@@ -2,10 +2,20 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { logEvent, assertPhase, assertSubmitWindowOpen } from "./events";
+import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator } from "./events";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 
 const PRIORITY_HARD_CAP = 12;
+
+function validateComputeAllocation(allocation: { users: number; capability: number; safety: number }) {
+  if (allocation.users < 0 || allocation.capability < 0 || allocation.safety < 0) {
+    throw new Error("Compute allocation values must be >= 0");
+  }
+  const sum = allocation.users + allocation.capability + allocation.safety;
+  if (sum !== 100) {
+    throw new Error(`Compute allocation must sum to 100, got ${sum}`);
+  }
+}
 
 /** Find existing submission for a table+round, ignoring stale docs from prior game sessions. */
 async function findExistingSubmission(
@@ -101,6 +111,12 @@ export const submit = mutation({
     artifact: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    // Validate table ownership: the table must belong to the claimed role
+    const table = await ctx.db.get(args.tableId);
+    if (!table) throw new Error("Table not found");
+    if (table.gameId !== args.gameId) throw new Error("Table does not belong to this game");
+    if (table.roleId !== args.roleId) throw new Error("Role does not match table assignment");
+
     // Check game is in submit phase (or rolling — AI players submit during resolve)
     const game = await ctx.db.get(args.gameId);
     if (game && game.phase !== "submit" && game.phase !== "rolling") {
@@ -123,6 +139,9 @@ export const submit = mutation({
     }
     for (const a of args.actions) {
       if (a.text.length > 500) throw new Error(`Action text too long: ${a.text.length}/500 characters`);
+    }
+    if (args.computeAllocation) {
+      validateComputeAllocation(args.computeAllocation);
     }
 
     const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
@@ -287,6 +306,12 @@ export const saveAndSubmit = mutation({
     secret: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    // Validate table ownership: the table must belong to the claimed role
+    const table = await ctx.db.get(args.tableId);
+    if (!table) throw new Error("Table not found");
+    if (table.gameId !== args.gameId) throw new Error("Table does not belong to this game");
+    if (table.roleId !== args.roleId) throw new Error("Role does not match table assignment");
+
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
     if (game.phase !== "submit" && game.phase !== "discuss") {
@@ -448,8 +473,10 @@ export const applyGrading = mutation({
         reasoning: v.string(),
       })
     ),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
 
@@ -489,8 +516,10 @@ export const overrideProbability = mutation({
     submissionId: v.id("submissions"),
     actionIndex: v.number(),
     probability: v.number(),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
 
@@ -510,8 +539,10 @@ export const rerollAction = mutation({
   args: {
     submissionId: v.id("submissions"),
     actionIndex: v.number(),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
 
@@ -542,8 +573,10 @@ export const overrideOutcome = mutation({
     submissionId: v.id("submissions"),
     actionIndex: v.number(),
     success: v.boolean(),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
 
@@ -641,8 +674,9 @@ function applyInfluence(rawRoll: number, aiInfluence?: number): number {
 
 
 export const rollAllActions = mutation({
-  args: { gameId: v.id("games"), roundNumber: v.number() },
+  args: { gameId: v.id("games"), roundNumber: v.number(), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const subs = await ctx.db
       .query("submissions")
       .withIndex("by_game_and_round", (q) =>
@@ -761,6 +795,10 @@ export const submitInternal = internalMutation({
     computeAllocation: v.optional(v.object({ users: v.number(), capability: v.number(), safety: v.number() })),
   },
   handler: async (ctx, args) => {
+    if (args.computeAllocation) {
+      validateComputeAllocation(args.computeAllocation);
+    }
+
     const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
 
     const stampedActions = args.actions.map((a) => ({ ...a, actionStatus: "submitted" as const }));

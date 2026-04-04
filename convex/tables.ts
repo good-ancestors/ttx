@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
-import { logEvent } from "./events";
+import { logEvent, assertFacilitator } from "./events";
 
 export const getByGame = query({
   args: { gameId: v.id("games") },
@@ -98,8 +98,10 @@ export const setControlMode = mutation({
   args: {
     tableId: v.id("tables"),
     controlMode: v.union(v.literal("human"), v.literal("ai"), v.literal("npc")),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const table = await ctx.db.get(args.tableId);
     if (!table) return;
     await ctx.db.patch(args.tableId, { controlMode: args.controlMode });
@@ -107,8 +109,9 @@ export const setControlMode = mutation({
 });
 
 export const kickToAI = mutation({
-  args: { tableId: v.id("tables") },
+  args: { tableId: v.id("tables"), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const table = await ctx.db.get(args.tableId);
     if (!table) return;
     await ctx.db.patch(args.tableId, { controlMode: "ai", connected: false });
@@ -117,8 +120,9 @@ export const kickToAI = mutation({
 });
 
 export const toggleEnabled = mutation({
-  args: { tableId: v.id("tables") },
+  args: { tableId: v.id("tables"), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const table = await ctx.db.get(args.tableId);
     if (!table) return;
     await ctx.db.patch(args.tableId, { enabled: !table.enabled });

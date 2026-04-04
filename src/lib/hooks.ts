@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useSyncExternalStore } from "react";
+import { useMutation } from "convex/react";
+import type { FunctionReference } from "convex/server";
 
 /**
  * Detects in-app browsers that may have WebSocket issues.
@@ -132,6 +134,48 @@ export function useKeyboardScroll() {
     document.addEventListener("focusin", handleFocus);
     return () => document.removeEventListener("focusin", handleFocus);
   }, []);
+}
+
+const FACILITATOR_TOKEN_KEY = "ttx-facilitator-token";
+
+/** Read the facilitator token from localStorage (SSR-safe, cross-tab sync). */
+function useFacilitatorToken(): string | undefined {
+  const subscribe = useCallback((cb: () => void) => {
+    window.addEventListener("storage", cb);
+    return () => window.removeEventListener("storage", cb);
+  }, []);
+
+  const getSnapshot = useCallback(
+    () => localStorage.getItem(FACILITATOR_TOKEN_KEY) ?? undefined,
+    [],
+  );
+
+  const getServerSnapshot = useCallback(() => undefined, []);
+
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+/** Store the facilitator token in localStorage. */
+export function storeFacilitatorToken(passphrase: string) {
+  localStorage.setItem(FACILITATOR_TOKEN_KEY, passphrase);
+}
+
+/**
+ * Wraps a Convex mutation to automatically inject facilitatorToken.
+ * Returns a function with the same signature, but `facilitatorToken` is added automatically.
+ */
+export function useAuthMutation<
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  T extends FunctionReference<"mutation", "public", any, any>,
+>(mutation: T) {
+  const token = useFacilitatorToken();
+  const mutate = useMutation(mutation);
+  return useMemo(() => {
+    // Return a function that injects facilitatorToken into the first argument
+    const wrapper = (args: Record<string, unknown>) =>
+      mutate({ ...args, facilitatorToken: token } as Parameters<typeof mutate>[0]);
+    return wrapper;
+  }, [mutate, token]);
 }
 
 /**

@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID } from "./gameData";
-import { logEvent } from "./events";
+import { logEvent, assertFacilitator } from "./events";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
 import { internal } from "./_generated/api";
 
@@ -135,8 +135,9 @@ export const list = query({
 });
 
 export const rename = mutation({
-  args: { gameId: v.id("games"), name: v.string() },
+  args: { gameId: v.id("games"), name: v.string(), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
     await ctx.db.patch(args.gameId, { name: args.name.trim() || undefined });
@@ -147,8 +148,10 @@ export const remove = mutation({
   args: {
     gameId: v.id("games"),
     confirmation: v.string(),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     if (args.confirmation !== "DELETE") {
       throw new Error("Type DELETE to confirm");
     }
@@ -177,8 +180,10 @@ export const advancePhase = mutation({
       v.literal("narrate")
     ),
     durationSeconds: v.optional(v.number()),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const phaseEndsAt = args.durationSeconds
       ? Date.now() + args.durationSeconds * 1000
       : undefined;
@@ -195,8 +200,10 @@ export const updateWorldState = mutation({
   args: {
     gameId: v.id("games"),
     worldState: worldStateValidator,
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     await ctx.db.patch(args.gameId, { worldState: args.worldState });
   },
 });
@@ -205,8 +212,10 @@ export const updateLabs = mutation({
   args: {
     gameId: v.id("games"),
     labs: v.array(labSnapshotValidator),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     await ctx.db.patch(args.gameId, { labs: args.labs });
   },
 });
@@ -218,6 +227,7 @@ export const updateLabSpec = mutation({
     spec: v.string(),
   },
   handler: async (ctx, args) => {
+    // No facilitator auth — called by lab CEO players to describe their lab focus
     if (args.spec.length > 2000) {
       throw new Error(`Lab spec too long: ${args.spec.length}/2000 characters`);
     }
@@ -234,22 +244,29 @@ export const updateTableCompute = mutation({
   args: {
     tableId: v.id("tables"),
     computeStock: v.number(),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     await ctx.db.patch(args.tableId, { computeStock: args.computeStock });
   },
 });
 
 export const lock = mutation({
-  args: { gameId: v.id("games") },
+  args: { gameId: v.id("games"), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     await ctx.db.patch(args.gameId, { locked: true });
   },
 });
 
 export const startGame = mutation({
-  args: { gameId: v.id("games") },
+  args: { gameId: v.id("games"), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "lobby") throw new Error("Game must be in lobby to start");
     await ctx.db.patch(args.gameId, {
       status: "playing",
       phase: "discuss",
@@ -261,8 +278,9 @@ export const startGame = mutation({
 });
 
 export const advanceRound = mutation({
-  args: { gameId: v.id("games") },
+  args: { gameId: v.id("games"), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game || game.currentRound >= 4) return;
 
@@ -284,8 +302,10 @@ export const restoreSnapshot = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     useBefore: v.optional(v.boolean()),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
 
@@ -348,8 +368,9 @@ export const restoreSnapshot = mutation({
 });
 
 export const skipTimer = mutation({
-  args: { gameId: v.id("games") },
+  args: { gameId: v.id("games"), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) return;
     await ctx.db.patch(args.gameId, {
@@ -362,8 +383,9 @@ export const skipTimer = mutation({
 });
 
 export const adjustTimer = mutation({
-  args: { gameId: v.id("games"), deltaSeconds: v.number() },
+  args: { gameId: v.id("games"), deltaSeconds: v.number(), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game || !game.phaseEndsAt) return;
     const newEnd = Math.max(Date.now() + 1000, game.phaseEndsAt + args.deltaSeconds * 1000);
@@ -378,8 +400,10 @@ export const addLab = mutation({
     roleId: v.string(),
     computeStock: v.number(),
     rdMultiplier: v.number(),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
     const newLab = {
@@ -399,8 +423,10 @@ export const mergeLabs = mutation({
     gameId: v.id("games"),
     survivorName: v.string(),
     absorbedName: v.string(),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
 
@@ -436,8 +462,9 @@ export const mergeLabs = mutation({
 });
 
 export const setResolving = mutation({
-  args: { gameId: v.id("games"), resolving: v.boolean() },
+  args: { gameId: v.id("games"), resolving: v.boolean(), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
     if (args.resolving) assertNotResolving(game);
@@ -449,10 +476,13 @@ export const setResolving = mutation({
 });
 
 export const finishGame = mutation({
-  args: { gameId: v.id("games") },
+  args: { gameId: v.id("games"), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
-    if (game) await snapshotRound(ctx, args.gameId, game.currentRound);
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "playing") throw new Error("Game must be playing to finish");
+    await snapshotRound(ctx, args.gameId, game.currentRound);
     await ctx.db.patch(args.gameId, { status: "finished" });
     await logEvent(ctx, args.gameId, "game_finish");
   },
@@ -525,8 +555,10 @@ export const triggerGrading = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "playing") throw new Error("Game is not in playing state");
@@ -552,8 +584,10 @@ export const triggerRoll = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "playing") throw new Error("Game is not in playing state");
@@ -604,8 +638,9 @@ export const updateLabsInternal = internalMutation({
 });
 
 export const forceClearResolvingLock = mutation({
-  args: { gameId: v.id("games") },
+  args: { gameId: v.id("games"), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
     await ctx.db.patch(args.gameId, {
@@ -622,8 +657,10 @@ export const openSubmissions = mutation({
   args: {
     gameId: v.id("games"),
     durationSeconds: v.number(),
+    facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) return;
     const phaseEndsAt = Date.now() + args.durationSeconds * 1000;

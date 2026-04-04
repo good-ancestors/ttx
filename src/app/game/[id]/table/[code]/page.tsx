@@ -163,6 +163,7 @@ export default function TablePlayerPage({
   const [artifact, setArtifact] = useState("");
   const [labSpec, setLabSpec] = useState("");
   const [specSaved, setSpecSaved] = useState(false);
+  const [specSaveError, setSpecSaveError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [draftRestored, setDraftRestored] = useState(false);
   const [autoSubmitMessage, setAutoSubmitMessage] = useState("");
@@ -316,6 +317,7 @@ export default function TablePlayerPage({
       setActionDrafts([emptyAction()]);
       setArtifact("");
       setSubmitError("");
+      setSpecSaveError("");
       setAutoSubmitMessage("");
       autoSubmittedRef.current = false;
       draftRestoredRef.current = false;
@@ -432,12 +434,13 @@ export default function TablePlayerPage({
     if (!labSpec.trim() || !role || !game) return;
     const lab = game.labs.find((l) => l.roleId === role.id);
     if (!lab) return;
+    setSpecSaveError("");
     try {
       await updateLabSpecMut({ gameId, labName: lab.name, spec: labSpec.trim() });
       setSpecSaved(true);
       setTimeout(() => setSpecSaved(false), 2000);
     } catch (err) {
-      console.error("Failed to save spec:", err);
+      setSpecSaveError(`Failed to save spec: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   };
 
@@ -735,10 +738,16 @@ export default function TablePlayerPage({
                 <>
                   <LabSpecEditor
                     labSpec={labSpec}
-                    onLabSpecChange={(spec) => { setLabSpec(spec); setSpecSaved(false); }}
+                    onLabSpecChange={(spec) => { setLabSpec(spec); setSpecSaved(false); setSpecSaveError(""); }}
                     specSaved={specSaved}
                     onSaveSpec={() => void handleSaveSpec()}
                   />
+                  {specSaveError && (
+                    <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-lg p-2.5 mb-3 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-[#DC2626] shrink-0" />
+                      <span className="text-xs text-[#991B1B] font-medium">{specSaveError}</span>
+                    </div>
+                  )}
                   <ComputeAllocation
                     allocation={computeAllocation}
                     onChange={setComputeAllocation}

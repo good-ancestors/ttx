@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { Plus, Smartphone, Loader2, Trash2, Play, Clock, CheckCircle2, Pencil } from "lucide-react";
-import { SESSION_TTL_MS } from "@/lib/hooks";
+import { SESSION_TTL_MS, storeFacilitatorToken, useAuthMutation } from "@/lib/hooks";
 
 /** Read facilitator auth from localStorage without hydration mismatch. */
 function useFacilitatorAuth() {
@@ -160,8 +160,8 @@ export default function SplashPage() {
   const router = useRouter();
   const games = useQuery(api.games.list);
   const createGame = useMutation(api.games.create);
-  const removeGame = useMutation(api.games.remove);
-  const renameGame = useMutation(api.games.rename);
+  const removeGame = useAuthMutation(api.games.remove);
+  const renameGame = useAuthMutation(api.games.rename);
   const [creating, setCreating] = useState(false);
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
@@ -262,7 +262,7 @@ export default function SplashPage() {
           <h1 className="text-3xl font-extrabold text-white mb-2 tracking-tight">The Race to AGI</h1>
           <p className="text-sm text-text-light mb-8">A Tabletop Scenario Exercise</p>
           <input
-            type="text"
+            type="password"
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value.toLowerCase())}
             onKeyDown={(e) => {
@@ -270,6 +270,7 @@ export default function SplashPage() {
                 setLocalAuth(true);
                 localStorage.setItem("ttx-facilitator", "true");
                 localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
+                storeFacilitatorToken(passphrase.trim());
               }
             }}
             placeholder="Facilitator passphrase"
@@ -286,6 +287,7 @@ export default function SplashPage() {
                 setLocalAuth(true);
                 localStorage.setItem("ttx-facilitator", "true");
                 localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
+                storeFacilitatorToken(passphrase.trim());
               }
             }}
             className="w-full py-3.5 px-6 bg-white text-navy rounded-lg text-base font-bold
