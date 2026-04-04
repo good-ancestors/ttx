@@ -4,6 +4,7 @@ import {
   DEFAULT_WORLD_STATE,
   DEFAULT_LABS,
   STARTING_SCENARIO,
+  AI_SYSTEMS_ROLE_ID,
 } from "@convex/gameData";
 
 // Signal string sent by the copilot UI to confirm a proposed change
@@ -27,7 +28,6 @@ export interface Role {
   startingComputeStock?: number;
 }
 
-export const AI_SYSTEMS_ROLE_ID = "ai-systems";
 
 export const DEFAULT_ROUND_LABEL = ROUND_CONFIGS[0].label;
 
@@ -318,7 +318,7 @@ export interface RoundConfig {
   label: string;
 }
 
-export { ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, STARTING_SCENARIO };
+export { ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, STARTING_SCENARIO, AI_SYSTEMS_ROLE_ID };
 
 // ─── CAPABILITY DESCRIPTIONS (from source material + slides) ─────────────────
 // Maps the leading lab's R&D multiplier range to human-readable capability descriptions

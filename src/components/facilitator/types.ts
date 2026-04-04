@@ -18,35 +18,7 @@ export type Table = {
 };
 
 /** Round document from Convex */
-export type Round = Doc<"rounds"> & {
-  roleComputeBefore?: { roleId: string; roleName: string; computeStock: number }[];
-  roleComputeAfter?: { roleId: string; roleName: string; computeStock: number }[];
-  computeChanges?: {
-    newComputeTotal: number;
-    baselineTotal: number;
-    stockBeforeTotal: number;
-    stockAfterTotal: number;
-    distribution: {
-      labName: string;
-      stockBefore: number;
-      stockAfter: number;
-      stockChange: number;
-      baseline: number;
-      modifier: number;
-      sharePct: number;
-      active: boolean;
-      reason?: string;
-      newTotal: number;
-    }[];
-    nonCompetitive: {
-      roleId: string;
-      roleName: string;
-      stockBefore: number;
-      stockAfter: number;
-      stockChange: number;
-    }[];
-  };
-};
+export type Round = Doc<"rounds">;
 
 /** Lightweight submission summary — excludes aiMeta, reasoning, artifact, computeAllocation.
  *  Used by facilitator panels that only need action data for display. */
