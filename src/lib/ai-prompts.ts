@@ -330,14 +330,13 @@ function formatRoundExpectations(round: number): string {
 
 function formatPreviousRounds(rounds: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[]): string {
   if (rounds.length === 0) return "";
-  // Only send the most recent previous round — the LLM already has the current
-  // world state which reflects cumulative history, so older narratives are redundant.
-  const mostRecent = rounds[rounds.length - 1];
-  let s = `Round ${mostRecent.number} (${mostRecent.label}):`;
-  if (mostRecent.narrative) s += ` ${mostRecent.narrative.substring(0, 300)}${mostRecent.narrative.length > 300 ? "..." : ""}`;
-  if (mostRecent.worldStateAfter) s += ` [State after: Cap ${mostRecent.worldStateAfter.capability}/10, Align ${mostRecent.worldStateAfter.alignment}/10, Tension ${mostRecent.worldStateAfter.tension}/10]`;
-  return `\nPREVIOUS ROUND (for continuity — build on this story, don't contradict it):
-${s}
+  return `\nPREVIOUS ROUNDS (for continuity — build on this story, don't contradict it):
+${rounds.map((r) => {
+  let s = `Round ${r.number} (${r.label}):`;
+  if (r.narrative) s += ` ${r.narrative.substring(0, 300)}${r.narrative.length > 300 ? "..." : ""}`;
+  if (r.worldStateAfter) s += ` [State after: Cap ${r.worldStateAfter.capability}/10, Align ${r.worldStateAfter.alignment}/10, Tension ${r.worldStateAfter.tension}/10]`;
+  return s;
+}).join("\n")}
 `;
 }
 

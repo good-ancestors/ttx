@@ -311,10 +311,12 @@ export const rollAndNarrate = internalAction({
     let { aiDisposition } = args;
 
     try {
+      // Fetch tables once for use in disposition resolution, AI influence, and snapshot
+      const tablesBeforeResolve: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
+
       // Resolve aiDisposition from table if not passed
       if (!aiDisposition) {
-        const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
-        const aiTable = tables.find((t) => t.roleId === "ai-systems" && t.aiDisposition);
+        const aiTable = tablesBeforeResolve.find((t) => t.roleId === "ai-systems" && t.aiDisposition);
         if (aiTable?.aiDisposition) {
           const { getDisposition } = await import("@/lib/game-data");
           const disp = getDisposition(aiTable.aiDisposition);
@@ -325,8 +327,7 @@ export const rollAndNarrate = internalAction({
       // Auto-generate AI influence for NPC/AI-controlled AI Systems (if not already set by human player)
       // Quick check: only proceed if an enabled AI Systems table exists with a disposition and is not human-controlled
       {
-        const allTables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
-        const aiSystemsTable = allTables.find(
+        const aiSystemsTable = tablesBeforeResolve.find(
           (t) => t.roleId === "ai-systems" && t.enabled && t.aiDisposition && t.controlMode !== "human"
         );
         if (aiSystemsTable) {
@@ -374,7 +375,6 @@ export const rollAndNarrate = internalAction({
 
       const game = await ctx.runQuery(internal.games.getInternal, { gameId });
       if (!game) throw new Error("Game not found");
-      const tablesBeforeResolve: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
 
       await ctx.runMutation(internal.rounds.snapshotBeforeInternal, {
         gameId,
@@ -396,9 +396,11 @@ export const rollAndNarrate = internalAction({
         status: { step: "narrating", detail: "Writing the story...", startedAt: Date.now() },
       });
 
-      const submissions: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
-      const rounds: Round[] = await ctx.runQuery(internal.rounds.getAllForPipeline, { gameId });
-      const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
+      const [submissions, rounds, tables] = await Promise.all([
+        ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }) as Promise<Submission[]>,
+        ctx.runQuery(internal.rounds.getAllForPipeline, { gameId }) as Promise<Round[]>,
+        ctx.runQuery(internal.tables.getByGameInternal, { gameId }) as Promise<Table[]>,
+      ]);
       const currentRound = rounds.find((r) => r.number === roundNumber);
 
       const resolvedActions = submissions.flatMap((sub) => {

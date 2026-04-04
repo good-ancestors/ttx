@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { logEvent, assertPhase } from "./events";
+import { logEvent, assertPhase, assertSubmitWindowOpen } from "./events";
 import { defaultProbability } from "./gameData";
 
 const PRIORITY_HARD_CAP = 12;
@@ -21,13 +21,6 @@ async function findExistingSubmission(
     )
     .first();
   return raw && raw.gameId === gameId ? raw : null;
-}
-
-function assertSubmitWindowOpen(game: { phase: string; phaseEndsAt?: number | null }) {
-  if (game.phase !== "submit") return;
-  if (game.phaseEndsAt != null && Date.now() > game.phaseEndsAt + 5000) {
-    throw new Error("Submission deadline has passed");
-  }
 }
 
 const actionValidator = v.object({
@@ -313,7 +306,7 @@ export const saveAndSubmit = mutation({
 
     const newAction = {
       text: args.text,
-      priority: rank, // Temporary rank — recalculated during grading based on final order
+      priority: rank,
       secret: args.secret,
       actionStatus: "submitted" as const,
     };

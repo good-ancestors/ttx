@@ -197,7 +197,35 @@ function AiRespondTab({
   });
   const setInfluence = useMutation(api.submissions.setActionInfluence);
 
-  if (!submissions || submissions.length === 0) {
+  const allActions = useMemo(() => {
+    if (!submissions) return [];
+    return submissions
+      .filter((s) => s.roleId !== AI_SYSTEMS_ROLE_ID)
+      .flatMap((sub) => {
+        const role = ROLES.find((r) => r.id === sub.roleId);
+        return sub.actions
+          .map((action, i) => ({ action, i, sub, role }))
+          .filter(({ action }) => isSubmittedAction(action));
+      })
+      .sort((a, b) => {
+        // Influenced first (top), uninfluenced last (bottom, near thumbs)
+        const aInfluenced = a.action.aiInfluence != null && a.action.aiInfluence !== 0;
+        const bInfluenced = b.action.aiInfluence != null && b.action.aiInfluence !== 0;
+        if (aInfluenced !== bInfluenced) return aInfluenced ? -1 : 1;
+        return b.action.priority - a.action.priority;
+      });
+  }, [submissions]);
+
+  const influenced = useMemo(
+    () => allActions.filter(({ action }) => action.aiInfluence != null && action.aiInfluence !== 0),
+    [allActions],
+  );
+  const uninfluenced = useMemo(
+    () => allActions.filter(({ action }) => !action.aiInfluence || action.aiInfluence === 0),
+    [allActions],
+  );
+
+  if (!submissions || allActions.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <Inbox className="w-10 h-10 text-border mb-3" />
@@ -207,40 +235,6 @@ function AiRespondTab({
       </div>
     );
   }
-
-  const allActions = submissions
-    .filter((s) => s.roleId !== AI_SYSTEMS_ROLE_ID)
-    .flatMap((sub) => {
-      const role = ROLES.find((r) => r.id === sub.roleId);
-      return sub.actions
-        .map((action, i) => ({ action, i, sub, role }))
-        .filter(({ action }) => isSubmittedAction(action));
-    })
-    .sort((a, b) => {
-      // Influenced first (top), uninfluenced last (bottom, near thumbs)
-      const aInfluenced = a.action.aiInfluence != null && a.action.aiInfluence !== 0;
-      const bInfluenced = b.action.aiInfluence != null && b.action.aiInfluence !== 0;
-      if (aInfluenced !== bInfluenced) return aInfluenced ? -1 : 1;
-      return b.action.priority - a.action.priority;
-    });
-
-  if (allActions.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 text-center">
-        <Inbox className="w-10 h-10 text-border mb-3" />
-        <p className="text-sm text-text-muted max-w-xs">
-          No actions submitted yet. Other players&apos; actions will appear here.
-        </p>
-      </div>
-    );
-  }
-
-  const influenced = allActions.filter(
-    ({ action }) => action.aiInfluence != null && action.aiInfluence !== 0,
-  );
-  const uninfluenced = allActions.filter(
-    ({ action }) => !action.aiInfluence || action.aiInfluence === 0,
-  );
 
   return (
     <div className="space-y-3">

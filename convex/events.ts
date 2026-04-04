@@ -2,6 +2,14 @@ import { v } from "convex/values";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
+/** Assert the submission window hasn't closed (5s grace for clock drift). */
+export function assertSubmitWindowOpen(game: { phase: string; phaseEndsAt?: number | null }) {
+  if (game.phase !== "submit") return;
+  if (game.phaseEndsAt != null && Date.now() > game.phaseEndsAt + 5000) {
+    throw new Error("Submission deadline has passed");
+  }
+}
+
 /** Assert the game is in one of the allowed phases. Throws descriptive error if not. */
 export async function assertPhase(
   ctx: MutationCtx,
