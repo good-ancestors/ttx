@@ -108,7 +108,8 @@ export default function TablePlayerPage({
   const game = useQuery(api.games.get, { gameId });
   const table = useQuery(api.tables.get, { tableId });
   // Everything else only when tab is visible
-  const round = useQuery(api.rounds.getCurrent, isVisible ? { gameId } : "skip");
+  // Round is always subscribed — needed for loading guard + header display
+  const round = useQuery(api.rounds.getCurrent, { gameId });
   const submission = useQuery(api.submissions.getForTable,
     isVisible ? { tableId, roundNumber: game?.currentRound ?? 1 } : "skip"
   );
