@@ -75,7 +75,10 @@ export function AttemptedPanel({
     return [...allActions].sort((a, b) => b.action.priority - a.action.priority);
   }, [allActions, isRollingOrNarrate]);
 
-  const allRevealed = isRollingOrNarrate && revealedCount >= allActions.length;
+  // During narrate phase, all actions are already revealed — skip staggered animation.
+  // The stagger only matters during rolling→narrate transition, not on page reload.
+  const effectiveRevealedCount = phase === "narrate" ? allActions.length : revealedCount;
+  const allRevealed = isRollingOrNarrate && effectiveRevealedCount >= allActions.length;
 
   const isExpanded = isRollingOrNarrate && hasSubmissions ? true : expanded;
 
@@ -162,7 +165,7 @@ export function AttemptedPanel({
                 idx={idx}
                 isProjector={isProjector}
                 isRollingOrNarrate={isRollingOrNarrate}
-                revealedCount={revealedCount}
+                revealedCount={effectiveRevealedCount}
                 revealedSecrets={revealedSecrets}
                 toggleReveal={toggleReveal}
                 getEndorsements={getEndorsements}
