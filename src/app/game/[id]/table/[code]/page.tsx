@@ -233,7 +233,7 @@ export default function TablePlayerPage({
         const r = ROLES.find((entry) => entry.id === t.roleId);
         return r && (r.tags.includes("has-compute") || r.tags.includes("lab-ceo"));
       })
-      .map((t) => ({ roleId: t.roleId, roleName: t.roleName })),
+      .map((t) => ({ id: t.roleId, name: t.roleName })),
     [allTables, table?.roleId]
   );
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";

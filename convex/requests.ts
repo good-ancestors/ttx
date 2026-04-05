@@ -14,7 +14,6 @@ async function transferCompute(
   requesterRoleId: string,
   amount: number,
 ) {
-  // Update table-level compute (non-lab personal balances)
   const tables = await db
     .query("tables")
     .withIndex("by_game", (q) => q.eq("gameId", gameId))

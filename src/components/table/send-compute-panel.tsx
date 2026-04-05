@@ -11,7 +11,7 @@ interface SendComputePanelProps {
   roleId: string;
   computeStock: number;
   /** Eligible recipients: enabled tables with has-compute or lab-ceo tags (excluding self) */
-  recipients: { roleId: string; roleName: string }[];
+  recipients: { id: string; name: string }[];
   disabled?: boolean;
 }
 
@@ -49,7 +49,7 @@ export function SendComputePanel({
         toRoleId: selectedRecipient,
         amount,
       });
-      const recipientName = recipients.find((r) => r.roleId === selectedRecipient)?.roleName ?? selectedRecipient;
+      const recipientName = recipients.find((r) => r.id === selectedRecipient)?.name ?? selectedRecipient;
       setLogs((prev) => [{ toName: recipientName, amount, timestamp: Date.now() }, ...prev]);
       setSelectedRecipient("");
       setAmount(1);
@@ -85,7 +85,6 @@ export function SendComputePanel({
 
       {expanded && (
         <div className="mt-3 pt-3 border-t border-border space-y-3">
-          {/* Recipient picker */}
           <div>
             <label className="text-[11px] text-text-muted font-semibold block mb-1">
               Send to
@@ -97,14 +96,13 @@ export function SendComputePanel({
             >
               <option value="">Choose recipient...</option>
               {recipients.map((r) => (
-                <option key={r.roleId} value={r.roleId}>
-                  {r.roleName}
+                <option key={r.id} value={r.id}>
+                  {r.name}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* Amount input */}
           <div>
             <label className="text-[11px] text-text-muted font-semibold block mb-1">
               Amount (1-{maxAmount}u)
@@ -119,7 +117,6 @@ export function SendComputePanel({
             />
           </div>
 
-          {/* Send button */}
           <button
             onClick={() => void handleSend()}
             disabled={!selectedRecipient || amount <= 0 || amount > maxAmount || sending || disabled}

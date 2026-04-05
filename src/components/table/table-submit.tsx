@@ -34,7 +34,7 @@ interface TableSubmitProps {
   }[];
   isExpired?: boolean;
   computeStock?: number;
-  computeRecipients?: { roleId: string; roleName: string }[];
+  computeRecipients?: { id: string; name: string }[];
   // Form state (local drafts — not yet submitted)
   actionDrafts: ActionDraft[];
   onActionDraftsChange: (drafts: ActionDraft[]) => void;
@@ -114,7 +114,7 @@ export function TableSubmit({
             roleId={role.id}
             roleName={role.name}
             enabledRoles={enabledRoles}
-            computeRoles={hasCompute(role) && computeRecipients ? computeRecipients.map((r) => ({ id: r.roleId, name: r.roleName })) : undefined}
+            computeRoles={hasCompute(role) && computeRecipients ? computeRecipients : undefined}
             isSubmitted={false}
             onSubmitAction={onSubmitAction}
           />

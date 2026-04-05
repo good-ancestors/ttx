@@ -160,15 +160,13 @@ function EndorsementRespondTab({
 
   const endorsements = allRequests.filter((r) => r.toRoleId === roleId && r.requestType === "endorsement");
   const computeRequests = allRequests.filter((r) => r.toRoleId === roleId && r.requestType === "compute");
-  const incoming = [...endorsements, ...computeRequests];
-
   // Changeable: answered at top, unanswered at bottom (near thumbs)
   const answeredEndorsements = endorsements.filter((r) => r.status !== "pending");
   const unansweredEndorsements = endorsements.filter((r) => r.status === "pending");
   const answeredCompute = computeRequests.filter((r) => r.status !== "pending");
   const unansweredCompute = computeRequests.filter((r) => r.status === "pending");
 
-  if (incoming.length === 0) {
+  if (endorsements.length === 0 && computeRequests.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <Inbox className="w-10 h-10 text-border mb-3" />
@@ -178,9 +176,6 @@ function EndorsementRespondTab({
       </div>
     );
   }
-
-  const hasAnswered = answeredEndorsements.length > 0 || answeredCompute.length > 0;
-  const hasUnanswered = unansweredEndorsements.length > 0 || unansweredCompute.length > 0;
 
   return (
     <div className="space-y-3">
@@ -252,7 +247,7 @@ function EndorsementRespondTab({
       )}
 
       {/* Endorsement requests */}
-      {hasAnswered && answeredEndorsements.length > 0 && (
+      {answeredEndorsements.length > 0 && (
         <>
           <div className="flex items-center gap-2 text-text-muted">
             <div className="flex-1 h-px bg-border" />
@@ -284,7 +279,7 @@ function EndorsementRespondTab({
         </>
       )}
 
-      {hasUnanswered && unansweredEndorsements.length > 0 && (
+      {unansweredEndorsements.length > 0 && (
         <>
           <div className="flex items-center gap-2 text-text-muted">
             <div className="flex-1 h-px bg-border" />

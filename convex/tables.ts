@@ -61,6 +61,7 @@ export const getComputeOverview = query({
 
     const labs = (game?.labs ?? []).map((l) => ({
       name: l.name,
+      roleId: l.roleId,
       computeStock: l.computeStock,
       rdMultiplier: l.rdMultiplier,
       allocation: l.allocation,

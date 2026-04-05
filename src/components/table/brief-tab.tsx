@@ -9,6 +9,7 @@ interface ComputeOverview {
   roles: { roleId: string; roleName: string; computeStock: number }[];
   labs: {
     name: string;
+    roleId: string;
     computeStock: number;
     rdMultiplier: number;
     allocation: { users: number; capability: number; safety: number };
@@ -206,10 +207,8 @@ export function BriefTab({
 
 function ComputeOverviewCard({ computeOverview, currentRoleId }: { computeOverview: ComputeOverview; currentRoleId: string }) {
   const { labs, roles } = computeOverview;
-  // Non-lab compute holders: exclude lab CEO roles (whose roleId matches a lab name pattern)
-  const nonLabRoles = roles.filter((r) => {
-    return !labs.some((l) => l.name.toLowerCase() === r.roleId.replace(/-ceo$/, ""));
-  });
+  const labRoleIds = new Set(labs.map((l) => l.roleId));
+  const nonLabRoles = roles.filter((r) => !labRoleIds.has(r.roleId));
 
   if (labs.length === 0 && nonLabRoles.length === 0) return null;
 
