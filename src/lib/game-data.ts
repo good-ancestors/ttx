@@ -665,8 +665,8 @@ function getBaselineMultiplierBeforeRound(labName: string, roundNumber: number):
 }
 
 /** Strip lab fields to only those accepted by the round snapshot validator */
-export function stripLabForSnapshot(lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }) {
-  return { name: lab.name, roleId: lab.roleId, computeStock: lab.computeStock, rdMultiplier: lab.rdMultiplier, allocation: lab.allocation };
+export function stripLabForSnapshot(lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }) {
+  return { name: lab.name, roleId: lab.roleId, computeStock: lab.computeStock, rdMultiplier: lab.rdMultiplier, allocation: lab.allocation, spec: lab.spec };
 }
 
 /** Apply a lab merge: survivor absorbs target's compute, keeps higher multiplier, target is removed. */
