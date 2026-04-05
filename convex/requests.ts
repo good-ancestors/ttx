@@ -379,6 +379,39 @@ async function triggerAutoResponse(
   }
 }
 
+export const directTransferInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    fromRoleId: v.string(),
+    toRoleId: v.string(),
+    amount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    if (args.amount <= 0 || args.fromRoleId === args.toRoleId) return;
+
+    // Validate sender has enough compute
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const senderTable = tables.find((t) => t.roleId === args.fromRoleId && t.enabled);
+    if (!senderTable) return;
+    const available = senderTable.computeStock ?? 0;
+    if (available < args.amount) return;
+
+    // Validate recipient exists
+    const recipientTable = tables.find((t) => t.roleId === args.toRoleId && t.enabled);
+    if (!recipientTable) return;
+
+    await transferCompute(ctx.db, args.gameId, args.fromRoleId, args.toRoleId, args.amount);
+    await logEvent(ctx, args.gameId, "compute_direct_transfer", args.fromRoleId, {
+      toRoleId: args.toRoleId,
+      amount: args.amount,
+      source: "ai_generated",
+    });
+  },
+});
+
 export const respondInternal = internalMutation({
   args: {
     proposalId: v.id("requests"),

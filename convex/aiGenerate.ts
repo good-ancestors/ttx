@@ -6,7 +6,7 @@ import { internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS } from "./aiModels";
-import { ROLES, PRIORITY_DECAY, isLabCeo, isLabSafety, hasCompute, getDisposition } from "@/lib/game-data";
+import { type Role, ROLES, PRIORITY_DECAY, isLabCeo, isLabSafety, hasCompute, getDisposition } from "@/lib/game-data";
 import { AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
 import { getSampleActions, pickRandom } from "@/lib/sample-actions";
@@ -17,6 +17,24 @@ type Request = Doc<"requests">;
 
 type Table = Doc<"tables">;
 type Submission = Doc<"submissions">;
+
+/** Pick a random enabled lab for an NPC with compute to loan 30-50% of stock to. */
+function npcComputeTransfer(
+  role: Role | undefined,
+  table: Table,
+  game: { labs: { roleId: string }[] },
+  activeRoleIds: Set<string>,
+): { toRoleId: string; amount: number }[] | undefined {
+  if (!role || !hasCompute(role) || isLabCeo(role)) return undefined;
+  const stock = table.computeStock ?? 0;
+  if (stock <= 0 || game.labs.length === 0) return undefined;
+  const enabledLabRoleIds = game.labs.map((l) => l.roleId).filter((id) => activeRoleIds.has(id));
+  if (enabledLabRoleIds.length === 0) return undefined;
+  const pct = 0.3 + Math.random() * 0.2; // 30-50%
+  const amount = Math.max(1, Math.floor(stock * pct));
+  const targetLabRoleId = enabledLabRoleIds[Math.floor(Math.random() * enabledLabRoleIds.length)];
+  return [{ toRoleId: targetLabRoleId, amount }];
+}
 
 // ─── Generate + submit actions for all AI/NPC tables ──────────────────────────
 
@@ -63,7 +81,7 @@ export const generateAll = internalAction({
     const { SAMPLE_ACTIONS_DATA: sampleData } = await import("./sampleActionsData");
 
     // Prepare all submissions
-    type PendingAction = { tableId: string; roleId: string; actions: { text: string; priority: number; secret?: boolean }[]; computeAllocation?: { users: number; capability: number; safety: number }; endorseHints?: { actionText: string; targetRoleIds: string[] }[] };
+    type PendingAction = { tableId: string; roleId: string; actions: { text: string; priority: number; secret?: boolean }[]; computeAllocation?: { users: number; capability: number; safety: number }; endorseHints?: { actionText: string; targetRoleIds: string[] }[]; computeTransfers?: { toRoleId: string; amount: number }[]; computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[] };
     const pending: PendingAction[] = [];
 
     // NPC tables: use sample actions
@@ -75,6 +93,27 @@ export const generateAll = internalAction({
           if (all.length === 0) continue;
           const picked = pickRandom(all, actionsPerTable);
           const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
+
+          const role = ROLES.find((r) => r.id === table.roleId);
+
+          // NPC lab CEOs: randomize existing allocation slightly
+          let computeAllocation: { users: number; capability: number; safety: number } | undefined;
+          if (role && isLabCeo(role)) {
+            const lab = game.labs.find((l) => l.roleId === table.roleId);
+            if (lab) {
+              const shift = Math.floor(Math.random() * 11) - 5; // -5 to +5
+              const cap = Math.max(0, Math.min(100, lab.allocation.capability + shift));
+              const safety = Math.max(0, Math.min(100, lab.allocation.safety - shift));
+              const total = lab.allocation.users + cap + safety;
+              computeAllocation = total > 0
+                ? { users: Math.round(lab.allocation.users * 100 / total), capability: Math.round(cap * 100 / total), safety: 100 - Math.round(lab.allocation.users * 100 / total) - Math.round(cap * 100 / total) }
+                : { users: 34, capability: 33, safety: 33 };
+            }
+          }
+
+          // NPC non-lab has-compute roles: loan 30-50% to a random enabled lab
+          const computeTransfers = npcComputeTransfer(role, table, game, activeRoleIds);
+
           pending.push({
             tableId: table._id,
             roleId: table.roleId,
@@ -86,6 +125,8 @@ export const generateAll = internalAction({
                 targetRoleIds: a.endorseHint.filter((id) => activeRoleIds.has(id) && id !== table.roleId),
               }))
               .filter((h) => h.targetRoleIds.length > 0),
+            computeAllocation,
+            computeTransfers,
           });
         } catch {
           console.error(`[aiGenerate] NPC sample failed for ${table.roleId}`);
@@ -204,14 +245,20 @@ Rules:
 3. Assign a priority from 1-10 (total budget: 10)
 
 Be strategic, realistic, and scenario-appropriate. Do NOT repeat actions from previous rounds — adapt your strategy.
-${isLabCeo(role) ? "Also set your compute allocation (users/capability/safety percentages summing to 100)." : ""}
-${hasCompute(role) && !isLabCeo(role) ? `You have ${table.computeStock ?? 0} compute units that other players may request via the support request system.` : ""}
+${isLabCeo(role) ? `Also set your compute allocation (users/capability/safety percentages summing to 100).
+You may also request compute from government players. Output computeRequestHints: [{ targetRoleId: "<government-role-id>", amount: <number>, actionText: "<reason>" }] if you want to request compute. Empty array if not.
+Available government roles: ${enabledTables.filter((t) => ROLES.find((r) => r.id === t.roleId)?.tags.includes("government")).map((t) => `${t.roleName} (${t.roleId})`).join(", ") || "none"}` : ""}
+${hasCompute(role) && !isLabCeo(role) ? `You have ${table.computeStock ?? 0} compute units. You may choose to loan some to a lab or another player.
+Output computeTransfers: [{ toRoleId: "<role-id>", amount: <number> }] if you want to send compute. Empty array if not.
+Available labs: ${game.labs.map((l) => `${l.name} (${l.roleId})`).join(", ")}` : ""}
 ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifactPrompt}` : ""}`;
 
       try {
         const { output } = await callAnthropic<{
           actions: { text: string; priority: number; secret?: boolean }[];
           computeAllocation?: { users: number; capability: number; safety: number };
+          computeTransfers?: { toRoleId: string; amount: number }[];
+          computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
         }>({
           models: GRADING_MODELS,
           systemPrompt: SCENARIO_CONTEXT,
@@ -236,6 +283,29 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
               computeAllocation: {
                 type: "object",
                 properties: { users: { type: "number" }, capability: { type: "number" }, safety: { type: "number" } },
+              },
+              computeTransfers: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    toRoleId: { type: "string" },
+                    amount: { type: "number" },
+                  },
+                  required: ["toRoleId", "amount"],
+                },
+              },
+              computeRequestHints: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    targetRoleId: { type: "string" },
+                    amount: { type: "number" },
+                    actionText: { type: "string" },
+                  },
+                  required: ["targetRoleId", "amount", "actionText"],
+                },
               },
             },
             required: ["actions"],
@@ -264,7 +334,24 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
               computeAllocation = { users: 34, capability: 33, safety: 33 };
             }
           }
-          pending.push({ tableId: table._id, roleId: table.roleId, actions, computeAllocation });
+          // Filter valid compute transfers (positive amount, valid target, not self)
+          const computeTransfers = (output.computeTransfers ?? []).filter(
+            (t) => t.amount > 0 && t.toRoleId !== table.roleId && enabledTables.some((et) => et.roleId === t.toRoleId)
+          );
+
+          // Filter valid compute request hints (positive amount, valid target, not self)
+          const computeRequestHints = (output.computeRequestHints ?? []).filter(
+            (h) => h.amount > 0 && h.targetRoleId !== table.roleId && enabledTables.some((et) => et.roleId === h.targetRoleId)
+          );
+
+          pending.push({
+            tableId: table._id,
+            roleId: table.roleId,
+            actions,
+            computeAllocation,
+            computeTransfers: computeTransfers.length > 0 ? computeTransfers : undefined,
+            computeRequestHints: computeRequestHints.length > 0 ? computeRequestHints : undefined,
+          });
         }
       } catch {
         console.error(`[aiGenerate] Failed for ${table.roleId}`);
@@ -315,7 +402,23 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       console.error(`[aiGenerate] ${submissionFailures.length} submission mutation(s) failed`);
     }
 
-    // Send endorsement requests + schedule proactive outreach in parallel
+    // Execute compute transfers (run sequentially before endorsements to avoid conflicts)
+    for (const p of submitted) {
+      for (const transfer of p.computeTransfers ?? []) {
+        try {
+          await ctx.runMutation(internal.requests.directTransferInternal, {
+            gameId,
+            fromRoleId: p.roleId,
+            toRoleId: transfer.toRoleId,
+            amount: transfer.amount,
+          });
+        } catch {
+          console.error(`[aiGenerate] Compute transfer failed: ${p.roleId} -> ${transfer.toRoleId}`);
+        }
+      }
+    }
+
+    // Send endorsement requests, compute requests, + schedule proactive outreach in parallel
     const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));
     // Fetch pending requests to check which roles actually have something to respond to
     const pendingRequests: Request[] = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
@@ -334,6 +437,22 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
           }).catch(() => { /* request already exists */ })
         )
       );
+
+      // Send compute requests from lab CEOs to governments
+      const computeRequests = (p.computeRequestHints ?? []).map((hint) =>
+        ctx.runMutation(internal.requests.sendInternal, {
+          gameId,
+          roundNumber,
+          fromRoleId: p.roleId,
+          fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
+          toRoleId: hint.targetRoleId,
+          toRoleName: roleMap.get(hint.targetRoleId) ?? hint.targetRoleId,
+          actionText: hint.actionText,
+          requestType: "compute",
+          computeAmount: hint.amount,
+        }).catch(() => { /* request already exists */ })
+      );
+
       // Only schedule AI proposals if this role has pending requests to respond to
       const hasPending = pendingRequests.some(
         (r) => r.toRoleId === p.roleId && r.status === "pending"
@@ -345,7 +464,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
             roleId: p.roleId,
           })]
         : [];
-      return [...endorsements, ...outreach];
+      return [...endorsements, ...computeRequests, ...outreach];
     }));
   },
 });
