@@ -11,14 +11,21 @@ import {
   BACKGROUND_LABS,
   NEW_COMPUTE_PER_GAME_ROUND,
   DEFAULT_COMPUTE_DISTRIBUTION,
+  DEFAULT_COMPUTE_SHARES,
   MAX_PRIORITY,
   MAX_ACTIONS,
+  AI_SYSTEMS_ROLE_ID,
+  DEFAULT_ROUND_LABEL,
   getProbabilityCard,
   cycleProbability,
   isLabCeo,
   isLabSafety,
   hasCompute,
   hasTag,
+  isResolvingPhase,
+  isSubmittedAction,
+  computeLabGrowth,
+  applyLabMerge,
 } from "@/lib/game-data";
 import { parseActionsFromText } from "@/lib/hooks";
 
@@ -440,5 +447,205 @@ describe("Edge Cases", () => {
     const catKeys = COMPUTE_CATEGORIES.map((c) => c.key).sort();
     const allocKeys = Object.keys(DEFAULT_LABS[0].allocation).sort();
     expect(catKeys).toEqual(allocKeys);
+  });
+});
+
+// ─── COMPUTE MECHANICS ──────────────────────────────────────────────────────
+
+describe("Compute Distribution", () => {
+  it("NEW_COMPUTE_PER_GAME_ROUND covers all 4 rounds", () => {
+    for (let r = 1; r <= 4; r++) {
+      expect(NEW_COMPUTE_PER_GAME_ROUND[r]).toBeGreaterThan(0);
+    }
+  });
+
+  it("DEFAULT_COMPUTE_SHARES covers all 4 rounds", () => {
+    for (let r = 1; r <= 4; r++) {
+      expect(DEFAULT_COMPUTE_SHARES[r]).toBeDefined();
+      expect(Object.keys(DEFAULT_COMPUTE_SHARES[r]).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("shares include all 3 labs", () => {
+    for (let r = 1; r <= 4; r++) {
+      expect(DEFAULT_COMPUTE_SHARES[r]["OpenBrain"]).toBeDefined();
+      expect(DEFAULT_COMPUTE_SHARES[r]["DeepCent"]).toBeDefined();
+      expect(DEFAULT_COMPUTE_SHARES[r]["Conscienta"]).toBeDefined();
+    }
+  });
+
+  it("non-lab compute roles have startingComputeStock", () => {
+    const computeRoles = ROLES.filter(r => hasCompute(r) && !isLabCeo(r));
+    expect(computeRoles.length).toBeGreaterThan(0);
+    for (const role of computeRoles) {
+      expect((role as { startingComputeStock?: number }).startingComputeStock).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("computeLabGrowth", () => {
+  const baseLabs = DEFAULT_LABS.map(l => ({ ...l }));
+  const emptyAllocations = new Map<string, { users: number; capability: number; safety: number }>();
+
+  it("increases compute stock for all labs", () => {
+    const result = computeLabGrowth(baseLabs, emptyAllocations, 1, 200);
+    for (const lab of result) {
+      const original = baseLabs.find(l => l.name === lab.name)!;
+      expect(lab.computeStock).toBeGreaterThan(original.computeStock);
+    }
+  });
+
+  it("increases R&D multipliers", () => {
+    const result = computeLabGrowth(baseLabs, emptyAllocations, 1, 200);
+    for (const lab of result) {
+      const original = baseLabs.find(l => l.name === lab.name)!;
+      expect(lab.rdMultiplier).toBeGreaterThan(original.rdMultiplier);
+    }
+  });
+
+  it("respects max multiplier cap", () => {
+    const result = computeLabGrowth(baseLabs, emptyAllocations, 1, 5);
+    for (const lab of result) {
+      expect(lab.rdMultiplier).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it("higher capability allocation increases growth", () => {
+    const highCap = new Map([["OpenBrain", { users: 10, capability: 80, safety: 10 }]]);
+    const lowCap = new Map([["OpenBrain", { users: 80, capability: 10, safety: 10 }]]);
+    const highResult = computeLabGrowth(baseLabs, highCap, 1, 200);
+    const lowResult = computeLabGrowth(baseLabs, lowCap, 1, 200);
+    const highOB = highResult.find(l => l.name === "OpenBrain")!;
+    const lowOB = lowResult.find(l => l.name === "OpenBrain")!;
+    expect(highOB.rdMultiplier).toBeGreaterThan(lowOB.rdMultiplier);
+  });
+
+  it("uses proportional fallback for unknown labs", () => {
+    const labsWithNew = [...baseLabs, {
+      name: "NewLab", roleId: "custom-newlab", computeStock: 5, rdMultiplier: 1,
+      allocation: { users: 33, capability: 34, safety: 33 },
+    }];
+    const result = computeLabGrowth(labsWithNew, emptyAllocations, 1, 200);
+    const newLab = result.find(l => l.name === "NewLab")!;
+    expect(newLab.computeStock).toBeGreaterThan(5);
+  });
+});
+
+describe("applyLabMerge", () => {
+  const labs = [
+    { name: "A", computeStock: 20, rdMultiplier: 3 },
+    { name: "B", computeStock: 10, rdMultiplier: 5 },
+    { name: "C", computeStock: 15, rdMultiplier: 2 },
+  ];
+
+  it("survivor absorbs compute and takes higher multiplier", () => {
+    const result = applyLabMerge(labs, "A", "B");
+    expect(result).toHaveLength(2);
+    const survivor = result.find(l => l.name === "A")!;
+    expect(survivor.computeStock).toBe(30);
+    expect(survivor.rdMultiplier).toBe(5);
+  });
+
+  it("absorbed lab is removed", () => {
+    const result = applyLabMerge(labs, "A", "B");
+    expect(result.find(l => l.name === "B")).toBeUndefined();
+  });
+
+  it("self-merge returns original array", () => {
+    const result = applyLabMerge(labs, "A", "A");
+    expect(result).toHaveLength(3);
+  });
+
+  it("merge with nonexistent lab returns original", () => {
+    const result = applyLabMerge(labs, "A", "Z");
+    expect(result).toHaveLength(3);
+  });
+});
+
+// ─── SAMPLE ACTIONS ─────────────────────────────────────────────────────────
+
+describe("Sample Actions", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const sampleData = require("../public/sample-actions.json");
+
+  it("should have actions for all 17 roles", () => {
+    expect(Object.keys(sampleData)).toHaveLength(17);
+  });
+
+  it("should have actions for all 4 rounds per role", () => {
+    for (const roleId of Object.keys(sampleData)) {
+      for (let r = 1; r <= 4; r++) {
+        expect(sampleData[roleId][r]).toBeDefined();
+        expect(sampleData[roleId][r].length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("should have 6 actions per role per round", () => {
+    for (const roleId of Object.keys(sampleData)) {
+      for (let r = 1; r <= 4; r++) {
+        expect(sampleData[roleId][r]).toHaveLength(6);
+      }
+    }
+  });
+
+  it("total should be 408 actions (17 × 4 × 6)", () => {
+    let total = 0;
+    for (const roleId of Object.keys(sampleData)) {
+      for (const round of Object.keys(sampleData[roleId])) {
+        total += sampleData[roleId][round].length;
+      }
+    }
+    expect(total).toBe(408);
+  });
+
+  it("each action should have required fields", () => {
+    for (const roleId of Object.keys(sampleData)) {
+      for (const round of Object.keys(sampleData[roleId])) {
+        for (const action of sampleData[roleId][round]) {
+          expect(action.text).toBeTruthy();
+          expect(["high", "medium", "low"]).toContain(action.priority);
+          expect(typeof action.secret).toBe("boolean");
+          expect(Array.isArray(action.endorseHint)).toBe(true);
+        }
+      }
+    }
+  });
+
+  it("endorseHints should reference valid role IDs", () => {
+    const validRoleIds = new Set(ROLES.map(r => r.id));
+    for (const roleId of Object.keys(sampleData)) {
+      for (const round of Object.keys(sampleData[roleId])) {
+        for (const action of sampleData[roleId][round]) {
+          for (const hint of action.endorseHint) {
+            expect(validRoleIds.has(hint)).toBe(true);
+          }
+        }
+      }
+    }
+  });
+});
+
+// ─── CONSTANTS ──────────────────────────────────────────────────────────────
+
+describe("Constants", () => {
+  it("AI_SYSTEMS_ROLE_ID matches ROLES", () => {
+    expect(ROLES.find(r => r.id === AI_SYSTEMS_ROLE_ID)).toBeDefined();
+  });
+
+  it("DEFAULT_ROUND_LABEL is Q1", () => {
+    expect(DEFAULT_ROUND_LABEL).toBe("Q1");
+  });
+
+  it("isResolvingPhase works", () => {
+    expect(isResolvingPhase("rolling")).toBe(true);
+    expect(isResolvingPhase("narrate")).toBe(true);
+    expect(isResolvingPhase("submit")).toBe(false);
+    expect(isResolvingPhase("discuss")).toBe(false);
+  });
+
+  it("isSubmittedAction works", () => {
+    expect(isSubmittedAction({ actionStatus: "submitted" })).toBe(true);
+    expect(isSubmittedAction({ actionStatus: "draft" })).toBe(false);
   });
 });
