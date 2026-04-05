@@ -18,12 +18,14 @@ type Request = Doc<"requests">;
 type Table = Doc<"tables">;
 type Submission = Doc<"submissions">;
 
-/** Pick a random enabled lab for an NPC with compute to loan 30-50% of stock to. */
+/** Pick a lab for an NPC with compute to loan 30-50% of stock to.
+ *  Prefers labs whose CEOs are endorsed by the NPC's picked actions. */
 function npcComputeTransfer(
   role: Role | undefined,
   table: Table,
   game: { labs: { roleId: string }[] },
   activeRoleIds: Set<string>,
+  endorsedRoleIds?: string[],
 ): { toRoleId: string; amount: number }[] | undefined {
   if (!role || !hasCompute(role) || isLabCeo(role)) return undefined;
   const stock = table.computeStock ?? 0;
@@ -32,7 +34,31 @@ function npcComputeTransfer(
   if (enabledLabRoleIds.length === 0) return undefined;
   const pct = 0.3 + Math.random() * 0.2; // 30-50%
   const amount = Math.max(1, Math.floor(stock * pct));
-  const targetLabRoleId = enabledLabRoleIds[Math.floor(Math.random() * enabledLabRoleIds.length)];
+
+  // Prefer the most-endorsed lab CEO from the NPC's sample actions
+  let targetLabRoleId: string | undefined;
+  if (endorsedRoleIds && endorsedRoleIds.length > 0) {
+    const labCeoRoleIdSet = new Set(enabledLabRoleIds);
+    const counts = new Map<string, number>();
+    for (const id of endorsedRoleIds) {
+      if (labCeoRoleIdSet.has(id)) {
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+    }
+    if (counts.size > 0) {
+      let best = "";
+      let bestCount = 0;
+      for (const [id, count] of counts) {
+        if (count > bestCount) { best = id; bestCount = count; }
+      }
+      targetLabRoleId = best;
+    }
+  }
+
+  // Fall back to random lab
+  if (!targetLabRoleId) {
+    targetLabRoleId = enabledLabRoleIds[Math.floor(Math.random() * enabledLabRoleIds.length)];
+  }
   return [{ toRoleId: targetLabRoleId, amount }];
 }
 
@@ -62,7 +88,7 @@ export const generateAll = internalAction({
     const actionsPerTable = totalEnabled <= 6 ? 3 : totalEnabled <= 11 ? 2 : 1;
 
     const npcTables = nonHumanTables.filter((t) => t.controlMode === "npc");
-    const aiTables = nonHumanTables.filter((t) => t.controlMode === "ai");
+    let aiTables = nonHumanTables.filter((t) => t.controlMode === "ai");
 
     // Auto-roll disposition for AI Systems if needed
     const aiSystemsTable = nonHumanTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID && !t.aiDisposition);
@@ -111,8 +137,9 @@ export const generateAll = internalAction({
             }
           }
 
-          // NPC non-lab has-compute roles: loan 30-50% to a random enabled lab
-          const computeTransfers = npcComputeTransfer(role, table, game, activeRoleIds);
+          // NPC non-lab has-compute roles: loan to an endorsed or random enabled lab
+          const endorsedRoleIds = picked.flatMap((a) => a.endorseHint ?? []);
+          const computeTransfers = npcComputeTransfer(role, table, game, activeRoleIds, endorsedRoleIds);
 
           pending.push({
             tableId: table._id,
@@ -132,6 +159,13 @@ export const generateAll = internalAction({
           console.error(`[aiGenerate] NPC sample failed for ${table.roleId}`);
         }
       }
+    }
+
+    // NPC tables with no sample actions (round 4+) fall back to AI generation
+    const npcPendingRoleIds = new Set(pending.map((p) => p.roleId));
+    const npcFallback = npcTables.filter((t) => !npcPendingRoleIds.has(t.roleId));
+    if (npcFallback.length > 0) {
+      aiTables = [...aiTables, ...npcFallback];
     }
 
     // AI tables: use LLM
