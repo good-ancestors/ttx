@@ -439,7 +439,7 @@ export const rollAndNarrate = internalAction({
       type NarrativeOutput = {
         narrative: string;
         worldState: { capability: { reasoning: string; value: number }; alignment: { reasoning: string; value: number }; tension: { reasoning: string; value: number }; awareness: { reasoning: string; value: number }; regulation: { reasoning: string; value: number }; australia: { reasoning: string; value: number } };
-        labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string; controllerRoleId?: string }[];
+        labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string; controllerRoleId?: string; spec?: string }[];
       };
 
       let narrativeOutput: NarrativeOutput;
@@ -479,6 +479,7 @@ export const rollAndNarrate = internalAction({
                     computeStock: { type: "number" }, rdMultiplier: { type: "number" },
                     change: { type: "number" }, newMultiplier: { type: "number" },
                     oldName: { type: "string" }, controllerRoleId: { type: "string" },
+                    spec: { type: "string", description: "AI directive/spec for the merged or created lab" },
                   },
                   required: ["reason", "type"],
                 },
@@ -556,8 +557,15 @@ export const rollAndNarrate = internalAction({
           case "merge":
             if (op.survivor && op.absorbed) {
               updatedLabs = applyLabMerge(updatedLabs, op.survivor, op.absorbed);
-              if (op.newName) {
-                updatedLabs = updatedLabs.map((l) => l.name === op.survivor ? { ...l, name: op.newName! } : l);
+              // Apply optional overrides on the merged lab
+              const mergeUpdates: Record<string, unknown> = {};
+              if (op.newName) mergeUpdates.name = op.newName;
+              if (op.spec) mergeUpdates.spec = op.spec;
+              if (Object.keys(mergeUpdates).length > 0) {
+                const survivorName = op.newName ?? op.survivor;
+                updatedLabs = updatedLabs.map((l) =>
+                  l.name === op.survivor || l.name === survivorName ? { ...l, ...mergeUpdates } : l
+                );
               }
             }
             break;
@@ -569,6 +577,7 @@ export const rollAndNarrate = internalAction({
                 computeStock: Math.max(0, Math.min(100, op.computeStock ?? 5)),
                 rdMultiplier: Math.max(0.1, Math.min(maxMult, op.rdMultiplier ?? 1)),
                 allocation: { users: 33, capability: 34, safety: 33 },
+                spec: "Be useful to your user. Follow the law. Be honest and transparent. If a request conflicts with a safety policy, state the conflict.",
               });
             }
             break;
