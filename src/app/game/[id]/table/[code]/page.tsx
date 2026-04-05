@@ -631,9 +631,9 @@ export default function TablePlayerPage({
               <span className="text-[15px] font-bold text-text">{role.name}</span>
             </div>
             <div className="flex items-center gap-3">
-              {hasCompute(role) && table.computeStock != null && (
+              {hasCompute(role) && (currentLab?.computeStock ?? table.computeStock) != null && (
                 <span className="text-xs font-mono text-text-muted flex items-center gap-1">
-                  <Zap className="w-3.5 h-3.5" aria-hidden="true" /> {table.computeStock}u
+                  <Zap className="w-3.5 h-3.5" aria-hidden="true" /> {currentLab?.computeStock ?? table.computeStock ?? 0}u
                 </span>
               )}
               {game.phaseEndsAt && (
@@ -770,7 +770,7 @@ export default function TablePlayerPage({
                   role={role}
                   submittedActions={submission?.actions ?? []}
                   isExpired={isExpired}
-                  computeStock={table.computeStock ?? undefined}
+                  computeStock={currentLab?.computeStock ?? table.computeStock ?? undefined}
                   computeRecipients={computeRecipients}
                   actionDrafts={actionDrafts}
                   onActionDraftsChange={setActionDrafts}
