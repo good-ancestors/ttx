@@ -727,3 +727,24 @@ export const getFacilitatorState = query({
     };
   },
 });
+
+export const assignLabController = mutation({
+  args: {
+    gameId: v.id("games"),
+    labName: v.string(),
+    newRoleId: v.string(),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    const updatedLabs = game.labs.map((lab) =>
+      lab.name === args.labName ? { ...lab, roleId: args.newRoleId } : lab
+    );
+    await ctx.db.patch(args.gameId, { labs: updatedLabs });
+    await logEvent(ctx, args.gameId, "lab_controller_assigned", args.newRoleId, {
+      labName: args.labName,
+    });
+  },
+});

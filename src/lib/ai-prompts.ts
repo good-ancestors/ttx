@@ -422,7 +422,7 @@ WORLD STATE: Update each dial (0-10, max ±3 per round). Base on actual outcomes
 
 LAB OPERATIONS — output any that apply:
 - "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier.
-- "create": New entity forms (rogue AI escaping containment, government lab). Name it, set starting compute and R&D multiplier.
+- "create": New entity forms (rogue AI escaping containment, government lab). Name it, set starting compute and R&D multiplier. Optionally set controllerRoleId to assign it to an existing player role (e.g., "eu-president" for a government-backed lab).
 - "decommission": Lab shut down or destroyed.
 - "rename": Lab changes identity (Safer pivot, government takeover).
 - "computeChange": Direct compute changes from events (sanctions, infrastructure damage, deals). NOT baseline growth.

@@ -439,7 +439,7 @@ export const rollAndNarrate = internalAction({
       type NarrativeOutput = {
         narrative: string;
         worldState: { capability: { reasoning: string; value: number }; alignment: { reasoning: string; value: number }; tension: { reasoning: string; value: number }; awareness: { reasoning: string; value: number }; regulation: { reasoning: string; value: number }; australia: { reasoning: string; value: number } };
-        labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string }[];
+        labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string; controllerRoleId?: string }[];
       };
 
       let narrativeOutput: NarrativeOutput;
@@ -478,7 +478,7 @@ export const rollAndNarrate = internalAction({
                     newName: { type: "string" }, name: { type: "string" },
                     computeStock: { type: "number" }, rdMultiplier: { type: "number" },
                     change: { type: "number" }, newMultiplier: { type: "number" },
-                    oldName: { type: "string" },
+                    oldName: { type: "string" }, controllerRoleId: { type: "string" },
                   },
                   required: ["reason", "type"],
                 },
@@ -565,7 +565,7 @@ export const rollAndNarrate = internalAction({
             if (op.name) {
               updatedLabs.push({
                 name: op.name,
-                roleId: `custom-${op.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`,
+                roleId: op.controllerRoleId ?? `custom-${op.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`,
                 computeStock: Math.max(0, Math.min(100, op.computeStock ?? 5)),
                 rdMultiplier: Math.max(0.1, Math.min(maxMult, op.rdMultiplier ?? 1)),
                 allocation: { users: 33, capability: 34, safety: 33 },

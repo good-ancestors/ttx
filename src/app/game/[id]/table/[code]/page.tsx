@@ -4,7 +4,7 @@ import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, hasCompute, getAiInfluencePower, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL } from "@/lib/game-data";
+import { ROLES, isLabCeo, hasCompute, getAiInfluencePower, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
 // Lab allocation read-only moved to Lab tab for safety leads
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
@@ -80,6 +80,25 @@ function ReadOnlyLabView({ lab, roleName }: { lab: { spec?: string; allocation: 
         roleName={roleName}
       />
     </>
+  );
+}
+
+/** Shows current lab compute stock and delta from starting value if any loans were received. */
+function LabComputeSummary({ lab }: { lab: { name: string; computeStock: number } }) {
+  const startingLab = DEFAULT_LABS.find((l) => l.name === lab.name);
+  const startingStock = startingLab?.computeStock ?? 0;
+  const delta = lab.computeStock - startingStock;
+  return (
+    <div className="bg-white rounded-xl border border-border p-3 mb-4">
+      <p className="text-sm font-bold text-text">
+        Lab Compute: {lab.computeStock}u
+      </p>
+      {delta !== 0 && (
+        <p className="text-xs text-text-muted mt-0.5">
+          (base {startingStock}u {delta > 0 ? "+" : ""}{delta}u {delta > 0 ? "loaned" : "spent"})
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -779,8 +798,9 @@ export default function TablePlayerPage({
                 />
               )}
 
-              {activeTab === "lab" && controlsLab && (
+              {activeTab === "lab" && controlsLab && currentLab && (
                 <>
+                  <LabComputeSummary lab={currentLab} />
                   <LabSpecEditor
                     labSpec={labSpec}
                     onLabSpecChange={(spec) => { setLabSpec(spec); setSpecSaved(false); setSpecSaveError(""); }}
@@ -802,7 +822,10 @@ export default function TablePlayerPage({
                 </>
               )}
               {activeTab === "lab" && !controlsLab && hasLabAccess && currentLab && (
-                <ReadOnlyLabView lab={currentLab} roleName={role.name} />
+                <>
+                  <LabComputeSummary lab={currentLab} />
+                  <ReadOnlyLabView lab={currentLab} roleName={role.name} />
+                </>
               )}
             </>
           )}
@@ -839,7 +862,10 @@ export default function TablePlayerPage({
               )}
 
               {activeTab === "lab" && hasLabAccess && currentLab && (
-                <ReadOnlyLabView lab={currentLab} roleName={role.name} />
+                <>
+                  <LabComputeSummary lab={currentLab} />
+                  <ReadOnlyLabView lab={currentLab} roleName={role.name} />
+                </>
               )}
             </>
           )}
