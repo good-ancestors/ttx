@@ -225,13 +225,13 @@ export default function TablePlayerPage({
       .map((t) => ({ id: t.roleId, name: t.roleName })),
     [allTables, table?.roleId]
   );
-  // Compute recipients: other enabled roles with has-compute or lab-ceo tags (for direct transfers)
+  // Compute recipients: other enabled roles with has-compute tag (for direct transfers)
   const computeRecipients = useMemo(() =>
     (allTables ?? [])
       .filter((t) => {
         if (t.roleId === table?.roleId) return false;
         const r = ROLES.find((entry) => entry.id === t.roleId);
-        return r && (r.tags.includes("has-compute") || r.tags.includes("lab-ceo"));
+        return r && hasCompute(r);
       })
       .map((t) => ({ id: t.roleId, name: t.roleName })),
     [allTables, table?.roleId]
@@ -767,6 +767,7 @@ export default function TablePlayerPage({
                 <TableSubmit
                   game={game}
                   gameId={gameId}
+                  tableId={table._id}
                   role={role}
                   submittedActions={submission?.actions ?? []}
                   isExpired={isExpired}

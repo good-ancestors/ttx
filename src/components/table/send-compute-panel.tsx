@@ -8,9 +8,9 @@ import { Zap, Send, ChevronDown, ChevronUp, Check } from "lucide-react";
 
 interface SendComputePanelProps {
   gameId: Id<"games">;
+  tableId: Id<"tables">;
   roleId: string;
   computeStock: number;
-  /** Eligible recipients: enabled tables with has-compute or lab-ceo tags (excluding self) */
   recipients: { id: string; name: string }[];
   disabled?: boolean;
 }
@@ -23,6 +23,7 @@ interface TransferLog {
 
 export function SendComputePanel({
   gameId,
+  tableId,
   roleId,
   computeStock,
   recipients,
@@ -45,6 +46,7 @@ export function SendComputePanel({
     try {
       await directTransfer({
         gameId,
+        tableId,
         fromRoleId: roleId,
         toRoleId: selectedRecipient,
         amount,

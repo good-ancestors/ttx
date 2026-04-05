@@ -106,8 +106,15 @@ export const generateAll = internalAction({
     // Sample actions data is bundled into the Convex module for NPC tables
     const { SAMPLE_ACTIONS_DATA: sampleData } = await import("./sampleActionsData");
 
-    // Prepare all submissions
-    type PendingAction = { tableId: string; roleId: string; actions: { text: string; priority: number; secret?: boolean }[]; computeAllocation?: { users: number; capability: number; safety: number }; endorseHints?: { actionText: string; targetRoleIds: string[] }[]; computeTransfers?: { toRoleId: string; amount: number }[]; computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[] };
+    interface PendingAction {
+      tableId: string;
+      roleId: string;
+      actions: { text: string; priority: number; secret?: boolean }[];
+      computeAllocation?: { users: number; capability: number; safety: number };
+      endorseHints?: { actionText: string; targetRoleIds: string[] }[];
+      computeTransfers?: { toRoleId: string; amount: number }[];
+      computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
+    }
     const pending: PendingAction[] = [];
 
     // NPC tables: use sample actions
@@ -437,20 +444,18 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
     }
 
     // Execute compute transfers (run sequentially before endorsements to avoid conflicts)
-    for (const p of submitted) {
-      for (const transfer of p.computeTransfers ?? []) {
-        try {
-          await ctx.runMutation(internal.requests.directTransferInternal, {
-            gameId,
-            fromRoleId: p.roleId,
-            toRoleId: transfer.toRoleId,
-            amount: transfer.amount,
-          });
-        } catch {
+    await Promise.all(submitted.flatMap((p) =>
+      (p.computeTransfers ?? []).map((transfer) =>
+        ctx.runMutation(internal.requests.directTransferInternal, {
+          gameId,
+          fromRoleId: p.roleId,
+          toRoleId: transfer.toRoleId,
+          amount: transfer.amount,
+        }).catch(() => {
           console.error(`[aiGenerate] Compute transfer failed: ${p.roleId} -> ${transfer.toRoleId}`);
-        }
-      }
-    }
+        })
+      )
+    ));
 
     // Send endorsement requests, compute requests, + schedule proactive outreach in parallel
     const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));

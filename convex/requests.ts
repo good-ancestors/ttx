@@ -93,6 +93,7 @@ async function findOrUpsertRequest(
 export const directTransfer = mutation({
   args: {
     gameId: v.id("games"),
+    tableId: v.id("tables"),
     fromRoleId: v.string(),
     toRoleId: v.string(),
     amount: v.number(),
@@ -101,6 +102,12 @@ export const directTransfer = mutation({
     const game = await assertPhase(ctx, args.gameId, ["submit"], "direct transfer");
     assertSubmitWindowOpen(game);
 
+    // Validate table ownership
+    const senderTable = await ctx.db.get(args.tableId);
+    if (!senderTable) throw new Error("Table not found");
+    if (senderTable.gameId !== args.gameId) throw new Error("Table does not belong to this game");
+    if (senderTable.roleId !== args.fromRoleId) throw new Error("Role does not match table assignment");
+
     if (args.amount <= 0) {
       throw new Error("Transfer amount must be positive");
     }
@@ -108,22 +115,14 @@ export const directTransfer = mutation({
       throw new Error("Cannot transfer compute to yourself");
     }
 
-    // Validate sender has enough compute
-    const tables = await ctx.db
-      .query("tables")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    const senderTable = tables.find((t) => t.roleId === args.fromRoleId && t.enabled);
-    if (!senderTable) {
-      throw new Error("Sender role not found or not enabled");
-    }
     const available = senderTable.computeStock ?? 0;
     if (available < args.amount) {
       throw new Error(`Insufficient compute: have ${available}u, tried to send ${args.amount}u`);
     }
 
     // Validate recipient exists and is enabled
-    const recipientTable = tables.find((t) => t.roleId === args.toRoleId && t.enabled);
+    const allTables = await ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const recipientTable = allTables.find((t) => t.roleId === args.toRoleId && t.enabled);
     if (!recipientTable) {
       throw new Error("Recipient role not found or not enabled");
     }

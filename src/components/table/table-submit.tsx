@@ -24,6 +24,7 @@ interface TableSubmitProps {
     phase: string;
   };
   gameId: Id<"games">;
+  tableId: Id<"tables">;
   role: Role;
   submittedActions: {
     text: string;
@@ -53,6 +54,7 @@ interface TableSubmitProps {
 export function TableSubmit({
   game,
   gameId,
+  tableId,
   role,
   submittedActions,
   actionDrafts,
@@ -139,6 +141,7 @@ export function TableSubmit({
         <div className="mt-4">
           <SendComputePanel
             gameId={gameId}
+            tableId={tableId}
             roleId={role.id}
             computeStock={computeStock}
             recipients={computeRecipients}
