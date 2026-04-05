@@ -2,19 +2,47 @@
 
 Manual testing guide for The Race to AGI tabletop exercise app. Covers full game flow, role-specific mechanics, and adversarial scenarios.
 
-## Setup for Efficient Testing
+## Testing Layers
 
-### Reduce unnecessary API calls
+### 1. Unit tests (`npm test`) — fast, free, no API calls
+Run these constantly. They cover game-data logic, component rendering, and type safety. Zero cost.
 
-- Use **NPC** mode for tables you're not actively testing (draws from pre-authored sample actions, zero LLM calls)
-- Use **AI** mode when testing AI-generated actions, grading quality, or AI proposals
-- Keep 1-2 human players for interactive testing; NPC for the rest
-- Use the **"Demo: Skip to AI Submissions"** button during discuss phase to auto-submit AI/NPC players with a 30s stagger
-- The copilot, resolve, narrate, and grading endpoints all make real API calls — test these, just don't run them repeatedly for no reason
+### 2. API tests via ConvexHttpClient — fast, targeted, mostly free
+Use `ConvexHttpClient` to drive game mechanics directly without a browser. NPC submissions are free (sample actions). Only grading and narrative generation hit the LLM.
 
-### Browser tab management
+**Key principle:** Use NPC mode for all tables except the specific mechanic you're testing. Only set a table to AI mode when you specifically need to verify LLM-generated content.
 
-**Important:** When testing with multiple tabs (facilitator + player), use **separate browser windows**, not tabs in the same window. Convex subscriptions pause on inactive tabs (via the `usePageVisibility` hook), so switching between tabs in the same window will cause stale data, missed phase transitions, and confusing behavior. Two windows side-by-side is the correct setup.
+```javascript
+const { ConvexHttpClient } = require('convex/browser');
+const { api } = require('./convex/_generated/api.js');
+const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL);
+const TOKEN = 'coral-ember-drift-sage';
+```
+
+### 3. Browser testing (Chrome) — for visual/UX verification only
+Use the browser to verify layout, touch targets, animations, and user flows. Don't use it to test game mechanics — that's what the API is for.
+
+## Cost-Conscious Testing
+
+| Operation | Cost | Use when |
+|-----------|------|----------|
+| NPC submission | Free | Always — default for non-tested tables |
+| AI submission | ~$0.02-0.05 | Testing LLM action quality for a specific role |
+| Grading (per round) | ~$0.10-0.30 | Testing probability calibration |
+| Narrative generation | ~$0.05-0.15 | Testing story quality and world state updates |
+| Copilot adjustment | ~$0.03-0.05 | Testing facilitator copilot |
+
+**For mechanical testing** (compute transfers, endorsements, phase guards): skip grading/narrative entirely. Submit actions, verify they're stored, verify transfers happened. No LLM needed.
+
+**For grading tests**: grade once, inspect results, adjust prompts if needed. Don't grade repeatedly.
+
+**For full-flow tests**: run ONE complete round with grading+narrative to verify the pipeline. Don't run all 4 rounds unless testing round-specific behaviour.
+
+## Browser Setup
+
+### Tab management
+
+**Important:** Use **separate browser windows** for facilitator and player views, not tabs in the same window. Convex subscriptions pause on inactive tabs (via `usePageVisibility` hook in production). In dev mode this is disabled, but separate windows avoid any confusion.
 
 ### Recommended minimal config
 
@@ -31,7 +59,7 @@ All other tables: disabled or NPC.
 
 ### Recommended full config (pre-event dry run)
 
-Enable all 17 tables. Set 3-5 as Human (test different role types), rest as AI or NPC. Use AI for at least one of each tag type to verify prompt quality.
+Enable all 17 tables. Set 3-5 as Human (test different role types), rest as NPC. Only use AI for 1-2 tables when specifically testing LLM behaviour.
 
 ---
 
