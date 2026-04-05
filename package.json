@@ -8,7 +8,9 @@
     "start": "next start",
     "lint": "eslint",
     "lint:dead": "knip",
-    "test": "vitest run",
+    "test": "vitest run tests/game-logic.test.ts tests/component-integration.test.tsx",
+    "test:all": "vitest run",
+    "test:integration": "vitest run tests/convex-integration.test.ts",
     "test:watch": "vitest",
     "prepare": "husky"
   },

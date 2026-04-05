@@ -12,4 +12,5 @@ if [ -n "$STAGED" ]; then
   fi
 fi
 
-npx vitest run --reporter=dot
+# Only run free unit + component tests (not Convex integration tests which cost money and need a server)
+npx vitest run tests/game-logic.test.ts tests/component-integration.test.tsx --reporter=dot

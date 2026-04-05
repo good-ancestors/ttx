@@ -30,10 +30,10 @@ describe("Game Creation", () => {
     expect(tables).toHaveLength(17);
   });
 
-  it("all tables should start as AI-controlled", async () => {
+  it("all tables should start as NPC-controlled", async () => {
     const tables = await convex.query(api.tables.getByGame, { gameId });
     for (const table of tables) {
-      expect(table.controlMode).toBe("ai");
+      expect(table.controlMode).toBe("npc");
     }
   });
 
@@ -143,14 +143,14 @@ describe("Table Join Flow", () => {
     expect(table!.controlMode).toBe("human");
   });
 
-  it("disconnecting should switch back to AI", async () => {
+  it("disconnecting should switch back to NPC", async () => {
     await convex.mutation(api.tables.setConnected, {
       tableId,
       connected: false,
     });
     const table = await convex.query(api.tables.get, { tableId });
     expect(table!.connected).toBe(false);
-    expect(table!.controlMode).toBe("ai");
+    expect(table!.controlMode).toBe("npc");
   });
 });
 
@@ -477,7 +477,8 @@ describe("Proposals", () => {
       roundNumber: 1,
     });
     expect(proposals.length).toBeGreaterThanOrEqual(1);
-    expect(proposals[0].status).toBe("pending");
+    // NPC auto-responds immediately, so status may be accepted/declined rather than pending
+    expect(["pending", "accepted", "declined"]).toContain(proposals[0].status);
   });
 
   it("should list proposals for a specific role", async () => {

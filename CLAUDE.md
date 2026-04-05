@@ -22,12 +22,17 @@ npx convex dev          # Start Convex dev server (in one terminal)
 npm run dev             # Start Next.js dev server (in another terminal)
 ```
 
-## Verification (run all before committing)
+## Verification
 ```bash
+# Pre-commit hook runs these automatically:
 npx tsc --noEmit        # Type check (strict: noUnusedLocals, noUnusedParameters)
 npm run lint            # ESLint (includes react-compiler plugin)
 npm run lint:dead       # knip — dead files, exports, dependencies
-npm test                # vitest — 150 unit + component integration tests
+npm test                # Unit + component tests only (free, ~1s)
+
+# Run intentionally (costs Convex bandwidth, needs `npx convex dev`):
+npm run test:integration  # Convex integration tests
+npm run test:all          # Everything including integration
 ```
 
 ## Rules for AI agents
@@ -38,6 +43,15 @@ npm test                # vitest — 150 unit + component integration tests
 - Run `npm run lint:dead` (knip) after any refactor that moves/renames/deletes components
 - Prefer deleting code over commenting it out
 - If a function is unused, delete it — don't prefix with underscore
+
+## Cost-conscious testing
+- **Prefer unit tests** (`npm test`) over Convex integration tests — unit tests are free and instant
+- **Convex queries/mutations cost money** — each document read/write burns bandwidth. Don't create test games in loops.
+- **NPC mode is free** — uses pre-authored sample actions, zero LLM calls. Default for all tables.
+- **AI mode costs $0.02-0.05 per table** — only use when specifically testing LLM output quality
+- **Grading costs $0.10-0.30 per round** — test once, don't grade repeatedly
+- **Narrative costs $0.05-0.15** — test once per prompt change
+- See `E2E-TESTING.md` for detailed cost guidance and testing pyramid
 
 <!-- convex-ai-start -->
 This project uses [Convex](https://convex.dev) as its backend.
