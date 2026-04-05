@@ -26,6 +26,7 @@ import {
   isSubmittedAction,
   computeLabGrowth,
   applyLabMerge,
+  stripLabForSnapshot,
 } from "@/lib/game-data";
 import { parseActionsFromText } from "@/lib/hooks";
 
@@ -528,6 +529,29 @@ describe("computeLabGrowth", () => {
     const result = computeLabGrowth(labsWithNew, emptyAllocations, 1, 200);
     const newLab = result.find(l => l.name === "NewLab")!;
     expect(newLab.computeStock).toBeGreaterThan(5);
+  });
+
+  it("preserves spec through growth", () => {
+    const labsWithSpec = DEFAULT_LABS.map(l => ({ ...l }));
+    const result = computeLabGrowth(labsWithSpec, emptyAllocations, 1, 200);
+    for (const lab of result) {
+      const original = DEFAULT_LABS.find(l => l.name === lab.name)!;
+      expect(lab.spec).toBe(original.spec);
+    }
+  });
+});
+
+describe("stripLabForSnapshot", () => {
+  it("preserves spec field", () => {
+    const lab = { name: "Test", roleId: "test", computeStock: 10, rdMultiplier: 3, allocation: { users: 50, capability: 40, safety: 10 }, spec: "Follow instructions" };
+    const stripped = stripLabForSnapshot(lab);
+    expect(stripped.spec).toBe("Follow instructions");
+  });
+
+  it("handles undefined spec", () => {
+    const lab = { name: "Test", roleId: "test", computeStock: 10, rdMultiplier: 3, allocation: { users: 50, capability: 40, safety: 10 } };
+    const stripped = stripLabForSnapshot(lab);
+    expect(stripped.spec).toBeUndefined();
   });
 });
 
