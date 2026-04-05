@@ -85,7 +85,7 @@ export const create = mutation({
         roleName: role.name,
         joinCode: generateJoinCode(),
         connected: false,
-        controlMode: "ai",
+        controlMode: "npc",
         enabled,
         computeStock: ("startingComputeStock" in role ? role.startingComputeStock : undefined) as number | undefined,
       });
