@@ -1,10 +1,12 @@
 "use client";
 
-import { type Role } from "@/lib/game-data";
+import { type Role, hasCompute } from "@/lib/game-data";
 import { type ActionDraft } from "@/components/action-input";
 import { ActionInput } from "@/components/action-input";
 import { SubmittedActionCard } from "@/components/table/submitted-action-card";
+import { SendComputePanel } from "@/components/table/send-compute-panel";
 
+import type { Id } from "@convex/_generated/dataModel";
 import type { SampleAction } from "@/lib/sample-actions";
 import {
   Send,
@@ -21,6 +23,7 @@ interface TableSubmitProps {
     currentRound: number;
     phase: string;
   };
+  gameId: Id<"games">;
   role: Role;
   submittedActions: {
     text: string;
@@ -30,6 +33,8 @@ interface TableSubmitProps {
     actionStatus?: string;
   }[];
   isExpired?: boolean;
+  computeStock?: number;
+  computeRecipients?: { roleId: string; roleName: string }[];
   // Form state (local drafts — not yet submitted)
   actionDrafts: ActionDraft[];
   onActionDraftsChange: (drafts: ActionDraft[]) => void;
@@ -47,11 +52,14 @@ interface TableSubmitProps {
 
 export function TableSubmit({
   game,
+  gameId,
   role,
   submittedActions,
   actionDrafts,
   onActionDraftsChange,
   isExpired,
+  computeStock,
+  computeRecipients,
   enabledRoles,
   onSubmitAction,
   onEditAction,
@@ -106,6 +114,7 @@ export function TableSubmit({
             roleId={role.id}
             roleName={role.name}
             enabledRoles={enabledRoles}
+            computeRoles={hasCompute(role) && computeRecipients ? computeRecipients.map((r) => ({ id: r.roleId, name: r.roleName })) : undefined}
             isSubmitted={false}
             onSubmitAction={onSubmitAction}
           />
@@ -123,6 +132,19 @@ export function TableSubmit({
         <p className="text-xs text-viz-danger mt-2 text-center">
           {submitError}
         </p>
+      )}
+
+      {/* Send compute panel — visible to has-compute roles */}
+      {hasCompute(role) && computeStock != null && computeRecipients && computeRecipients.length > 0 && (
+        <div className="mt-4">
+          <SendComputePanel
+            gameId={gameId}
+            roleId={role.id}
+            computeStock={computeStock}
+            recipients={computeRecipients}
+            disabled={isExpired}
+          />
+        </div>
       )}
     </>
   );

@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import { ROLES, AI_SYSTEMS_ROLE_ID, isSubmittedAction } from "@/lib/game-data";
-import { ThumbsUp, ThumbsDown, EyeOff, Inbox, CheckCircle2, XCircle, MinusCircle } from "lucide-react";
+import { ThumbsUp, ThumbsDown, EyeOff, Inbox, CheckCircle2, XCircle, MinusCircle, Zap } from "lucide-react";
 
 // ─── Shared response card ───────────────────────────────────────────────────
 
@@ -76,7 +76,76 @@ function ActionResponseCard({
   );
 }
 
-// ─── Respond tab for regular players (endorsement requests) ─────────────────
+// ─── Compute request response card ─────────────────────────────────────────
+
+function ComputeResponseCard({
+  roleName,
+  roleColor,
+  actionText,
+  computeAmount,
+  response,
+  onAccept,
+  onDecline,
+  onClear,
+  disabled,
+}: {
+  roleName: string;
+  roleColor?: string;
+  actionText: string;
+  computeAmount: number;
+  response: "accept" | "decline" | null;
+  onAccept: () => void;
+  onDecline: () => void;
+  onClear?: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <div className="bg-white rounded-xl border border-[#FED7AA] p-4">
+      <div className="flex items-center gap-2 mb-2">
+        <div
+          className="w-2.5 h-2.5 rounded-full shrink-0"
+          style={{ backgroundColor: roleColor }}
+        />
+        <span className="text-sm font-bold text-text">{roleName}</span>
+        <span className="text-xs font-mono text-[#D97706] bg-[#FFF7ED] px-2 py-0.5 rounded-full flex items-center gap-1">
+          <Zap className="w-3 h-3" /> {computeAmount}u
+        </span>
+      </div>
+
+      <p className="text-sm text-text leading-relaxed mb-1">
+        requests {computeAmount}u of compute for:
+      </p>
+      <p className="text-sm text-text-muted leading-relaxed mb-3 italic">{actionText}</p>
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={response === "accept" && onClear ? onClear : onAccept}
+          disabled={disabled}
+          className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
+            response === "accept"
+              ? "bg-[#059669] text-white"
+              : "bg-[#ECFDF5] text-[#059669] hover:bg-[#D1FAE5]"
+          } disabled:opacity-50 disabled:cursor-default`}
+        >
+          <ThumbsUp className="w-4 h-4" /> Accept
+        </button>
+        <button
+          onClick={response === "decline" && onClear ? onClear : onDecline}
+          disabled={disabled}
+          className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
+            response === "decline"
+              ? "bg-[#DC2626] text-white"
+              : "bg-[#FEF2F2] text-[#DC2626] hover:bg-[#FECACA]"
+          } disabled:opacity-50 disabled:cursor-default`}
+        >
+          <ThumbsDown className="w-4 h-4" /> Decline
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Respond tab for regular players (endorsement + compute requests) ──────
 
 function EndorsementRespondTab({
   allRequests,
@@ -89,10 +158,15 @@ function EndorsementRespondTab({
 }) {
   const respondToProposal = useMutation(api.requests.respond);
 
-  const incoming = allRequests.filter((r) => r.toRoleId === roleId && r.requestType === "endorsement");
+  const endorsements = allRequests.filter((r) => r.toRoleId === roleId && r.requestType === "endorsement");
+  const computeRequests = allRequests.filter((r) => r.toRoleId === roleId && r.requestType === "compute");
+  const incoming = [...endorsements, ...computeRequests];
+
   // Changeable: answered at top, unanswered at bottom (near thumbs)
-  const answered = incoming.filter((r) => r.status !== "pending");
-  const unanswered = incoming.filter((r) => r.status === "pending");
+  const answeredEndorsements = endorsements.filter((r) => r.status !== "pending");
+  const unansweredEndorsements = endorsements.filter((r) => r.status === "pending");
+  const answeredCompute = computeRequests.filter((r) => r.status !== "pending");
+  const unansweredCompute = computeRequests.filter((r) => r.status === "pending");
 
   if (incoming.length === 0) {
     return (
@@ -105,22 +179,87 @@ function EndorsementRespondTab({
     );
   }
 
+  const hasAnswered = answeredEndorsements.length > 0 || answeredCompute.length > 0;
+  const hasUnanswered = unansweredEndorsements.length > 0 || unansweredCompute.length > 0;
+
   return (
     <div className="space-y-3">
       <p className="text-xs text-text-muted">
         {allowEdits
-          ? "Do you support or oppose these actions? You can change your response until submissions close."
+          ? "Respond to these requests. You can change your response until submissions close."
           : "Submissions are closed. Your responses are locked in below."}
       </p>
 
-      {answered.length > 0 && (
+      {/* Compute requests — shown first (higher urgency) */}
+      {(unansweredCompute.length > 0 || answeredCompute.length > 0) && (
+        <>
+          {unansweredCompute.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 text-text-muted">
+                <div className="flex-1 h-px bg-border" />
+                <span className="text-[11px] font-semibold uppercase tracking-wider flex items-center gap-1">
+                  <Zap className="w-3 h-3 text-[#D97706]" /> Compute requests
+                </span>
+                <div className="flex-1 h-px bg-border" />
+              </div>
+              {unansweredCompute.map((req) => {
+                const fromRole = ROLES.find((r) => r.id === req.fromRoleId);
+                return (
+                  <ComputeResponseCard
+                    key={req._id}
+                    roleName={req.fromRoleName}
+                    roleColor={fromRole?.color}
+                    actionText={req.actionText}
+                    computeAmount={req.computeAmount ?? 0}
+                    response={null}
+                    onAccept={() =>
+                      void respondToProposal({ proposalId: req._id, status: "accepted" })
+                    }
+                    onDecline={() =>
+                      void respondToProposal({ proposalId: req._id, status: "declined" })
+                    }
+                    disabled={!allowEdits}
+                  />
+                );
+              })}
+            </>
+          )}
+
+          {answeredCompute.map((req) => {
+            const fromRole = ROLES.find((r) => r.id === req.fromRoleId);
+            return (
+              <ComputeResponseCard
+                key={req._id}
+                roleName={req.fromRoleName}
+                roleColor={fromRole?.color}
+                actionText={req.actionText}
+                computeAmount={req.computeAmount ?? 0}
+                response={req.status === "accepted" ? "accept" : "decline"}
+                onAccept={() =>
+                  void respondToProposal({ proposalId: req._id, status: "accepted" })
+                }
+                onDecline={() =>
+                  void respondToProposal({ proposalId: req._id, status: "declined" })
+                }
+                onClear={() =>
+                  void respondToProposal({ proposalId: req._id, status: "pending" })
+                }
+                disabled={!allowEdits}
+              />
+            );
+          })}
+        </>
+      )}
+
+      {/* Endorsement requests */}
+      {hasAnswered && answeredEndorsements.length > 0 && (
         <>
           <div className="flex items-center gap-2 text-text-muted">
             <div className="flex-1 h-px bg-border" />
             <span className="text-[11px] font-semibold uppercase tracking-wider">Responded</span>
             <div className="flex-1 h-px bg-border" />
           </div>
-          {answered.map((req) => {
+          {answeredEndorsements.map((req) => {
             const fromRole = ROLES.find((r) => r.id === req.fromRoleId);
             return (
               <ActionResponseCard
@@ -145,14 +284,14 @@ function EndorsementRespondTab({
         </>
       )}
 
-      {unanswered.length > 0 && (
+      {hasUnanswered && unansweredEndorsements.length > 0 && (
         <>
           <div className="flex items-center gap-2 text-text-muted">
             <div className="flex-1 h-px bg-border" />
             <span className="text-[11px] font-semibold uppercase tracking-wider">Awaiting your response</span>
             <div className="flex-1 h-px bg-border" />
           </div>
-          {unanswered.map((req) => {
+          {unansweredEndorsements.map((req) => {
             const fromRole = ROLES.find((r) => r.id === req.fromRoleId);
             return (
               <ActionResponseCard

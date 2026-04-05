@@ -2,16 +2,22 @@
 
 import { useState } from "react";
 import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
-import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send } from "lucide-react";
+import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send, Zap } from "lucide-react";
 
 
 export type PriorityLevel = "low" | "medium" | "high";
+
+export interface ComputeTarget {
+  roleId: string;
+  amount: number;
+}
 
 export interface ActionDraft {
   text: string;
   priority: PriorityLevel;
   secret: boolean;
   endorseTargets: string[]; // roleIds
+  computeTargets: ComputeTarget[];
 }
 
 /** Assign priorities using the auto-decay table based on position order. */
@@ -29,7 +35,7 @@ export function normaliseActions(actions: ActionDraft[]): { text: string; priori
 }
 
 function emptyAction(): ActionDraft {
-  return { text: "", priority: "medium", secret: false, endorseTargets: [] };
+  return { text: "", priority: "medium", secret: false, endorseTargets: [], computeTargets: [] };
 }
 
 interface Props {
@@ -38,11 +44,13 @@ interface Props {
   roleId: string;
   roleName: string;
   enabledRoles?: { id: string; name: string }[];
+  /** Roles that can be asked for compute (has-compute tag, excluding self) */
+  computeRoles?: { id: string; name: string }[];
   isSubmitted: boolean;
   onSubmitAction?: (index: number) => void;
 }
 
-export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitted, onSubmitAction }: Props) {
+export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRoles, isSubmitted, onSubmitAction }: Props) {
   // Filter out own role and AI Systems (AI Systems uses influence, not endorsements)
   const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId))
     .filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId && r.id !== AI_SYSTEMS_ROLE_ID : true);
@@ -107,6 +115,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, isSubmitt
               onChange(next);
             } : undefined}
             otherRoles={otherRoles}
+            computeRoles={computeRoles}
             isSubmitted={isSubmitted}
             canRemove={actions.length > 1 || action.text.trim() !== ""}
             onAddNext={actions.length < 5 && !isSubmitted ? addAction : undefined}
@@ -138,6 +147,7 @@ function ActionCard({
   onMoveUp,
   onMoveDown,
   otherRoles,
+  computeRoles,
   isSubmitted,
   canRemove,
   onAddNext,
@@ -152,12 +162,14 @@ function ActionCard({
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   otherRoles: { id: string; name: string }[];
+  computeRoles?: { id: string; name: string }[];
   isSubmitted: boolean;
   canRemove: boolean;
   onAddNext?: () => void;
   onSubmit?: () => void;
 }) {
   const [showEndorse, setShowEndorse] = useState(false);
+  const [showComputeRequest, setShowComputeRequest] = useState(false);
 
   // Suggest endorsement targets based on action text keywords
   const activeRoleIds = otherRoles.map((r) => r.id);
@@ -219,7 +231,7 @@ function ActionCard({
 
           {/* Endorsement toggle */}
           <button
-            onClick={() => setShowEndorse(!showEndorse)}
+            onClick={() => { setShowEndorse(!showEndorse); setShowComputeRequest(false); }}
             disabled={isSubmitted}
             aria-label="Request support from other players"
             aria-expanded={showEndorse}
@@ -234,6 +246,26 @@ function ActionCard({
               Support{action.endorseTargets.length > 0 ? ` (${action.endorseTargets.length})` : ""}
             </span>
           </button>
+
+          {/* Compute request toggle — only for has-compute roles with targets */}
+          {computeRoles && computeRoles.length > 0 && (
+            <button
+              onClick={() => { setShowComputeRequest(!showComputeRequest); setShowEndorse(false); }}
+              disabled={isSubmitted}
+              aria-label="Request compute from other players"
+              aria-expanded={showComputeRequest}
+              className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                action.computeTargets.length > 0
+                  ? "bg-[#FFF7ED] text-[#D97706]"
+                  : "text-text-light hover:text-text-muted hover:bg-warm-gray"
+              }`}
+            >
+              <Zap className="w-4 h-4" />
+              <span className="text-xs font-medium">
+                Compute{action.computeTargets.length > 0 ? ` (${action.computeTargets.length})` : ""}
+              </span>
+            </button>
+          )}
 
           {/* Spacer + submit + remove */}
           <div className="flex-1" />
@@ -264,6 +296,15 @@ function ActionCard({
           otherRoles={otherRoles}
           onUpdate={onUpdate}
           onClose={() => setShowEndorse(false)}
+        />
+      )}
+
+      {showComputeRequest && !isSubmitted && computeRoles && computeRoles.length > 0 && (
+        <ComputeRequestPicker
+          action={action}
+          computeRoles={computeRoles}
+          onUpdate={onUpdate}
+          onClose={() => setShowComputeRequest(false)}
         />
       )}
 
@@ -346,6 +387,101 @@ function EndorsementPicker({
           className="mt-1.5 text-[11px] text-text-muted hover:text-text flex items-center gap-1"
         >
           <X className="w-3 h-3" /> Clear all and unlock text
+        </button>
+      )}
+    </div>
+  );
+}
+
+function ComputeRequestPicker({
+  action,
+  computeRoles,
+  onUpdate,
+  onClose,
+}: {
+  action: ActionDraft;
+  computeRoles: { id: string; name: string }[];
+  onUpdate: (patch: Partial<ActionDraft>) => void;
+  onClose: () => void;
+}) {
+  const [selectedRole, setSelectedRole] = useState("");
+  const [amount, setAmount] = useState(1);
+
+  const addTarget = () => {
+    if (!selectedRole || amount <= 0) return;
+    // Replace existing target for same role, or add new
+    const existing = action.computeTargets.filter((t) => t.roleId !== selectedRole);
+    onUpdate({ computeTargets: [...existing, { roleId: selectedRole, amount }] });
+    setSelectedRole("");
+    setAmount(1);
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border">
+      <p className="text-[11px] text-text-muted mb-2">Request compute from:</p>
+
+      {/* Existing targets */}
+      {action.computeTargets.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {action.computeTargets.map((target) => {
+            const role = computeRoles.find((r) => r.id === target.roleId);
+            return (
+              <span
+                key={target.roleId}
+                className="text-xs px-2.5 py-1.5 rounded-full font-medium bg-[#D97706] text-white flex items-center gap-1"
+              >
+                <Zap className="w-3 h-3" />
+                {role?.name ?? target.roleId}: {target.amount}u
+                <button
+                  onClick={() => onUpdate({ computeTargets: action.computeTargets.filter((t) => t.roleId !== target.roleId) })}
+                  className="ml-0.5 hover:bg-white/20 rounded-full p-0.5"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add new target */}
+      <div className="flex items-center gap-2">
+        <select
+          value={selectedRole}
+          onChange={(e) => setSelectedRole(e.target.value)}
+          className="flex-1 min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text"
+        >
+          <option value="">Choose player...</option>
+          {computeRoles
+            .filter((r) => !action.computeTargets.some((t) => t.roleId === r.id))
+            .map((r) => (
+              <option key={r.id} value={r.id}>{r.name}</option>
+            ))}
+        </select>
+        <input
+          type="number"
+          min={1}
+          max={10}
+          value={amount}
+          onChange={(e) => setAmount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+          className="w-16 min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text font-mono text-center"
+          placeholder="u"
+        />
+        <button
+          onClick={addTarget}
+          disabled={!selectedRole}
+          className="min-h-[44px] px-3 rounded-lg text-xs font-bold text-white bg-[#D97706] hover:bg-[#B45309] transition-colors disabled:opacity-50 disabled:cursor-default"
+        >
+          Add
+        </button>
+      </div>
+
+      {action.computeTargets.length > 0 && (
+        <button
+          onClick={() => { onUpdate({ computeTargets: [] }); onClose(); }}
+          className="mt-1.5 text-[11px] text-text-muted hover:text-text flex items-center gap-1"
+        >
+          <X className="w-3 h-3" /> Clear all
         </button>
       )}
     </div>

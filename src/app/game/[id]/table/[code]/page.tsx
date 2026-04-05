@@ -206,6 +206,17 @@ export default function TablePlayerPage({
       .map((t) => ({ id: t.roleId, name: t.roleName })),
     [allTables, table?.roleId]
   );
+  // Compute recipients: other enabled roles with has-compute or lab-ceo tags (for direct transfers)
+  const computeRecipients = useMemo(() =>
+    (allTables ?? [])
+      .filter((t) => {
+        if (t.roleId === table?.roleId) return false;
+        const r = ROLES.find((entry) => entry.id === t.roleId);
+        return r && (r.tags.includes("has-compute") || r.tags.includes("lab-ceo"));
+      })
+      .map((t) => ({ roleId: t.roleId, roleName: t.roleName })),
+    [allTables, table?.roleId]
+  );
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
   const phase = game?.phase ?? "discuss";
   const isAiSystem = role?.tags.includes("ai-system") ?? false;
@@ -294,10 +305,10 @@ export default function TablePlayerPage({
       if (draft.parsedActions?.length > 0) {
         setActionDrafts(draft.parsedActions.map((a: { text: string; priority: number; secret?: boolean }) => ({
           text: a.text, priority: a.priority >= 4 ? "high" as const : a.priority >= 2 ? "medium" as const : "low" as const,
-          secret: !!a.secret, endorseTargets: [],
+          secret: !!a.secret, endorseTargets: [], computeTargets: [],
         })));
       } else if (draft.freeText?.trim()) {
-        setActionDrafts([{ text: draft.freeText, priority: "medium" as const, secret: false, endorseTargets: [] }]);
+        setActionDrafts([{ text: draft.freeText, priority: "medium" as const, secret: false, endorseTargets: [], computeTargets: [] }]);
       }
       if (draft.computeAllocation) setComputeAllocation(draft.computeAllocation);
       if (draft.artifact) setArtifact(draft.artifact);
@@ -423,6 +434,7 @@ export default function TablePlayerPage({
         priority: suggestion.priority,
         secret: suggestion.secret,
         endorseTargets: [],
+        computeTargets: [],
       };
       const emptyIdx = prev.findIndex((a) => !a.text.trim());
       if (emptyIdx >= 0) {
@@ -486,6 +498,23 @@ export default function TablePlayerPage({
           });
         }
       }
+      // Send compute requests
+      for (const target of draft.computeTargets) {
+        const targetRole = (allTables ?? []).find((t) => t.roleId === target.roleId);
+        if (targetRole) {
+          void sendRequest({
+            gameId,
+            roundNumber: game.currentRound,
+            fromRoleId: role.id,
+            fromRoleName: role.name,
+            toRoleId: target.roleId,
+            toRoleName: targetRole.roleName,
+            actionText: draft.text.trim(),
+            requestType: "compute" as const,
+            computeAmount: target.amount,
+          });
+        }
+      }
     } catch (err) {
       setSubmitError(`Failed to submit action: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
@@ -501,7 +530,7 @@ export default function TablePlayerPage({
       await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex });
       setActionDrafts((prev) => [
         ...prev.filter((a) => a.text.trim()),
-        { text: action.text, priority: "medium" as const, secret: !!action.secret, endorseTargets: [] },
+        { text: action.text, priority: "medium" as const, secret: !!action.secret, endorseTargets: [], computeTargets: [] },
       ]);
     } catch (err) {
       setSubmitError(`Failed to edit: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -718,9 +747,12 @@ export default function TablePlayerPage({
               {activeTab === "actions" && (
                 <TableSubmit
                   game={game}
+                  gameId={gameId}
                   role={role}
                   submittedActions={submission?.actions ?? []}
                   isExpired={isExpired}
+                  computeStock={table.computeStock ?? undefined}
+                  computeRecipients={computeRecipients}
                   actionDrafts={actionDrafts}
                   onActionDraftsChange={setActionDrafts}
                   enabledRoles={enabledRoles}

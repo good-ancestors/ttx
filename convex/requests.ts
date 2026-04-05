@@ -91,6 +91,52 @@ async function findOrUpsertRequest(
   return await ctx.db.insert("requests", { ...args, status: "pending" });
 }
 
+export const directTransfer = mutation({
+  args: {
+    gameId: v.id("games"),
+    fromRoleId: v.string(),
+    toRoleId: v.string(),
+    amount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const game = await assertPhase(ctx, args.gameId, ["submit"], "direct transfer");
+    assertSubmitWindowOpen(game);
+
+    if (args.amount <= 0) {
+      throw new Error("Transfer amount must be positive");
+    }
+    if (args.fromRoleId === args.toRoleId) {
+      throw new Error("Cannot transfer compute to yourself");
+    }
+
+    // Validate sender has enough compute
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const senderTable = tables.find((t) => t.roleId === args.fromRoleId && t.enabled);
+    if (!senderTable) {
+      throw new Error("Sender role not found or not enabled");
+    }
+    const available = senderTable.computeStock ?? 0;
+    if (available < args.amount) {
+      throw new Error(`Insufficient compute: have ${available}u, tried to send ${args.amount}u`);
+    }
+
+    // Validate recipient exists and is enabled
+    const recipientTable = tables.find((t) => t.roleId === args.toRoleId && t.enabled);
+    if (!recipientTable) {
+      throw new Error("Recipient role not found or not enabled");
+    }
+
+    await transferCompute(ctx.db, args.gameId, args.fromRoleId, args.toRoleId, args.amount);
+    await logEvent(ctx, args.gameId, "compute_direct_transfer", args.fromRoleId, {
+      toRoleId: args.toRoleId,
+      amount: args.amount,
+    });
+  },
+});
+
 export const getByGameAndRound = query({
   args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
