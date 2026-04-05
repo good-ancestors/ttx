@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { logEvent, assertFacilitator } from "./events";
+import { ROLES } from "./gameData";
 
 export const getByGame = query({
   args: { gameId: v.id("games") },
@@ -30,6 +31,42 @@ export const getEnabledRoleNames = query({
         roleId: t.roleId,
         roleName: t.roleName,
       }));
+  },
+});
+
+// Lightweight query returning compute balances visible to all players.
+// Replicates the physical game where players could see everyone's compute tokens.
+const HAS_COMPUTE_ROLE_IDS: Set<string> = new Set(
+  ROLES.filter((r) => (r.tags as readonly string[]).includes("has-compute")).map((r) => r.id),
+);
+
+export const getComputeOverview = query({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    const [tables, game] = await Promise.all([
+      ctx.db
+        .query("tables")
+        .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+        .collect(),
+      ctx.db.get(args.gameId),
+    ]);
+
+    const roles = tables
+      .filter((t) => t.enabled && HAS_COMPUTE_ROLE_IDS.has(t.roleId))
+      .map((t) => ({
+        roleId: t.roleId,
+        roleName: t.roleName,
+        computeStock: t.computeStock ?? 0,
+      }));
+
+    const labs = (game?.labs ?? []).map((l) => ({
+      name: l.name,
+      computeStock: l.computeStock,
+      rdMultiplier: l.rdMultiplier,
+      allocation: l.allocation,
+    }));
+
+    return { roles, labs };
   },
 });
 

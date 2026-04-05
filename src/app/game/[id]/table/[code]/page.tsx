@@ -4,7 +4,7 @@ import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, getAiInfluencePower, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL } from "@/lib/game-data";
+import { ROLES, isLabCeo, hasCompute, getAiInfluencePower, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
 // Lab allocation read-only moved to Lab tab for safety leads
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
@@ -146,6 +146,10 @@ export default function TablePlayerPage({
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
   // Lightweight query — only enabled tables' roleId/roleName (for endorsement targets)
   const allTables = useQuery(api.tables.getEnabledRoleNames, isVisible ? { gameId } : "skip");
+  // Compute overview — visible to all players during gameplay (replicates physical compute tokens)
+  const computeOverview = useQuery(api.tables.getComputeOverview,
+    isVisible && game?.status === "playing" ? { gameId } : "skip"
+  );
   // Requests only needed during submit phase (endorsement tracking + cleanup)
   const allRequests = useQuery(api.requests.getByGameAndRound,
     isVisible && game?.status === "playing"
@@ -579,6 +583,11 @@ export default function TablePlayerPage({
               <span className="text-[15px] font-bold text-text">{role.name}</span>
             </div>
             <div className="flex items-center gap-3">
+              {hasCompute(role) && table.computeStock != null && (
+                <span className="text-xs font-mono text-text-muted flex items-center gap-1">
+                  <Zap className="w-3.5 h-3.5" aria-hidden="true" /> {table.computeStock}u
+                </span>
+              )}
               {game.phaseEndsAt && (
                 <span
                   className={`text-xs font-mono flex items-center gap-1 ${isUrgent ? "text-viz-danger animate-pulse" : "text-text-muted"}`}
@@ -652,6 +661,8 @@ export default function TablePlayerPage({
                   roundLabel={round?.label ?? DEFAULT_ROUND_LABEL}
                   submissionsOpen={false}
                   labs={game.labs}
+                  computeOverview={computeOverview ?? undefined}
+                  gameStatus={game.status}
                 />
               )}
               {activeTab === "actions" && (
@@ -699,6 +710,8 @@ export default function TablePlayerPage({
                   roundLabel={round?.label ?? DEFAULT_ROUND_LABEL}
                   submissionsOpen={true}
                   labs={game.labs}
+                  computeOverview={computeOverview ?? undefined}
+                  gameStatus={game.status}
                 />
               )}
 

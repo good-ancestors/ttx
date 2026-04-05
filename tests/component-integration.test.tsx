@@ -511,7 +511,7 @@ describe("BriefTab", () => {
         handoutData={null}
         aiDisposition={undefined}
         roundNarrative={undefined}
-        roundLabel="Q1 2028"
+        roundLabel="Q1"
         submissionsOpen={true}
       />,
     );
@@ -527,7 +527,7 @@ describe("BriefTab", () => {
         handoutData={null}
         aiDisposition={undefined}
         roundNarrative="The world changed dramatically."
-        roundLabel="Q2 2028"
+        roundLabel="Q2"
         submissionsOpen={true}
       />,
     );
@@ -551,7 +551,7 @@ describe("BriefTab", () => {
         handoutData={null}
         aiDisposition={undefined}
         roundNarrative={undefined}
-        roundLabel="Q1 2028"
+        roundLabel="Q1"
         submissionsOpen={true}
       />,
     );
@@ -573,7 +573,7 @@ describe("BriefTab", () => {
         handoutData={null}
         aiDisposition="the-spec"
         roundNarrative={undefined}
-        roundLabel="Q1 2028"
+        roundLabel="Q1"
         submissionsOpen={true}
       />,
     );
@@ -596,7 +596,7 @@ describe("BriefTab", () => {
         handoutData={null}
         aiDisposition={undefined}
         roundNarrative={undefined}
-        roundLabel="Q1 2028"
+        roundLabel="Q1"
         submissionsOpen={true}
       />,
     );

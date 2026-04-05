@@ -27,10 +27,10 @@ export const ROLES = [
 export const STARTING_SCENARIO = "It's January 2028. OpenBrain has developed Agent-2, a weak AGI that accelerates AI R&D by 3×, with autonomous cyber and CBRN agent capabilities. Media reports unconfirmed rumours that China has stolen the Agent-2 model weights — DeepCent is closing the gap suspiciously fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. There is no major US AI legislation, but the EU AI Act is in force and Australia has passed an effective AI Act. The race is on.";
 
 export const ROUND_CONFIGS = [
-  { number: 1, label: "Q1 2028" },
-  { number: 2, label: "Q2–Q3 2028" },
-  { number: 3, label: "Q3–Q4 2028" },
-  { number: 4, label: "Oct–Dec 2028" },
+  { number: 1, label: "Q1" },
+  { number: 2, label: "Q2" },
+  { number: 3, label: "Q3" },
+  { number: 4, label: "Q4" },
 ] as const;
 
 export const DEFAULT_WORLD_STATE = {

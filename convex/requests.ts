@@ -5,7 +5,8 @@ import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { logEvent, assertPhase, assertSubmitWindowOpen } from "./events";
 
-/** Transfer compute between two roles' tables. Positive amount = giver→requester, negative = reverse. */
+/** Transfer compute between two roles. Updates both table.computeStock AND game.labs[].computeStock
+ *  when a party is a lab CEO (so loaned compute feeds into R&D growth). */
 async function transferCompute(
   db: DatabaseWriter,
   gameId: Id<"games">,
@@ -13,6 +14,7 @@ async function transferCompute(
   requesterRoleId: string,
   amount: number,
 ) {
+  // Update table-level compute (non-lab personal balances)
   const tables = await db
     .query("tables")
     .withIndex("by_game", (q) => q.eq("gameId", gameId))
@@ -28,6 +30,25 @@ async function transferCompute(
     await db.patch(requesterTable._id, {
       computeStock: Math.max(0, (requesterTable.computeStock ?? 0) + amount),
     });
+  }
+
+  // Also update game.labs[].computeStock when a party is a lab CEO.
+  // This ensures loaned compute feeds into the R&D growth formula.
+  const game = await db.get(gameId);
+  if (!game) return;
+  let labsChanged = false;
+  const updatedLabs = game.labs.map((lab) => {
+    let delta = 0;
+    if (lab.roleId === requesterRoleId) delta += amount;
+    if (lab.roleId === giverRoleId) delta -= amount;
+    if (delta !== 0) {
+      labsChanged = true;
+      return { ...lab, computeStock: Math.max(0, lab.computeStock + delta) };
+    }
+    return lab;
+  });
+  if (labsChanged) {
+    await db.patch(gameId, { labs: updatedLabs });
   }
 }
 

@@ -5,6 +5,16 @@ import { type Role, isLabCeo, hasCompute, getDisposition, STARTING_SCENARIO } fr
 import { DispositionBadge } from "@/components/table/disposition-badge";
 import { ChevronDown, ChevronUp, Zap, Vote, FlaskConical, MessageSquare, Send, Dices, BookText } from "lucide-react";
 
+interface ComputeOverview {
+  roles: { roleId: string; roleName: string; computeStock: number }[];
+  labs: {
+    name: string;
+    computeStock: number;
+    rdMultiplier: number;
+    allocation: { users: number; capability: number; safety: number };
+  }[];
+}
+
 interface BriefTabProps {
   role: Role;
   handoutData: Record<string, string> | null;
@@ -13,6 +23,8 @@ interface BriefTabProps {
   roundLabel: string;
   submissionsOpen: boolean;
   labs?: { name: string; spec?: string }[];
+  computeOverview?: ComputeOverview;
+  gameStatus?: string;
 }
 
 export function BriefTab({
@@ -23,6 +35,8 @@ export function BriefTab({
   roundLabel,
   submissionsOpen,
   labs,
+  computeOverview,
+  gameStatus,
 }: BriefTabProps) {
   const [fullBriefOpen, setFullBriefOpen] = useState(false);
   const disposition = aiDisposition ? getDisposition(aiDisposition) : null;
@@ -110,6 +124,11 @@ export function BriefTab({
         </ScenarioCard>
       )}
 
+      {/* ─── Compute Resources ─── */}
+      {gameStatus === "playing" && computeOverview && (
+        <ComputeOverviewCard computeOverview={computeOverview} currentRoleId={role.id} />
+      )}
+
       {/* ─── How to Play ─── */}
       <div className="bg-[#EFF6FF] rounded-xl p-5 border border-[#BFDBFE]">
         <h2 className="text-sm font-bold text-[#1D4ED8] mb-3">How to Play</h2>
@@ -179,6 +198,71 @@ export function BriefTab({
               When the facilitator opens submissions, the <span className="font-bold">Actions</span> tab will activate.
             </p>
           </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ComputeOverviewCard({ computeOverview, currentRoleId }: { computeOverview: ComputeOverview; currentRoleId: string }) {
+  const { labs, roles } = computeOverview;
+  // Non-lab compute holders: exclude lab CEO roles (whose roleId matches a lab name pattern)
+  const nonLabRoles = roles.filter((r) => {
+    return !labs.some((l) => l.name.toLowerCase() === r.roleId.replace(/-ceo$/, ""));
+  });
+
+  if (labs.length === 0 && nonLabRoles.length === 0) return null;
+
+  return (
+    <div className="bg-[#F5F3FF] rounded-xl p-4 border border-[#DDD6FE]">
+      <div className="flex items-center gap-2 mb-3">
+        <Zap className="w-4 h-4 text-[#7C3AED]" />
+        <span className="text-sm font-bold text-[#5B21B6]">Compute Resources</span>
+      </div>
+
+      {/* Labs */}
+      {labs.length > 0 && (
+        <div className="space-y-2 mb-3">
+          <span className="text-xs font-bold text-[#6D28D9] uppercase tracking-wider">Labs</span>
+          {labs.map((lab) => (
+            <div key={lab.name} className="bg-white/60 rounded-lg p-3 border border-[#DDD6FE]/50">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-bold text-[#5B21B6]">{lab.name}</span>
+                <span className="text-xs font-mono text-[#7C3AED] flex items-center gap-1">
+                  <Zap className="w-3 h-3" /> {lab.computeStock}u
+                </span>
+              </div>
+              <div className="flex items-center gap-3 text-xs text-[#6D28D9]">
+                <span>R&D {lab.rdMultiplier}x</span>
+                <span className="text-[#8B5CF6]">|</span>
+                <span>
+                  Cap {lab.allocation.capability}% / Safety {lab.allocation.safety}% / Users {lab.allocation.users}%
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Non-lab compute holders */}
+      {nonLabRoles.length > 0 && (
+        <div className="space-y-1">
+          <span className="text-xs font-bold text-[#6D28D9] uppercase tracking-wider">Other Compute Holders</span>
+          {nonLabRoles.map((r) => (
+            <div
+              key={r.roleId}
+              className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm ${
+                r.roleId === currentRoleId
+                  ? "bg-[#EDE9FE] border border-[#C4B5FD] font-bold text-[#5B21B6]"
+                  : "text-[#6D28D9]"
+              }`}
+            >
+              <span>{r.roleName}{r.roleId === currentRoleId ? " (you)" : ""}</span>
+              <span className="text-xs font-mono flex items-center gap-1">
+                <Zap className="w-3 h-3" /> {r.computeStock}u
+              </span>
+            </div>
+          ))}
         </div>
       )}
     </div>

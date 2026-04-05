@@ -77,10 +77,10 @@ DEFAULT TRAJECTORY (the AI 2027 baseline — what happens if players act like hi
 The AI 2027 scenario provides the default trajectory. Stay within 1-2 standard deviations of this baseline. If players make dramatically different choices from historical actors, explain why structural forces tend to push things back — but DO allow meaningfully different outcomes from meaningfully different choices.
 
 Default capability progression (can be accelerated or slowed by player actions):
-- Round 1 (Q1 2028): Leading lab at 3x, trailing labs at 1-2x. By end: leading lab approaches 8-10x.
-- Round 2 (Q2-Q3 2028): Leading lab at 10-50x. Agent-3 operational. Competition intensifies.
-- Round 3 (Q4 2028): Leading lab at 100-200x. Agent-4 territory. The alignment question becomes acute.
-- Round 4 (2029+): If race continues, leading lab approaches 1000x+. If slowdown, labs may deliberately cap at 10-30x for safer models.
+- Round 1 (Q1): Leading lab at 3x, trailing labs at 1-2x. By end: leading lab approaches 8-10x.
+- Round 2 (Q2): Leading lab at 10-50x. Agent-3 operational. Competition intensifies.
+- Round 3 (Q3): Leading lab at 100-200x. Agent-4 territory. The alignment question becomes acute.
+- Round 4 (Q4): If race continues, leading lab approaches 1000x+. If slowdown, labs may deliberately cap at 10-30x for safer models.
 
 Default political escalation: DPA consolidation on the table, international summits demand a pause, China considers Taiwan as compute leverage, crisis point forces a fork between race and slowdown.
 
