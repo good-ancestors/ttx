@@ -232,6 +232,9 @@ export default function SplashPage() {
             autoFocus
             spellCheck={false}
             autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             className="w-full py-3.5 px-6 bg-navy-light text-white text-center text-xl font-mono
                        font-bold rounded-lg border border-navy-light focus:border-text-light
                        outline-none tracking-widest placeholder:text-navy-muted placeholder:tracking-normal
@@ -282,7 +285,10 @@ export default function SplashPage() {
             placeholder="Password"
             autoFocus
             spellCheck={false}
-            autoComplete="off"
+            autoComplete="new-password"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             className="w-full py-3.5 px-6 bg-navy-light text-white text-center text-base font-mono
                        rounded-lg border border-navy-light focus:border-text-light
                        outline-none placeholder:text-navy-muted mb-3"

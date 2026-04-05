@@ -12,6 +12,10 @@ Manual testing guide for The Race to AGI tabletop exercise app. Covers full game
 - Use the **"Demo: Skip to AI Submissions"** button during discuss phase to auto-submit AI/NPC players with a 30s stagger
 - The copilot, resolve, narrate, and grading endpoints all make real API calls — test these, just don't run them repeatedly for no reason
 
+### Browser tab management
+
+**Important:** When testing with multiple tabs (facilitator + player), use **separate browser windows**, not tabs in the same window. Convex subscriptions pause on inactive tabs (via the `usePageVisibility` hook), so switching between tabs in the same window will cause stale data, missed phase transitions, and confusing behavior. Two windows side-by-side is the correct setup.
+
 ### Recommended minimal config
 
 | Table | Mode | Why |

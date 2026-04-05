@@ -20,16 +20,19 @@ export function useInAppBrowserDetection() {
 /**
  * Returns true when the browser tab is visible, false when hidden.
  * Used to gate expensive Convex subscriptions when the tab is in the background.
+ * In dev mode, always returns true to avoid issues with background tabs during testing.
  */
 export function usePageVisibility(): boolean {
+  const isDev = process.env.NODE_ENV === "development";
   const [visible, setVisible] = useState(() =>
-    typeof document === "undefined" || document.visibilityState === "visible"
+    isDev || typeof document === "undefined" || document.visibilityState === "visible"
   );
   useEffect(() => {
+    if (isDev) return; // Don't pause subscriptions in dev
     const handler = () => setVisible(document.visibilityState === "visible");
     document.addEventListener("visibilitychange", handler);
     return () => document.removeEventListener("visibilitychange", handler);
-  }, []);
+  }, [isDev]);
   return visible;
 }
 
