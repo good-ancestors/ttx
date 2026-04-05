@@ -33,7 +33,7 @@ function npcComputeTransfer(
   const enabledLabRoleIds = game.labs.map((l) => l.roleId).filter((id) => activeRoleIds.has(id));
   if (enabledLabRoleIds.length === 0) return undefined;
   const pct = 0.3 + Math.random() * 0.2; // 30-50%
-  const amount = Math.max(1, Math.min(Math.floor(stock / 2), Math.floor(stock * pct))); // Never more than half
+  const amount = Math.max(1, Math.floor(stock * pct));
 
   // Prefer the most-endorsed lab CEO from the NPC's sample actions
   let targetLabRoleId: string | undefined;
@@ -368,13 +368,10 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
               computeAllocation = { users: 34, capability: 33, safety: 33 };
             }
           }
-          // Filter and cap compute transfers (never more than half of available stock)
-          const availableStock = table.computeStock ?? 0;
-          const maxTransfer = Math.floor(availableStock / 2);
-          const computeTransfers = (output.computeTransfers ?? [])
-            .filter((t) => t.amount > 0 && t.toRoleId !== table.roleId && enabledTables.some((et) => et.roleId === t.toRoleId))
-            .map((t) => ({ ...t, amount: Math.min(t.amount, maxTransfer) }))
-            .filter((t) => t.amount > 0);
+          // Filter valid compute transfers (positive amount, valid target, not self)
+          const computeTransfers = (output.computeTransfers ?? []).filter(
+            (t) => t.amount > 0 && t.toRoleId !== table.roleId && enabledTables.some((et) => et.roleId === t.toRoleId)
+          );
 
           // Filter valid compute request hints (positive amount, valid target, not self)
           const computeRequestHints = (output.computeRequestHints ?? []).filter(
