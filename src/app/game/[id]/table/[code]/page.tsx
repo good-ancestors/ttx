@@ -515,7 +515,7 @@ export default function TablePlayerPage({
       await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex });
 
       // Restore endorsement/compute targets from existing requests
-      const actionRequests = sentRequestsByAction?.get(action.text) ?? [];
+      const actionRequests = sentRequestsByAction?.get(action.actionId ?? action.text) ?? [];
       const endorseTargets = actionRequests
         .filter((r) => r.requestType === "endorsement")
         .map((r) => {

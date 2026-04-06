@@ -140,8 +140,8 @@ Optionally, send 0-1 new requests to other enabled roles.`;
           if (existingPairs.has(pairKey) || existingPairs.has(reversePairKey)) continue;
 
           const targetRole = otherRoles.find((r) => r.id === nr.toRoleId);
-          // AI-proposed requests get a fresh ID — they describe new proposals, not existing actions
-          const actionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
+          const { generateActionId } = await import("./submissions");
+          const actionId = generateActionId();
           try {
             await ctx.runMutation(internal.requests.sendInternal, {
               gameId,

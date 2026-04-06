@@ -7,7 +7,7 @@ import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 
 const PRIORITY_HARD_CAP = 12;
 
-function generateActionId(): string {
+export function generateActionId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 

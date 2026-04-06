@@ -240,7 +240,8 @@ export const cancel = mutation({
       request.requestType === "compute" &&
       request.computeAmount
     ) {
-      await transferCompute(ctx.db, request.gameId, request.toRoleId, request.fromRoleId, -request.computeAmount);
+      // Reverse the transfer: swap giver and requester, positive amount
+      await transferCompute(ctx.db, request.gameId, request.fromRoleId, request.toRoleId, request.computeAmount);
     }
 
     await ctx.db.delete(args.requestId);
@@ -286,7 +287,8 @@ export const respond = mutation({
     ) {
       // If was accepted and now declining — reverse the transfer
       if (oldStatus === "accepted" && args.status === "declined") {
-        await transferCompute(ctx.db, proposal.gameId, proposal.toRoleId, proposal.fromRoleId, -proposal.computeAmount);
+        // Reverse the transfer: swap giver and requester, positive amount
+        await transferCompute(ctx.db, proposal.gameId, proposal.fromRoleId, proposal.toRoleId, proposal.computeAmount);
       }
 
       // If accepting (from pending or declined) — do the transfer

@@ -43,10 +43,9 @@ function TabPlaceholder({
 
 // ─── Lab helpers (used by submit and resolve) ────────────────────────────────
 
-type LabData = Lab;
 
 interface LabComputeSummaryProps {
-  lab: LabData;
+  lab: Lab;
   startingStock: number;
 }
 
@@ -66,7 +65,7 @@ function LabComputeSummary({ lab, startingStock }: LabComputeSummaryProps) {
   );
 }
 
-function ReadOnlyLabView({ lab, roleName }: { lab: LabData; roleName: string }) {
+function ReadOnlyLabView({ lab, roleName }: { lab: Lab; roleName: string }) {
   return (
     <>
       <LabSpecEditor
@@ -151,7 +150,7 @@ interface DiscussContentProps {
   handoutData: Record<string, string> | null;
   roundNarrative: string | undefined;
   roundLabel: string;
-  labs: LabData[];
+  labs: Lab[];
   computeOverview: { roles: { roleId: string; roleName: string; computeStock: number }[] } | undefined;
   gameStatus: string;
   hasLabAccess: boolean;
@@ -232,7 +231,7 @@ interface SubmitContentProps {
   handoutData: Record<string, string> | null;
   roundNarrative: string | undefined;
   roundLabel: string;
-  labs: LabData[];
+  labs: Lab[];
   computeOverview: { roles: { roleId: string; roleName: string; computeStock: number }[] } | undefined;
   gameStatus: string;
   // Actions tab
@@ -259,7 +258,7 @@ interface SubmitContentProps {
   // Lab tab
   controlsLab: boolean;
   hasLabAccess: boolean;
-  currentLab: LabData | undefined;
+  currentLab: Lab | undefined;
   startingStock: number;
   labSpec: string;
   onLabSpecChange: (spec: string) => void;
@@ -418,7 +417,7 @@ interface ResolveContentProps {
   isAiSystem: boolean;
   allRequests: Parameters<typeof RespondResultsTab>[0]["allRequests"];
   hasLabAccess: boolean;
-  currentLab: LabData | undefined;
+  currentLab: Lab | undefined;
   startingStock: number;
 }
 
@@ -491,11 +490,11 @@ interface PhaseContentProps {
   handoutData: Record<string, string> | null;
   roundNarrative: string | undefined;
   roundLabel: string;
-  labs: LabData[];
+  labs: Lab[];
   computeOverview: { roles: { roleId: string; roleName: string; computeStock: number }[] } | undefined;
   controlsLab: boolean;
   hasLabAccess: boolean;
-  currentLab: LabData | undefined;
+  currentLab: Lab | undefined;
   startingStock: number;
   // Submit-specific
   game: Parameters<typeof TableSubmit>[0]["game"];
