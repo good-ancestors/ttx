@@ -54,12 +54,7 @@ export const getCurrent = query({
     const game = await ctx.db.get(args.gameId);
     if (!game) return null;
 
-    const rounds = await ctx.db
-      .query("rounds")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-
-    const round = rounds.find((r) => r.number === game.currentRound);
+    const round = await findRound(ctx, args.gameId, game.currentRound);
     if (!round) return null;
 
     const { facilitatorNotes: _, summary, ...rest } = round;
