@@ -30,6 +30,7 @@ import {
   buildComputeHolders,
   calculateStartingCompute,
   COMPUTE_POOL_ELIGIBLE,
+  POOL_STARTING_STOCK,
   type ComputeHolder,
 } from "@/lib/game-data";
 import { parseActionsFromText } from "@/lib/hooks";
@@ -127,14 +128,9 @@ describe("Roles", () => {
     expect(ai.brief).toContain("ALL AI systems");
   });
 
-  it("has-compute roles should have startingComputeStock or be lab-ceo", () => {
-    for (const role of ROLES.filter(hasCompute)) {
-      if (isLabCeo(role)) {
-        // Lab CEOs get compute from DEFAULT_LABS, not startingComputeStock
-        continue;
-      }
-      expect(role.startingComputeStock).toBeDefined();
-      expect(role.startingComputeStock).toBeGreaterThan(0);
+  it("lab-ceo roles have has-compute tag", () => {
+    for (const role of ROLES.filter(isLabCeo)) {
+      expect(hasCompute(role)).toBe(true);
     }
   });
 });
@@ -479,12 +475,12 @@ describe("Compute Distribution", () => {
     }
   });
 
-  it("non-lab compute roles have startingComputeStock", () => {
-    const computeRoles = ROLES.filter(r => hasCompute(r) && !isLabCeo(r));
-    expect(computeRoles.length).toBeGreaterThan(0);
-    for (const role of computeRoles) {
-      expect((role as { startingComputeStock?: number }).startingComputeStock).toBeGreaterThan(0);
-    }
+  it("pool starting stock sums to 27u (80 total - 53 labs)", () => {
+    const labTotal = DEFAULT_LABS.reduce((s, l) => s + l.computeStock, 0);
+    expect(labTotal).toBe(53);
+    const poolTotal = Object.values(POOL_STARTING_STOCK).reduce((s, v) => s + v, 0);
+    expect(poolTotal).toBe(27);
+    expect(labTotal + poolTotal).toBe(80);
   });
 });
 
@@ -681,267 +677,120 @@ describe("Constants", () => {
 
 // ─── buildComputeHolders ────────────────────────────────────────────────────
 
+// buildComputeHolders is for NON-LAB holders only in the pipeline.
+// Labs are handled separately by computeLabGrowth.
 describe("buildComputeHolders", () => {
-  const baseLabs = [
-    { roleId: "openbrain-ceo", name: "OpenBrain", stockAtSubmitOpen: 22, stockAtResolve: 22 },
-    { roleId: "deepcent-ceo", name: "DeepCent", stockAtSubmitOpen: 17, stockAtResolve: 17 },
-    { roleId: "conscienta-ceo", name: "Conscienta", stockAtSubmitOpen: 14, stockAtResolve: 14 },
+  // Non-lab holders with pool-derived starting compute
+  const enabledRoleIds = new Set(["openbrain-ceo", "deepcent-ceo", "conscienta-ceo",
+    "ai-systems", "us-president", "eu-president", "australia-pm"]);
+  const nonLabHolders = [
+    { roleId: "us-president", name: "US President", stockAtSubmitOpen: 11, stockAtResolve: 11 },
+    { roleId: "eu-president", name: "EU President", stockAtSubmitOpen: 9, stockAtResolve: 9 },
+    { roleId: "australia-pm", name: "Australia PM", stockAtSubmitOpen: 7, stockAtResolve: 7 },
   ];
-  const baseGovs = [
-    { roleId: "us-president", name: "US President", stockAtSubmitOpen: 8, stockAtResolve: 8 },
-    { roleId: "china-president", name: "China President", stockAtSubmitOpen: 6, stockAtResolve: 6 },
-    { roleId: "australia-pm", name: "Australia PM", stockAtSubmitOpen: 4, stockAtResolve: 4 },
-  ];
-  const allHolders = [...baseLabs, ...baseGovs];
 
-  it("distributes new compute proportional to current stock", () => {
+  it("distributes new compute via DEFAULT_COMPUTE_SHARES pool splits", () => {
     const result = buildComputeHolders({
-      holders: allHolders,
+      holders: nonLabHolders,
       roundNumber: 1,
       narrativeAdjustments: [],
+      enabledRoleIds,
     });
-    // Total stock = 22+17+14+8+6+4 = 71, baseline = 31
-    const ob = result.find((h) => h.name === "OpenBrain")!;
+    // "Other US Labs" = 12.9% of 31 = 4u → all to US President
+    // "Rest of World" = 12.9% of 31 = 4u → split EU(5w) + Aus(4w)
     const us = result.find((h) => h.name === "US President")!;
-    // OpenBrain: 22/71 * 31 ≈ 9.6 → 10
-    expect(ob.produced).toBe(Math.round(31 * 22 / 71));
-    expect(ob.transferred).toBe(0);
-    expect(ob.adjustment).toBe(0);
-    expect(ob.stockAfter).toBe(22 + ob.produced);
-    // US President: 8/71 * 31 ≈ 3.5 → 3
-    expect(us.produced).toBe(Math.round(31 * 8 / 71));
-    expect(us.stockAfter).toBe(8 + us.produced);
+    expect(us.produced).toBe(4); // 12.9% of 31 = 4
+    expect(us.transferred).toBe(0);
+    expect(us.stockAfter).toBe(11 + 4);
+
+    const eu = result.find((h) => h.name === "EU President")!;
+    const aus = result.find((h) => h.name === "Australia PM")!;
+    expect(eu.produced + aus.produced).toBe(4); // 12.9% of 31 = 4 total
   });
 
   it("captures player transfers from submit-open to resolve-time diff", () => {
-    const holdersWithTransfer = allHolders.map((h) =>
-      h.roleId === "us-president"
-        ? { ...h, stockAtResolve: 5 }  // loaned 3u out
-        : h.roleId === "openbrain-ceo"
-          ? { ...h, stockAtResolve: 25 } // received 3u
-          : h
+    const holdersWithTransfer = nonLabHolders.map((h) =>
+      h.roleId === "us-president" ? { ...h, stockAtResolve: 8 } : h // sent 3u
     );
     const result = buildComputeHolders({
       holders: holdersWithTransfer,
       roundNumber: 1,
       narrativeAdjustments: [],
+      enabledRoleIds,
     });
     const us = result.find((h) => h.name === "US President")!;
-    const ob = result.find((h) => h.name === "OpenBrain")!;
     expect(us.transferred).toBe(-3);
-    expect(ob.transferred).toBe(3);
-    expect(us.stockBefore).toBe(8); // from submit-open, not resolve-time
+    expect(us.stockBefore).toBe(11);
   });
 
-  it("applies narrative adjustments (destruction)", () => {
+  it("applies narrative adjustments", () => {
     const result = buildComputeHolders({
-      holders: allHolders,
+      holders: nonLabHolders,
       roundNumber: 1,
       narrativeAdjustments: [
-        { name: "DeepCent", change: -5, reason: "US cyberattack on Tianwan CDZ" },
+        { name: "US President", change: -3, reason: "Cyberattack on US infrastructure" },
       ],
+      enabledRoleIds,
     });
-    const dc = result.find((h) => h.name === "DeepCent")!;
-    expect(dc.adjustment).toBe(-5);
-    expect(dc.adjustmentReason).toBe("US cyberattack on Tianwan CDZ");
-    expect(dc.stockAfter).toBe(17 + dc.produced - 5);
-  });
-
-  it("applies narrative adjustments to non-lab holders", () => {
-    const result = buildComputeHolders({
-      holders: allHolders,
-      roundNumber: 1,
-      narrativeAdjustments: [
-        { name: "China President", change: -4, reason: "Sanctions cut compute supply" },
-      ],
-    });
-    const china = result.find((h) => h.name === "China President")!;
-    expect(china.adjustment).toBe(-4);
-    expect(china.stockAfter).toBe(6 + china.produced - 4);
-  });
-
-  it("clamps stockAfter to 0 (no negative compute)", () => {
-    const result = buildComputeHolders({
-      holders: allHolders,
-      roundNumber: 1,
-      narrativeAdjustments: [
-        { name: "Australia PM", change: -100, reason: "Total infrastructure destruction" },
-      ],
-    });
-    const aus = result.find((h) => h.name === "Australia PM")!;
-    expect(aus.stockAfter).toBe(0);
-  });
-
-  it("uses share overrides when provided (e.g. DPA consolidation)", () => {
-    const result = buildComputeHolders({
-      holders: allHolders,
-      roundNumber: 1,
-      narrativeAdjustments: [],
-      shareOverrides: { "openbrain-ceo": 60 }, // DPA: 60% for OpenBrain
-    });
-    const ob = result.find((h) => h.name === "OpenBrain")!;
-    // 60% of 31 = 19u (overrides proportional share)
-    expect(ob.produced).toBe(Math.round(31 * 60 / 100));
-    // Others still get proportional share (no override)
     const us = result.find((h) => h.name === "US President")!;
-    expect(us.produced).toBe(Math.round(31 * 8 / 71));
+    expect(us.adjustment).toBe(-3);
+    expect(us.stockAfter).toBe(11 + us.produced - 3);
   });
 
-  it("share percentages sum to ~100% for holders with production", () => {
+  it("clamps stockAfter to 0", () => {
     const result = buildComputeHolders({
-      holders: allHolders,
+      holders: nonLabHolders,
+      roundNumber: 1,
+      narrativeAdjustments: [
+        { name: "Australia PM", change: -100, reason: "Total destruction" },
+      ],
+      enabledRoleIds,
+    });
+    expect(result.find((h) => h.name === "Australia PM")!.stockAfter).toBe(0);
+  });
+
+  it("uses share overrides when provided", () => {
+    const result = buildComputeHolders({
+      holders: nonLabHolders,
       roundNumber: 1,
       narrativeAdjustments: [],
+      enabledRoleIds,
+      shareOverrides: { "us-president": 30 },
     });
-    const totalSharePct = result.reduce((s, h) => s + h.sharePct, 0);
-    // Allow rounding variance of a few percent
-    expect(totalSharePct).toBeGreaterThanOrEqual(95);
-    expect(totalSharePct).toBeLessThanOrEqual(105);
+    const us = result.find((h) => h.name === "US President")!;
+    expect(us.produced).toBe(Math.round(31 * 30 / 100)); // 9u
   });
 
-  it("handles empty holders gracefully", () => {
+  it("handles empty holders", () => {
     const result = buildComputeHolders({
       holders: [],
       roundNumber: 1,
       narrativeAdjustments: [],
+      enabledRoleIds,
     });
     expect(result).toEqual([]);
   });
-
-  it("scenario: DPA consolidation + cyberattack", () => {
-    // Round 2: US uses DPA to redirect compute to OpenBrain (share override)
-    // China suffers cyberattack destroying 4u of strategic compute
-    // US President loans 5u to OpenBrain during submit phase
-    const holdersR2 = [
-      { roleId: "openbrain-ceo", name: "OpenBrain", stockAtSubmitOpen: 33, stockAtResolve: 38 }, // received 5u loan
-      { roleId: "deepcent-ceo", name: "DeepCent", stockAtSubmitOpen: 23, stockAtResolve: 23 },
-      { roleId: "conscienta-ceo", name: "Conscienta", stockAtSubmitOpen: 20, stockAtResolve: 20 },
-      { roleId: "us-president", name: "US President", stockAtSubmitOpen: 11, stockAtResolve: 6 }, // loaned 5u
-      { roleId: "china-president", name: "China President", stockAtSubmitOpen: 10, stockAtResolve: 10 },
-    ];
-    const result = buildComputeHolders({
-      holders: holdersR2,
-      roundNumber: 2,
-      narrativeAdjustments: [
-        { name: "China President", change: -4, reason: "US cyberattack on Tianwan CDZ" },
-      ],
-      shareOverrides: { "openbrain-ceo": 60 }, // DPA: 60% for OpenBrain
-    });
-
-    const ob = result.find((h) => h.name === "OpenBrain")!;
-    const china = result.find((h) => h.name === "China President")!;
-    const us = result.find((h) => h.name === "US President")!;
-
-    // OpenBrain: 60% of 35u baseline = 21u new, plus 5u transfer
-    expect(ob.produced).toBe(Math.round(35 * 60 / 100)); // share override
-    expect(ob.transferred).toBe(5);
-    expect(ob.stockAfter).toBe(38 + ob.produced);
-
-    // China: proportional growth, minus 4u cyberattack
-    expect(china.adjustment).toBe(-4);
-    expect(china.adjustmentReason).toBe("US cyberattack on Tianwan CDZ");
-    expect(china.stockAfter).toBe(10 + china.produced - 4);
-
-    // US President: proportional growth, lost 5u to loan
-    expect(us.transferred).toBe(-5);
-    expect(us.stockAfter).toBe(6 + us.produced);
-  });
-
-  it("scenario: lab merge (DeepCent absorbed into OpenBrain)", () => {
-    // After merge, DeepCent disappears from holder inputs entirely
-    // (the pipeline removes it from updatedLabs before calling buildComputeHolders)
-    const holdersPostMerge = [
-      { roleId: "openbrain-ceo", name: "OpenBrain", stockAtSubmitOpen: 33, stockAtResolve: 56 }, // absorbed DeepCent's 23u
-      { roleId: "conscienta-ceo", name: "Conscienta", stockAtSubmitOpen: 20, stockAtResolve: 20 },
-      { roleId: "us-president", name: "US President", stockAtSubmitOpen: 11, stockAtResolve: 11 },
-    ];
-    const result = buildComputeHolders({
-      holders: holdersPostMerge,
-      roundNumber: 2,
-      narrativeAdjustments: [],
-    });
-
-    // OpenBrain shows the merged compute as a transfer (56 - 33 = 23u received)
-    const ob = result.find((h) => h.name === "OpenBrain")!;
-    expect(ob.transferred).toBe(23);
-    expect(ob.stockBefore).toBe(33);
-    // After = resolve(56) + produced
-    expect(ob.stockAfter).toBe(56 + ob.produced);
-  });
-
-  it("handles combined transfers + narrative adjustments", () => {
-    // China President loans 3u to DeepCent, then cyberattack destroys 5u of DeepCent
-    const holdersWithTransfer = allHolders.map((h) =>
-      h.roleId === "china-president"
-        ? { ...h, stockAtResolve: 3 } // loaned 3u
-        : h.roleId === "deepcent-ceo"
-          ? { ...h, stockAtResolve: 20 } // received 3u
-          : h
-    );
-    const result = buildComputeHolders({
-      holders: holdersWithTransfer,
-      roundNumber: 1,
-      narrativeAdjustments: [
-        { name: "DeepCent", change: -5, reason: "cyberattack" },
-      ],
-    });
-    const dc = result.find((h) => h.name === "DeepCent")!;
-    expect(dc.stockBefore).toBe(17);     // at submit open
-    expect(dc.transferred).toBe(3);       // received loan
-    expect(dc.adjustment).toBe(-5);       // cyberattack
-    // stockAfter = stockAtResolve(20) + produced + adjustment(-5)
-    expect(dc.stockAfter).toBe(20 + dc.produced - 5);
-  });
-
-  it("all holders grow proportionally regardless of type", () => {
-    // Every holder gets the same growth rate — proportional to stock
-    const result = buildComputeHolders({
-      holders: allHolders,
-      roundNumber: 1,
-      narrativeAdjustments: [],
-    });
-    const totalStock = allHolders.reduce((s, h) => s + h.stockAtSubmitOpen, 0);
-    for (const holder of result) {
-      const expected = Math.round(31 * holder.stockBefore / totalStock);
-      expect(holder.produced).toBe(expected);
-    }
-  });
-
-  it("share overrides can be set for any holder (not just labs)", () => {
-    // Narrative says China controls Taiwan → China President gets 20% of new compute
-    const result = buildComputeHolders({
-      holders: allHolders,
-      roundNumber: 2,
-      narrativeAdjustments: [],
-      shareOverrides: { "china-president": 20 },
-    });
-    const china = result.find((h) => h.name === "China President")!;
-    expect(china.produced).toBe(Math.round(35 * 20 / 100)); // 7u
-  });
 });
 
+// Source spreadsheet model: 80u total, 5 entities, fixed pool starting stocks
 describe("calculateStartingCompute", () => {
-  it("includes lab starting stock from DEFAULT_LABS", () => {
+  it("labs get fixed starting stock from DEFAULT_LABS", () => {
     const enabled = new Set(["openbrain-ceo", "deepcent-ceo", "conscienta-ceo", "ai-systems"]);
     const result = calculateStartingCompute(enabled);
-    const ob = result.find((r) => r.roleId === "openbrain-ceo");
-    expect(ob).toBeDefined();
-    expect(ob!.computeStock).toBe(22);
+    expect(result.find((r) => r.roleId === "openbrain-ceo")!.computeStock).toBe(22);
+    expect(result.find((r) => r.roleId === "deepcent-ceo")!.computeStock).toBe(17);
+    expect(result.find((r) => r.roleId === "conscienta-ceo")!.computeStock).toBe(14);
   });
 
-  it("includes sovereign + pool compute for non-lab roles", () => {
+  it("US President gets all of 'Other US Labs' pool when sole eligible", () => {
     const enabled = new Set(["openbrain-ceo", "deepcent-ceo", "conscienta-ceo", "ai-systems", "us-president"]);
     const result = calculateStartingCompute(enabled);
     const us = result.find((r) => r.roleId === "us-president");
     expect(us).toBeDefined();
-    // US President: 8u sovereign + "Other US Labs" pool (sole eligible)
-    const otherUsPool = Math.round(31 * 12.9 / 100); // 4u
-    expect(us!.computeStock).toBe(8 + otherUsPool);
-    expect(us!.breakdown).toContain("sovereign");
-    expect(us!.breakdown).toContain("pool");
+    expect(us!.computeStock).toBe(11); // entire "Other US Labs" pool
   });
 
-  it("splits pool among multiple eligible enabled roles", () => {
+  it("splits pool among multiple eligible enabled roles by weight", () => {
     const enabled = new Set(["openbrain-ceo", "deepcent-ceo", "conscienta-ceo", "ai-systems",
       "eu-president", "australia-pm"]);
     const result = calculateStartingCompute(enabled);
@@ -949,26 +798,42 @@ describe("calculateStartingCompute", () => {
     const aus = result.find((r) => r.roleId === "australia-pm");
     expect(eu).toBeDefined();
     expect(aus).toBeDefined();
-    // "Rest of World" = 4u split between EU and Australia (aisi-network not enabled)
-    const rowPool = Math.round(31 * 12.9 / 100);
-    expect(eu!.computeStock + aus!.computeStock).toBe(
-      5 + 4 + rowPool // sovereign(5+4) + pool
-    );
+    // "Rest of World" = 16u split by weight: EU(5) + Aus(4) = 9 total weight
+    expect(eu!.computeStock + aus!.computeStock).toBe(16);
+    // EU gets more (higher weight)
+    expect(eu!.computeStock).toBeGreaterThan(aus!.computeStock);
   });
 
-  it("gives all pool to single eligible role when others disabled", () => {
-    const enabled = new Set(["openbrain-ceo", "deepcent-ceo", "conscienta-ceo", "ai-systems", "us-president"]);
+  it("total starting compute is always 80u when all pools assigned", () => {
+    const enabled = new Set(["openbrain-ceo", "deepcent-ceo", "conscienta-ceo", "ai-systems",
+      "us-president", "eu-president", "australia-pm", "aisi-network"]);
+    const result = calculateStartingCompute(enabled);
+    const total = result.reduce((s, r) => s + r.computeStock, 0);
+    expect(total).toBe(80);
+  });
+
+  it("China President gets no compute (influences DeepCent politically)", () => {
+    const enabled = new Set(["openbrain-ceo", "deepcent-ceo", "conscienta-ceo", "ai-systems",
+      "us-president", "china-president"]);
+    const result = calculateStartingCompute(enabled);
+    expect(result.find((r) => r.roleId === "china-president")).toBeUndefined();
+  });
+
+  it("roles with no pool eligibility get no starting compute", () => {
+    const enabled = new Set(["openbrain-ceo", "ai-systems", "safety-nonprofits", "pacific-islands"]);
+    const result = calculateStartingCompute(enabled);
+    expect(result.find((r) => r.roleId === "safety-nonprofits")).toBeUndefined();
+    expect(result.find((r) => r.roleId === "pacific-islands")).toBeUndefined();
+  });
+
+  it("US Congress shares 'Other US Labs' pool with US President", () => {
+    const enabled = new Set(["openbrain-ceo", "deepcent-ceo", "conscienta-ceo", "ai-systems",
+      "us-president", "us-congress"]);
     const result = calculateStartingCompute(enabled);
     const us = result.find((r) => r.roleId === "us-president")!;
-    // Only US President is eligible for "Other US Labs" — gets all of it
-    const pool = Math.round(31 * 12.9 / 100);
-    expect(us.computeStock).toBe(8 + pool);
-  });
-
-  it("excludes roles with no compute", () => {
-    const enabled = new Set(["openbrain-ceo", "ai-systems", "safety-nonprofits"]);
-    const result = calculateStartingCompute(enabled);
-    // safety-nonprofits has no startingComputeStock and no pool eligibility
-    expect(result.find((r) => r.roleId === "safety-nonprofits")).toBeUndefined();
+    const congress = result.find((r) => r.roleId === "us-congress")!;
+    // 11u split by weight: President(8) + Congress(3) = 11 total weight
+    expect(us.computeStock + congress.computeStock).toBe(11);
+    expect(us.computeStock).toBeGreaterThan(congress.computeStock);
   });
 });

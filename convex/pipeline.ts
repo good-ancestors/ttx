@@ -716,12 +716,14 @@ export const rollAndNarrate = internalAction({
           stockAtSubmitOpen: submitOpenByRole.get(rc.roleId) ?? rc.computeStock,
           stockAtResolve: rc.computeStock,
         }));
+      const enabledRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
       const nonLabResult = buildComputeHolders({
         holders: nonLabHolderInputs,
         roundNumber,
         narrativeAdjustments: computeModifiers
           .filter((m) => !updatedLabs.some((l) => l.name === m.labName))
           .map((m) => ({ name: m.labName, change: m.change, reason: m.reason })),
+        enabledRoleIds,
         shareOverrides: game.computeShareOverrides
           ? Object.fromEntries(Object.entries(game.computeShareOverrides))
           : undefined,

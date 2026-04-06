@@ -185,7 +185,7 @@ export const toggleEnabled = mutation({
     );
 
     // Only recalculate for roles eligible for pool shares (not all roles)
-    const poolAffectedRoles = new Set(Object.values(COMPUTE_POOL_ELIGIBLE).flat());
+    const poolAffectedRoles = new Set(Object.values(COMPUTE_POOL_ELIGIBLE).flatMap((w) => Object.keys(w)));
     for (const t of allTables) {
       if (!poolAffectedRoles.has(t.roleId)) continue;
       const newStock = getStartingComputeForRole(t.roleId, enabledRoleIds);

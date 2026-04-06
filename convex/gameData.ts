@@ -7,15 +7,15 @@ export const ROLES = [
   { id: "deepcent-ceo", name: "DeepCent CEO", tags: ["lab-ceo", "has-compute"], labId: "deepcent" },
   { id: "conscienta-ceo", name: "Conscienta CEO", tags: ["lab-ceo", "has-compute"], labId: "conscienta" },
   { id: AI_SYSTEMS_ROLE_ID, name: "The AIs", tags: ["ai-system"] },
-  { id: "us-president", name: "US President", tags: ["government", "military", "intelligence", "has-compute"], startingComputeStock: 8 },
-  { id: "china-president", name: "China President", tags: ["government", "military", "intelligence", "has-compute"], startingComputeStock: 6 },
+  { id: "us-president", name: "US President", tags: ["government", "military", "intelligence", "has-compute"] },
+  { id: "china-president", name: "China President", tags: ["government", "military", "intelligence"] },
   { id: "openbrain-safety", name: "OpenBrain Safety Lead", tags: ["lab-safety", "technical"], labId: "openbrain" },
   { id: "deepcent-safety", name: "DeepCent Safety Lead", tags: ["lab-safety", "technical"], labId: "deepcent" },
   { id: "conscienta-safety", name: "Conscienta Safety Lead", tags: ["lab-safety", "technical"], labId: "conscienta" },
-  { id: "australia-pm", name: "Australia PM", tags: ["government", "diplomatic", "has-compute"], startingComputeStock: 4 },
-  { id: "eu-president", name: "EU President", tags: ["government", "regulation", "has-compute"], startingComputeStock: 5 },
-  { id: "us-congress", name: "US Congress & Judiciary", tags: ["government", "regulation"] },
-  { id: "aisi-network", name: "Network of AISIs", tags: ["civil-society", "technical", "has-compute"], startingComputeStock: 2 },
+  { id: "australia-pm", name: "Australia PM", tags: ["government", "diplomatic", "has-compute"] },
+  { id: "eu-president", name: "EU President", tags: ["government", "regulation", "has-compute"] },
+  { id: "us-congress", name: "US Congress & Judiciary", tags: ["government", "regulation", "has-compute"] },
+  { id: "aisi-network", name: "Network of AISIs", tags: ["civil-society", "technical", "has-compute"] },
   { id: "safety-nonprofits", name: "AI Safety Nonprofits", tags: ["civil-society", "technical"] },
   { id: "pacific-islands", name: "Pacific Islands", tags: ["government", "diplomatic"] },
   { id: "global-public", name: "The Global Public", tags: ["public-influence"] },
@@ -23,7 +23,6 @@ export const ROLES = [
 ] as const;
 
 // Shared starting scenario shown to all players in Round 1 — drawn from player handouts.
-// Everything here is fixed canon. Everything after this point depends on player actions.
 export const STARTING_SCENARIO = "It's January 2028. OpenBrain has developed Agent-2, a weak AGI that accelerates AI R&D by 3×, with autonomous cyber and CBRN agent capabilities. Media reports unconfirmed rumours that China has stolen the Agent-2 model weights — DeepCent is closing the gap suspiciously fast. A whistleblower leak has triggered a political firestorm: Congress is issuing subpoenas, 20% of Americans cite AI as their top concern, and European leaders have accused the US of creating rogue AGI. There is no major US AI legislation, but the EU AI Act is in force and Australia has passed an effective AI Act. The race is on.";
 
 export const ROUND_CONFIGS = [
@@ -72,7 +71,8 @@ export const DEFAULT_LABS = [
 // Total new compute arriving per game round
 export const NEW_COMPUTE_PER_GAME_ROUND: Record<number, number> = { 1: 31, 2: 35, 3: 24, 4: 15 };
 
-// Default share (%) of new compute each entity receives per round
+// Default share (%) of new compute each entity receives per round.
+// 5 entities: 3 labs + 2 pools. Always sums to ~100%.
 export const DEFAULT_COMPUTE_SHARES: Record<number, Record<string, number>> = {
   1: { OpenBrain: 35.5, DeepCent: 19.4, Conscienta: 19.4, "Other US Labs": 12.9, "Rest of World": 12.9 },
   2: { OpenBrain: 45.7, DeepCent: 22.9, Conscienta: 20.0, "Other US Labs": 5.7, "Rest of World": 5.7 },
@@ -80,41 +80,98 @@ export const DEFAULT_COMPUTE_SHARES: Record<number, Record<string, number>> = {
   4: { OpenBrain: 65.0, DeepCent: 25.0, Conscienta: 15.0, "Other US Labs": -5.0, "Rest of World": -5.0 },
 };
 
-// Compute pools distributed to eligible player roles at game creation
-export const COMPUTE_POOL_ELIGIBLE: Record<string, string[]> = {
-  "Other US Labs": ["us-president", "us-congress"],
-  "Rest of World": ["eu-president", "australia-pm", "aisi-network"],
+// Starting compute stock for non-lab pool entities (from source spreadsheet).
+// Labs start at 22+17+14=53. Pools start at 11+16=27. Total: 80u.
+export const POOL_STARTING_STOCK: Record<string, number> = {
+  "Other US Labs": 11,
+  "Rest of World": 16,
 };
 
-// Pre-computed sets to avoid recreation on every call
+// Which player roles can administer each pool's compute.
+// When multiple eligible roles are enabled, the pool is split by weight.
+export const COMPUTE_POOL_ELIGIBLE: Record<string, Record<string, number>> = {
+  "Other US Labs": { "us-president": 8, "us-congress": 3 },
+  "Rest of World": { "eu-president": 5, "australia-pm": 4, "aisi-network": 2 },
+};
+
 const LAB_ROLE_IDS = new Set(DEFAULT_LABS.map((l) => l.roleId));
 const LAB_NAMES = new Set(DEFAULT_LABS.map((l) => l.name));
 
-/** Calculate pool share for a role from "Other US Labs" / "Rest of World" pools. */
-export function calculatePoolShare(roleId: string, enabledRoleIds: Set<string>): number {
-  const r1Shares = DEFAULT_COMPUTE_SHARES[1] ?? {};
-  const r1Total = NEW_COMPUTE_PER_GAME_ROUND[1] ?? 0;
-  let poolShare = 0;
-  for (const [poolName, sharePct] of Object.entries(r1Shares)) {
-    if (LAB_NAMES.has(poolName)) continue;
-    const eligible = COMPUTE_POOL_ELIGIBLE[poolName];
-    if (!eligible?.includes(roleId)) continue;
-    const poolAmount = Math.round(r1Total * sharePct / 100);
-    const enabledEligible = eligible.filter((id) => enabledRoleIds.has(id));
-    if (enabledEligible.length === 0) continue;
-    poolShare += Math.round(poolAmount / enabledEligible.length);
+/**
+ * Calculate starting compute for all non-lab roles based on pool allocation.
+ * Returns a map of roleId → compute stock.
+ * Total non-lab compute always equals sum of POOL_STARTING_STOCK (27u).
+ */
+export function calculatePoolAllocations(enabledRoleIds: Set<string>): Map<string, number> {
+  const allocations = new Map<string, number>();
+
+  for (const [poolName, weights] of Object.entries(COMPUTE_POOL_ELIGIBLE)) {
+    const poolTotal = POOL_STARTING_STOCK[poolName] ?? 0;
+    if (poolTotal <= 0) continue;
+
+    const enabledWeights = Object.entries(weights)
+      .filter(([roleId]) => enabledRoleIds.has(roleId));
+
+    if (enabledWeights.length === 0) continue;
+
+    const totalWeight = enabledWeights.reduce((s, [, w]) => s + w, 0);
+    let distributed = 0;
+    for (let i = 0; i < enabledWeights.length; i++) {
+      const [roleId, weight] = enabledWeights[i];
+      // Last role gets remainder to ensure exact sum
+      const share = i === enabledWeights.length - 1
+        ? poolTotal - distributed
+        : Math.round(poolTotal * weight / totalWeight);
+      allocations.set(roleId, (allocations.get(roleId) ?? 0) + share);
+      distributed += share;
+    }
   }
-  return poolShare;
+
+  return allocations;
 }
 
-/** Calculate starting compute for a non-lab role, including pool shares. */
+/**
+ * Calculate starting compute for a single non-lab role.
+ * Returns undefined for roles that don't hold compute.
+ */
 export function getStartingComputeForRole(roleId: string, enabledRoleIds: Set<string>): number | undefined {
-  const role = ROLES.find((r) => r.id === roleId);
-  if (!role || LAB_ROLE_IDS.has(roleId)) return undefined;
+  if (LAB_ROLE_IDS.has(roleId)) return undefined;
+  const allocations = calculatePoolAllocations(enabledRoleIds);
+  const stock = allocations.get(roleId);
+  return stock && stock > 0 ? stock : undefined;
+}
 
-  const sovereign = ("startingComputeStock" in role ? role.startingComputeStock : 0) as number;
-  const total = sovereign + calculatePoolShare(roleId, enabledRoleIds);
-  return total > 0 ? total : undefined;
+/**
+ * Calculate new compute per round for a non-lab pool role.
+ * Uses DEFAULT_COMPUTE_SHARES for the pool entity, split by weight among eligible roles.
+ */
+export function calculatePoolNewCompute(
+  roleId: string,
+  roundNumber: number,
+  enabledRoleIds: Set<string>,
+): number {
+  const shares = DEFAULT_COMPUTE_SHARES[roundNumber] ?? {};
+  const baselineTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
+
+  let newCompute = 0;
+  for (const [poolName, weights] of Object.entries(COMPUTE_POOL_ELIGIBLE)) {
+    if (LAB_NAMES.has(poolName)) continue;
+    if (!(roleId in weights)) continue;
+
+    const sharePct = shares[poolName];
+    if (sharePct === undefined) continue;
+
+    const poolNewCompute = Math.round(baselineTotal * sharePct / 100);
+    const enabledWeights = Object.entries(weights)
+      .filter(([id]) => enabledRoleIds.has(id));
+    if (enabledWeights.length === 0) continue;
+
+    const totalWeight = enabledWeights.reduce((s, [, w]) => s + w, 0);
+    const roleWeight = weights[roleId] ?? 0;
+    newCompute += Math.round(poolNewCompute * roleWeight / totalWeight);
+  }
+
+  return newCompute;
 }
 
 /** Fallback probability based on priority when AI grading hasn't happened. */

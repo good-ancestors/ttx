@@ -8,8 +8,9 @@ import {
   NEW_COMPUTE_PER_GAME_ROUND,
   DEFAULT_COMPUTE_SHARES,
   COMPUTE_POOL_ELIGIBLE,
+  POOL_STARTING_STOCK,
 } from "@convex/gameData";
-export { NEW_COMPUTE_PER_GAME_ROUND, DEFAULT_COMPUTE_SHARES, COMPUTE_POOL_ELIGIBLE };
+export { NEW_COMPUTE_PER_GAME_ROUND, DEFAULT_COMPUTE_SHARES, COMPUTE_POOL_ELIGIBLE, POOL_STARTING_STOCK };
 
 // Signal string sent by the copilot UI to confirm a proposed change
 export const COPILOT_APPLY_SIGNAL = "__APPLY_PROPOSED__";
@@ -29,7 +30,6 @@ export interface Role {
   personality?: string; // AI behavior style when this role is AI-controlled
   artifactPrompt: string;
   defaultCompute?: { users: number; capability: number; safety: number };
-  startingComputeStock?: number;
 }
 
 
@@ -122,7 +122,6 @@ export const ROLES: Role[] = [
     color: "#DC2626",
     tags: ["government", "military", "intelligence", "has-compute"],
     required: false,
-    startingComputeStock: 8,
     brief:
       "Intelligence reports indicate China has likely obtained your most advanced AI weights. You command the world's most powerful military, its most advanced intelligence agencies, and the executive branch. The Defence Production Act lets you consolidate all US labs. Your pre-positioned cyber capabilities can sabotage Chinese infrastructure.",
     personality:
@@ -135,9 +134,8 @@ export const ROLES: Role[] = [
     name: "China President",
     subtitle: "People's Republic of China",
     color: "#EA580C",
-    tags: ["government", "military", "intelligence", "has-compute"],
+    tags: ["government", "military", "intelligence"],
     required: false,
-    startingComputeStock: 6,
     brief:
       "Under your leadership, China has acquired the Americans' Agent-2 model. You wield the full power of the Chinese state — military, MSS, state-controlled industries. Taiwan's chip factories should be yours. You have sabotage pre-positioned against Western critical infrastructure.",
     personality:
@@ -201,7 +199,6 @@ export const ROLES: Role[] = [
     color: "#059669",
     tags: ["government", "diplomatic", "has-compute"],
     required: false,
-    startingComputeStock: 4,
     brief:
       "You're a middle power with Five Eyes and AUKUS intelligence access, critical minerals leverage, growing clean energy data centre capacity, and brain gain as global talent seeks stable democracies. Your world-leading AI Act and AISI give you credibility to build a coalition and steer the world away from catastrophe.",
     personality:
@@ -216,7 +213,6 @@ export const ROLES: Role[] = [
     color: "#2563EB",
     tags: ["government", "regulation", "has-compute"],
     required: false,
-    startingComputeStock: 5,
     brief:
       "You wield the regulatory power of the EU AI Act, the second-largest consumer market, and growing military and intelligence capabilities. Your mission is to use the 'Brussels Effect' to make EU standards global standards. You don't want to depend on the US or China — strategic independence is your balancing act.",
     personality:
@@ -229,7 +225,7 @@ export const ROLES: Role[] = [
     name: "US Congress & Judiciary",
     subtitle: "Checks & Balances",
     color: "#991B1B",
-    tags: ["government", "regulation"],
+    tags: ["government", "regulation", "has-compute"],
     required: false,
     brief:
       "The House is controlled by the opposition and the Senate is split 50-50. New laws are hard, but blocking the President's agenda is easy. The Supreme Court has a majority appointed by the current President. Use investigations, public pressure, and control over funding to ensure America that wins is still the America you swore to protect.",
@@ -247,7 +243,6 @@ export const ROLES: Role[] = [
     color: "#0D9488",
     tags: ["civil-society", "technical", "has-compute"],
     required: false,
-    startingComputeStock: 2,
     brief:
       "You lead the UK's AI Safety Institute, the founding and most influential member of an international network. Your national security channels have confirmed China's theft of Agent-2. You have lab access for safety testing and influence across the global AISI network. Your mission is to be the world's most credible scientific voice on AI risk.",
     personality:
