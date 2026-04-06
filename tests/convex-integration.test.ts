@@ -465,6 +465,7 @@ describe("Proposals", () => {
       fromRoleName: "OpenBrain CEO",
       toRoleId: "us-president",
       toRoleName: "United States",
+      actionId: "test-endorsement-1",
       actionText: "We propose sharing Agent-2 access with the government",
       requestType: "endorsement",
     });
@@ -515,6 +516,7 @@ describe("Proposals", () => {
       fromRoleName: "China",
       toRoleId: "openbrain-ceo",
       toRoleName: "OpenBrain CEO",
+      actionId: "test-proposal-1",
       actionText: "Propose joint safety research",
       requestType: "endorsement",
     });
@@ -763,6 +765,18 @@ describe("Full resolve pipeline (LLM)", () => {
     // AI meta should record the model used
     expect(round1.aiMeta?.resolveModel).toBeDefined();
     expect(round1.aiMeta!.resolveModel).not.toBe("fallback");
+
+    // Lab risk trajectories should be populated
+    expect(round1.labTrajectories).toBeDefined();
+    expect(round1.labTrajectories!.length).toBeGreaterThanOrEqual(2); // at least 2 labs
+    for (const t of round1.labTrajectories!) {
+      expect(t.labName).toBeDefined();
+      expect(["adequate", "concerning", "dangerous", "catastrophic"]).toContain(t.safetyAdequacy);
+      expect(["aligned", "deceptive", "spec-gaming", "power-concentration", "benevolent-override", "loss-of-control", "misuse"]).toContain(t.likelyFailureMode);
+      expect(t.reasoning.length).toBeGreaterThan(10);
+      expect(t.signalStrength).toBeGreaterThanOrEqual(0);
+      expect(t.signalStrength).toBeLessThanOrEqual(10);
+    }
   }, 200_000); // 200s timeout for LLM calls
 });
 
