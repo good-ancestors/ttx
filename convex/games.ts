@@ -120,25 +120,22 @@ export const get = query({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const games = await ctx.db.query("games").order("desc").take(20);
+    const games = await ctx.db.query("games").order("desc").take(10);
     if (games.length === 0) return [];
 
-    // Batch-fetch all tables for listed games in a single pass per game
-    // (Convex requires index queries per game, but we parallelise them)
-    const allTablesArrays = await Promise.all(
-      games.map((game) =>
-        ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", game._id)).collect()
-      )
-    );
-
-    return games.map((game, i) => {
-      const tables = allTablesArrays[i];
-      return {
-        ...game,
-        enabledCount: tables.filter((t) => t.enabled).length,
-        connectedCount: tables.filter((t) => t.connected).length,
-      };
-    });
+    // Return minimal fields — splash page doesn't need labs, worldState, etc.
+    // Avoid reading tables to reduce bandwidth; use cached counts from game doc
+    // if available, otherwise show 0 (acceptable for a list view).
+    return games.map((game) => ({
+      _id: game._id,
+      _creationTime: game._creationTime,
+      name: game.name,
+      status: game.status,
+      currentRound: game.currentRound,
+      phase: game.phase,
+      enabledCount: 0, // Not worth querying tables for the list view
+      connectedCount: 0,
+    }));
   },
 });
 

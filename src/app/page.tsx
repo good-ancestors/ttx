@@ -116,7 +116,7 @@ function GameCard({
           <div className="flex items-center gap-2 mt-0.5">
             <span className="text-xs text-text-light capitalize">{statusText}</span>
             <span className="text-xs text-navy-muted">·</span>
-            <span className="text-xs text-navy-muted">{game.enabledCount} tables · {game.connectedCount} connected</span>
+            <span className="text-xs text-navy-muted">Round {game.currentRound}</span>
             <span className="text-xs text-navy-muted">·</span>
             <span className="text-xs text-navy-muted">{formatTime(game._creationTime)}</span>
           </div>
