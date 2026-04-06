@@ -69,6 +69,9 @@ export const generateAll = internalAction({
     gameId: v.id("games"),
     roundNumber: v.number(),
   },
+  // Complexity is inherent: orchestrates NPC sample actions, AI LLM generation,
+  // compute transfers, endorsements, and auto-responses sequentially to avoid OCC conflicts.
+  // eslint-disable-next-line complexity
   handler: async (ctx, args) => {
     const { gameId, roundNumber } = args;
 
@@ -443,67 +446,72 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       console.error(`[aiGenerate] ${submissionFailures.length} submission mutation(s) failed`);
     }
 
-    // Execute compute transfers (run sequentially before endorsements to avoid conflicts)
-    await Promise.all(submitted.flatMap((p) =>
-      (p.computeTransfers ?? []).map((transfer) =>
-        ctx.runMutation(internal.requests.directTransferInternal, {
-          gameId,
-          fromRoleId: p.roleId,
-          toRoleId: transfer.toRoleId,
-          amount: transfer.amount,
-        }).catch(() => {
+    // Execute compute transfers sequentially to avoid OCC conflicts on tables/games docs
+    for (const p of submitted) {
+      for (const transfer of p.computeTransfers ?? []) {
+        try {
+          await ctx.runMutation(internal.requests.directTransferInternal, {
+            gameId,
+            fromRoleId: p.roleId,
+            toRoleId: transfer.toRoleId,
+            amount: transfer.amount,
+          });
+        } catch {
           console.error(`[aiGenerate] Compute transfer failed: ${p.roleId} -> ${transfer.toRoleId}`);
-        })
-      )
-    ));
+        }
+      }
+    }
 
-    // Send endorsement requests, compute requests, + schedule proactive outreach in parallel
+    // Send endorsement/compute requests sequentially to avoid OCC conflicts on requests table.
+    // Parallel sends caused 2000+ OCC retries per game.
     const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));
-    // Fetch pending requests to check which roles actually have something to respond to
-    const pendingRequests: Request[] = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
-    await Promise.all(submitted.flatMap((p) => {
-      const endorsements = (p.endorseHints ?? []).flatMap((hint) =>
-        hint.targetRoleIds.slice(0, 1).map((targetId) =>
-          ctx.runMutation(internal.requests.sendInternal, {
+    for (const p of submitted) {
+      for (const hint of p.endorseHints ?? []) {
+        for (const targetId of hint.targetRoleIds.slice(0, 1)) {
+          try {
+            await ctx.runMutation(internal.requests.sendInternal, {
+              gameId,
+              roundNumber,
+              fromRoleId: p.roleId,
+              fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
+              toRoleId: targetId,
+              toRoleName: roleMap.get(targetId) ?? targetId,
+              actionText: hint.actionText,
+              requestType: "endorsement",
+            });
+          } catch { /* request already exists */ }
+        }
+      }
+      for (const hint of p.computeRequestHints ?? []) {
+        try {
+          await ctx.runMutation(internal.requests.sendInternal, {
             gameId,
             roundNumber,
             fromRoleId: p.roleId,
             fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
-            toRoleId: targetId,
-            toRoleName: roleMap.get(targetId) ?? targetId,
+            toRoleId: hint.targetRoleId,
+            toRoleName: roleMap.get(hint.targetRoleId) ?? hint.targetRoleId,
             actionText: hint.actionText,
-            requestType: "endorsement",
-          }).catch(() => { /* request already exists */ })
-        )
-      );
+            requestType: "compute",
+            computeAmount: hint.amount,
+          });
+        } catch { /* request already exists */ }
+      }
+    }
 
-      // Send compute requests from lab CEOs to governments
-      const computeRequests = (p.computeRequestHints ?? []).map((hint) =>
-        ctx.runMutation(internal.requests.sendInternal, {
-          gameId,
-          roundNumber,
-          fromRoleId: p.roleId,
-          fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
-          toRoleId: hint.targetRoleId,
-          toRoleName: roleMap.get(hint.targetRoleId) ?? hint.targetRoleId,
-          actionText: hint.actionText,
-          requestType: "compute",
-          computeAmount: hint.amount,
-        }).catch(() => { /* request already exists */ })
-      );
-
-      // Only schedule AI proposals if this role has pending requests to respond to
+    // Schedule AI proposal responses for roles that have pending requests
+    const pendingRequests: Request[] = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
+    for (const p of submitted) {
       const hasPending = pendingRequests.some(
         (r) => r.toRoleId === p.roleId && r.status === "pending"
       );
-      const outreach = hasPending
-        ? [ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
-            gameId,
-            roundNumber,
-            roleId: p.roleId,
-          })]
-        : [];
-      return [...endorsements, ...computeRequests, ...outreach];
-    }));
+      if (hasPending) {
+        await ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
+          gameId,
+          roundNumber,
+          roleId: p.roleId,
+        });
+      }
+    }
   },
 });
