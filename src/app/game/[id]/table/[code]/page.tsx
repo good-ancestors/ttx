@@ -3,7 +3,7 @@
 import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
-import type { Doc, Id } from "@convex/_generated/dataModel";
+import type { Id } from "@convex/_generated/dataModel";
 import { ROLES, isLabCeo, hasCompute, getAiInfluencePower, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
 // Lab allocation read-only moved to Lab tab for safety leads
@@ -103,21 +103,6 @@ function LabComputeSummary({ lab }: { lab: { name: string; computeStock: number 
 }
 
 /** Cancel endorsement requests for drafts being discarded. */
-function cancelDraftEndorsements(
-  drafts: ActionDraft[],
-  allRequests: Doc<"requests">[] | undefined,
-  roleId: string | undefined,
-  cancelFn: (args: { requestId: Id<"requests"> }) => unknown,
-) {
-  for (const draft of drafts.filter((a) => a.text.trim())) {
-    for (const targetId of new Set(draft.endorseTargets)) {
-      const match = (allRequests ?? []).find(
-        (r) => r.fromRoleId === roleId && r.toRoleId === targetId && r.actionText === draft.text.trim()
-      );
-      if (match) void cancelFn({ requestId: match._id });
-    }
-  }
-}
 
 /** Map the Nth submitted action back to its actual index in the actions array. */
 function nthSubmittedIndex(actions: { actionStatus: string }[], n: number): number {
@@ -162,7 +147,6 @@ export default function TablePlayerPage({
   const editSubmittedMut = useMutation(api.submissions.editSubmitted);
   const deleteActionMut = useMutation(api.submissions.deleteAction);
   const sendRequest = useMutation(api.requests.send);
-  const cancelRequest = useMutation(api.requests.cancel);
   const setConnected = useMutation(api.tables.setConnected);
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
   // Lightweight query — only enabled tables' roleId/roleName (for endorsement targets)
@@ -424,14 +408,13 @@ export default function TablePlayerPage({
       if (draftWithText.length > 0) {
         autoSubmittedRef.current = true;
         setAutoSubmitMessage("Time\u2019s up \u2014 only submitted actions will count");
-        cancelDraftEndorsements(draftWithText, allRequests, role?.id, cancelRequest);
         setActionDrafts([emptyAction()]);
       }
     }
     if (!isExpired) {
       autoSubmittedRef.current = false;
     }
-  }, [isExpired, phase, actionDrafts, allRequests, role?.id, cancelRequest]);
+  }, [isExpired, phase, actionDrafts]);
 
   // ── Phase change (submit → rolling): discard remaining drafts ──────────
   const prevPhaseRef = useRef(phase);
@@ -442,11 +425,10 @@ export default function TablePlayerPage({
       !autoSubmittedRef.current
     ) {
       autoSubmittedRef.current = true;
-      cancelDraftEndorsements(actionDrafts, allRequests, role?.id, cancelRequest);
       setActionDrafts([emptyAction()]);
     }
     prevPhaseRef.current = phase;
-  }, [phase, actionDrafts, allRequests, role?.id, cancelRequest]);
+  }, [phase, actionDrafts]);
 
   // ── Callbacks ─────────────────────────────────────────────────────────────
 

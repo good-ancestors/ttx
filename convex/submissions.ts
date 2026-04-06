@@ -53,7 +53,7 @@ const actionValidator = v.object({
 
 // Validator for actions that already have actionStatus set (e.g. grading pipeline output).
 const persistedActionValidator = v.object({
-  actionId: v.optional(v.string()),
+  actionId: v.string(),
   text: v.string(),
   priority: v.number(),
   secret: v.optional(v.boolean()),
