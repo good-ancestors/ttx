@@ -239,7 +239,6 @@ export default function TablePlayerPage({
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
   const phase = game?.phase ?? "discuss";
   const isAiSystem = role?.tags.includes("ai-system") ?? false;
-  const submissionsClosed = phase === "submit" && isExpired;
   const currentLab = game?.labs.find((lab) => lab.roleId === role?.id)
     ?? (role?.labId ? game?.labs.find((lab) => lab.name.toLowerCase() === role.labId) : undefined);
   // isLabCeo used for compute/spec editor rendering inside Lab tab
@@ -630,19 +629,19 @@ export default function TablePlayerPage({
               <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: role.color }} />
               <span className="text-[15px] font-bold text-text">{role.name}</span>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 overflow-hidden">
               {hasCompute(role) && (currentLab?.computeStock ?? table.computeStock) != null && (
                 <span className="text-xs font-mono text-text-muted flex items-center gap-1">
                   <Zap className="w-3.5 h-3.5" aria-hidden="true" /> {currentLab?.computeStock ?? table.computeStock ?? 0}u
                 </span>
               )}
-              {game.phaseEndsAt && (
+              {game.phaseEndsAt && !isExpired && (
                 <span
-                  className={`text-xs font-mono flex items-center gap-1 ${isUrgent ? "text-viz-danger animate-pulse" : "text-text-muted"}`}
+                  className={`text-xs font-mono tabular-nums flex items-center gap-1 ${isUrgent ? "text-viz-danger font-bold" : "text-text-muted"}`}
                   role="timer"
                   aria-label={`${timerDisplay} remaining`}
                 >
-                  <Clock className="w-3.5 h-3.5" aria-hidden="true" /> {timerDisplay}
+                  <Clock className={`w-3.5 h-3.5 ${isUrgent ? "animate-pulse" : ""}`} aria-hidden="true" /> {timerDisplay}
                 </span>
               )}
               <span className="text-[11px] text-text-muted font-mono">
@@ -795,7 +794,7 @@ export default function TablePlayerPage({
                   isAiSystem={isAiSystem}
                   aiInfluencePower={getAiInfluencePower(game.labs)}
                   allRequests={allRequests}
-                  allowEdits={!submissionsClosed}
+                  allowEdits={phase === "submit" && (isAiSystem || !isExpired)}
                 />
               )}
 

@@ -28,12 +28,14 @@ const PRE_GAME_MULTIPLIERS: Record<string, number> = {
   "Rest of World": 1.05,
 };
 
-// Milestone markers — only shown when the peak value reaches them
+// Milestone markers — capability levels, not model names.
+// Grounded in source material (ai-2027.com): 3×=superhuman coder,
+// 10×=autonomous researcher, 100×=superintelligence, 1000×=recursive singularity.
 const MILESTONES = [
-  { multiplier: 3, label: "Agent-2", color: "#22C55E" },
-  { multiplier: 10, label: "Agent-3", color: "#06B6D4" },
-  { multiplier: 100, label: "Agent-4", color: "#F59E0B" },
-  { multiplier: 1000, label: "ASI", color: "#EF4444" },
+  { multiplier: 3, label: "Coder", color: "#22C55E" },
+  { multiplier: 10, label: "Researcher", color: "#06B6D4" },
+  { multiplier: 100, label: "Genius", color: "#F59E0B" },
+  { multiplier: 1000, label: "Singularity", color: "#EF4444" },
 ];
 
 function labColor(roleId: string): string {

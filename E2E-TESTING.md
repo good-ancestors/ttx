@@ -92,17 +92,49 @@ Test ONE role, ONE round. Don't run full 4-round games with AI tables.
 
 ## Browser Setup
 
+### Authentication
+
+Password managers can interfere with the login form. Use the `?p=` query parameter to bypass:
+
+```
+http://localhost:3000/?p=coral-ember-drift-sage
+```
+
+This auto-authenticates, stores the session, and strips the passphrase from the URL.
+
 ### Tab management
-Use **separate browser windows** for facilitator and player views. In production, Convex subscriptions pause on inactive tabs (`usePageVisibility`). In dev mode this is disabled, but separate windows are still clearer.
+Use **separate browser windows** (or MCP tab groups) for facilitator and player views. Join player tables via:
+
+```
+http://localhost:3000/game/join/<JOIN_CODE>
+```
+
+Get join codes via CLI:
+```bash
+npx convex run tables:getByGame '{"gameId": "<GAME_ID>"}' | python3 -c "
+import json, sys
+for t in json.load(sys.stdin):
+    if t['enabled']:
+        print(f'{t[\"roleName\"]}: {t[\"joinCode\"]}')
+"
+```
 
 ### Recommended minimal config
 
 | Table | Mode | Why |
 |-------|------|-----|
 | OpenBrain CEO | Human | Lab spec editor, compute allocation |
+| US President | Human | Compute transfers, endorsements |
 | All others | NPC (default) | Free, instant |
 
 Only add Human tables for the specific role mechanic you're testing.
+
+### Common mistakes
+
+1. **Test on localhost, not production.** `npx convex deploy` only updates the Convex backend. The Vercel frontend only updates on `git push`. Always test UI changes on `localhost:3000`.
+2. **Deploy before creating test games.** Run `npx convex dev --once` before `npx convex run games:create`. Games created with stale code have wrong starting compute.
+3. **Don't reuse games across deploys.** Each code change can affect game state. Create a fresh game after every deploy.
+4. **Check Convex logs for failures.** Use `npx convex logs --history 50` to see recent errors. For production: `npx convex logs --prod --history 50`.
 
 ---
 
@@ -123,27 +155,37 @@ Only add Human tables for the specific role mechanic you're testing.
 - [ ] Header shows ⚡ Xu for compute roles
 - [ ] Full Brief expandable
 - [ ] Timer duration selector on facilitator
+- [ ] **All tabs visible** (Brief, Actions, Respond, Lab) — not disabled
+- [ ] Actions/Respond/Lab show placeholder text during discuss
 
 ### 3. Submit Phase
-- [ ] Timer countdown visible
+- [ ] Timer countdown visible, no ghosting/double-text on mobile
+- [ ] Timer hides when expired (no "0:00")
 - [ ] Action input works (type, Enter to add)
 - [ ] Submit per-action
 - [ ] Endorsement request picker
 - [ ] Compute request picker (for has-compute roles)
-- [ ] Send Compute panel (proactive transfers)
+- [ ] Send Compute panel — transfer works, both sender/receiver update in real-time
 - [ ] Lab CEO: allocation sliders (sum to 100%)
 - [ ] Lab CEO: spec editor + save
-- [ ] NPC tables auto-submit (free, instant)
+- [ ] NPC tables auto-submit (≤2 actions per table)
 - [ ] Character counter at 400+ chars
+- [ ] **AI Systems support/oppose** stays editable after timer expires (until dice roll)
+- [ ] **Regular player endorsements** lock when timer expires
+- [ ] Starting compute includes pool shares (US President gets "Other US Labs" pool)
 
 ### 4. Resolve Phase
-- [ ] Grade Remaining button works
+- [ ] Grade Remaining button works, **hides when all graded** (shows Roll Dice only)
 - [ ] Roll Dice button works (disabled until graded)
 - [ ] Pipeline progress shows
-- [ ] Narrative generates
+- [ ] Narrative generates (not fallback text — check ANTHROPIC_API_KEY is set)
 - [ ] World state updates
 - [ ] Lab multipliers update
-- [ ] Compute distribution visible
+- [ ] **Compute holders** record populated (all entities, not just labs)
+- [ ] Stacked bar chart shows retained/gained/lost per entity
+- [ ] Detail table shows produced/transferred/adjustment per entity
+- [ ] **Inline compute editor** works (Edit → change values → Save)
+- [ ] R&D milestone labels show capability levels (Coder, Researcher, Genius, Singularity)
 
 ### 5. Round Transitions
 - [ ] Advance round increments counter
@@ -190,10 +232,13 @@ node scripts/smoke-test.js  # TODO: create this
 ```
 
 **Browser version (costs 1 grading + 1 narrative ≈ $0.20):**
-1. Create game, all NPC, start
-2. Open submissions (2 min)
-3. Submit 1 action as human
-4. Grade Remaining → Roll Dice
-5. Verify narrative + world state
-6. Advance round
-7. Verify round 2 starts correctly
+1. `npx convex dev --once` (deploy latest)
+2. Open `http://localhost:3000/?p=coral-ember-drift-sage`
+3. Create game (6 tables), start, open submissions (4 min)
+4. Join as US President in second tab via join code
+5. Verify compute shows pool shares (sovereign + pool)
+6. Send compute to OpenBrain — verify both views update
+7. Grade Remaining → Roll Dice
+8. Verify narrative + world state + compute holders record
+9. Advance round
+10. Verify round 2 starts correctly

@@ -5,7 +5,11 @@ import {
   DEFAULT_LABS,
   STARTING_SCENARIO,
   AI_SYSTEMS_ROLE_ID,
+  NEW_COMPUTE_PER_GAME_ROUND,
+  DEFAULT_COMPUTE_SHARES,
+  COMPUTE_POOL_ELIGIBLE,
 } from "@convex/gameData";
+export { NEW_COMPUTE_PER_GAME_ROUND, DEFAULT_COMPUTE_SHARES, COMPUTE_POOL_ELIGIBLE };
 
 // Signal string sent by the copilot UI to confirm a proposed change
 export const COPILOT_APPLY_SIGNAL = "__APPLY_PROPOSED__";
@@ -617,19 +621,6 @@ export const BASELINE_RD_TARGETS: Record<string, Record<number, number>> = {
   Conscienta: { 1: 5, 2: 15, 3: 40, 4: 50 },
 };
 
-// Total new compute arriving per game round (the "pie" — can shrink if supply chain disrupted)
-// Each unit ≈ 1M H100e. Grounded in source spreadsheet: R1=31, R2=35, R3=24 game units
-export const NEW_COMPUTE_PER_GAME_ROUND: Record<number, number> = { 1: 31, 2: 35, 3: 24, 4: 15 };
-
-// Default share (%) of new compute each entity receives per round
-// Grounded in source spreadsheet. Events can change both the total pie AND individual shares.
-// Negative values = entity is losing compute (absorbed, shutdown, supply chain cut)
-export const DEFAULT_COMPUTE_SHARES: Record<number, Record<string, number>> = {
-  1: { OpenBrain: 35.5, DeepCent: 19.4, Conscienta: 19.4, "Other US Labs": 12.9, "Rest of World": 12.9 },
-  2: { OpenBrain: 45.7, DeepCent: 22.9, Conscienta: 20.0, "Other US Labs": 5.7, "Rest of World": 5.7 },
-  3: { OpenBrain: 62.5, DeepCent: 25.0, Conscienta: 20.8, "Other US Labs": -4.2, "Rest of World": -4.2 },
-  4: { OpenBrain: 65.0, DeepCent: 25.0, Conscienta: 15.0, "Other US Labs": -5.0, "Rest of World": -5.0 },
-};
 
 // Lab progression tuning constants
 export const LAB_PROGRESSION = {
@@ -739,6 +730,8 @@ export function computeLabGrowth(
     return { ...lab, rdMultiplier: Math.min(maxMult, newMultiplier) };
   });
 }
+
+export { buildComputeHolders, calculateStartingCompute, type ComputeHolder, type ComputeHolderInput, type NarrativeAdjustment } from "./compute";
 
 export const DEFAULT_COMPUTE_DISTRIBUTION = [
   { openbrain: 11, deepcent: 6, conscienta: 6, otherUs: 4, restOfWorld: 4 },

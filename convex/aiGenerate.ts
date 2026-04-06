@@ -85,7 +85,7 @@ export const generateAll = internalAction({
 
     // Scale action count by total enabled tables
     const totalEnabled = enabledTables.length;
-    const actionsPerTable = totalEnabled <= 6 ? 3 : totalEnabled <= 11 ? 2 : 1;
+    const actionsPerTable = totalEnabled <= 6 ? 2 : 1;
 
     const npcTables = nonHumanTables.filter((t) => t.controlMode === "npc");
     let aiTables = nonHumanTables.filter((t) => t.controlMode === "ai");

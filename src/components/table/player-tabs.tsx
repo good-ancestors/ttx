@@ -1,6 +1,5 @@
 "use client";
 
-import { isResolvingPhase } from "@/lib/game-data";
 import { Zap, Vote, FlaskConical, BookOpen } from "lucide-react";
 
 export type PlayerTab = "brief" | "actions" | "respond" | "lab";
@@ -69,8 +68,6 @@ export function buildPlayerTabs(
   pendingCount: number,
   hasLabAccess: boolean,
 ): TabDef[] {
-  const submissionsOpen = phase === "submit";
-  const showRoundResults = isResolvingPhase(phase);
   const tabs: TabDef[] = [
     {
       id: "brief",
@@ -81,14 +78,12 @@ export function buildPlayerTabs(
       id: "actions",
       label: "Actions",
       icon: <Zap className="w-5 h-5" />,
-      disabled: !submissionsOpen && !showRoundResults,
     },
     {
       id: "respond",
       label: "Respond",
       icon: <Vote className="w-5 h-5" />,
-      badge: submissionsOpen && pendingCount > 0 ? pendingCount : undefined,
-      disabled: !submissionsOpen && !showRoundResults,
+      badge: phase === "submit" && pendingCount > 0 ? pendingCount : undefined,
     },
   ];
   if (hasLabAccess) {
@@ -96,7 +91,6 @@ export function buildPlayerTabs(
       id: "lab",
       label: "Lab",
       icon: <FlaskConical className="w-5 h-5" />,
-      disabled: !submissionsOpen && !showRoundResults,
     });
   }
   return tabs;

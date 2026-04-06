@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { api } from "@convex/_generated/api";
 import { getCapabilityDescription, TOTAL_ROUNDS, isSubmittedAction, isResolvingPhase as checkResolvingPhase } from "@/lib/game-data";
+import { useAuthMutation } from "@/lib/hooks";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { NarrativeEditor, WorldStateEditor } from "@/components/manual-controls";
 import { AttemptedPanel } from "./attempted-panel";
 import { ExpandableSection } from "./expandable-section";
-import { ComputeEditor } from "./compute-editor";
 import { AddLabForm } from "./add-lab-form";
 import {
   Loader2,
@@ -103,7 +104,7 @@ export function RoundPhase({
     };
   }, [submissions]);
 
-  const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | "compute" | null>(null);
+  const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
 
   return (
@@ -228,23 +229,19 @@ export function RoundPhase({
           {submittedActionCount > 0 && (
             <div className="flex gap-3">
               {/* Grade Remaining — AI grades actions without a probability */}
-              <button
-                onClick={handleGradeRemaining}
-                disabled={resolving || ungradedCount === 0}
-                className={`flex-1 py-3 rounded-lg font-bold text-base transition-colors flex items-center justify-center gap-2 ${
-                  ungradedCount > 0
-                    ? "bg-[#3D2F00] text-[#FCD34D] hover:bg-[#4D3D00]"
-                    : "bg-navy-light text-navy-muted cursor-default"
-                } disabled:opacity-50`}
-              >
-                {resolving ? (
-                  <><Loader2 className="w-4 h-4 animate-spin" /> {resolveStep}</>
-                ) : ungradedCount > 0 ? (
-                  <>Grade Remaining ({ungradedCount})</>
-                ) : (
-                  <>All Graded</>
-                )}
-              </button>
+              {(ungradedCount > 0 || resolving) && (
+                <button
+                  onClick={handleGradeRemaining}
+                  disabled={resolving || ungradedCount === 0}
+                  className="flex-1 py-3 rounded-lg font-bold text-base transition-colors flex items-center justify-center gap-2 bg-[#3D2F00] text-[#FCD34D] hover:bg-[#4D3D00] disabled:opacity-50"
+                >
+                  {resolving ? (
+                    <><Loader2 className="w-4 h-4 animate-spin" /> {resolveStep}</>
+                  ) : (
+                    <>Grade Remaining ({ungradedCount})</>
+                  )}
+                </button>
+              )}
 
               {/* Roll Dice — only enabled when all submitted actions are graded */}
               <button
@@ -289,11 +286,11 @@ export function RoundPhase({
       {/* ─── 8. WHERE WE ARE NOW — lab state + capability (narrate) ─── */}
       {isResolvingPhase && currentRound?.summary && (
         <WhereWeAreNow
+          gameId={gameId}
           game={game}
           currentRound={currentRound}
           isProjector={isProjector}
           onEditNarrative={() => setEditModal("narrative")}
-          onEditCompute={() => setEditModal("compute")}
         />
       )}
 
@@ -349,17 +346,17 @@ export function RoundPhase({
 // ─── Where We Are Now sub-component ─────────────────────────────────────────
 
 function WhereWeAreNow({
+  gameId,
   game,
   currentRound,
   isProjector,
   onEditNarrative,
-  onEditCompute,
 }: {
+  gameId: Id<"games">;
   game: RoundPhaseProps["game"];
   currentRound: Round;
   isProjector: boolean;
   onEditNarrative: () => void;
-  onEditCompute: () => void;
 }) {
   const leading = game.labs.length > 0
     ? game.labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b))
@@ -387,22 +384,23 @@ function WhereWeAreNow({
       >
         <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           {game.labs.map((lab) => {
-            const change = currentRound.computeChanges?.distribution.find((d) => d.labName === lab.name);
+            const holder = currentRound.computeHolders?.find((h) => h.roleId === lab.roleId);
+            const stockChange = holder ? (holder.override ?? holder.stockAfter) - holder.stockBefore : 0;
             return (
               <div key={lab.name} className="bg-navy rounded-lg p-3 border border-navy-light">
                 <div className={`${isProjector ? "text-base" : "text-sm"} font-bold text-white`}>{lab.name}</div>
                 <div className={`${isProjector ? "text-3xl" : "text-xl"} font-black text-[#06B6D4] font-mono`}>{lab.rdMultiplier}×</div>
                 <div className="text-xs text-text-light space-y-0.5">
                   <div>
-                    Stock {change?.stockBefore ?? lab.computeStock}u {"→"} {lab.computeStock}u
-                    {change && change.stockChange !== 0 && (
-                      <span className={`ml-1 font-mono ${change.stockChange > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                        ({change.stockChange > 0 ? "+" : ""}{change.stockChange})
+                    Stock {holder?.stockBefore ?? lab.computeStock}u {"→"} {lab.computeStock}u
+                    {stockChange !== 0 && (
+                      <span className={`ml-1 font-mono ${stockChange > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                        ({stockChange > 0 ? "+" : ""}{stockChange})
                       </span>
                     )}
                   </div>
                   <div>
-                    Flow {change ? `${change.sharePct}% of new compute` : "No flow data"} {" · "}Safety {lab.allocation.safety}%
+                    {holder ? `${holder.sharePct}% of new compute` : "No flow data"} {" · "}Safety {lab.allocation.safety}%
                   </div>
                 </div>
                 {lab.spec && (
@@ -438,14 +436,11 @@ function WhereWeAreNow({
             </div>
           </>
         )}
-        <ComputeFlowPanel currentRound={currentRound} />
+        <ComputeFlowPanel currentRound={currentRound} gameId={gameId} isProjector={isProjector} />
         {!isProjector && (
           <div className="flex gap-2 mt-3">
             <button onClick={onEditNarrative} className="text-[10px] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors flex items-center gap-1">
               <Pencil className="w-3 h-3" /> Edit narrative
-            </button>
-            <button onClick={onEditCompute} className="text-[10px] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors flex items-center gap-1">
-              <Pencil className="w-3 h-3" /> Edit compute
             </button>
           </div>
         )}
@@ -454,88 +449,203 @@ function WhereWeAreNow({
   );
 }
 
-function ComputeFlowPanel({ currentRound }: { currentRound: Round }) {
-  const computeChanges = currentRound.computeChanges;
-  if (!computeChanges) return null;
+function ComputeFlowPanel({
+  currentRound,
+  gameId,
+  isProjector,
+}: {
+  currentRound: Round;
+  gameId: Id<"games">;
+  isProjector: boolean;
+}) {
+  const holders = currentRound.computeHolders;
+  if (!holders) return null;
+
+  const entries = holders.toSorted((a, b) => (b.override ?? b.stockAfter) - (a.override ?? a.stockAfter));
+
+  const totalBefore = entries.reduce((s, e) => s + e.stockBefore, 0);
+  const totalAfter = entries.reduce((s, e) => s + (e.override ?? e.stockAfter), 0);
+
+  // Chart data
+  const chartEntries = entries.map((e) => {
+    const after = e.override ?? e.stockAfter;
+    return {
+      name: e.name,
+      gain: Math.max(0, e.produced + Math.max(0, e.transferred)),
+      loss: Math.max(0, -e.adjustment) + Math.max(0, -e.transferred),
+      stockBefore: e.stockBefore,
+      stockAfter: after,
+      sharePct: e.sharePct,
+    };
+  });
+  const maxTotal = Math.max(...chartEntries.map((e) => e.stockBefore + e.gain), 1);
 
   return (
     <div className="mb-3 rounded-lg border border-navy-light bg-navy p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-bold text-white">Compute Stock and Flow</div>
           <div className="text-xs text-text-light">
-            Competitive stock {computeChanges.stockBeforeTotal}u → {computeChanges.stockAfterTotal}u
+            Total {totalBefore}u {"→"} {totalAfter}u
           </div>
         </div>
-        <div className="text-right">
-          <div className="text-lg font-black font-mono text-white">{computeChanges.newComputeTotal}u</div>
-          <div className="text-[11px] text-text-light">
-            New compute
-            <span className="ml-1 text-text-light/60">baseline {computeChanges.baselineTotal}u</span>
-          </div>
+        <div className="flex items-center gap-4 text-[10px] text-text-light">
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-viz-safety" /> New</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#64748B]" /> Stock</span>
+          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-viz-danger" /> Lost</span>
         </div>
       </div>
 
-      <div className="space-y-2">
-        {computeChanges.distribution
-          .toSorted((a, b) => b.stockAfter - a.stockAfter)
-          .map((entry) => (
-            <div
-              key={entry.labName}
-              className={`rounded-lg border p-3 ${
-                entry.active ? "border-navy-light bg-navy-dark" : "border-dashed border-navy-light/80 bg-navy-dark/60"
-              }`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div>
-                  <div className="text-sm font-bold text-white">
-                    {entry.labName}
-                    {!entry.active && <span className="ml-2 text-[10px] uppercase tracking-wider text-text-light/70">inactive</span>}
-                  </div>
-                  <div className="text-xs text-text-light">
-                    Stock {entry.stockBefore}u → {entry.stockAfter}u
-                    <span className={`ml-2 font-mono ${entry.stockChange >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                      {entry.stockChange >= 0 ? "+" : ""}{entry.stockChange}u
-                    </span>
-                  </div>
-                </div>
-                <div className="text-right text-xs text-text-light">
-                  <div>{entry.sharePct}% of new compute</div>
-                  <div className="font-mono">
-                    flow {entry.baseline >= 0 ? "+" : ""}{entry.baseline}u
-                    {entry.modifier !== 0 && (
-                      <span className={entry.modifier > 0 ? "text-viz-safety" : "text-viz-danger"}>
-                        {" "}{entry.modifier > 0 ? "+" : ""}{entry.modifier}u
-                      </span>
-                    )}
-                  </div>
-                </div>
+      {/* Stacked column chart */}
+      <div className="flex items-end gap-1.5" style={{ height: 160 }}>
+        {chartEntries.map((entry) => {
+          const retained = Math.max(0, entry.stockBefore - entry.loss);
+          const retainedPct = (retained / maxTotal) * 100;
+          const gainPct = (entry.gain / maxTotal) * 100;
+          const lossPct = (entry.loss / maxTotal) * 100;
+
+          return (
+            <div key={entry.name} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+              <div className="w-full flex flex-col justify-end" style={{ height: 120 }}>
+                {gainPct > 0 && (
+                  <div className="w-full bg-viz-safety rounded-t-sm" style={{ height: `${gainPct}%` }} title={`+${entry.gain}u new`} />
+                )}
+                {retainedPct > 0 && (
+                  <div className={`w-full bg-[#64748B] ${gainPct === 0 ? "rounded-t-sm" : ""}`} style={{ height: `${retainedPct}%` }} title={`${retained}u retained`} />
+                )}
+                {lossPct > 0 && (
+                  <div className="w-full bg-viz-danger rounded-b-sm" style={{ height: `${lossPct}%` }} title={`-${entry.loss}u lost`} />
+                )}
               </div>
-              {entry.reason && (
-                <p className="mt-2 border-t border-navy-light pt-2 text-[11px] leading-relaxed text-text-light/80">
-                  {entry.reason}
-                </p>
+              <div className="text-center w-full overflow-hidden">
+                <div className="text-[10px] font-bold text-white truncate">{entry.name}</div>
+                <div className="text-[10px] font-mono text-text-light">{entry.stockAfter}u</div>
+                {entry.sharePct > 0 && (
+                  <div className="text-[9px] text-text-light/60">{entry.sharePct}%</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Detail table — only for facilitator, not projector */}
+      {!isProjector && (
+        <ComputeDetailTable
+          key={currentRound.number}
+          entries={entries}
+          gameId={gameId}
+          roundNumber={currentRound.number}
+        />
+      )}
+    </div>
+  );
+}
+
+function ComputeDetailTable({
+  entries,
+  gameId,
+  roundNumber,
+}: {
+  entries: { roleId: string; name: string; stockBefore: number; stockAfter: number; produced: number; transferred: number; adjustment: number; adjustmentReason?: string; sharePct: number; override?: number; overrideReason?: string }[];
+  gameId: Id<"games">;
+  roundNumber: number;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [overrides, setOverrides] = useState<Record<string, { value: number; reason: string }>>({});
+  const overrideCompute = useAuthMutation(api.computeMutations.overrideHolderCompute);
+
+  const handleSave = async () => {
+    try {
+      await Promise.all(
+        Object.entries(overrides).map(([roleId, { value, reason }]) =>
+          overrideCompute({ gameId, roundNumber, roleId, computeStock: value, reason: reason || undefined })
+        )
+      );
+      setOverrides({});
+      setEditing(false);
+    } catch (err) {
+      console.error("[ComputeDetailTable] Save failed:", err);
+    }
+  };
+
+  return (
+    <div className="mt-3 border-t border-navy-light pt-3">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-text-light">Detail</span>
+        {!editing ? (
+          <button onClick={() => setEditing(true)} className="text-[10px] px-2 py-0.5 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors flex items-center gap-1">
+            <Pencil className="w-2.5 h-2.5" /> Edit
+          </button>
+        ) : (
+          <div className="flex gap-1.5">
+            <button onClick={() => { setOverrides({}); setEditing(false); }} className="text-[10px] px-2 py-0.5 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={() => void handleSave()}
+              disabled={Object.keys(overrides).length === 0}
+              className="text-[10px] px-2 py-0.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors disabled:opacity-40"
+            >
+              Save
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-1">
+        {entries.map((e) => {
+          const displayAfter = overrides[e.roleId]?.value ?? e.override ?? e.stockAfter;
+          const isOverridden = e.roleId in overrides;
+
+          return (
+            <div key={e.roleId} className="flex items-center gap-2 text-[11px]">
+              <span className="text-white font-medium min-w-[100px] truncate">{e.name}</span>
+              <span className="text-text-light font-mono w-8 text-right">{e.stockBefore}</span>
+              <span className="text-text-light/50">{"→"}</span>
+              {editing ? (
+                <input
+                  type="number"
+                  value={displayAfter}
+                  onChange={(ev) => {
+                    const val = parseInt(ev.target.value) || 0;
+                    setOverrides((prev) => ({ ...prev, [e.roleId]: { value: Math.max(0, val), reason: prev[e.roleId]?.reason ?? "" } }));
+                  }}
+                  className={`w-12 bg-navy-dark border rounded px-1 py-0.5 text-right font-mono text-white outline-none ${
+                    isOverridden ? "border-[#FCD34D]" : "border-navy-light"
+                  } focus:border-text-light`}
+                />
+              ) : (
+                <span className={`font-mono w-8 text-right ${e.override != null ? "text-[#FCD34D]" : "text-white"}`}>
+                  {displayAfter}
+                </span>
+              )}
+              {e.produced !== 0 && (
+                <span className={`font-mono ${e.produced > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                  {e.produced > 0 ? "+" : ""}{e.produced}
+                </span>
+              )}
+              {e.transferred !== 0 && (
+                <span className="font-mono text-viz-capability">
+                  {e.transferred > 0 ? "+" : ""}{e.transferred}t
+                </span>
+              )}
+              {e.adjustment !== 0 && (
+                <span className={`font-mono ${e.adjustment > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                  {e.adjustment > 0 ? "+" : ""}{e.adjustment}
+                </span>
+              )}
+              {e.sharePct > 0 && (
+                <span className="text-text-light/50 ml-auto">{e.sharePct}%</span>
               )}
             </div>
-          ))}
+          );
+        })}
       </div>
 
-      {computeChanges.nonCompetitive.length > 0 && (
-        <div className="mt-3 rounded-lg border border-navy-light bg-navy-dark p-3">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-light">Non-competitive stockpiles</div>
-          <div className="grid gap-2 md:grid-cols-2">
-            {computeChanges.nonCompetitive.map((entry) => (
-              <div key={entry.roleId} className="rounded border border-navy-light/70 px-3 py-2">
-                <div className="text-xs font-bold text-white">{entry.roleName}</div>
-                <div className="text-xs text-text-light">
-                  {entry.stockBefore}u → {entry.stockAfter}u
-                  <span className={`ml-2 font-mono ${entry.stockChange >= 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                    {entry.stockChange >= 0 ? "+" : ""}{entry.stockChange}u
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+      {editing && (
+        <div className="mt-2 text-[9px] text-text-light/60">
+          Edit the &quot;After&quot; values. Changes are saved as facilitator overrides.
         </div>
       )}
     </div>
@@ -553,7 +663,7 @@ function EditModal({
   currentRound,
   addLab,
 }: {
-  editModal: "narrative" | "dials" | "addlab" | "compute";
+  editModal: "narrative" | "dials" | "addlab";
   onClose: () => void;
   gameId: Id<"games">;
   game: RoundPhaseProps["game"];
@@ -566,7 +676,7 @@ function EditModal({
       <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <span className="text-sm font-bold text-white capitalize">
-            {editModal === "addlab" ? "Add Lab" : editModal === "compute" ? "Edit Compute" : editModal === "dials" ? "Edit World State" : "Edit Narrative"}
+            {editModal === "addlab" ? "Add Lab" : editModal === "dials" ? "Edit World State" : "Edit Narrative"}
           </span>
           <button onClick={onClose} className="text-text-light hover:text-white text-sm">Close</button>
         </div>
@@ -578,9 +688,6 @@ function EditModal({
         )}
         {editModal === "addlab" && (
           <AddLabForm gameId={gameId} tables={tables} addLab={addLab} onDone={onClose} />
-        )}
-        {editModal === "compute" && (
-          <ComputeEditor labs={game.labs} gameId={gameId} computeChanges={currentRound?.computeChanges ?? undefined} onClose={onClose} />
         )}
       </div>
     </div>

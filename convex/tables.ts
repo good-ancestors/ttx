@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { logEvent, assertFacilitator } from "./events";
-import { ROLES } from "./gameData";
+import { ROLES, COMPUTE_POOL_ELIGIBLE, getStartingComputeForRole } from "./gameData";
 
 export const getByGame = query({
   args: { gameId: v.id("games") },
@@ -167,7 +167,32 @@ export const toggleEnabled = mutation({
     assertFacilitator(args.facilitatorToken);
     const table = await ctx.db.get(args.tableId);
     if (!table) return;
-    await ctx.db.patch(args.tableId, { enabled: !table.enabled });
+    const newEnabled = !table.enabled;
+    await ctx.db.patch(args.tableId, { enabled: newEnabled });
+
+    // Recalculate pool-aware compute for all non-lab has-compute roles (lobby only)
+    const game = await ctx.db.get(table.gameId);
+    if (game?.status !== "lobby") return;
+
+    const allTables = await ctx.db.query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", table.gameId))
+      .collect();
+    const enabledRoleIds = new Set(
+      allTables
+        .map((t) => t._id === args.tableId ? { ...t, enabled: newEnabled } : t)
+        .filter((t) => t.enabled)
+        .map((t) => t.roleId)
+    );
+
+    // Only recalculate for roles eligible for pool shares (not all roles)
+    const poolAffectedRoles = new Set(Object.values(COMPUTE_POOL_ELIGIBLE).flat());
+    for (const t of allTables) {
+      if (!poolAffectedRoles.has(t.roleId)) continue;
+      const newStock = getStartingComputeForRole(t.roleId, enabledRoleIds);
+      if (newStock !== t.computeStock) {
+        await ctx.db.patch(t._id, { computeStock: newStock });
+      }
+    }
   },
 });
 

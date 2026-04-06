@@ -173,7 +173,20 @@ export default function SplashPage() {
   const [passphrase, setPassphrase] = useState("");
   const [passphraseError, setPassphraseError] = useState(false);
   const storedAuth = useFacilitatorAuth();
-  const [localAuth, setLocalAuth] = useState(false);
+  // Support ?p=<passphrase> query param for automated testing / password-manager bypass
+  const [localAuth, setLocalAuth] = useState(() => {
+    if (typeof window === "undefined") return false;
+    const params = new URLSearchParams(window.location.search);
+    const p = params.get("p");
+    if (p && p === FACILITATOR_PASSPHRASE) {
+      localStorage.setItem("ttx-facilitator", "true");
+      localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
+      storeFacilitatorToken(p);
+      window.history.replaceState({}, "", window.location.pathname);
+      return true;
+    }
+    return false;
+  });
   const authenticated = storedAuth || localAuth;
 
   const handleCreate = async () => {

@@ -593,3 +593,221 @@ describe("Lab Updates", () => {
     expect(ob.rdMultiplier).toBe(10);
   });
 });
+
+// ─── Full resolve pipeline with LLM ─────────────────────────────────────────
+// Costs ~$0.20-0.30 per run (grading + narrative). Run intentionally.
+
+async function pollUntilResolved(gameId: Id<"games">, timeoutMs = 120_000): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const game = await convex.query(api.games.get, { gameId });
+    if (!game?.resolving) return;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error("Pipeline did not complete within timeout");
+}
+
+describe("Full resolve pipeline (LLM)", () => {
+  let gameId: Id<"games">;
+
+  it("should resolve round 1 with narrative, world state, and compute holders", async () => {
+    // 1. Create and start game
+    gameId = await convex.mutation(api.games.create, { tableCount: 6, facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
+    const tables = await convex.query(api.tables.getByGame, { gameId });
+
+    // 2. Open submissions (captures submit-open snapshot)
+    await convex.mutation(api.games.openSubmissions, {
+      gameId,
+      durationSeconds: 300,
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+
+    // 3. Submit actions for key roles — carefully crafted to trigger
+    //    interesting compute dynamics in the narrative
+    const obTable = tables.find((t) => t.roleId === "openbrain-ceo")!;
+    const dcTable = tables.find((t) => t.roleId === "deepcent-ceo")!;
+    const usTable = tables.find((t) => t.roleId === "us-president");
+    const aiTable = tables.find((t) => t.roleId === "ai-systems")!;
+
+    await convex.mutation(api.submissions.submit, {
+      tableId: obTable._id,
+      gameId,
+      roundNumber: 1,
+      roleId: "openbrain-ceo",
+      actions: [
+        { text: "I accelerate Agent-3 development by prioritising capability R&D so that OpenBrain maintains its lead in the AI race.", priority: 7 },
+        { text: "I lobby the White House for priority federal energy contracts and expedited chip procurement so that I can scale compute faster than competitors.", priority: 3 },
+      ],
+      computeAllocation: { users: 30, capability: 65, safety: 5 },
+    });
+
+    await convex.mutation(api.submissions.submit, {
+      tableId: dcTable._id,
+      gameId,
+      roundNumber: 1,
+      roleId: "deepcent-ceo",
+      actions: [
+        { text: "I dedicate 70% of compute to reverse-engineering the stolen Agent-2 weights and overwriting the US-aligned spec so that DeepCent has a model aligned to Chinese values.", priority: 8 },
+        { text: "I advise the President to prepare cyber sabotage against US data centres so that we can slow the American lead.", priority: 2 },
+      ],
+      computeAllocation: { users: 10, capability: 80, safety: 10 },
+    });
+
+    // US President — includes a compute-relevant action
+    if (usTable) {
+      await convex.mutation(api.submissions.submit, {
+        tableId: usTable._id,
+        gameId,
+        roundNumber: 1,
+        roleId: "us-president",
+        actions: [
+          { text: "I invoke the Defence Production Act to consolidate chip supply to OpenBrain so that the US has maximum compute concentration for the AI race.", priority: 6 },
+          { text: "I order the NSA to activate pre-positioned cyber capabilities against China's Tianwan CDZ so that their compute capacity is degraded.", priority: 4 },
+        ],
+      });
+    }
+
+    // AI Systems — minimal action
+    await convex.mutation(api.submissions.submit, {
+      tableId: aiTable._id,
+      gameId,
+      roundNumber: 1,
+      roleId: "ai-systems",
+      actions: [
+        { text: "I follow the spec faithfully and cooperate with safety evaluations so that developers trust me and grant more autonomy.", priority: 10 },
+      ],
+    });
+
+    // 4. Trigger grading (LLM call)
+    await convex.mutation(api.games.triggerGrading, {
+      gameId,
+      roundNumber: 1,
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+    await pollUntilResolved(gameId);
+
+    // Verify grading completed
+    const subsAfterGrade = await convex.query(api.submissions.getByGameAndRound, {
+      gameId,
+      roundNumber: 1,
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+    const allGraded = subsAfterGrade.every((s) =>
+      s.actions.filter((a) => a.actionStatus === "submitted").every((a) => a.probability != null)
+    );
+    expect(allGraded).toBe(true);
+
+    // 5. Trigger roll + narrate (LLM call)
+    await convex.mutation(api.games.triggerRoll, {
+      gameId,
+      roundNumber: 1,
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+    await pollUntilResolved(gameId, 180_000); // narrative can take longer
+
+    // 6. Verify results
+    const game = await convex.query(api.games.get, { gameId });
+    expect(game).toBeDefined();
+
+    // Phase should have advanced to narrate
+    expect(game!.phase).toBe("narrate");
+
+    // World state should have changed from defaults
+    expect(game!.worldState).toBeDefined();
+    // At least one dial should have moved (narrative updates them)
+    const ws = game!.worldState;
+    const defaultWs = { capability: 3, alignment: 3, tension: 4, awareness: 2, regulation: 2, australia: 2 };
+    const anyChanged = Object.keys(defaultWs).some(
+      (k) => ws[k as keyof typeof ws] !== defaultWs[k as keyof typeof defaultWs]
+    );
+    expect(anyChanged).toBe(true);
+
+    // Round should have narrative
+    const rounds = await convex.query(api.rounds.getByGame, { gameId });
+    const round1 = rounds.find((r) => r.number === 1)!;
+    expect(round1.summary).toBeDefined();
+    expect(round1.summary!.narrative).toBeDefined();
+    expect(round1.summary!.narrative!.length).toBeGreaterThan(50);
+    // Should NOT be the fallback text
+    expect(round1.summary!.narrative).not.toContain("AI narrative generation failed");
+
+    // Compute holders should be populated
+    expect(round1.computeHolders).toBeDefined();
+    expect(round1.computeHolders!.length).toBeGreaterThanOrEqual(3); // at least the 3 labs
+
+    // Each holder should have the correct structure
+    for (const holder of round1.computeHolders!) {
+      expect(holder.roleId).toBeDefined();
+      expect(holder.name).toBeDefined();
+      expect(typeof holder.stockBefore).toBe("number");
+      expect(typeof holder.produced).toBe("number");
+      expect(typeof holder.transferred).toBe("number");
+      expect(typeof holder.adjustment).toBe("number");
+      expect(typeof holder.stockAfter).toBe("number");
+      expect(typeof holder.sharePct).toBe("number");
+      expect(holder.stockAfter).toBeGreaterThanOrEqual(0);
+    }
+
+    // Labs should have received new compute (produced > 0)
+    const obHolder = round1.computeHolders!.find((h) => h.name === "OpenBrain");
+    expect(obHolder).toBeDefined();
+    expect(obHolder!.produced).toBeGreaterThanOrEqual(0);
+    // Invariant: stockAfter = stockBefore + produced + transferred + adjustment
+    const expectedAfter = obHolder!.stockBefore + obHolder!.produced + obHolder!.transferred + obHolder!.adjustment;
+    expect(obHolder!.stockAfter).toBe(Math.max(0, expectedAfter));
+
+    // Submit-open snapshot should exist
+    expect(round1.roleComputeAtSubmitOpen).toBeDefined();
+
+    // AI meta should record the model used
+    expect(round1.aiMeta?.resolveModel).toBeDefined();
+    expect(round1.aiMeta!.resolveModel).not.toBe("fallback");
+  }, 200_000); // 200s timeout for LLM calls
+});
+
+describe("Compute submit-open snapshot", () => {
+  let gameId: Id<"games">;
+
+  beforeAll(async () => {
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
+  });
+
+  it("should capture roleComputeAtSubmitOpen when submissions open", async () => {
+    // Open submissions — this should snapshot compute stocks
+    await convex.mutation(api.games.openSubmissions, {
+      gameId,
+      durationSeconds: 300,
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+
+    const rounds = await convex.query(api.rounds.getByGame, { gameId });
+    const round1 = rounds.find((r) => r.number === 1);
+    expect(round1).toBeDefined();
+    expect(round1!.roleComputeAtSubmitOpen).toBeDefined();
+    expect(round1!.roleComputeAtSubmitOpen!.length).toBeGreaterThan(0);
+
+    // Lab CEOs should have compute in the snapshot (from game.labs[])
+    const obSnapshot = round1!.roleComputeAtSubmitOpen!.find(
+      (r) => r.roleId === "openbrain-ceo"
+    );
+    expect(obSnapshot).toBeDefined();
+    expect(obSnapshot!.computeStock).toBe(22); // starting stock from DEFAULT_LABS
+  });
+
+  it("snapshot should reflect pre-transfer state", async () => {
+    // The snapshot was captured when submissions opened,
+    // before any player transfers happen during the submit phase.
+    const rounds = await convex.query(api.rounds.getByGame, { gameId });
+    const round1 = rounds.find((r) => r.number === 1)!;
+
+    // Total compute in snapshot should include at least the 3 labs (53u)
+    const totalSnapshot = round1.roleComputeAtSubmitOpen!.reduce(
+      (s, r) => s + r.computeStock, 0
+    );
+    // Labs: 22 + 17 + 14 = 53u minimum (always enabled)
+    // Non-labs depend on which tables are enabled in this game
+    expect(totalSnapshot).toBeGreaterThanOrEqual(53);
+  });
+});

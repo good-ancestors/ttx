@@ -69,6 +69,54 @@ export const DEFAULT_LABS = [
   },
 ];
 
+// Total new compute arriving per game round
+export const NEW_COMPUTE_PER_GAME_ROUND: Record<number, number> = { 1: 31, 2: 35, 3: 24, 4: 15 };
+
+// Default share (%) of new compute each entity receives per round
+export const DEFAULT_COMPUTE_SHARES: Record<number, Record<string, number>> = {
+  1: { OpenBrain: 35.5, DeepCent: 19.4, Conscienta: 19.4, "Other US Labs": 12.9, "Rest of World": 12.9 },
+  2: { OpenBrain: 45.7, DeepCent: 22.9, Conscienta: 20.0, "Other US Labs": 5.7, "Rest of World": 5.7 },
+  3: { OpenBrain: 62.5, DeepCent: 25.0, Conscienta: 20.8, "Other US Labs": -4.2, "Rest of World": -4.2 },
+  4: { OpenBrain: 65.0, DeepCent: 25.0, Conscienta: 15.0, "Other US Labs": -5.0, "Rest of World": -5.0 },
+};
+
+// Compute pools distributed to eligible player roles at game creation
+export const COMPUTE_POOL_ELIGIBLE: Record<string, string[]> = {
+  "Other US Labs": ["us-president", "us-congress"],
+  "Rest of World": ["eu-president", "australia-pm", "aisi-network"],
+};
+
+// Pre-computed sets to avoid recreation on every call
+const LAB_ROLE_IDS = new Set(DEFAULT_LABS.map((l) => l.roleId));
+const LAB_NAMES = new Set(DEFAULT_LABS.map((l) => l.name));
+
+/** Calculate pool share for a role from "Other US Labs" / "Rest of World" pools. */
+export function calculatePoolShare(roleId: string, enabledRoleIds: Set<string>): number {
+  const r1Shares = DEFAULT_COMPUTE_SHARES[1] ?? {};
+  const r1Total = NEW_COMPUTE_PER_GAME_ROUND[1] ?? 0;
+  let poolShare = 0;
+  for (const [poolName, sharePct] of Object.entries(r1Shares)) {
+    if (LAB_NAMES.has(poolName)) continue;
+    const eligible = COMPUTE_POOL_ELIGIBLE[poolName];
+    if (!eligible?.includes(roleId)) continue;
+    const poolAmount = Math.round(r1Total * sharePct / 100);
+    const enabledEligible = eligible.filter((id) => enabledRoleIds.has(id));
+    if (enabledEligible.length === 0) continue;
+    poolShare += Math.round(poolAmount / enabledEligible.length);
+  }
+  return poolShare;
+}
+
+/** Calculate starting compute for a non-lab role, including pool shares. */
+export function getStartingComputeForRole(roleId: string, enabledRoleIds: Set<string>): number | undefined {
+  const role = ROLES.find((r) => r.id === roleId);
+  if (!role || LAB_ROLE_IDS.has(roleId)) return undefined;
+
+  const sovereign = ("startingComputeStock" in role ? role.startingComputeStock : 0) as number;
+  const total = sovereign + calculatePoolShare(roleId, enabledRoleIds);
+  return total > 0 ? total : undefined;
+}
+
 /** Fallback probability based on priority when AI grading hasn't happened. */
 export function defaultProbability(priority: number): number {
   if (priority >= 8) return 70;

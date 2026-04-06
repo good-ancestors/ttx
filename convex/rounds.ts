@@ -333,39 +333,29 @@ export const setAiMetaInternal = internalMutation({
   },
 });
 
-export const setComputeChanges = internalMutation({
+export const setComputeHolders = internalMutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
-    computeChanges: v.object({
-      newComputeTotal: v.number(),
-      baselineTotal: v.number(),
-      stockBeforeTotal: v.number(),
-      stockAfterTotal: v.number(),
-      distribution: v.array(v.object({
-        labName: v.string(),
-        stockBefore: v.number(),
-        stockAfter: v.number(),
-        stockChange: v.number(),
-        baseline: v.number(),
-        modifier: v.number(),
-        sharePct: v.number(),
-        active: v.boolean(),
-        reason: v.optional(v.string()),
-        newTotal: v.number(),
-      })),
-      nonCompetitive: v.array(v.object({
-        roleId: v.string(),
-        roleName: v.string(),
-        stockBefore: v.number(),
-        stockAfter: v.number(),
-        stockChange: v.number(),
-      })),
-    }),
+    holders: v.array(v.object({
+      roleId: v.string(),
+      name: v.string(),
+      stockBefore: v.number(),
+      produced: v.number(),
+      transferred: v.number(),
+      adjustment: v.number(),
+      adjustmentReason: v.optional(v.string()),
+      stockAfter: v.number(),
+      override: v.optional(v.number()),
+      overrideReason: v.optional(v.string()),
+      sharePct: v.number(),
+      status: v.optional(v.union(v.literal("merged"), v.literal("created"))),
+    })),
   },
   handler: async (ctx, args) => {
     const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
     const round = rounds.find((r) => r.number === args.roundNumber);
-    if (round) await ctx.db.patch(round._id, { computeChanges: args.computeChanges });
+    if (round) await ctx.db.patch(round._id, { computeHolders: args.holders });
   },
 });
+

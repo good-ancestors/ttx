@@ -133,36 +133,14 @@ describe("buildPlayerTabs", () => {
     buildPlayerTabs = mod.buildPlayerTabs;
   });
 
-  it("disables Actions/Respond tabs during discuss phase", () => {
-    const tabs = buildPlayerTabs({ tags: [] }, "discuss", 0, false);
-    const actionTab = tabs.find((t) => t.id === "actions");
-    const respondTab = tabs.find((t) => t.id === "respond");
-    expect(actionTab?.disabled).toBe(true);
-    expect(respondTab?.disabled).toBe(true);
-  });
-
-  it("enables Actions/Respond tabs during submit phase", () => {
-    const tabs = buildPlayerTabs({ tags: [] }, "submit", 0, false);
-    const actionTab = tabs.find((t) => t.id === "actions");
-    const respondTab = tabs.find((t) => t.id === "respond");
-    expect(actionTab?.disabled).toBe(false);
-    expect(respondTab?.disabled).toBe(false);
-  });
-
-  it("enables Actions/Respond tabs during rolling phase (Task #4)", () => {
-    const tabs = buildPlayerTabs({ tags: [] }, "rolling", 0, false);
-    const actionTab = tabs.find((t) => t.id === "actions");
-    const respondTab = tabs.find((t) => t.id === "respond");
-    expect(actionTab?.disabled).toBe(false);
-    expect(respondTab?.disabled).toBe(false);
-  });
-
-  it("enables Actions/Respond tabs during narrate phase", () => {
-    const tabs = buildPlayerTabs({ tags: [] }, "narrate", 0, false);
-    const actionTab = tabs.find((t) => t.id === "actions");
-    const respondTab = tabs.find((t) => t.id === "respond");
-    expect(actionTab?.disabled).toBe(false);
-    expect(respondTab?.disabled).toBe(false);
+  it("all tabs are always enabled (placeholder content shown when not active)", () => {
+    for (const phase of ["discuss", "submit", "rolling", "narrate"]) {
+      const tabs = buildPlayerTabs({ tags: [] }, phase, 0, false);
+      const actionTab = tabs.find((t) => t.id === "actions");
+      const respondTab = tabs.find((t) => t.id === "respond");
+      expect(actionTab?.disabled).toBeUndefined();
+      expect(respondTab?.disabled).toBeUndefined();
+    }
   });
 
   it("shows Lab tab only when hasLabAccess is true", () => {

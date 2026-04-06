@@ -11,6 +11,7 @@
 import type * as aiGenerate from "../aiGenerate.js";
 import type * as aiModels from "../aiModels.js";
 import type * as aiProposals from "../aiProposals.js";
+import type * as computeMutations from "../computeMutations.js";
 import type * as events from "../events.js";
 import type * as gameData from "../gameData.js";
 import type * as games from "../games.js";
@@ -32,6 +33,7 @@ declare const fullApi: ApiFromModules<{
   aiGenerate: typeof aiGenerate;
   aiModels: typeof aiModels;
   aiProposals: typeof aiProposals;
+  computeMutations: typeof computeMutations;
   events: typeof events;
   gameData: typeof gameData;
   games: typeof games;

@@ -17,8 +17,6 @@ import {
 import {
   ROLES,
   LAB_PROGRESSION,
-  NEW_COMPUTE_PER_GAME_ROUND,
-  DEFAULT_COMPUTE_SHARES,
   stripLabForSnapshot,
   applyLabMerge,
   getAiInfluencePower,
@@ -435,11 +433,12 @@ export const rollAndNarrate = internalAction({
           })),
       });
 
-      // Single merged call: narrative + worldState + labOperations
+      // Single merged call: narrative + worldState + labOperations + shareChanges
       type NarrativeOutput = {
         narrative: string;
         worldState: { capability: { reasoning: string; value: number }; alignment: { reasoning: string; value: number }; tension: { reasoning: string; value: number }; awareness: { reasoning: string; value: number }; regulation: { reasoning: string; value: number }; australia: { reasoning: string; value: number } };
         labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string; controllerRoleId?: string; spec?: string }[];
+        shareChanges?: { roleId: string; sharePct: number; reason: string }[];
       };
 
       let narrativeOutput: NarrativeOutput;
@@ -453,6 +452,7 @@ export const rollAndNarrate = internalAction({
           systemPrompt: SCENARIO_CONTEXT,
           prompt,
           maxTokens: 8192,
+          timeoutMs: 120_000, // Narrative generation needs more time than grading
           toolName: "resolve_round",
           schema: {
             type: "object",
@@ -485,6 +485,19 @@ export const rollAndNarrate = internalAction({
                 },
               },
             },
+            shareChanges: {
+              type: "array",
+              description: "If events this round change who gets new compute NEXT round (e.g. Taiwan invasion cuts OpenBrain's chip supply, DPA consolidation), propose share overrides. Each entry sets a role's % of next round's new compute. Only include roles whose share should differ from proportional-to-stock. Empty array if no changes.",
+              items: {
+                type: "object",
+                properties: {
+                  roleId: { type: "string", description: "Role ID of the compute holder" },
+                  sharePct: { type: "number", description: "Percentage of next round's new compute (0-100)" },
+                  reason: { type: "string", description: "Why this share changed", maxLength: 150 },
+                },
+                required: ["roleId", "sharePct", "reason"],
+              },
+            },
             required: ["narrative", "worldState", "labOperations"],
           },
         });
@@ -495,11 +508,27 @@ export const rollAndNarrate = internalAction({
         timeMs = result.timeMs;
         tokens = result.tokens;
       } catch (narrativeErr) {
+        const errMsg = narrativeErr instanceof Error ? narrativeErr.message : String(narrativeErr);
         console.error("[pipeline] Narrative LLM failed, using fallback:", narrativeErr);
+        await ctx.runMutation(internal.games.updatePipelineStatus, {
+          gameId,
+          status: { step: "narrating", detail: `Narrative generation failed: ${errMsg.slice(0, 100)}. Using fallback.`, startedAt: Date.now() },
+        });
+
+        // Build a basic factual summary so the facilitator has something to work with
+        const succeeded: typeof resolvedActions = [];
+        const failed: typeof resolvedActions = [];
+        for (const a of resolvedActions) (a.success ? succeeded : failed).push(a);
+        const successSummary = succeeded.length > 0
+          ? `${succeeded.slice(0, 3).map(a => `${a.roleName} succeeded: "${a.text}"`).join(". ")}.`
+          : "";
+        const failSummary = failed.length > 0
+          ? ` ${failed.length} action(s) failed.`
+          : "";
         narrativeOutput = {
-          narrative: `Round ${roundNumber} resolved. ${resolvedActions.filter(a => a.success).length} of ${resolvedActions.length} actions succeeded. [Facilitator: edit this narrative manually using the Edit Narrative button.]`,
+          narrative: `${successSummary}${failSummary} [AI narrative generation failed — use Edit Narrative to write or regenerate.]`,
           worldState: Object.fromEntries(
-            DIAL_NAMES.map(k => [k, { reasoning: "LLM unavailable", value: game.worldState[k] }])
+            DIAL_NAMES.map(k => [k, { reasoning: "LLM unavailable — value unchanged", value: game.worldState[k] }])
           ) as NarrativeOutput["worldState"],
           labOperations: [],
         };
@@ -630,75 +659,97 @@ export const rollAndNarrate = internalAction({
         });
       }
 
-      // Update labs (games doc) + compute changes (rounds doc) in parallel
-      const baselineTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
-      const roleCompute = tables
-        .filter((t) => t.computeStock != null)
-        .map((t) => ({ roleId: t.roleId, roleName: t.roleName, computeStock: t.computeStock ?? 0 }));
+      // Build unified compute holders record for audit trail.
+      // Lab compute is already updated by computeLabGrowth + lab operations above.
+      // Non-lab compute growth is computed here and applied to tables.
       const strippedLabs = updatedLabs.map(stripLabForSnapshot);
-      const labsBeforeMap = new Map(game.labs.map((lab) => [lab.name, lab]));
-      const labsAfterMap = new Map(updatedLabs.map((lab) => [lab.name, lab]));
-      const allLabNames = new Set([...labsBeforeMap.keys(), ...labsAfterMap.keys()]);
-      const modifierByLab = new Map(computeModifiers.map((modifier) => [modifier.labName, modifier]));
-      const distribution = [...allLabNames].map((labName) => {
-        const before = labsBeforeMap.get(labName);
-        const after = labsAfterMap.get(labName);
-        const baseline = Math.round(((DEFAULT_COMPUTE_SHARES[roundNumber]?.[labName] ?? 0) / 100) * baselineTotal);
-        const modifier = modifierByLab.get(labName);
-        const stockBefore = Math.round(before?.computeStock ?? 0);
-        const stockAfter = Math.round(after?.computeStock ?? 0);
-        return {
-          labName,
-          stockBefore,
-          stockAfter,
-          stockChange: stockAfter - stockBefore,
-          baseline,
-          modifier: modifier?.change ?? 0,
-          sharePct: 0,
-          active: !!after,
-          reason: modifier?.reason,
-          newTotal: stockAfter,
-        };
-      });
-      const newComputeTotal = distribution.reduce((sum, entry) => (
-        sum + Math.max(0, entry.baseline + entry.modifier)
-      ), 0);
-      const stockBeforeTotal = distribution.reduce((sum, entry) => sum + entry.stockBefore, 0);
-      const stockAfterTotal = distribution.reduce((sum, entry) => sum + entry.stockAfter, 0);
-      const distributionWithShares = distribution.map((entry) => ({
-        ...entry,
-        sharePct: newComputeTotal > 0 ? Math.round((Math.max(0, entry.baseline + entry.modifier) / newComputeTotal) * 100) : 0,
-      }));
-      const roleComputeBeforeMap = new Map(tablesBeforeResolve.map((table) => [table.roleId, table]));
       const competitiveRoleIds = new Set(updatedLabs.map((lab) => lab.roleId));
-      const nonCompetitive = roleCompute
-        .filter((entry) => !competitiveRoleIds.has(entry.roleId))
-        .map((entry) => {
-          const before = roleComputeBeforeMap.get(entry.roleId)?.computeStock ?? 0;
-          const after = entry.computeStock;
+
+      // Get submit-open snapshot (captured when facilitator opened submissions)
+      const submitOpenSnapshot = currentRound?.roleComputeAtSubmitOpen;
+      const submitOpenByRole = new Map(
+        (submitOpenSnapshot ?? []).map((r) => [r.roleId, r.computeStock])
+      );
+
+      // Build role compute from all compute-holding tables + labs
+      const labByRoleId = new Map(updatedLabs.map((l) => [l.roleId, l]));
+      const preGrowthLabByRoleId = new Map(game.labs.map((l) => [l.roleId, l]));
+      const roleCompute = tables
+        .filter((t) => t.computeStock != null || labByRoleId.has(t.roleId))
+        .map((t) => {
+          const lab = labByRoleId.get(t.roleId);
           return {
-            roleId: entry.roleId,
-            roleName: entry.roleName,
-            stockBefore: before,
-            stockAfter: after,
-            stockChange: after - before,
+            roleId: t.roleId,
+            roleName: t.roleName,
+            computeStock: lab?.computeStock ?? t.computeStock ?? 0,
           };
         });
 
+      // Build lab holder records for audit (labs already have final compute from computeLabGrowth)
+      const labHolderRecords = updatedLabs.map((lab) => {
+        const preGrowth = preGrowthLabByRoleId.get(lab.roleId);
+        const submitOpenStock = submitOpenByRole.get(lab.roleId) ?? preGrowth?.computeStock ?? lab.computeStock;
+        const resolveStock = preGrowth?.computeStock ?? lab.computeStock;
+        const transferred = resolveStock - submitOpenStock;
+        const adj = computeModifiers.find((m) => m.labName === lab.name);
+        const produced = lab.computeStock - resolveStock - (adj?.change ?? 0);
+        return {
+          roleId: lab.roleId,
+          name: lab.name,
+          stockBefore: submitOpenStock,
+          produced: Math.max(0, produced),
+          transferred,
+          adjustment: adj?.change ?? 0,
+          adjustmentReason: adj?.reason,
+          stockAfter: lab.computeStock,
+          sharePct: 0,
+        };
+      });
+
+      // Build non-lab holder records — proportional to stock, with share overrides
+      const { buildComputeHolders } = await import("@/lib/compute");
+      const nonLabHolderInputs = roleCompute
+        .filter((rc) => !competitiveRoleIds.has(rc.roleId))
+        .map((rc) => ({
+          roleId: rc.roleId,
+          name: rc.roleName,
+          stockAtSubmitOpen: submitOpenByRole.get(rc.roleId) ?? rc.computeStock,
+          stockAtResolve: rc.computeStock,
+        }));
+      const nonLabResult = buildComputeHolders({
+        holders: nonLabHolderInputs,
+        roundNumber,
+        narrativeAdjustments: computeModifiers
+          .filter((m) => !updatedLabs.some((l) => l.name === m.labName))
+          .map((m) => ({ name: m.labName, change: m.change, reason: m.reason })),
+        shareOverrides: game.computeShareOverrides
+          ? Object.fromEntries(Object.entries(game.computeShareOverrides))
+          : undefined,
+      });
+
+      // Combine into unified holders array
+      const allHolders = [...labHolderRecords, ...nonLabResult];
+      const totalProduced = allHolders.reduce((s, h) => s + h.produced, 0);
+      for (const h of allHolders) {
+        h.sharePct = totalProduced > 0 ? Math.round((h.produced / totalProduced) * 100) : 0;
+      }
+
+      // Apply non-lab compute growth to tables
+      const nonLabUpdates = nonLabResult.map((h) => ({ roleId: h.roleId, computeStock: h.stockAfter }));
+
+      // Build roleComputeAfter for snapshot
+      const holderByRoleId = new Map(allHolders.map((h) => [h.roleId, h]));
+      const roleComputeAfter = roleCompute.map((rc) => {
+        const holder = holderByRoleId.get(rc.roleId);
+        return holder ? { ...rc, computeStock: holder.stockAfter } : rc;
+      });
+
       await Promise.all([
         ctx.runMutation(internal.games.updateLabsInternal, { gameId, labs: strippedLabs }),
-        ctx.runMutation(internal.rounds.setComputeChanges, {
-          gameId,
-          roundNumber,
-          computeChanges: {
-            newComputeTotal,
-            baselineTotal,
-            stockBeforeTotal,
-            stockAfterTotal,
-            distribution: distributionWithShares,
-            nonCompetitive,
-          },
-        }),
+        nonLabUpdates.length > 0
+          ? ctx.runMutation(internal.computeMutations.updateNonLabComputeInternal, { gameId, updates: nonLabUpdates })
+          : Promise.resolve(),
+        ctx.runMutation(internal.rounds.setComputeHolders, { gameId, roundNumber, holders: allHolders }),
       ]);
 
       // Snapshot after + AI meta (both rounds doc — must be sequential)
@@ -707,13 +758,29 @@ export const rollAndNarrate = internalAction({
         roundNumber,
         worldStateAfter: clampedWorldState,
         labsAfter: strippedLabs,
-        roleComputeAfter: roleCompute,
+        roleComputeAfter,
       });
       await ctx.runMutation(internal.rounds.setAiMetaInternal, {
         gameId,
         roundNumber,
         meta: { resolveModel: usedModel, resolveTimeMs: timeMs, resolveTokens: tokens },
       });
+
+      // Apply LLM-proposed share changes for next round (if any).
+      // Filter to non-lab roles only — labs use computeLabGrowth with R&D dynamics.
+      // Clamp values to 0-100 and skip invalid role IDs.
+      if (narrativeOutput.shareChanges && narrativeOutput.shareChanges.length > 0) {
+        const validRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
+        const labRoleIds = new Set(updatedLabs.map((l) => l.roleId));
+        const shareOverrides = Object.fromEntries(
+          narrativeOutput.shareChanges
+            .filter((sc) => validRoleIds.has(sc.roleId) && !labRoleIds.has(sc.roleId))
+            .map((sc) => [sc.roleId, Math.max(0, Math.min(100, sc.sharePct))])
+        );
+        if (Object.keys(shareOverrides).length > 0) {
+          await ctx.runMutation(internal.games.setShareOverridesInternal, { gameId, overrides: shareOverrides });
+        }
+      }
 
       // Done — advance to narrate phase and clean up (all games doc — must be sequential)
       await ctx.runMutation(internal.games.advancePhaseInternal, { gameId, phase: "narrate" });

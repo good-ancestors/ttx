@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID } from "./gameData";
+import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID, getStartingComputeForRole } from "./gameData";
 import { logEvent, assertFacilitator } from "./events";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
 import { internal } from "./_generated/api";
@@ -72,13 +72,19 @@ export const create = mutation({
     const requiredIds = new Set(["openbrain-ceo", "deepcent-ceo", AI_SYSTEMS_ROLE_ID]);
     let enabledCount = 0;
 
-    for (let i = 0; i < ROLES.length; i++) {
-      const role = ROLES[i];
+    // First pass: determine which roles are enabled
+    const enabledRoleIds = new Set<string>();
+    for (const role of ROLES) {
       const isRequired = requiredIds.has(role.id);
       const enabled = isRequired || enabledCount < tableCount;
-      if (enabled && !isRequired) enabledCount++;
-      if (isRequired) enabledCount++; // required count toward total
+      if (enabled) {
+        enabledRoleIds.add(role.id);
+        enabledCount++;
+      }
+    }
 
+    // Second pass: create tables with pool-aware starting compute
+    for (const role of ROLES) {
       await ctx.db.insert("tables", {
         gameId,
         roleId: role.id,
@@ -86,8 +92,8 @@ export const create = mutation({
         joinCode: generateJoinCode(),
         connected: false,
         controlMode: "npc",
-        enabled,
-        computeStock: ("startingComputeStock" in role ? role.startingComputeStock : undefined) as number | undefined,
+        enabled: enabledRoleIds.has(role.id),
+        computeStock: getStartingComputeForRole(role.id, enabledRoleIds),
       });
     }
 
@@ -345,7 +351,8 @@ export const restoreSnapshot = mutation({
       await ctx.db.patch(round._id, {
         resolvedEvents: undefined,
         summary: undefined,
-        computeChanges: undefined,
+        computeHolders: undefined,
+        roleComputeAtSubmitOpen: undefined,
         worldStateAfter: undefined,
         labsAfter: undefined,
         roleComputeAfter: undefined,
@@ -629,6 +636,13 @@ export const triggerRoll = mutation({
   },
 });
 
+export const setShareOverridesInternal = internalMutation({
+  args: { gameId: v.id("games"), overrides: v.record(v.string(), v.number()) },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.gameId, { computeShareOverrides: args.overrides });
+  },
+});
+
 export const updateWorldStateInternal = internalMutation({
   args: { gameId: v.id("games"), worldState: worldStateValidator },
   handler: async (ctx, args) => {
@@ -671,6 +685,31 @@ export const openSubmissions = mutation({
     if (!game) return;
     const phaseEndsAt = Date.now() + args.durationSeconds * 1000;
     await ctx.db.patch(args.gameId, { phase: "submit", phaseEndsAt });
+
+    // Snapshot compute stocks at submit-open (before any player transfers).
+    // Lab CEO compute lives on game.labs[], non-lab compute on tables[].computeStock.
+    const tables = await ctx.db.query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const labByRoleId = new Map(game.labs.map((l) => [l.roleId, l]));
+    const roleComputeAtSubmitOpen = tables
+      .filter((t) => t.computeStock != null || labByRoleId.has(t.roleId))
+      .map((t) => {
+        const lab = labByRoleId.get(t.roleId);
+        return {
+          roleId: t.roleId,
+          roleName: t.roleName,
+          computeStock: lab?.computeStock ?? t.computeStock ?? 0,
+        };
+      });
+    const rounds = await ctx.db.query("rounds")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const round = rounds.find((r) => r.number === game.currentRound);
+    if (round) {
+      await ctx.db.patch(round._id, { roleComputeAtSubmitOpen });
+    }
+
     await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: "submit", durationSeconds: args.durationSeconds });
     await schedulePreGeneration(ctx, args.gameId, game.currentRound);
   },

@@ -56,6 +56,8 @@ export default defineSchema({
     })),
     // Nonce for preventing double-execution of resolve
     resolveNonce: v.optional(v.string()),
+    // Facilitator overrides for next round's compute share distribution (roleId → %)
+    computeShareOverrides: v.optional(v.record(v.string(), v.number())),
   }),
 
   tables: defineTable({
@@ -172,32 +174,28 @@ export default defineSchema({
         })
       )
     ),
-    // Compute changes applied this round (for facilitator review UI)
-    computeChanges: v.optional(v.object({
-      newComputeTotal: v.number(),
-      baselineTotal: v.number(),
-      stockBeforeTotal: v.number(),
-      stockAfterTotal: v.number(),
-      distribution: v.array(v.object({
-        labName: v.string(),
-        stockBefore: v.number(),
-        stockAfter: v.number(),
-        stockChange: v.number(),
-        baseline: v.number(),
-        modifier: v.number(),
-        sharePct: v.number(),
-        active: v.boolean(),
-        reason: v.optional(v.string()),
-        newTotal: v.number(),
-      })),
-      nonCompetitive: v.array(v.object({
-        roleId: v.string(),
-        roleName: v.string(),
-        stockBefore: v.number(),
-        stockAfter: v.number(),
-        stockChange: v.number(),
-      })),
-    })),
+    // Compute snapshot at submit-phase open (before player transfers)
+    roleComputeAtSubmitOpen: v.optional(
+      v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() }))
+    ),
+    // Unified compute record — all holders (labs + governments + civil society)
+    computeHolders: v.optional(v.array(v.object({
+      roleId: v.string(),
+      name: v.string(),
+      stockBefore: v.number(),
+      produced: v.number(),
+      transferred: v.number(),
+      adjustment: v.number(),
+      adjustmentReason: v.optional(v.string()),
+      stockAfter: v.number(),
+      override: v.optional(v.number()),
+      overrideReason: v.optional(v.string()),
+      sharePct: v.number(),
+      status: v.optional(v.union(v.literal("merged"), v.literal("created"))),
+    }))),
+    // Legacy field — kept for backward compatibility with existing round data.
+    // New rounds use computeHolders instead. Will be removed after migration.
+    computeChanges: v.optional(v.any()),
     // Post-resolve snapshot — for post-game review and restore
     worldStateAfter: v.optional(worldStateValidator),
     labsAfter: v.optional(v.array(labSnapshotValidator)),
