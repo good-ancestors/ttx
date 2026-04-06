@@ -333,6 +333,8 @@ if (typeof process !== "undefined" && process.env.NODE_ENV !== "production") {
       console.error(`[game-data] Role "${convexRole.id}" exists in convex/gameData.ts but not in game-data.ts`);
     } else if (richRole.name !== convexRole.name) {
       console.error(`[game-data] Role "${convexRole.id}" name mismatch: "${richRole.name}" vs "${convexRole.name}"`);
+    } else if (JSON.stringify([...richRole.tags].sort()) !== JSON.stringify([...(convexRole.tags as readonly string[])].sort())) {
+      console.error(`[game-data] Role "${convexRole.id}" tags mismatch: [${richRole.tags.join(",")}] vs [${[...convexRole.tags].join(",")}]`);
     }
   }
   for (const richRole of ROLES) {

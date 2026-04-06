@@ -1,7 +1,16 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
+import type { QueryCtx, MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { worldStateValidator, labSnapshotValidator, labTrajectoryValidator } from "./schema";
 import { assertFacilitator } from "./events";
+
+/** Find a single round by game + number using compound index (1 doc read). */
+async function findRound(ctx: QueryCtx | MutationCtx, gameId: Id<"games">, roundNumber: number) {
+  return ctx.db.query("rounds")
+    .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
+    .first();
+}
 
 export const getByGame = query({
   args: { gameId: v.id("games") },
@@ -102,12 +111,7 @@ export const applySummary = mutation({
   },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
-    const rounds = await ctx.db
-      .query("rounds")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
 
     await ctx.db.patch(round._id, { summary: args.summary });
@@ -133,12 +137,7 @@ export const applyResolution = mutation({
   },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
-    const rounds = await ctx.db
-      .query("rounds")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
 
     await ctx.db.patch(round._id, {
@@ -152,11 +151,7 @@ export const clearResolution = mutation({
   args: { gameId: v.id("games"), roundNumber: v.number(), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
-    const rounds = await ctx.db
-      .query("rounds")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
     await ctx.db.patch(round._id, { resolvedEvents: [], summary: undefined });
   },
@@ -176,12 +171,7 @@ export const setAiMeta = internalMutation({
     }),
   },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db
-      .query("rounds")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
 
     await ctx.db.patch(round._id, { aiMeta: args.aiMeta });
@@ -197,12 +187,7 @@ export const updateFallbackNarrative = mutation({
   },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
-    const rounds = await ctx.db
-      .query("rounds")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
 
     await ctx.db.patch(round._id, { fallbackNarrative: args.fallbackNarrative });
@@ -223,8 +208,7 @@ const resolvedEventValidator = v.object({
 export const getForPipeline = internalQuery({
   args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    return rounds.find((r) => r.number === args.roundNumber) ?? null;
+    return await findRound(ctx, args.gameId, args.roundNumber);
   },
 });
 
@@ -238,8 +222,7 @@ export const getAllForPipeline = internalQuery({
 export const setResolveNonce = internalMutation({
   args: { gameId: v.id("games"), roundNumber: v.number(), nonce: v.string() },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (round) await ctx.db.patch(round._id, { resolveNonce: args.nonce });
   },
 });
@@ -247,8 +230,7 @@ export const setResolveNonce = internalMutation({
 export const writePartialEvents = internalMutation({
   args: { gameId: v.id("games"), roundNumber: v.number(), events: v.array(resolvedEventValidator) },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (round) await ctx.db.patch(round._id, { partialEvents: args.events });
   },
 });
@@ -265,8 +247,7 @@ export const applyResolutionInternal = internalMutation({
     const game = await ctx.db.get(args.gameId);
     if (game?.resolveNonce !== args.nonce) return;
 
-    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
 
     await ctx.db.patch(round._id, {
@@ -289,8 +270,7 @@ export const applySummaryInternal = internalMutation({
     }),
   },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (round) await ctx.db.patch(round._id, { summary: args.summary });
   },
 });
@@ -304,8 +284,7 @@ export const snapshotBeforeInternal = internalMutation({
     roleComputeBefore: v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() })),
   },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round || round.worldStateBefore) return; // Already snapshotted
     await ctx.db.patch(round._id, {
       worldStateBefore: args.worldStateBefore,
@@ -324,8 +303,7 @@ export const snapshotAfterInternal = internalMutation({
     roleComputeAfter: v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() })),
   },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
     await ctx.db.patch(round._id, {
       worldStateAfter: args.worldStateAfter,
@@ -342,8 +320,7 @@ export const setLabTrajectories = internalMutation({
     trajectories: v.array(labTrajectoryValidator),
   },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (round) await ctx.db.patch(round._id, { labTrajectories: args.trajectories });
   },
 });
@@ -362,8 +339,7 @@ export const setAiMetaInternal = internalMutation({
     }),
   },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
     // Merge with existing meta
     const existing = round.aiMeta ?? {};
@@ -393,8 +369,7 @@ export const setComputeHolders = internalMutation({
     })),
   },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (round) await ctx.db.patch(round._id, { computeHolders: args.holders });
   },
 });
