@@ -7,6 +7,10 @@ import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 
 const PRIORITY_HARD_CAP = 12;
 
+function generateActionId(): string {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
 function validateComputeAllocation(allocation: { users: number; capability: number; safety: number }) {
   if (allocation.users < 0 || allocation.capability < 0 || allocation.safety < 0) {
     throw new Error("Compute allocation values must be >= 0");
@@ -49,6 +53,7 @@ const actionValidator = v.object({
 
 // Validator for actions that already have actionStatus set (e.g. grading pipeline output).
 const persistedActionValidator = v.object({
+  actionId: v.string(),
   text: v.string(),
   priority: v.number(),
   secret: v.optional(v.boolean()),
@@ -165,6 +170,7 @@ export const submit = mutation({
     // Ensure all actions have actionStatus set for the new per-action model
     const stampedActions = args.actions.map((a) => ({
       ...a,
+      actionId: generateActionId(),
       actionStatus: "submitted" as const,
     }));
 
@@ -222,6 +228,7 @@ export const saveDraft = mutation({
     const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
 
     const newAction = {
+      actionId: generateActionId(),
       text: args.text,
       priority: args.priority,
       secret: args.secret,
@@ -346,6 +353,7 @@ export const saveAndSubmit = mutation({
     const rank = submittedCount + 1; // 1-based rank
 
     const newAction = {
+      actionId: generateActionId(),
       text: args.text,
       priority: rank,
       secret: args.secret,
@@ -372,7 +380,7 @@ export const saveAndSubmit = mutation({
           actionIndex: existingDraftIndex,
           text: args.text,
         });
-        return { submissionId: existing._id, actionIndex: existingDraftIndex };
+        return { submissionId: existing._id, actionIndex: existingDraftIndex, actionId: actions[existingDraftIndex].actionId };
       }
 
       const actions = [...existing.actions, newAction];
@@ -381,7 +389,7 @@ export const saveAndSubmit = mutation({
         actionIndex: actions.length - 1,
         text: args.text,
       });
-      return { submissionId: existing._id, actionIndex: actions.length - 1 };
+      return { submissionId: existing._id, actionIndex: actions.length - 1, actionId: newAction.actionId };
     }
 
     const id = await ctx.db.insert("submissions", {
@@ -396,7 +404,7 @@ export const saveAndSubmit = mutation({
       actionIndex: 0,
       text: args.text,
     });
-    return { submissionId: id, actionIndex: 0 };
+    return { submissionId: id, actionIndex: 0, actionId: newAction.actionId };
   },
 });
 
@@ -418,11 +426,11 @@ export const editSubmitted = mutation({
 
     const actions = [...sub.actions];
     actions[args.actionIndex] = {
+      actionId: action.actionId ?? generateActionId(),
       text: action.text,
       priority: action.priority,
       secret: action.secret,
       actionStatus: "draft" as const,
-      // Clear grading and influence — action changed, needs re-evaluation
     };
     // Revert submission status if it was graded (action needs re-evaluation)
     const newStatus = sub.status === "graded" || sub.status === "resolved" ? "submitted" as const : sub.status;
@@ -460,7 +468,9 @@ export const deleteAction = mutation({
       )
       .collect();
     for (const req of requests) {
-      if (req.fromRoleId === sub.roleId && req.actionText === action.text) {
+      if (req.fromRoleId === sub.roleId && (
+        action.actionId ? req.actionId === action.actionId : req.actionText === action.text
+      )) {
         await ctx.db.delete(req._id);
       }
     }
@@ -807,7 +817,7 @@ export const submitInternal = internalMutation({
 
     const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
 
-    const stampedActions = args.actions.map((a) => ({ ...a, actionStatus: "submitted" as const }));
+    const stampedActions = args.actions.map((a) => ({ ...a, actionId: generateActionId(), actionStatus: "submitted" as const }));
 
     if (existing) {
       if (existing.status === "graded" || existing.status === "resolved") return existing._id;

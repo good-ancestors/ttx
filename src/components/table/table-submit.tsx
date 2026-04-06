@@ -27,6 +27,7 @@ interface TableSubmitProps {
   tableId: Id<"tables">;
   role: Role;
   submittedActions: {
+    actionId?: string;
     text: string;
     priority: number;
     secret?: boolean;
@@ -105,7 +106,7 @@ export function TableSubmit({
               canEdit={canEdit}
               onEdit={() => onEditAction(i)}
               onDelete={() => onDeleteAction(i)}
-              sentRequests={sentRequestsByAction?.get(a.text)}
+              sentRequests={sentRequestsByAction?.get(a.actionId ?? a.text)}
             />
           ))}
         </div>

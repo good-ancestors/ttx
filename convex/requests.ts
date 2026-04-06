@@ -61,27 +61,30 @@ async function findOrUpsertRequest(
     fromRoleName: string;
     toRoleId: string;
     toRoleName: string;
+    actionId?: string;
     actionText: string;
     requestType: "endorsement" | "compute";
     computeAmount?: number;
   },
 ): Promise<Id<"requests">> {
-  // Use by_from_role index to narrow results (much smaller than all requests for the round)
   const existing = await ctx.db
     .query("requests")
     .withIndex("by_from_role", (q) =>
       q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber).eq("fromRoleId", args.fromRoleId)
     )
     .collect();
+  // Match by actionId (stable) when available, fall back to actionText for legacy
   const match = existing.find((request) =>
     request.toRoleId === args.toRoleId &&
-    request.actionText === args.actionText &&
-    request.requestType === args.requestType
+    request.requestType === args.requestType &&
+    (args.actionId ? request.actionId === args.actionId : request.actionText === args.actionText)
   );
   if (match) {
     await ctx.db.patch(match._id, {
       fromRoleName: args.fromRoleName,
       toRoleName: args.toRoleName,
+      actionId: args.actionId,
+      actionText: args.actionText, // Update text in case action was edited
       computeAmount: args.computeAmount,
       status: "pending",
     });
@@ -175,6 +178,7 @@ export const send = mutation({
     fromRoleName: v.string(),
     toRoleId: v.string(),
     toRoleName: v.string(),
+    actionId: v.optional(v.string()),
     actionText: v.string(),
     requestType: v.union(
       v.literal("endorsement"),
@@ -337,6 +341,7 @@ export const sendInternal = internalMutation({
     fromRoleName: v.string(),
     toRoleId: v.string(),
     toRoleName: v.string(),
+    actionId: v.optional(v.string()),
     actionText: v.string(),
     requestType: v.union(v.literal("endorsement"), v.literal("compute")),
     computeAmount: v.optional(v.number()),

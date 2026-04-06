@@ -490,22 +490,23 @@ export default function TablePlayerPage({
     if (!draft?.text.trim() || !role || !game) return;
     setSubmitError("");
     try {
-      // Save + submit in a single mutation (avoids two round-trips)
-      await saveAndSubmitMut({
+      // Save + submit in a single mutation — returns the stable actionId
+      const result = await saveAndSubmitMut({
         tableId,
         gameId,
         roundNumber: game.currentRound,
         roleId: role.id,
         text: draft.text.trim(),
-        priority: 1, // Rank assigned server-side based on submission order
+        priority: 1,
         secret: draft.secret || undefined,
       });
+      const { actionId } = result;
       // Remove from local drafts
       setActionDrafts((prev) => {
         const next = prev.filter((_, i) => i !== draftIndex);
         return next.length === 0 ? [emptyAction()] : next;
       });
-      // Send endorsement requests
+      // Send endorsement requests with stable actionId
       for (const targetId of new Set(draft.endorseTargets)) {
         const targetRole = (allTables ?? []).find((t) => t.roleId === targetId);
         if (targetRole) {
@@ -516,12 +517,13 @@ export default function TablePlayerPage({
             fromRoleName: role.name,
             toRoleId: targetId,
             toRoleName: targetRole.roleName,
+            actionId,
             actionText: draft.text.trim(),
             requestType: "endorsement" as const,
           });
         }
       }
-      // Send compute requests
+      // Send compute requests with stable actionId
       for (const target of draft.computeTargets) {
         const targetRole = (allTables ?? []).find((t) => t.roleId === target.roleId);
         if (targetRole) {
@@ -532,6 +534,7 @@ export default function TablePlayerPage({
             fromRoleName: role.name,
             toRoleId: target.roleId,
             toRoleName: targetRole.roleName,
+            actionId,
             actionText: draft.text.trim(),
             requestType: "compute" as const,
             computeAmount: target.amount,
@@ -543,20 +546,22 @@ export default function TablePlayerPage({
     }
   }, [actionDrafts, role, game, tableId, gameId, saveAndSubmitMut, sendRequest, allTables]);
 
-  // ── Sent requests grouped by action text (for submitted action cards) ────
+  // ── Sent requests grouped by actionId (stable across text edits) ────
   const sentRequestsByAction = useMemo(() => {
     if (!allRequests || !role) return undefined;
     const map = new Map<string, { toRoleName: string; requestType: "endorsement" | "compute"; computeAmount?: number; status: "pending" | "accepted" | "declined" }[]>();
     for (const req of allRequests) {
       if (req.fromRoleId !== role.id) continue;
-      const list = map.get(req.actionText) ?? [];
+      // Key by actionId (stable) when available, fall back to actionText for legacy
+      const key = req.actionId ?? req.actionText;
+      const list = map.get(key) ?? [];
       list.push({
         toRoleName: req.toRoleName,
         requestType: req.requestType,
         computeAmount: req.computeAmount,
         status: req.status,
       });
-      map.set(req.actionText, list);
+      map.set(key, list);
     }
     return map;
   }, [allRequests, role]);

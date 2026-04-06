@@ -85,11 +85,10 @@ export default defineSchema({
     roleId: v.string(),
     actions: v.array(
       v.object({
+        actionId: v.string(), // Stable UUID — survives text edits, used to link requests
         text: v.string(),
         priority: v.number(),
         secret: v.optional(v.boolean()),
-        // Per-action lifecycle: draft (player composing) → submitted (locked in, visible to facilitator)
-        // Graded/rolled are tracked by probability and rolled fields being set
         actionStatus: v.union(v.literal("draft"), v.literal("submitted")),
         probability: v.optional(v.number()),
         reasoning: v.optional(v.string()),
@@ -232,7 +231,8 @@ export default defineSchema({
     fromRoleName: v.string(),
     toRoleId: v.string(),
     toRoleName: v.string(),
-    actionText: v.string(),
+    actionId: v.optional(v.string()), // Stable link to the action (optional for migration)
+    actionText: v.string(), // Kept for display — not used as join key when actionId is present
     requestType: v.union(
       v.literal("endorsement"),
       v.literal("compute")

@@ -517,10 +517,11 @@ export function RespondResultsTab({
       .filter((request) => request.toRoleId === roleId && request.status !== "pending")
       .map((request) => {
         const sub = submissions.find((entry) => entry.roleId === request.fromRoleId);
-        // Match by exact action text. No fallback to "first secret action" — showing
-        // the wrong outcome is worse than showing "No result".
+        // Match by actionId (stable) when available, fall back to text match for legacy
         const matchedAction = sub?.actions.find((action) =>
-          isSubmittedAction(action) && action.text === request.actionText
+          isSubmittedAction(action) && (
+            request.actionId ? action.actionId === request.actionId : action.text === request.actionText
+          )
         );
         const role = ROLES.find((entry) => entry.id === request.fromRoleId);
         return {
