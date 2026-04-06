@@ -12,6 +12,14 @@ function escapeAction(text: string): string {
 
 import type { Lab } from "./game-data";
 
+interface LabTrajectoryContext {
+  labName: string;
+  safetyAdequacy: string;
+  likelyFailureMode: string;
+  reasoning: string;
+  signalStrength: number;
+}
+
 // Design note: This prompt deliberately avoids stating alignment outcomes as facts.
 // The old version said things like "Agent-4 is adversarially misaligned" which
 // predetermined outcomes regardless of player actions. This version describes
@@ -165,7 +173,7 @@ export function buildGradingPrompt(args: {
   aiDisposition?: { label: string; description: string };
   otherSubmissions?: { roleName: string; actions: { text: string; priority: number }[] }[];
   labSpec?: string;
-  previousTrajectories?: { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[];
+  previousTrajectories?: LabTrajectoryContext[];
 }) {
   // Group requests by action text
   const requestsByAction = new Map<string, ActionRequest[]>();
@@ -375,7 +383,7 @@ export function buildRoundNarrativePrompt(args: {
   labs: Lab[];
   previousRounds?: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[];
   aiDisposition?: { label: string; description: string };
-  previousTrajectories?: { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[];
+  previousTrajectories?: LabTrajectoryContext[];
 }) {
   const sorted = [...args.resolvedActions].sort((a, b) => b.priority - a.priority);
   const publicSuccesses = sorted.filter((a) => !a.secret && a.success);
