@@ -127,11 +127,6 @@ export function BriefTab({
         )
       )}
 
-      {/* ─── Compute Resources ─── */}
-      {gameStatus === "playing" && computeOverview && (
-        <ComputeOverviewCard computeOverview={computeOverview} currentRoleId={role.id} />
-      )}
-
       {/* ─── How to Play ─── */}
       <div className="bg-[#EFF6FF] rounded-xl p-5 border border-[#BFDBFE]">
         <h2 className="text-sm font-bold text-[#1D4ED8] mb-3">How to Play</h2>
@@ -193,7 +188,6 @@ export function BriefTab({
 
       {/* Note when submissions aren't open */}
       {!submissionsOpen && (
-
         <div className="bg-warm-gray rounded-xl p-4 border border-border text-center">
           <div className="flex items-center justify-center gap-2 text-text-muted">
             <Zap className="w-4 h-4" />
@@ -201,6 +195,33 @@ export function BriefTab({
               When the facilitator opens submissions, the <span className="font-bold">Actions</span> tab will activate.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* ─── Compute Resources (bottom, collapsed) ─── */}
+      {gameStatus === "playing" && computeOverview && (
+        <CollapsibleComputeOverview computeOverview={computeOverview} currentRoleId={role.id} />
+      )}
+    </div>
+  );
+}
+
+function CollapsibleComputeOverview({ computeOverview, currentRoleId }: { computeOverview: ComputeOverview; currentRoleId: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="bg-white rounded-xl border border-border overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center justify-between p-4 text-left"
+      >
+        <span className="text-sm font-bold text-text flex items-center gap-2">
+          <Zap className="w-4 h-4 text-text-muted" /> Compute Resources
+        </span>
+        {open ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
+      </button>
+      {open && (
+        <div className="px-4 pb-4">
+          <ComputeOverviewCard computeOverview={computeOverview} currentRoleId={currentRoleId} />
         </div>
       )}
     </div>
@@ -215,12 +236,7 @@ function ComputeOverviewCard({ computeOverview, currentRoleId }: { computeOvervi
   if (labs.length === 0 && nonLabRoles.length === 0) return null;
 
   return (
-    <div className="bg-[#F5F3FF] rounded-xl p-4 border border-[#DDD6FE]">
-      <div className="flex items-center gap-2 mb-3">
-        <Zap className="w-4 h-4 text-[#7C3AED]" />
-        <span className="text-sm font-bold text-[#5B21B6]">Compute Resources</span>
-      </div>
-
+    <div>
       {/* Labs */}
       {labs.length > 0 && (
         <div className="space-y-2 mb-3">

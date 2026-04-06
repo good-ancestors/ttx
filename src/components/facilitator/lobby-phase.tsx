@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { ROLES, AI_SYSTEMS_ROLE_ID } from "@/lib/game-data";
+import { useState, useMemo } from "react";
+import { ROLES, AI_SYSTEMS_ROLE_ID, DEFAULT_LABS } from "@/lib/game-data";
+import { calculateStartingCompute } from "@/lib/compute";
 import { QRCode } from "@/components/qr-codes";
-import { Play, Lock, QrCode } from "lucide-react";
+import { Play, Lock, QrCode, Zap } from "lucide-react";
 import type { FacilitatorPhaseProps } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 
@@ -155,6 +156,9 @@ export function LobbyPhase({
         })}
       </div>
 
+      {/* ─── Starting Compute Allocation ─── */}
+      {!isProjector && <ComputeAllocationPreview tables={tables} />}
+
       {!isProjector && (
         <div className="flex justify-center gap-3">
           {!game.locked && (
@@ -192,6 +196,62 @@ export function LobbyPhase({
             <p className="text-xs text-text-light mt-2 text-center">Are you sure? All tables will be locked.</p>
           )}
         </div>
+      )}
+    </div>
+  );
+}
+
+function ComputeAllocationPreview({ tables }: { tables: FacilitatorPhaseProps["tables"] }) {
+  const enabledRoleIds = useMemo(
+    () => new Set(tables.filter((t) => t.enabled).map((t) => t.roleId)),
+    [tables],
+  );
+  const allocations = useMemo(() => calculateStartingCompute(enabledRoleIds), [enabledRoleIds]);
+  const labTotal = DEFAULT_LABS.reduce((s, l) => s + l.computeStock, 0);
+  const nonLabTotal = allocations.filter((a) => !DEFAULT_LABS.some((l) => l.roleId === a.roleId)).reduce((s, a) => s + a.computeStock, 0);
+
+  return (
+    <div className="bg-navy-dark rounded-xl border border-navy-light p-4 mb-6 max-w-lg mx-auto">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-bold text-white flex items-center gap-2">
+          <Zap className="w-4 h-4 text-text-light" /> Starting Compute
+        </span>
+        <span className="text-xs font-mono text-text-light">{labTotal + nonLabTotal}u total</span>
+      </div>
+
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-text-light/60 text-left">
+            <th className="pb-1 font-semibold">Entity</th>
+            <th className="pb-1 font-semibold text-right">Compute</th>
+          </tr>
+        </thead>
+        <tbody>
+          {allocations.map((a) => {
+            const isLab = DEFAULT_LABS.some((l) => l.roleId === a.roleId);
+            return (
+              <tr key={a.roleId} className="border-t border-navy-light/30">
+                <td className="py-1.5 text-white">
+                  {a.name}
+                  {isLab && <span className="ml-1 text-text-light/50 text-[10px]">lab</span>}
+                </td>
+                <td className="py-1.5 text-right font-mono text-white">{a.computeStock}u</td>
+              </tr>
+            );
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t border-navy-light">
+            <td className="py-1.5 text-text-light font-semibold">Total</td>
+            <td className="py-1.5 text-right font-mono text-white font-bold">{labTotal + nonLabTotal}u</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      {nonLabTotal === 0 && (
+        <p className="text-[10px] text-text-light/60 mt-2">
+          No non-lab compute holders enabled. Enable US President, EU President, or Australia PM to distribute pool compute.
+        </p>
       )}
     </div>
   );
