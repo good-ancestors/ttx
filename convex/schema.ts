@@ -24,6 +24,21 @@ export const labSnapshotValidator = v.object({
   spec: v.optional(v.string()),
 });
 
+export const labTrajectoryValidator = v.object({
+  labName: v.string(),
+  safetyAdequacy: v.union(
+    v.literal("adequate"), v.literal("concerning"),
+    v.literal("dangerous"), v.literal("catastrophic")
+  ),
+  likelyFailureMode: v.union(
+    v.literal("aligned"), v.literal("deceptive"), v.literal("spec-gaming"),
+    v.literal("power-concentration"), v.literal("benevolent-override"),
+    v.literal("loss-of-control"), v.literal("misuse")
+  ),
+  reasoning: v.string(),
+  signalStrength: v.number(),
+});
+
 export default defineSchema({
   games: defineTable({
     name: v.optional(v.string()),
@@ -151,21 +166,7 @@ export default defineSchema({
         facilitatorNotes: v.optional(v.string()),
       })
     ),
-    // Per-lab risk trajectory — hidden from players, guides future narrative
-    labTrajectories: v.optional(v.array(v.object({
-      labName: v.string(),
-      safetyAdequacy: v.union(
-        v.literal("adequate"), v.literal("concerning"),
-        v.literal("dangerous"), v.literal("catastrophic")
-      ),
-      likelyFailureMode: v.union(
-        v.literal("aligned"), v.literal("deceptive"), v.literal("spec-gaming"),
-        v.literal("power-concentration"), v.literal("benevolent-override"),
-        v.literal("loss-of-control"), v.literal("misuse")
-      ),
-      reasoning: v.string(),
-      signalStrength: v.number(), // 0-10: how advanced/confident this trajectory is
-    }))),
+    labTrajectories: v.optional(v.array(labTrajectoryValidator)),
     fallbackNarrative: v.optional(v.string()),
     aiMeta: v.optional(
       v.object({

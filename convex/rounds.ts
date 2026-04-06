@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
-import { worldStateValidator, labSnapshotValidator } from "./schema";
+import { worldStateValidator, labSnapshotValidator, labTrajectoryValidator } from "./schema";
 import { assertFacilitator } from "./events";
 
 export const getByGame = query({
@@ -340,13 +340,7 @@ export const setLabTrajectories = internalMutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
-    trajectories: v.array(v.object({
-      labName: v.string(),
-      safetyAdequacy: v.union(v.literal("adequate"), v.literal("concerning"), v.literal("dangerous"), v.literal("catastrophic")),
-      likelyFailureMode: v.union(v.literal("aligned"), v.literal("deceptive"), v.literal("spec-gaming"), v.literal("power-concentration"), v.literal("benevolent-override"), v.literal("loss-of-control"), v.literal("misuse")),
-      reasoning: v.string(),
-      signalStrength: v.number(),
-    })),
+    trajectories: v.array(labTrajectoryValidator),
   },
   handler: async (ctx, args) => {
     const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
