@@ -66,14 +66,14 @@ async function findOrUpsertRequest(
     computeAmount?: number;
   },
 ): Promise<Id<"requests">> {
+  // Use by_from_role index to narrow results (much smaller than all requests for the round)
   const existing = await ctx.db
     .query("requests")
-    .withIndex("by_game_and_round", (q) =>
-      q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber)
+    .withIndex("by_from_role", (q) =>
+      q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber).eq("fromRoleId", args.fromRoleId)
     )
     .collect();
   const match = existing.find((request) =>
-    request.fromRoleId === args.fromRoleId &&
     request.toRoleId === args.toRoleId &&
     request.actionText === args.actionText &&
     request.requestType === args.requestType
@@ -358,12 +358,11 @@ async function triggerAutoResponse(
   toRoleId: string,
   requestId: Id<"requests">,
 ) {
-  const tables = await ctx.db
+  const targetTable = await ctx.db
     .query("tables")
-    .withIndex("by_game", (q) => q.eq("gameId", gameId))
-    .collect();
-  const targetTable = tables.find((t) => t.roleId === toRoleId && t.enabled);
-  if (!targetTable || targetTable.controlMode === "human") return;
+    .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", toRoleId))
+    .first();
+  if (!targetTable || !targetTable.enabled || targetTable.controlMode === "human") return;
 
   if (targetTable.controlMode === "npc") {
     const accept = Math.random() < NPC_ACCEPT_RATE;

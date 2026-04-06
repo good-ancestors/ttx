@@ -75,6 +75,7 @@ export default defineSchema({
     activeSessionId: v.optional(v.string()),
   })
     .index("by_game", ["gameId"])
+    .index("by_game_and_role", ["gameId", "roleId"])
     .index("by_joinCode", ["joinCode"]),
 
   submissions: defineTable({
@@ -244,7 +245,8 @@ export default defineSchema({
     ),
   })
     .index("by_game_and_round", ["gameId", "roundNumber"])
-    .index("by_to_role", ["gameId", "roundNumber", "toRoleId"]),
+    .index("by_to_role", ["gameId", "roundNumber", "toRoleId"])
+    .index("by_from_role", ["gameId", "roundNumber", "fromRoleId"]),
 
   // Append-only event log for observability and post-game analysis
   events: defineTable({
