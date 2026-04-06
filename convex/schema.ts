@@ -85,7 +85,7 @@ export default defineSchema({
     roleId: v.string(),
     actions: v.array(
       v.object({
-        actionId: v.string(), // Stable UUID — survives text edits, used to link requests
+        actionId: v.optional(v.string()), // Stable UUID — survives text edits, used to link requests
         text: v.string(),
         priority: v.number(),
         secret: v.optional(v.boolean()),
