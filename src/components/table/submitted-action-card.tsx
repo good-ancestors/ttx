@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Send, Pencil, Trash2, EyeOff, Lock } from "lucide-react";
+import { Send, Pencil, Trash2, EyeOff, Lock, Handshake, Zap } from "lucide-react";
+
+export interface SentRequest {
+  toRoleName: string;
+  requestType: "endorsement" | "compute";
+  computeAmount?: number;
+  status: "pending" | "accepted" | "declined";
+}
 
 export function SubmittedActionCard({
   action,
@@ -9,12 +16,14 @@ export function SubmittedActionCard({
   canEdit,
   onEdit,
   onDelete,
+  sentRequests,
 }: {
   action: { text: string; priority: number; secret?: boolean; probability?: number };
   index: number;
   canEdit: boolean;
   onEdit: () => void;
   onDelete: () => void;
+  sentRequests?: SentRequest[];
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -43,6 +52,33 @@ export function SubmittedActionCard({
         )}
       </div>
       <p className="text-sm text-text mb-3">{action.text}</p>
+      {sentRequests && sentRequests.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {sentRequests.map((req, i) => {
+            const statusColor = req.status === "accepted"
+              ? "bg-[#ECFDF5] text-[#059669]"
+              : req.status === "declined"
+                ? "bg-[#FEF2F2] text-[#DC2626]"
+                : "bg-warm-gray text-text-muted";
+            const Icon = req.requestType === "compute" ? Zap : Handshake;
+            const label = req.requestType === "compute"
+              ? `${req.computeAmount}u from ${req.toRoleName}`
+              : `Support from ${req.toRoleName}`;
+            return (
+              <span
+                key={`req-${i}`}
+                className={`text-[11px] px-2 py-1 rounded-full font-medium flex items-center gap-1 ${statusColor}`}
+              >
+                <Icon className="w-3 h-3" />
+                {label}
+                {req.status !== "pending" && (
+                  <span className="font-bold capitalize"> — {req.status}</span>
+                )}
+              </span>
+            );
+          })}
+        </div>
+      )}
       {canEdit && (
         <div className="flex items-center gap-2">
           {confirmDelete ? (

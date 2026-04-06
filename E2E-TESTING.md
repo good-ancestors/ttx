@@ -136,6 +136,15 @@ Only add Human tables for the specific role mechanic you're testing.
 3. **Don't reuse games across deploys.** Each code change can affect game state. Create a fresh game after every deploy.
 4. **Check Convex logs for failures.** Use `npx convex logs --history 50` to see recent errors. For production: `npx convex logs --prod --history 50`.
 
+### Required Vercel environment variables
+
+The facilitator copilot (`/api/facilitator-adjust`) runs as a Next.js API route on Vercel and needs `ANTHROPIC_API_KEY` set in the **Vercel project environment variables** (not just `.env.local` or Convex). Without it, the copilot fails with "Copilot failed -- try again".
+
+Set these in the Vercel dashboard under Settings > Environment Variables:
+- `ANTHROPIC_API_KEY` -- Anthropic API key for copilot and grading
+- `AI_GATEWAY_API_KEY` -- AI gateway key (if using gateway)
+- `FACILITATOR_SECRET` -- used by server-side routes to authenticate Convex mutations
+
 ---
 
 ## Phase-by-Phase Checklist

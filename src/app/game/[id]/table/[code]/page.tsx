@@ -541,6 +541,24 @@ export default function TablePlayerPage({
     }
   }, [actionDrafts, role, game, tableId, gameId, saveAndSubmitMut, sendRequest, allTables]);
 
+  // ── Sent requests grouped by action text (for submitted action cards) ────
+  const sentRequestsByAction = useMemo(() => {
+    if (!allRequests || !role) return undefined;
+    const map = new Map<string, { toRoleName: string; requestType: "endorsement" | "compute"; computeAmount?: number; status: "pending" | "accepted" | "declined" }[]>();
+    for (const req of allRequests) {
+      if (req.fromRoleId !== role.id) continue;
+      const list = map.get(req.actionText) ?? [];
+      list.push({
+        toRoleName: req.toRoleName,
+        requestType: req.requestType,
+        computeAmount: req.computeAmount,
+        status: req.status,
+      });
+      map.set(req.actionText, list);
+    }
+    return map;
+  }, [allRequests, role]);
+
   const handleEditAction = useCallback(async (submittedIndex: number) => {
     if (!submission) return;
     setSubmitError("");
@@ -549,14 +567,33 @@ export default function TablePlayerPage({
       if (actualIndex === -1) return;
       const action = submission.actions[actualIndex];
       await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex });
+
+      // Restore endorsement/compute targets from existing requests
+      const actionRequests = sentRequestsByAction?.get(action.text) ?? [];
+      const endorseTargets = actionRequests
+        .filter((r) => r.requestType === "endorsement")
+        .map((r) => {
+          // Find roleId from roleName via allTables
+          const t = (allTables ?? []).find((t) => t.roleName === r.toRoleName);
+          return t?.roleId;
+        })
+        .filter((id): id is string => !!id);
+      const computeTargets = actionRequests
+        .filter((r) => r.requestType === "compute")
+        .map((r) => {
+          const t = (allTables ?? []).find((t) => t.roleName === r.toRoleName);
+          return t ? { roleId: t.roleId, amount: r.computeAmount ?? 1 } : null;
+        })
+        .filter((t): t is { roleId: string; amount: number } => !!t);
+
       setActionDrafts((prev) => [
         ...prev.filter((a) => a.text.trim()),
-        { text: action.text, priority: "medium" as const, secret: !!action.secret, endorseTargets: [], computeTargets: [] },
+        { text: action.text, priority: "medium" as const, secret: !!action.secret, endorseTargets, computeTargets },
       ]);
     } catch (err) {
       setSubmitError(`Failed to edit: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [submission, editSubmittedMut]);
+  }, [submission, editSubmittedMut, sentRequestsByAction, allTables]);
 
   const handleDeleteAction = useCallback(async (submittedIndex: number) => {
     if (!submission) return;
@@ -807,6 +844,7 @@ export default function TablePlayerPage({
                   onEditAction={handleEditAction}
                   onDeleteAction={handleDeleteAction}
                   submitError={submitError}
+                  sentRequestsByAction={sentRequestsByAction}
                   shownSuggestions={shownSuggestions}
                   ideasOpen={ideasOpen}
                   onIdeasOpenChange={setIdeasOpen}

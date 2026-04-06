@@ -3,7 +3,7 @@
 import { type Role, hasCompute } from "@/lib/game-data";
 import { type ActionDraft } from "@/components/action-input";
 import { ActionInput } from "@/components/action-input";
-import { SubmittedActionCard } from "@/components/table/submitted-action-card";
+import { SubmittedActionCard, type SentRequest } from "@/components/table/submitted-action-card";
 import { SendComputePanel } from "@/components/table/send-compute-panel";
 
 import type { Id } from "@convex/_generated/dataModel";
@@ -44,6 +44,8 @@ interface TableSubmitProps {
   onEditAction: (actionIndex: number) => void;
   onDeleteAction: (actionIndex: number) => void;
   submitError: string;
+  // Sent requests grouped by action text
+  sentRequestsByAction?: Map<string, SentRequest[]>;
   // Suggestions
   shownSuggestions: SampleAction[];
   ideasOpen: boolean;
@@ -67,6 +69,7 @@ export function TableSubmit({
   onEditAction,
   onDeleteAction,
   submitError,
+  sentRequestsByAction,
   shownSuggestions,
   ideasOpen,
   onIdeasOpenChange,
@@ -102,6 +105,7 @@ export function TableSubmit({
               canEdit={canEdit}
               onEdit={() => onEditAction(i)}
               onDelete={() => onDeleteAction(i)}
+              sentRequests={sentRequestsByAction?.get(a.text)}
             />
           ))}
         </div>
