@@ -94,51 +94,47 @@ export const COMPUTE_POOL_ELIGIBLE: Record<string, Record<string, number>> = {
   "Rest of World": { "eu-president": 5, "australia-pm": 4, "aisi-network": 2 },
 };
 
-const LAB_ROLE_IDS = new Set(DEFAULT_LABS.map((l) => l.roleId));
 const LAB_NAMES = new Set(DEFAULT_LABS.map((l) => l.name));
+
+/** Get enabled weights for a pool, filtered by which roles are in this game. */
+function getEnabledPoolWeights(poolName: string, enabledRoleIds: Set<string>): [string, number][] {
+  const weights = COMPUTE_POOL_ELIGIBLE[poolName];
+  if (!weights) return [];
+  return Object.entries(weights).filter(([id]) => enabledRoleIds.has(id));
+}
+
+/** Distribute an amount across weighted roles, ensuring exact sum via remainder. */
+function distributeByWeight(amount: number, weights: [string, number][]): Map<string, number> {
+  const result = new Map<string, number>();
+  if (weights.length === 0) return result;
+  const totalWeight = weights.reduce((s, [, w]) => s + w, 0);
+  let distributed = 0;
+  for (let i = 0; i < weights.length; i++) {
+    const [roleId, weight] = weights[i];
+    const share = i === weights.length - 1
+      ? amount - distributed
+      : Math.round(amount * weight / totalWeight);
+    result.set(roleId, (result.get(roleId) ?? 0) + share);
+    distributed += share;
+  }
+  return result;
+}
 
 /**
  * Calculate starting compute for all non-lab roles based on pool allocation.
- * Returns a map of roleId → compute stock.
  * Total non-lab compute always equals sum of POOL_STARTING_STOCK (27u).
  */
 export function calculatePoolAllocations(enabledRoleIds: Set<string>): Map<string, number> {
   const allocations = new Map<string, number>();
-
-  for (const [poolName, weights] of Object.entries(COMPUTE_POOL_ELIGIBLE)) {
+  for (const [poolName] of Object.entries(COMPUTE_POOL_ELIGIBLE)) {
     const poolTotal = POOL_STARTING_STOCK[poolName] ?? 0;
     if (poolTotal <= 0) continue;
-
-    const enabledWeights = Object.entries(weights)
-      .filter(([roleId]) => enabledRoleIds.has(roleId));
-
-    if (enabledWeights.length === 0) continue;
-
-    const totalWeight = enabledWeights.reduce((s, [, w]) => s + w, 0);
-    let distributed = 0;
-    for (let i = 0; i < enabledWeights.length; i++) {
-      const [roleId, weight] = enabledWeights[i];
-      // Last role gets remainder to ensure exact sum
-      const share = i === enabledWeights.length - 1
-        ? poolTotal - distributed
-        : Math.round(poolTotal * weight / totalWeight);
+    const weights = getEnabledPoolWeights(poolName, enabledRoleIds);
+    for (const [roleId, share] of distributeByWeight(poolTotal, weights)) {
       allocations.set(roleId, (allocations.get(roleId) ?? 0) + share);
-      distributed += share;
     }
   }
-
   return allocations;
-}
-
-/**
- * Calculate starting compute for a single non-lab role.
- * Returns undefined for roles that don't hold compute.
- */
-export function getStartingComputeForRole(roleId: string, enabledRoleIds: Set<string>): number | undefined {
-  if (LAB_ROLE_IDS.has(roleId)) return undefined;
-  const allocations = calculatePoolAllocations(enabledRoleIds);
-  const stock = allocations.get(roleId);
-  return stock && stock > 0 ? stock : undefined;
 }
 
 /**
@@ -152,25 +148,16 @@ export function calculatePoolNewCompute(
 ): number {
   const shares = DEFAULT_COMPUTE_SHARES[roundNumber] ?? {};
   const baselineTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
-
   let newCompute = 0;
-  for (const [poolName, weights] of Object.entries(COMPUTE_POOL_ELIGIBLE)) {
+  for (const [poolName] of Object.entries(COMPUTE_POOL_ELIGIBLE)) {
     if (LAB_NAMES.has(poolName)) continue;
-    if (!(roleId in weights)) continue;
-
     const sharePct = shares[poolName];
     if (sharePct === undefined) continue;
-
-    const poolNewCompute = Math.round(baselineTotal * sharePct / 100);
-    const enabledWeights = Object.entries(weights)
-      .filter(([id]) => enabledRoleIds.has(id));
-    if (enabledWeights.length === 0) continue;
-
-    const totalWeight = enabledWeights.reduce((s, [, w]) => s + w, 0);
-    const roleWeight = weights[roleId] ?? 0;
-    newCompute += Math.round(poolNewCompute * roleWeight / totalWeight);
+    const poolAmount = Math.round(baselineTotal * sharePct / 100);
+    const weights = getEnabledPoolWeights(poolName, enabledRoleIds);
+    const distributed = distributeByWeight(poolAmount, weights);
+    newCompute += distributed.get(roleId) ?? 0;
   }
-
   return newCompute;
 }
 

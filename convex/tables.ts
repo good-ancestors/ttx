@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { logEvent, assertFacilitator } from "./events";
-import { ROLES, COMPUTE_POOL_ELIGIBLE, getStartingComputeForRole } from "./gameData";
+import { ROLES, COMPUTE_POOL_ELIGIBLE, calculatePoolAllocations } from "./gameData";
 
 export const getByGame = query({
   args: { gameId: v.id("games") },
@@ -184,11 +184,12 @@ export const toggleEnabled = mutation({
         .map((t) => t.roleId)
     );
 
-    // Only recalculate for roles eligible for pool shares (not all roles)
+    // Calculate pool allocations once, then update only affected roles
+    const poolAllocations = calculatePoolAllocations(enabledRoleIds);
     const poolAffectedRoles = new Set(Object.values(COMPUTE_POOL_ELIGIBLE).flatMap((w) => Object.keys(w)));
     for (const t of allTables) {
       if (!poolAffectedRoles.has(t.roleId)) continue;
-      const newStock = getStartingComputeForRole(t.roleId, enabledRoleIds);
+      const newStock = poolAllocations.get(t.roleId) ?? undefined;
       if (newStock !== t.computeStock) {
         await ctx.db.patch(t._id, { computeStock: newStock });
       }

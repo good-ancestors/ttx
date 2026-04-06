@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID, getStartingComputeForRole } from "./gameData";
+import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID, calculatePoolAllocations } from "./gameData";
 import { logEvent, assertFacilitator } from "./events";
 import { worldStateValidator, labSnapshotValidator } from "./schema";
 import { internal } from "./_generated/api";
@@ -83,8 +83,12 @@ export const create = mutation({
       }
     }
 
+    // Calculate pool allocations once for all roles
+    const poolAllocations = calculatePoolAllocations(enabledRoleIds);
+
     // Second pass: create tables with pool-aware starting compute
     for (const role of ROLES) {
+      const poolStock = poolAllocations.get(role.id);
       await ctx.db.insert("tables", {
         gameId,
         roleId: role.id,
@@ -93,7 +97,7 @@ export const create = mutation({
         connected: false,
         controlMode: "npc",
         enabled: enabledRoleIds.has(role.id),
-        computeStock: getStartingComputeForRole(role.id, enabledRoleIds),
+        computeStock: poolStock && poolStock > 0 ? poolStock : undefined,
       });
     }
 
