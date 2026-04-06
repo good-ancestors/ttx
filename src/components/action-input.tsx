@@ -198,7 +198,7 @@ function ActionCard({
           }
         }}
         placeholder={index === 0 ? "I do [action] so that [intended outcome]..." : "I do [action] so that [intended outcome]..."}
-        rows={2}
+        rows={4}
         maxLength={500}
         disabled={isSubmitted}
         spellCheck={false}

@@ -353,6 +353,26 @@ export const saveAndSubmit = mutation({
     };
 
     if (existing) {
+      // Check if there's an existing draft with the same text — upgrade it instead of duplicating
+      const existingDraftIndex = existing.actions.findIndex(
+        (a) => a.actionStatus === "draft" && a.text === args.text,
+      );
+      if (existingDraftIndex !== -1) {
+        const actions = [...existing.actions];
+        actions[existingDraftIndex] = {
+          ...actions[existingDraftIndex],
+          priority: rank,
+          secret: args.secret,
+          actionStatus: "submitted" as const,
+        };
+        await ctx.db.patch(existing._id, { actions, status: "submitted" });
+        await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
+          actionIndex: existingDraftIndex,
+          text: args.text,
+        });
+        return { submissionId: existing._id, actionIndex: existingDraftIndex };
+      }
+
       if (submittedCount >= 5) throw new Error("Maximum 5 actions per round");
       const actions = [...existing.actions, newAction];
       await ctx.db.patch(existing._id, { actions, status: "submitted" });

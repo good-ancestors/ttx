@@ -200,6 +200,7 @@ export default function TablePlayerPage({
   // Sample actions for suggestions
   const [sampleActionsData, setSampleActionsData] = useState<SampleActionsData | null>(null);
   const [ideasOpen, setIdeasOpen] = useState(false);
+  const ideasAutoOpenedRef = useRef(false);
 
   useKeyboardScroll();
 
@@ -354,6 +355,7 @@ export default function TablePlayerPage({
       setAutoSubmitMessage("");
       autoSubmittedRef.current = false;
       draftRestoredRef.current = false;
+      ideasAutoOpenedRef.current = false;
       setActiveTab("brief");
       // Reload compute allocation from current game state (not defaults)
       const currentRole = roleRef.current;
@@ -399,14 +401,15 @@ export default function TablePlayerPage({
     setShownSuggestions(pickRandom(all, 3));
   }, [sampleActionsData, role, currentRound]);
 
-  // ── Auto-expand ideas when timer low and no actions ─────────────────────
+  // ── Auto-expand ideas when timer low and no actions (once per round) ────
   useEffect(() => {
-    if (phase !== "submit" || isSubmitted) return;
+    if (phase !== "submit" || isSubmitted || ideasAutoOpenedRef.current) return;
     const filledCount = actionDrafts.filter((a) => a.text.trim()).length;
-    if (secondsLeft <= 120 && secondsLeft > 0 && filledCount === 0 && !ideasOpen) {
+    if (secondsLeft <= 120 && secondsLeft > 0 && filledCount === 0) {
+      ideasAutoOpenedRef.current = true;
       setIdeasOpen(true);
     }
-  }, [secondsLeft, phase, isSubmitted, actionDrafts, ideasOpen]);
+  }, [secondsLeft, phase, isSubmitted, actionDrafts]);
 
   // ── Timer expired: discard remaining drafts (only submitted actions count) ─
   useEffect(() => {
@@ -604,7 +607,7 @@ export default function TablePlayerPage({
     : [];
 
   // ── Tab config ────────────────────────────────────────────────────────────
-  const showTabs = game.status === "playing";
+  const showTabs = game.status === "playing" || game.status === "lobby";
   // CEO roles have full lab control (edit allocation, spec); safety leads get read-only access
   const controlsLab = game.labs.some(l => l.roleId === role.id);
   const hasLabAccess = controlsLab || (
@@ -684,12 +687,37 @@ export default function TablePlayerPage({
 
           {/* Lobby */}
           {game.status === "lobby" && (
-            <TableLobby
-              role={role}
-              tableId={tableId}
-              aiDisposition={table.aiDisposition}
-              handoutData={handoutData}
-            />
+            <>
+              {activeTab === "brief" && (
+                <TableLobby
+                  role={role}
+                  tableId={tableId}
+                  aiDisposition={table.aiDisposition}
+                  handoutData={handoutData}
+                />
+              )}
+              {activeTab === "actions" && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <Zap className="w-10 h-10 text-border mb-3" />
+                  <p className="text-sm font-bold text-text mb-1">Actions</p>
+                  <p className="text-xs text-text-muted max-w-xs">When the game starts, you&apos;ll see your actions here.</p>
+                </div>
+              )}
+              {activeTab === "respond" && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <Vote className="w-10 h-10 text-border mb-3" />
+                  <p className="text-sm font-bold text-text mb-1">Respond</p>
+                  <p className="text-xs text-text-muted max-w-xs">When the game starts, you&apos;ll be able to support or oppose other players&apos; actions here.</p>
+                </div>
+              )}
+              {activeTab === "lab" && hasLabAccess && (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <FlaskConical className="w-10 h-10 text-border mb-3" />
+                  <p className="text-sm font-bold text-text mb-1">Lab Controls</p>
+                  <p className="text-xs text-text-muted max-w-xs">When the game starts, you&apos;ll manage your lab here.</p>
+                </div>
+              )}
+            </>
           )}
 
           {/* Discuss phase — tab content */}

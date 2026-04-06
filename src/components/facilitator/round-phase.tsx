@@ -295,8 +295,8 @@ export function RoundPhase({
       )}
 
       {/* ─── 9. Advance / End button (narrate phase) ─── */}
-      {phase === "narrate" && !isProjector && (
-        game.currentRound < TOTAL_ROUNDS ? (
+      {phase === "narrate" && !isProjector && (<div className="mt-6">
+        {game.currentRound < TOTAL_ROUNDS ? (
           pendingConfirm === "advance" ? (
             <div className="flex gap-2">
               <button onClick={() => setPendingConfirm(null)} className="flex-1 py-4 bg-navy-light text-text-light rounded-lg font-bold text-base">Cancel</button>
@@ -324,8 +324,8 @@ export function RoundPhase({
               End Scenario
             </button>
           )
-        )
-      )}
+        )}
+      </div>)}
 
       {/* ─── Edit modal overlay ─── */}
       {!isProjector && editModal && (
@@ -461,7 +461,9 @@ function ComputeFlowPanel({
   const holders = currentRound.computeHolders;
   if (!holders) return null;
 
-  const entries = holders.toSorted((a, b) => (b.override ?? b.stockAfter) - (a.override ?? a.stockAfter));
+  const entries = holders
+    .filter((h) => h.stockBefore !== 0 || h.produced !== 0 || h.transferred !== 0 || h.adjustment !== 0)
+    .toSorted((a, b) => (b.override ?? b.stockAfter) - (a.override ?? a.stockAfter));
 
   const totalBefore = entries.reduce((s, e) => s + e.stockBefore, 0);
   const totalAfter = entries.reduce((s, e) => s + (e.override ?? e.stockAfter), 0);
@@ -481,7 +483,7 @@ function ComputeFlowPanel({
   const maxTotal = Math.max(...chartEntries.map((e) => e.stockBefore + e.gain), 1);
 
   return (
-    <div className="mb-3 rounded-lg border border-navy-light bg-navy p-4">
+    <div className="mt-3 mb-3 rounded-lg border border-navy-light bg-navy p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-sm font-bold text-white">Compute Stock and Flow</div>
@@ -593,55 +595,55 @@ function ComputeDetailTable({
         )}
       </div>
 
-      <div className="space-y-1">
-        {entries.map((e) => {
-          const displayAfter = overrides[e.roleId]?.value ?? e.override ?? e.stockAfter;
-          const isOverridden = e.roleId in overrides;
+      <table className="w-full text-[11px]">
+        <thead>
+          <tr className="text-text-light/60 text-left">
+            <th className="pb-1 font-semibold">Entity</th>
+            <th className="pb-1 font-semibold text-right">Start</th>
+            <th className="pb-1 font-semibold text-right">New</th>
+            <th className="pb-1 font-semibold text-right">Lost</th>
+            <th className="pb-1 font-semibold text-right">After</th>
+            <th className="pb-1 font-semibold text-right">Share</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.map((e) => {
+            const displayAfter = overrides[e.roleId]?.value ?? e.override ?? e.stockAfter;
+            const isOverridden = e.roleId in overrides;
+            const gained = Math.max(0, e.produced) + Math.max(0, e.transferred);
+            const lost = Math.max(0, -e.produced) + Math.max(0, -e.transferred) + Math.max(0, -e.adjustment);
 
-          return (
-            <div key={e.roleId} className="flex items-center gap-2 text-[11px]">
-              <span className="text-white font-medium min-w-[100px] truncate">{e.name}</span>
-              <span className="text-text-light font-mono w-8 text-right">{e.stockBefore}</span>
-              <span className="text-text-light/50">{"→"}</span>
-              {editing ? (
-                <input
-                  type="number"
-                  value={displayAfter}
-                  onChange={(ev) => {
-                    const val = parseInt(ev.target.value) || 0;
-                    setOverrides((prev) => ({ ...prev, [e.roleId]: { value: Math.max(0, val), reason: prev[e.roleId]?.reason ?? "" } }));
-                  }}
-                  className={`w-12 bg-navy-dark border rounded px-1 py-0.5 text-right font-mono text-white outline-none ${
-                    isOverridden ? "border-[#FCD34D]" : "border-navy-light"
-                  } focus:border-text-light`}
-                />
-              ) : (
-                <span className={`font-mono w-8 text-right ${e.override != null ? "text-[#FCD34D]" : "text-white"}`}>
-                  {displayAfter}
-                </span>
-              )}
-              {e.produced !== 0 && (
-                <span className={`font-mono ${e.produced > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                  {e.produced > 0 ? "+" : ""}{e.produced}
-                </span>
-              )}
-              {e.transferred !== 0 && (
-                <span className="font-mono text-viz-capability">
-                  {e.transferred > 0 ? "+" : ""}{e.transferred}t
-                </span>
-              )}
-              {e.adjustment !== 0 && (
-                <span className={`font-mono ${e.adjustment > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                  {e.adjustment > 0 ? "+" : ""}{e.adjustment}
-                </span>
-              )}
-              {e.sharePct > 0 && (
-                <span className="text-text-light/50 ml-auto">{e.sharePct}%</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
+            return (
+              <tr key={e.roleId} className="border-t border-navy-light/30">
+                <td className="py-1 text-white font-medium truncate max-w-[120px]">{e.name}</td>
+                <td className="py-1 text-right font-mono text-text-light">{e.stockBefore}</td>
+                <td className="py-1 text-right font-mono text-viz-safety">{gained > 0 ? `+${gained}` : "—"}</td>
+                <td className="py-1 text-right font-mono text-viz-danger">{lost > 0 ? `−${lost}` : "—"}</td>
+                <td className="py-1 text-right font-mono">
+                  {editing ? (
+                    <input
+                      type="number"
+                      value={displayAfter}
+                      onChange={(ev) => {
+                        const val = parseInt(ev.target.value) || 0;
+                        setOverrides((prev) => ({ ...prev, [e.roleId]: { value: Math.max(0, val), reason: prev[e.roleId]?.reason ?? "" } }));
+                      }}
+                      className={`w-14 bg-navy-dark border rounded px-1 py-0.5 text-right font-mono text-white outline-none ${
+                        isOverridden ? "border-[#FCD34D]" : "border-navy-light"
+                      } focus:border-text-light`}
+                    />
+                  ) : (
+                    <span className={e.override != null ? "text-[#FCD34D]" : "text-white"}>
+                      {displayAfter}
+                    </span>
+                  )}
+                </td>
+                <td className="py-1 text-right font-mono text-text-light/50">{e.sharePct > 0 ? `${e.sharePct}%` : "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
 
       {editing && (
         <div className="mt-2 text-[9px] text-text-light/60">

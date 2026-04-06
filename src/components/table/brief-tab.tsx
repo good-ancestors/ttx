@@ -114,15 +114,17 @@ export function BriefTab({
         )}
       </div>
 
-      {/* ─── Where Things Stand ─── */}
-      {(roundNarrative != null) ? (
-        <ScenarioCard title="Where Things Stand" label={roundLabel}>
-          <p className="text-sm text-[#78350F] leading-relaxed">{roundNarrative}</p>
-        </ScenarioCard>
-      ) : (
-        <ScenarioCard title="Starting Scenario" label={roundLabel}>
-          <p className="text-sm text-[#78350F] leading-relaxed">{STARTING_SCENARIO}</p>
-        </ScenarioCard>
+      {/* ─── Where Things Stand (hidden during lobby — scenario revealed at game start) ─── */}
+      {gameStatus !== "lobby" && (
+        (roundNarrative != null) ? (
+          <ScenarioCard title="Where Things Stand" label={roundLabel}>
+            <p className="text-sm text-[#78350F] leading-relaxed">{roundNarrative}</p>
+          </ScenarioCard>
+        ) : (
+          <ScenarioCard title="Starting Scenario" label={roundLabel}>
+            <p className="text-sm text-[#78350F] leading-relaxed">{STARTING_SCENARIO}</p>
+          </ScenarioCard>
+        )
       )}
 
       {/* ─── Compute Resources ─── */}

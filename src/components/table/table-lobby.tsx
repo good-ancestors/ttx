@@ -147,6 +147,7 @@ export function TableLobby({ role, tableId, aiDisposition, handoutData }: TableL
         roundNarrative={undefined}
         roundLabel={DEFAULT_ROUND_LABEL}
         submissionsOpen={false}
+        gameStatus="lobby"
       />
 
       {role.tags.includes("ai-system") && !aiDisposition && (
