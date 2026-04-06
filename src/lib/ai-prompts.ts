@@ -371,6 +371,7 @@ export function buildRoundNarrativePrompt(args: {
   labs: Lab[];
   previousRounds?: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[];
   aiDisposition?: { label: string; description: string };
+  previousTrajectories?: { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[];
 }) {
   const sorted = [...args.resolvedActions].sort((a, b) => b.priority - a.priority);
   const publicSuccesses = sorted.filter((a) => !a.secret && a.success);
@@ -423,6 +424,16 @@ LAB OPERATIONS — output any that apply:
 - "multiplierOverride": Event changes R&D capability (Safer pivot halves it, sabotage, breakthrough). Absolute new value.
 
 Only output operations DIRECTLY caused by successful actions. Empty array if nothing affects labs.
+
+${args.previousTrajectories && args.previousTrajectories.length > 0 ? `
+PREVIOUS RISK ASSESSMENT (from last round — use this to inform your trajectory update):
+${args.previousTrajectories.map((t) => `- ${t.labName}: ${t.safetyAdequacy} safety, trajectory=${t.likelyFailureMode} (signal ${t.signalStrength}/10) — ${t.reasoning}`).join("\n")}
+` : ""}
+LAB TRAJECTORIES — assess each lab's risk profile based on their spec, safety allocation (%), R&D multiplier, and what happened this round. Consider:
+- Is safety investment keeping pace with capability growth?
+- What failure mode would an AI safety expert predict given this lab's spec gaps?
+- How visible are the warning signs? (0=speculative theory, 5=early behavioral anomalies, 8=clear evidence of misalignment, 10=actively manifesting)
+- The AI's secret disposition (if known) interacts with the spec — a power-seeking AI with a narrow spec will exploit every silence.
 
 BASELINE TRAJECTORY (for context, not for you to narrate):
 ${formatRoundExpectations(args.round)}`;

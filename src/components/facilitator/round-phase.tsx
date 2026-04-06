@@ -436,6 +436,10 @@ function WhereWeAreNow({
             </div>
           </>
         )}
+        {/* Lab risk trajectories — facilitator only, hidden from projector */}
+        {!isProjector && currentRound.labTrajectories && currentRound.labTrajectories.length > 0 && (
+          <LabTrajectoryPanel trajectories={currentRound.labTrajectories} />
+        )}
         <ComputeFlowPanel currentRound={currentRound} gameId={gameId} isProjector={isProjector} />
         {!isProjector && (
           <div className="flex gap-2 mt-3">
@@ -445,6 +449,56 @@ function WhereWeAreNow({
           </div>
         )}
       </ExpandableSection>
+    </div>
+  );
+}
+
+const SAFETY_COLORS: Record<string, string> = {
+  adequate: "#22C55E",
+  concerning: "#F59E0B",
+  dangerous: "#EF4444",
+  catastrophic: "#DC2626",
+};
+
+const FAILURE_LABELS: Record<string, string> = {
+  aligned: "Aligned",
+  deceptive: "Deceptive Alignment",
+  "spec-gaming": "Spec Gaming",
+  "power-concentration": "Power Concentration",
+  "benevolent-override": "Benevolent Override",
+  "loss-of-control": "Loss of Control",
+  misuse: "Misuse",
+};
+
+function LabTrajectoryPanel({ trajectories }: { trajectories: NonNullable<Round["labTrajectories"]> }) {
+  return (
+    <div className="mb-3 rounded-lg border border-navy-light bg-navy-dark p-4">
+      <div className="text-xs font-semibold uppercase tracking-wider text-text-light mb-3 flex items-center gap-2">
+        <span className="text-viz-danger">&#9679;</span> Risk Trajectories
+        <span className="text-[10px] font-normal normal-case tracking-normal text-text-light/50 ml-auto">facilitator only</span>
+      </div>
+      <div className="space-y-2">
+        {trajectories.map((t) => (
+          <div key={t.labName} className="rounded border border-navy-light/50 p-2.5">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-sm font-bold text-white">{t.labName}</span>
+              <div className="flex items-center gap-2">
+                <span
+                  className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                  style={{ backgroundColor: `${SAFETY_COLORS[t.safetyAdequacy] ?? "#64748B"}20`, color: SAFETY_COLORS[t.safetyAdequacy] ?? "#64748B" }}
+                >
+                  {t.safetyAdequacy}
+                </span>
+                <span className="text-[10px] font-mono text-text-light/60">{t.signalStrength}/10</span>
+              </div>
+            </div>
+            <div className="text-xs text-text-light mb-1">
+              Trajectory: <span className="font-semibold text-white">{FAILURE_LABELS[t.likelyFailureMode] ?? t.likelyFailureMode}</span>
+            </div>
+            <p className="text-[11px] text-text-light/80 leading-relaxed">{t.reasoning}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

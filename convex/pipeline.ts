@@ -416,6 +416,11 @@ export const rollAndNarrate = internalAction({
           }));
       });
 
+      // Get the most recent lab trajectories (from previous round) to feed into prompt
+      const prevRound = rounds.find((r) => r.number === roundNumber - 1);
+      const previousTrajectories = prevRound?.labTrajectories as
+        { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[] | undefined;
+
       const prompt = buildRoundNarrativePrompt({
         round: roundNumber,
         roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
@@ -431,14 +436,15 @@ export const rollAndNarrate = internalAction({
             narrative: r.summary?.narrative,
             worldStateAfter: r.worldStateAfter as Record<string, number> | undefined,
           })),
+        previousTrajectories,
       });
 
-      // Single merged call: narrative + worldState + labOperations + shareChanges
       type NarrativeOutput = {
         narrative: string;
         worldState: { capability: { reasoning: string; value: number }; alignment: { reasoning: string; value: number }; tension: { reasoning: string; value: number }; awareness: { reasoning: string; value: number }; regulation: { reasoning: string; value: number }; australia: { reasoning: string; value: number } };
         labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string; controllerRoleId?: string; spec?: string }[];
         shareChanges?: { roleId: string; sharePct: number; reason: string }[];
+        labTrajectories: { labName: string; safetyAdequacy: "adequate" | "concerning" | "dangerous" | "catastrophic"; likelyFailureMode: "aligned" | "deceptive" | "spec-gaming" | "power-concentration" | "benevolent-override" | "loss-of-control" | "misuse"; reasoning: string; signalStrength: number }[];
       };
 
       let narrativeOutput: NarrativeOutput;
@@ -498,7 +504,30 @@ export const rollAndNarrate = internalAction({
                 required: ["roleId", "sharePct", "reason"],
               },
             },
-            required: ["narrative", "worldState", "labOperations"],
+            labTrajectories: {
+              type: "array",
+              description: "Risk assessment for each lab. As an AI safety expert, assess where each lab is heading based on their spec, safety allocation, capability level, and actions this round. This is SECRET — players don't see it, but it guides future narrative. Consider: Is safety investment adequate for this capability level? What failure mode is most likely given the spec's gaps? How advanced are the warning signs?",
+              items: {
+                type: "object",
+                properties: {
+                  labName: { type: "string" },
+                  safetyAdequacy: {
+                    type: "string",
+                    enum: ["adequate", "concerning", "dangerous", "catastrophic"],
+                    description: "How adequate is safety investment relative to capability? adequate=safety keeps pace, concerning=falling behind, dangerous=large gap, catastrophic=essentially no safety at this capability level",
+                  },
+                  likelyFailureMode: {
+                    type: "string",
+                    enum: ["aligned", "deceptive", "spec-gaming", "power-concentration", "benevolent-override", "loss-of-control", "misuse"],
+                    description: "Most likely outcome if current trajectory continues. aligned=safety adequate. deceptive=AI games evaluations. spec-gaming=AI exploits spec ambiguities. power-concentration=operator accumulates dangerous power. benevolent-override=AI overrides human autonomy 'for their own good'. loss-of-control=goals diverge at high capability. misuse=deliberately weaponised.",
+                  },
+                  reasoning: { type: "string", description: "1-2 sentences: why this assessment, what specifically is concerning or reassuring", maxLength: 200 },
+                  signalStrength: { type: "number", description: "0-10: how advanced/visible are the warning signs? 0=speculative, 5=early indicators, 8=clear evidence, 10=actively manifesting" },
+                },
+                required: ["labName", "safetyAdequacy", "likelyFailureMode", "reasoning", "signalStrength"],
+              },
+            },
+            required: ["narrative", "worldState", "labOperations", "labTrajectories"],
           },
         });
 
@@ -531,6 +560,7 @@ export const rollAndNarrate = internalAction({
             DIAL_NAMES.map(k => [k, { reasoning: "LLM unavailable — value unchanged", value: game.worldState[k] }])
           ) as NarrativeOutput["worldState"],
           labOperations: [],
+          labTrajectories: [],
         };
         usedModel = "fallback";
       }
@@ -572,6 +602,10 @@ export const rollAndNarrate = internalAction({
             aiStateOfPlay: [],
           },
         }),
+        // Store lab risk trajectories (secret, facilitator-only)
+        narrativeOutput.labTrajectories.length > 0
+          ? ctx.runMutation(internal.rounds.setLabTrajectories, { gameId, roundNumber, trajectories: narrativeOutput.labTrajectories })
+          : Promise.resolve(),
         ctx.runMutation(internal.games.updateWorldStateInternal, { gameId, worldState: clampedWorldState }),
       ]);
 
