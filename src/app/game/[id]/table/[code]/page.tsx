@@ -4,22 +4,15 @@ import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, hasCompute, getAiInfluencePower, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS } from "@/lib/game-data";
-import { ComputeAllocation } from "@/components/compute-allocation";
-// Lab allocation read-only moved to Lab tab for safety leads
+import { ROLES, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
 import { normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { loadRoleHandouts } from "@/lib/role-handouts";
 import { ConnectionIndicator } from "@/components/connection-indicator";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
-import { TableLobby, DispositionChooser } from "@/components/table/table-lobby";
-import { LabSpecEditor } from "@/components/table/lab-spec-editor";
-import { TableSubmit } from "@/components/table/table-submit";
-import { TableResolving } from "@/components/table/table-resolving";
-import { BriefTab } from "@/components/table/brief-tab";
-import { RespondTab, RespondResultsTab } from "@/components/table/respond-tab";
 import { PlayerTabBar, buildPlayerTabs, type PlayerTab } from "@/components/table/player-tabs";
+import { PhaseContent } from "@/components/table/phase-content";
 import type { ResultAction } from "@/components/table/result-action-card";
 import {
   Loader2,
@@ -27,8 +20,6 @@ import {
   AlertTriangle,
   Info,
   Zap,
-  Vote,
-  FlaskConical,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -60,46 +51,6 @@ function loadDraft(tableId: string, roundNumber: number): DraftData | null {
   } catch {
     return null;
   }
-}
-
-/** Read-only lab view shared by submit (non-CEO) and resolving phases. */
-function ReadOnlyLabView({ lab, roleName }: { lab: { spec?: string; allocation: { users: number; capability: number; safety: number } }; roleName: string }) {
-  return (
-    <>
-      <LabSpecEditor
-        labSpec={lab.spec ?? ""}
-        onLabSpecChange={() => {}}
-        specSaved={false}
-        onSaveSpec={() => {}}
-        readOnly
-      />
-      <ComputeAllocation
-        allocation={lab.allocation}
-        onChange={() => {}}
-        isSubmitted={true}
-        roleName={roleName}
-      />
-    </>
-  );
-}
-
-/** Shows current lab compute stock and delta from starting value if any loans were received. */
-function LabComputeSummary({ lab }: { lab: { name: string; computeStock: number } }) {
-  const startingLab = DEFAULT_LABS.find((l) => l.name === lab.name);
-  const startingStock = startingLab?.computeStock ?? 0;
-  const delta = lab.computeStock - startingStock;
-  return (
-    <div className="bg-white rounded-xl border border-border p-3 mb-4">
-      <p className="text-sm font-bold text-text">
-        Lab Compute: {lab.computeStock}u
-      </p>
-      {delta !== 0 && (
-        <p className="text-xs text-text-muted mt-0.5">
-          (base {startingStock}u {delta > 0 ? "+" : ""}{delta}u {delta > 0 ? "loaned" : "spent"})
-        </p>
-      )}
-    </div>
-  );
 }
 
 /** Cancel endorsement requests for drafts being discarded. */
@@ -710,220 +661,53 @@ export default function TablePlayerPage({
           )}
 
           {/* ── Phase routing ── */}
-
-          {/* Lobby */}
-          {game.status === "lobby" && (
-            <>
-              {activeTab === "brief" && (
-                <TableLobby
-                  role={role}
-                  tableId={tableId}
-                  aiDisposition={table.aiDisposition}
-                  handoutData={handoutData}
-                />
-              )}
-              {activeTab === "actions" && (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <Zap className="w-10 h-10 text-border mb-3" />
-                  <p className="text-sm font-bold text-text mb-1">Actions</p>
-                  <p className="text-xs text-text-muted max-w-xs">When the game starts, you&apos;ll see your actions here.</p>
-                </div>
-              )}
-              {activeTab === "respond" && (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <Vote className="w-10 h-10 text-border mb-3" />
-                  <p className="text-sm font-bold text-text mb-1">Respond</p>
-                  <p className="text-xs text-text-muted max-w-xs">When the game starts, you&apos;ll be able to support or oppose other players&apos; actions here.</p>
-                </div>
-              )}
-              {activeTab === "lab" && hasLabAccess && (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <FlaskConical className="w-10 h-10 text-border mb-3" />
-                  <p className="text-sm font-bold text-text mb-1">Lab Controls</p>
-                  <p className="text-xs text-text-muted max-w-xs">When the game starts, you&apos;ll manage your lab here.</p>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Discuss phase — tab content */}
-          {phase === "discuss" && game.status === "playing" && (
-            <>
-              {/* AI Systems disposition chooser (blocker) */}
-              {isAiSystem && !table.aiDisposition && (
-                <DispositionChooser tableId={tableId} onChosen={() => {}} />
-              )}
-              {activeTab === "brief" && (
-                <BriefTab
-                  role={role}
-                  handoutData={handoutData}
-                  aiDisposition={table.aiDisposition}
-                  roundNarrative={roundNarrative}
-                  roundLabel={round?.label ?? DEFAULT_ROUND_LABEL}
-                  submissionsOpen={false}
-                  labs={game.labs}
-                  computeOverview={computeOverview ?? undefined}
-                  gameStatus={game.status}
-                />
-              )}
-              {activeTab === "actions" && (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <Zap className="w-10 h-10 text-border mb-3" />
-                  <p className="text-sm font-bold text-text mb-1">Actions</p>
-                  <p className="text-xs text-text-muted max-w-xs">When the facilitator opens submissions, you&apos;ll draft and submit your actions here.</p>
-                </div>
-              )}
-              {activeTab === "respond" && (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <Vote className="w-10 h-10 text-border mb-3" />
-                  <p className="text-sm font-bold text-text mb-1">Respond</p>
-                  <p className="text-xs text-text-muted max-w-xs">When other players submit actions, you&apos;ll be able to support or oppose them here.</p>
-                </div>
-              )}
-              {activeTab === "lab" && hasLabAccess && (
-                <div className="flex flex-col items-center justify-center py-16 text-center">
-                  <FlaskConical className="w-10 h-10 text-border mb-3" />
-                  <p className="text-sm font-bold text-text mb-1">Lab Controls</p>
-                  <p className="text-xs text-text-muted max-w-xs">
-                    {controlsLab
-                      ? "When submissions open, you\u2019ll set your compute allocation and lab spec here."
-                      : "When submissions open, you\u2019ll be able to view your lab\u2019s data here."}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* Submit phase — tabbed UI */}
-          {phase === "submit" && (
-            <>
-              {/* AI Systems disposition chooser (blocker) */}
-              {isAiSystem && !table.aiDisposition && (
-                <DispositionChooser tableId={tableId} onChosen={() => {}} />
-              )}
-
-              {activeTab === "brief" && (
-                <BriefTab
-                  role={role}
-                  handoutData={handoutData}
-                  aiDisposition={table.aiDisposition}
-                  roundNarrative={roundNarrative}
-                  roundLabel={round?.label ?? DEFAULT_ROUND_LABEL}
-                  submissionsOpen={true}
-                  labs={game.labs}
-                  computeOverview={computeOverview ?? undefined}
-                  gameStatus={game.status}
-                />
-              )}
-
-              {activeTab === "actions" && (
-                <TableSubmit
-                  game={game}
-                  gameId={gameId}
-                  tableId={table._id}
-                  role={role}
-                  submittedActions={submission?.actions ?? []}
-                  isExpired={isExpired}
-                  computeStock={currentLab?.computeStock ?? table.computeStock ?? undefined}
-                  computeRecipients={computeRecipients}
-                  actionDrafts={actionDrafts}
-                  onActionDraftsChange={setActionDrafts}
-                  enabledRoles={enabledRoles}
-                  onSubmitAction={handleSubmitAction}
-                  onEditAction={handleEditAction}
-                  onDeleteAction={handleDeleteAction}
-                  submitError={submitError}
-                  sentRequestsByAction={sentRequestsByAction}
-                  shownSuggestions={shownSuggestions}
-                  ideasOpen={ideasOpen}
-                  onIdeasOpenChange={setIdeasOpen}
-                  onSuggestionTap={handleSuggestionTap}
-                />
-              )}
-
-              {activeTab === "respond" && (
-                <RespondTab
-                  gameId={gameId}
-                  roundNumber={game.currentRound}
-                  roleId={role.id}
-                  isAiSystem={isAiSystem}
-                  aiInfluencePower={getAiInfluencePower(game.labs)}
-                  allRequests={allRequests}
-                  allowEdits={phase === "submit" && (isAiSystem || !isExpired)}
-                />
-              )}
-
-              {activeTab === "lab" && controlsLab && currentLab && (
-                <>
-                  <LabComputeSummary lab={currentLab} />
-                  <LabSpecEditor
-                    labSpec={labSpec}
-                    onLabSpecChange={(spec) => { setLabSpec(spec); setSpecSaved(false); setSpecSaveError(""); }}
-                    specSaved={specSaved}
-                    onSaveSpec={() => void handleSaveSpec()}
-                  />
-                  {specSaveError && (
-                    <div className="bg-[#FEF2F2] border border-[#FECACA] rounded-lg p-2.5 mb-3 flex items-center gap-2">
-                      <AlertTriangle className="w-4 h-4 text-[#DC2626] shrink-0" />
-                      <span className="text-xs text-[#991B1B] font-medium">{specSaveError}</span>
-                    </div>
-                  )}
-                  <ComputeAllocation
-                    allocation={computeAllocation}
-                    onChange={setComputeAllocation}
-                    isSubmitted={false}
-                    roleName={role.name}
-                  />
-                </>
-              )}
-              {activeTab === "lab" && !controlsLab && hasLabAccess && currentLab && (
-                <>
-                  <LabComputeSummary lab={currentLab} />
-                  <ReadOnlyLabView lab={currentLab} roleName={role.name} />
-                </>
-              )}
-            </>
-          )}
-
-          {/* Rolling / Narrate phases */}
-          {isResolvingPhase(phase) && round && (
-            <>
-              {activeTab === "brief" && (
-                <TableResolving
-                  phase={phase}
-                  round={round}
-                  sortedResultActions={sortedResultActions}
-                  showResults={false}
-                />
-              )}
-
-              {activeTab === "actions" && (
-                <TableResolving
-                  phase={phase}
-                  round={round}
-                  sortedResultActions={sortedResultActions}
-                  showNarrative={false}
-                />
-              )}
-
-              {activeTab === "respond" && (
-                <RespondResultsTab
-                  gameId={gameId}
-                  roundNumber={game.currentRound}
-                  roleId={role.id}
-                  isAiSystem={isAiSystem}
-                  allRequests={allRequests ?? []}
-                />
-              )}
-
-              {activeTab === "lab" && hasLabAccess && currentLab && (
-                <>
-                  <LabComputeSummary lab={currentLab} />
-                  <ReadOnlyLabView lab={currentLab} roleName={role.name} />
-                </>
-              )}
-            </>
-          )}
+          <PhaseContent
+            gameStatus={game.status}
+            phase={phase}
+            activeTab={activeTab}
+            role={role}
+            tableId={tableId}
+            gameId={gameId}
+            isAiSystem={isAiSystem}
+            aiDisposition={table.aiDisposition}
+            handoutData={handoutData}
+            roundNarrative={roundNarrative}
+            roundLabel={round?.label ?? DEFAULT_ROUND_LABEL}
+            labs={game.labs}
+            computeOverview={computeOverview ?? undefined}
+            controlsLab={controlsLab}
+            hasLabAccess={hasLabAccess}
+            currentLab={currentLab}
+            startingStock={DEFAULT_LABS.find((l) => l.name === currentLab?.name)?.computeStock ?? 0}
+            game={game}
+            submittedActions={submission?.actions ?? []}
+            isExpired={isExpired}
+            computeStock={currentLab?.computeStock ?? table.computeStock ?? undefined}
+            computeRecipients={computeRecipients}
+            actionDrafts={actionDrafts}
+            onActionDraftsChange={setActionDrafts}
+            enabledRoles={enabledRoles}
+            onSubmitAction={handleSubmitAction}
+            onEditAction={handleEditAction}
+            onDeleteAction={handleDeleteAction}
+            submitError={submitError}
+            sentRequestsByAction={sentRequestsByAction}
+            shownSuggestions={shownSuggestions}
+            ideasOpen={ideasOpen}
+            onIdeasOpenChange={setIdeasOpen}
+            onSuggestionTap={handleSuggestionTap}
+            currentRound={game.currentRound}
+            allRequests={allRequests}
+            labSpec={labSpec}
+            onLabSpecChange={(spec) => { setLabSpec(spec); setSpecSaved(false); setSpecSaveError(""); }}
+            specSaved={specSaved}
+            onSaveSpec={() => void handleSaveSpec()}
+            specSaveError={specSaveError}
+            computeAllocation={computeAllocation}
+            onComputeAllocationChange={setComputeAllocation}
+            round={round ?? undefined}
+            sortedResultActions={sortedResultActions}
+          />
         </div>
 
         {/* Tab bar — only during submit phase */}
