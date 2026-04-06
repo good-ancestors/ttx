@@ -94,7 +94,6 @@ export const COMPUTE_POOL_ELIGIBLE: Record<string, Record<string, number>> = {
   "Rest of World": { "eu-president": 5, "australia-pm": 4, "aisi-network": 2 },
 };
 
-const LAB_NAMES = new Set(DEFAULT_LABS.map((l) => l.name));
 
 /** Get enabled weights for a pool, filtered by which roles are in this game. */
 function getEnabledPoolWeights(poolName: string, enabledRoleIds: Set<string>): [string, number][] {
@@ -150,7 +149,6 @@ export function calculatePoolNewCompute(
   const baselineTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
   let newCompute = 0;
   for (const [poolName] of Object.entries(COMPUTE_POOL_ELIGIBLE)) {
-    if (LAB_NAMES.has(poolName)) continue;
     const sharePct = shares[poolName];
     if (sharePct === undefined) continue;
     const poolAmount = Math.round(baselineTotal * sharePct / 100);

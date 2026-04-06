@@ -40,6 +40,12 @@ function formatTime(ts: number) {
 
 const FACILITATOR_PASSPHRASE = process.env.NEXT_PUBLIC_FACILITATOR_PASSPHRASE ?? "coral-ember-drift-sage";
 
+function persistFacilitatorAuth(passphrase: string) {
+  localStorage.setItem("ttx-facilitator", "true");
+  localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
+  storeFacilitatorToken(passphrase);
+}
+
 // ─── Main splash page ──────────────────────────────────────────────────────
 
 export default function SplashPage() {
@@ -50,9 +56,7 @@ export default function SplashPage() {
     const params = new URLSearchParams(window.location.search);
     const p = params.get("p");
     if (p && p === FACILITATOR_PASSPHRASE) {
-      localStorage.setItem("ttx-facilitator", "true");
-      localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
-      storeFacilitatorToken(p);
+      persistFacilitatorAuth(p);
       window.history.replaceState({}, "", window.location.pathname);
       return true;
     }
@@ -153,9 +157,7 @@ function FacilitatorLogin({ onAuth, onBack }: { onAuth: () => void; onBack: () =
   const handleSubmit = () => {
     if (passphrase.trim() === FACILITATOR_PASSPHRASE) {
       setError(false);
-      localStorage.setItem("ttx-facilitator", "true");
-      localStorage.setItem("ttx-facilitator-expiry", String(Date.now() + SESSION_TTL_MS));
-      storeFacilitatorToken(passphrase.trim());
+      persistFacilitatorAuth(passphrase.trim());
       onAuth();
     } else if (passphrase.trim()) {
       setError(true);
@@ -326,7 +328,7 @@ function FacilitatorDashboard() {
                         <span className="text-xs text-viz-danger shrink-0">Type DELETE:</span>
                         <input
                           value={deleteConfirm}
-                          onChange={(e) => setDeleteConfirm(e.target.value)}
+                          onChange={(e) => setDeleteConfirm(e.target.value.toUpperCase())}
                           placeholder="DELETE"
                           autoFocus
                           autoComplete="off"

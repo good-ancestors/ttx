@@ -462,7 +462,7 @@ function ComputeFlowPanel({
   if (!holders) return null;
 
   const entries = holders
-    .filter((h) => h.stockBefore !== 0 || h.produced !== 0 || h.transferred !== 0 || h.adjustment !== 0)
+    .filter((h) => h.stockBefore !== 0 || h.produced !== 0 || h.transferred !== 0 || h.adjustment !== 0 || h.override != null)
     .toSorted((a, b) => (b.override ?? b.stockAfter) - (a.override ?? a.stockAfter));
 
   const totalBefore = entries.reduce((s, e) => s + e.stockBefore, 0);

@@ -58,7 +58,7 @@ export function calculateStartingCompute(enabledRoleIds: Set<string>): {
   roleId: string;
   name: string;
   computeStock: number;
-  pool?: string;
+
 }[] {
   const result: { roleId: string; name: string; computeStock: number; pool?: string }[] = [];
 

@@ -207,8 +207,9 @@ function ComputeAllocationPreview({ tables }: { tables: FacilitatorPhaseProps["t
     [tables],
   );
   const allocations = useMemo(() => calculateStartingCompute(enabledRoleIds), [enabledRoleIds]);
-  const labTotal = DEFAULT_LABS.reduce((s, l) => s + l.computeStock, 0);
-  const nonLabTotal = allocations.filter((a) => !DEFAULT_LABS.some((l) => l.roleId === a.roleId)).reduce((s, a) => s + a.computeStock, 0);
+  const labRoleIds = new Set(DEFAULT_LABS.map((l) => l.roleId));
+  const labTotal = allocations.filter((a) => labRoleIds.has(a.roleId)).reduce((s, a) => s + a.computeStock, 0);
+  const nonLabTotal = allocations.filter((a) => !labRoleIds.has(a.roleId)).reduce((s, a) => s + a.computeStock, 0);
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-4 mb-6 max-w-lg mx-auto">
