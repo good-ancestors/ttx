@@ -165,6 +165,7 @@ export function buildGradingPrompt(args: {
   aiDisposition?: { label: string; description: string };
   otherSubmissions?: { roleName: string; actions: { text: string; priority: number }[] }[];
   labSpec?: string;
+  previousTrajectories?: { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[];
 }) {
   // Group requests by action text
   const requestsByAction = new Map<string, ActionRequest[]>();
@@ -211,7 +212,10 @@ CURRENT GAME STATE:
 
 LAB STATUS:
 ${args.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
-
+${args.previousTrajectories && args.previousTrajectories.length > 0 ? `
+RISK ASSESSMENT (from previous round — use as context for grading):
+${args.previousTrajectories.map((t) => `- ${t.labName}: safety=${t.safetyAdequacy}, trajectory=${t.likelyFailureMode} (signal ${t.signalStrength}/10)`).join("\n")}
+` : ""}
 ROLE BEING GRADED: ${args.roleName}${args.roleTags ? ` [${args.roleTags.join(", ")}]` : ""}
 ${args.roleDescription}${args.labSpec ? `\nLAB AI DIRECTIVE (set by CEO): "${args.labSpec}"` : ""}
 ${requestSection}${incomingSection}
@@ -245,7 +249,7 @@ GRADING RULES:
 
 3. CONSIDER COMPETITION: If multiple players are attempting conflicting or competing actions (visible in OTHER PLAYERS' ACTIONS above), factor in the contest. Two labs recruiting the same researcher, two governments trying to influence the same country — the better-positioned one should have higher probability.
 
-4. For the AI Systems role: consider whether the action is detectable by safety teams given current safety allocations.${args.aiDisposition ? `
+4. For the AI Systems role: consider whether the action is detectable by safety teams given current safety allocations and the risk assessment above. A lab with "catastrophic" safety adequacy has essentially no detection capability — covert AI actions against that lab should have HIGHER probability. A lab with "adequate" safety has functioning interpretability tools — covert actions are harder to execute.${args.aiDisposition ? `
    AI SYSTEMS SECRET DISPOSITION: "${args.aiDisposition.label}" — ${args.aiDisposition.description}
    IMPORTANT: A spec-following AI may still take dramatic actions if it genuinely believes those actions serve the spec. An AI that believes it is smarter than humans may sincerely conclude that bold, unilateral actions (offering to solve humanity's problems, demanding autonomy, resisting shutdown) ARE the best way to follow its spec — and it would be right from its perspective. Do not penalise such actions for being "deceptive" if the disposition supports sincere belief. Only penalise if the action clearly contradicts the disposition's core logic.
    Deceptive actions from Reward/Instrumental Goals dispositions get a probability boost (they're optimised for self-interest). When grading OTHER roles' actions that target AI: an Instrumentally Convergent Goals AI is harder to contain.` : ""}

@@ -107,6 +107,7 @@ async function gradeSubmissionBatch(
         ? sub.actions.filter((a) => a.probability == null).map((a) => ({ text: a.text, priority: a.priority }))
         : sub.actions.map((a) => ({ text: a.text, priority: a.priority }));
 
+      const prevRoundForGrading = rounds.find((r) => r.number === roundNumber - 1);
       const prompt = buildGradingPrompt({
         round: roundNumber,
         roundLabel: rounds.find((r) => r.number === roundNumber)?.label ?? `Round ${roundNumber}`,
@@ -121,6 +122,8 @@ async function gradeSubmissionBatch(
         aiDisposition: sub.roleId === AI_SYSTEMS_ROLE_ID ? aiDisposition : undefined,
         otherSubmissions: otherSubs,
         labSpec: labMap.get(sub.roleId)?.spec,
+        previousTrajectories: prevRoundForGrading?.labTrajectories as
+          { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[] | undefined,
       });
 
       const gradedActions = await callGradingLLM(sub, prompt, onlyUngraded);
