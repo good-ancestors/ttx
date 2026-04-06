@@ -237,7 +237,8 @@ export default defineSchema({
         sourceActions: v.optional(v.array(v.string())),
       })
     )),
-  }).index("by_game", ["gameId"]),
+  }).index("by_game", ["gameId"])
+    .index("by_game_and_number", ["gameId", "number"]),
 
   // Action support requests: endorsement or compute, attached to a specific action
   requests: defineTable({

@@ -9,6 +9,7 @@ import {
   DEFAULT_COMPUTE_SHARES,
   COMPUTE_POOL_ELIGIBLE,
   POOL_STARTING_STOCK,
+  ROLES as CONVEX_ROLES,
 } from "@convex/gameData";
 export { NEW_COMPUTE_PER_GAME_ROUND, DEFAULT_COMPUTE_SHARES, COMPUTE_POOL_ELIGIBLE, POOL_STARTING_STOCK };
 
@@ -321,6 +322,25 @@ export const ROLES: Role[] = [
       "Write the breaking news headline and story of the quarter.",
   },
 ];
+
+// Validate that ROLES here and ROLES in convex/gameData.ts are in sync.
+// Catches drift immediately at module load — if a role is added/renamed/retagged
+// in one file but not the other, this throws.
+if (typeof process !== "undefined" && process.env.NODE_ENV !== "production") {
+  for (const convexRole of CONVEX_ROLES) {
+    const richRole = ROLES.find((r) => r.id === convexRole.id);
+    if (!richRole) {
+      console.error(`[game-data] Role "${convexRole.id}" exists in convex/gameData.ts but not in game-data.ts`);
+    } else if (richRole.name !== convexRole.name) {
+      console.error(`[game-data] Role "${convexRole.id}" name mismatch: "${richRole.name}" vs "${convexRole.name}"`);
+    }
+  }
+  for (const richRole of ROLES) {
+    if (!CONVEX_ROLES.some((r) => r.id === richRole.id)) {
+      console.error(`[game-data] Role "${richRole.id}" exists in game-data.ts but not in convex/gameData.ts`);
+    }
+  }
+}
 
 // ─── ROUNDS ───────────────────────────────────────────────────────────────────
 

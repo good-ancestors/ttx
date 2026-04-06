@@ -789,15 +789,25 @@ export const applyAiInfluenceInternal = internalMutation({
     })),
   },
   handler: async (ctx, args) => {
-    await Promise.all(args.influences.map(async (inf) => {
-      const sub = await ctx.db.get(inf.submissionId);
-      if (!sub) return;
+    // Group influences by submission to avoid lost-update race on same doc
+    const bySubmission = new Map<string, { actionIndex: number; modifier: number }[]>();
+    for (const inf of args.influences) {
+      const key = inf.submissionId;
+      const list = bySubmission.get(key) ?? [];
+      list.push({ actionIndex: inf.actionIndex, modifier: inf.modifier });
+      bySubmission.set(key, list);
+    }
+    for (const [submissionId, infList] of bySubmission) {
+      const sub = await ctx.db.get(submissionId as typeof args.influences[0]["submissionId"]);
+      if (!sub) continue;
       const actions = [...sub.actions];
-      if (actions[inf.actionIndex]) {
-        actions[inf.actionIndex] = { ...actions[inf.actionIndex], aiInfluence: inf.modifier };
+      for (const inf of infList) {
+        if (actions[inf.actionIndex]) {
+          actions[inf.actionIndex] = { ...actions[inf.actionIndex], aiInfluence: inf.modifier };
+        }
       }
-      await ctx.db.patch(inf.submissionId, { actions });
-    }));
+      await ctx.db.patch(submissionId as typeof args.influences[0]["submissionId"], { actions });
+    }
   },
 });
 

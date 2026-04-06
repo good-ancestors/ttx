@@ -66,11 +66,10 @@ export const getCurrent = query({
 export const getForPlayer = query({
   args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
-    const rounds = await ctx.db
+    const round = await ctx.db
       .query("rounds")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    const round = rounds.find((r) => r.number === args.roundNumber);
+      .withIndex("by_game_and_number", (q) => q.eq("gameId", args.gameId).eq("number", args.roundNumber))
+      .first();
     if (!round) return null;
 
     return {
