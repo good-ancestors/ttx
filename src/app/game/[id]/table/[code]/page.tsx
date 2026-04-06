@@ -146,12 +146,14 @@ export default function TablePlayerPage({
   useSessionExpiry(`ttx-session-expiry-${tableId}`, "/");
 
   // ── Convex queries & mutations ────────────────────────────────────────────
-  // games.get and tables.get are always subscribed — lightweight, needed for phase detection
-  const game = useQuery(api.games.get, { gameId });
+  // Player-facing game query excludes pipelineStatus to avoid re-renders during resolve
+  const game = useQuery(api.games.getForPlayer, { gameId });
   const table = useQuery(api.tables.get, { tableId });
   // Everything else only when tab is visible
-  // Round is always subscribed — needed for loading guard + header display
-  const round = useQuery(api.rounds.getCurrent, { gameId });
+  // Lightweight player round query — takes roundNumber to avoid reading games doc
+  const round = useQuery(api.rounds.getForPlayer,
+    game ? { gameId, roundNumber: game.currentRound } : "skip"
+  );
   const submission = useQuery(api.submissions.getForTable,
     isVisible ? { tableId, roundNumber: game?.currentRound ?? 1 } : "skip"
   );
@@ -165,14 +167,14 @@ export default function TablePlayerPage({
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
   // Lightweight query — only enabled tables' roleId/roleName (for endorsement targets)
   const allTables = useQuery(api.tables.getEnabledRoleNames, isVisible ? { gameId } : "skip");
-  // Compute overview — visible to all players during gameplay (replicates physical compute tokens)
+  // Compute overview — only subscribes to tables (not games doc)
   const computeOverview = useQuery(api.tables.getComputeOverview,
     isVisible && game?.status === "playing" ? { gameId } : "skip"
   );
-  // Requests only needed during submit phase (endorsement tracking + cleanup)
-  const allRequests = useQuery(api.requests.getByGameAndRound,
-    isVisible && game?.status === "playing"
-      ? { gameId, roundNumber: game?.currentRound ?? 1 }
+  // Per-role requests — only this player's sent/received, not all 50+ for the round
+  const allRequests = useQuery(api.requests.getForRole,
+    isVisible && game?.status === "playing" && table
+      ? { gameId, roundNumber: game?.currentRound ?? 1, roleId: table.roleId }
       : "skip"
   );
 

@@ -60,6 +60,34 @@ export const getCurrent = query({
   },
 });
 
+// Lightweight player-facing query — only fields players need, no games doc dependency.
+// Takes roundNumber directly to avoid reading the games doc (which changes on every
+// phase/timer/pipeline update and would cause spurious re-renders for all 30 players).
+export const getForPlayer = query({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const rounds = await ctx.db
+      .query("rounds")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const round = rounds.find((r) => r.number === args.roundNumber);
+    if (!round) return null;
+
+    return {
+      _id: round._id,
+      number: round.number,
+      label: round.label,
+      summary: round.summary ? {
+        narrative: round.summary.narrative,
+        headlines: round.summary.headlines,
+        geopoliticalEvents: round.summary.geopoliticalEvents,
+        aiStateOfPlay: round.summary.aiStateOfPlay,
+      } : undefined,
+      computeHolders: round.computeHolders,
+    };
+  },
+});
+
 export const applySummary = mutation({
   args: {
     gameId: v.id("games"),

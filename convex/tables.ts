@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { logEvent, assertFacilitator } from "./events";
-import { ROLES, COMPUTE_POOL_ELIGIBLE, calculatePoolAllocations } from "./gameData";
+import { COMPUTE_POOL_ELIGIBLE, calculatePoolAllocations } from "./gameData";
 
 export const getByGame = query({
   args: { gameId: v.id("games") },
@@ -34,40 +34,25 @@ export const getEnabledRoleNames = query({
   },
 });
 
-// Lightweight query returning compute balances visible to all players.
-// Replicates the physical game where players could see everyone's compute tokens.
-const HAS_COMPUTE_ROLE_IDS: Set<string> = new Set(
-  ROLES.filter((r) => (r.tags as readonly string[]).includes("has-compute")).map((r) => r.id),
-);
-
+// Returns non-lab compute holders only. Labs come from game.labs (already subscribed).
+// This avoids reading the games doc, which would cause spurious re-runs on phase/timer changes.
 export const getComputeOverview = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
-    const [tables, game] = await Promise.all([
-      ctx.db
-        .query("tables")
-        .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-        .collect(),
-      ctx.db.get(args.gameId),
-    ]);
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
 
     const roles = tables
-      .filter((t) => t.enabled && HAS_COMPUTE_ROLE_IDS.has(t.roleId))
+      .filter((t) => t.enabled && t.computeStock != null && t.computeStock > 0)
       .map((t) => ({
         roleId: t.roleId,
         roleName: t.roleName,
         computeStock: t.computeStock ?? 0,
       }));
 
-    const labs = (game?.labs ?? []).map((l) => ({
-      name: l.name,
-      roleId: l.roleId,
-      computeStock: l.computeStock,
-      rdMultiplier: l.rdMultiplier,
-      allocation: l.allocation,
-    }));
-
-    return { roles, labs };
+    return { roles };
   },
 });
 

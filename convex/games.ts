@@ -121,6 +121,29 @@ export const get = query({
   },
 });
 
+// Player-facing query — excludes pipelineStatus, resolving, resolveNonce which
+// change frequently during resolve and would cause 30+ client re-renders.
+// Players don't need pipeline progress — only the facilitator does.
+export const getForPlayer = query({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) return null;
+    return {
+      _id: game._id,
+      _creationTime: game._creationTime,
+      status: game.status,
+      currentRound: game.currentRound,
+      phase: game.phase,
+      phaseEndsAt: game.phaseEndsAt,
+      worldState: game.worldState,
+      labs: game.labs,
+      locked: game.locked,
+      // Excluded: pipelineStatus, resolving, resolvingStartedAt, resolveNonce, computeShareOverrides
+    };
+  },
+});
+
 export const list = query({
   args: {},
   handler: async (ctx) => {
@@ -531,6 +554,20 @@ export const clearPipelineStatus = internalMutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, { pipelineStatus: undefined });
+  },
+});
+
+export const finishResolveInternal = internalMutation({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.gameId, {
+      phase: "narrate" as const,
+      phaseEndsAt: undefined,
+      resolving: false,
+      resolvingStartedAt: undefined,
+      pipelineStatus: { step: "done", detail: "Resolution complete", startedAt: Date.now() },
+    });
+    await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: "narrate" });
   },
 });
 

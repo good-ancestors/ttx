@@ -7,13 +7,6 @@ import { ChevronDown, ChevronUp, Zap, Vote, FlaskConical, MessageSquare, Send, D
 
 interface ComputeOverview {
   roles: { roleId: string; roleName: string; computeStock: number }[];
-  labs: {
-    name: string;
-    roleId: string;
-    computeStock: number;
-    rdMultiplier: number;
-    allocation: { users: number; capability: number; safety: number };
-  }[];
 }
 
 interface BriefTabProps {
@@ -23,7 +16,7 @@ interface BriefTabProps {
   roundNarrative: string | undefined;
   roundLabel: string;
   submissionsOpen: boolean;
-  labs?: { name: string; spec?: string }[];
+  labs?: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }[];
   computeOverview?: ComputeOverview;
   gameStatus?: string;
 }
@@ -199,14 +192,14 @@ export function BriefTab({
       )}
 
       {/* ─── Compute Resources (bottom, collapsed) ─── */}
-      {gameStatus === "playing" && computeOverview && (
-        <CollapsibleComputeOverview computeOverview={computeOverview} currentRoleId={role.id} />
+      {gameStatus === "playing" && computeOverview && labs && (
+        <CollapsibleComputeOverview computeOverview={computeOverview} labs={labs} currentRoleId={role.id} />
       )}
     </div>
   );
 }
 
-function CollapsibleComputeOverview({ computeOverview, currentRoleId }: { computeOverview: ComputeOverview; currentRoleId: string }) {
+function CollapsibleComputeOverview({ computeOverview, labs, currentRoleId }: { computeOverview: ComputeOverview; labs: BriefTabProps["labs"]; currentRoleId: string }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="bg-white rounded-xl border border-border overflow-hidden">
@@ -221,15 +214,15 @@ function CollapsibleComputeOverview({ computeOverview, currentRoleId }: { comput
       </button>
       {open && (
         <div className="px-4 pb-4">
-          <ComputeOverviewCard computeOverview={computeOverview} currentRoleId={currentRoleId} />
+          <ComputeOverviewCard computeOverview={computeOverview} labs={labs ?? []} currentRoleId={currentRoleId} />
         </div>
       )}
     </div>
   );
 }
 
-function ComputeOverviewCard({ computeOverview, currentRoleId }: { computeOverview: ComputeOverview; currentRoleId: string }) {
-  const { labs, roles } = computeOverview;
+function ComputeOverviewCard({ computeOverview, labs, currentRoleId }: { computeOverview: ComputeOverview; labs: NonNullable<BriefTabProps["labs"]>; currentRoleId: string }) {
+  const { roles } = computeOverview;
   const labRoleIds = new Set(labs.map((l) => l.roleId));
   const nonLabRoles = roles.filter((r) => !labRoleIds.has(r.roleId));
 

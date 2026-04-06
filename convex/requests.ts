@@ -150,15 +150,20 @@ export const getByGameAndRound = query({
 export const getForRole = query({
   args: { gameId: v.id("games"), roundNumber: v.number(), roleId: v.string() },
   handler: async (ctx, args) => {
-    return await ctx.db
-      .query("requests")
-      .withIndex("by_to_role", (q) =>
-        q
-          .eq("gameId", args.gameId)
-          .eq("roundNumber", args.roundNumber)
-          .eq("toRoleId", args.roleId)
-      )
-      .collect();
+    // Two targeted index queries instead of one broad scan of all requests
+    const [toMe, fromMe] = await Promise.all([
+      ctx.db.query("requests")
+        .withIndex("by_to_role", (q) =>
+          q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber).eq("toRoleId", args.roleId))
+        .collect(),
+      ctx.db.query("requests")
+        .withIndex("by_from_role", (q) =>
+          q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber).eq("fromRoleId", args.roleId))
+        .collect(),
+    ]);
+    // Deduplicate (a request where from===to would appear in both, though self-requests are blocked)
+    const seen = new Set(toMe.map((r) => r._id));
+    return [...toMe, ...fromMe.filter((r) => !seen.has(r._id))];
   },
 });
 

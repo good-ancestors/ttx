@@ -784,13 +784,8 @@ export const rollAndNarrate = internalAction({
         }
       }
 
-      // Done — advance to narrate phase and clean up (all games doc — must be sequential)
-      await ctx.runMutation(internal.games.advancePhaseInternal, { gameId, phase: "narrate" });
-      await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
-      await ctx.runMutation(internal.games.updatePipelineStatus, {
-        gameId,
-        status: { step: "done", detail: "Resolution complete", startedAt: Date.now() },
-      });
+      // Done — single mutation to advance phase, clear resolving lock, and set status
+      await ctx.runMutation(internal.games.finishResolveInternal, { gameId });
     } catch (err) {
       await failPipeline(ctx, gameId, "Resolve", err);
     }
