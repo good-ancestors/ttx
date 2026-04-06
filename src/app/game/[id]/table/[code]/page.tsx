@@ -402,7 +402,13 @@ export default function TablePlayerPage({
     });
   }, []);
 
-  const handleSaveSpec = async () => {
+  const handleLabSpecChange = useCallback((spec: string) => {
+    setLabSpec(spec);
+    setSpecSaved(false);
+    setSpecSaveError("");
+  }, []);
+
+  const handleSaveSpec = useCallback(async () => {
     if (!labSpec.trim() || !role || !game) return;
     const lab = game.labs.find((l) => l.roleId === role.id);
     if (!lab) return;
@@ -414,7 +420,7 @@ export default function TablePlayerPage({
     } catch (err) {
       setSpecSaveError(`Failed to save spec: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  };
+  }, [labSpec, role, game, gameId, updateLabSpecMut]);
 
   // ─── Per-action handlers ────────────────────────────────────────────────────
 
@@ -699,9 +705,9 @@ export default function TablePlayerPage({
             currentRound={game.currentRound}
             allRequests={allRequests}
             labSpec={labSpec}
-            onLabSpecChange={(spec) => { setLabSpec(spec); setSpecSaved(false); setSpecSaveError(""); }}
+            onLabSpecChange={handleLabSpecChange}
             specSaved={specSaved}
-            onSaveSpec={() => void handleSaveSpec()}
+            onSaveSpec={handleSaveSpec}
             specSaveError={specSaveError}
             computeAllocation={computeAllocation}
             onComputeAllocationChange={setComputeAllocation}

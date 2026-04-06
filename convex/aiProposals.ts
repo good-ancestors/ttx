@@ -28,7 +28,6 @@ export const respond = internalAction({
     const role = ROLES.find((r) => r.id === roleId);
     if (!role) return;
 
-    // Get pending proposals sent TO this role
     const allRequests = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
     const pending = (allRequests ?? []).filter((p) => p.toRoleId === roleId && p.status === "pending");
 
@@ -141,6 +140,8 @@ Optionally, send 0-1 new requests to other enabled roles.`;
           if (existingPairs.has(pairKey) || existingPairs.has(reversePairKey)) continue;
 
           const targetRole = otherRoles.find((r) => r.id === nr.toRoleId);
+          // AI-proposed requests get a fresh ID — they describe new proposals, not existing actions
+          const actionId = Math.random().toString(36).slice(2) + Date.now().toString(36);
           try {
             await ctx.runMutation(internal.requests.sendInternal, {
               gameId,
@@ -149,6 +150,7 @@ Optionally, send 0-1 new requests to other enabled roles.`;
               fromRoleName: role.name,
               toRoleId: nr.toRoleId,
               toRoleName: targetRole?.name ?? nr.toRoleId,
+              actionId,
               actionText: nr.actionText,
               requestType: nr.requestType,
               computeAmount: nr.computeAmount,

@@ -15,6 +15,18 @@ export { NEW_COMPUTE_PER_GAME_ROUND, DEFAULT_COMPUTE_SHARES, COMPUTE_POOL_ELIGIB
 // Signal string sent by the copilot UI to confirm a proposed change
 export const COPILOT_APPLY_SIGNAL = "__APPLY_PROPOSED__";
 
+// ─── LAB TYPE ─────────────────────────────────────────────────────────────────
+// Single source of truth for the lab shape — matches labSnapshotValidator in schema.ts.
+// Import this instead of defining inline Lab/LabData interfaces.
+export interface Lab {
+  name: string;
+  roleId: string;
+  computeStock: number;
+  rdMultiplier: number;
+  allocation: { users: number; capability: number; safety: number };
+  spec?: string;
+}
+
 // ─── ROLES ────────────────────────────────────────────────────────────────────
 
 export interface Role {

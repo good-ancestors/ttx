@@ -1,17 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ROLES, DEFAULT_LABS, BACKGROUND_LABS } from "@/lib/game-data";
+import { ROLES, DEFAULT_LABS, BACKGROUND_LABS, type Lab } from "@/lib/game-data";
 import { FullScreenOverlay } from "@/components/full-screen-overlay";
 import { Maximize2 } from "lucide-react";
-
-interface Lab {
-  name: string;
-  roleId: string;
-  computeStock: number;
-  rdMultiplier: number;
-  allocation: { users: number; capability: number; safety: number };
-}
 
 interface Round {
   number: number;

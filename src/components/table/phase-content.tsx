@@ -1,7 +1,7 @@
 "use client";
 
 import type { Id } from "@convex/_generated/dataModel";
-import type { Role } from "@/lib/game-data";
+import type { Role, Lab } from "@/lib/game-data";
 import { getAiInfluencePower, isResolvingPhase } from "@/lib/game-data";
 import { ComputeAllocation } from "@/components/compute-allocation";
 import type { ActionDraft } from "@/components/action-input";
@@ -43,14 +43,7 @@ function TabPlaceholder({
 
 // ─── Lab helpers (used by submit and resolve) ────────────────────────────────
 
-interface LabData {
-  name: string;
-  computeStock: number;
-  rdMultiplier: number;
-  spec?: string;
-  allocation: { users: number; capability: number; safety: number };
-  roleId: string;
-}
+type LabData = Lab;
 
 interface LabComputeSummaryProps {
   lab: LabData;

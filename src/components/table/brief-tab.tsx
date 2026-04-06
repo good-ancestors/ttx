@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { type Role, isLabCeo, hasCompute, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
+import { type Role, type Lab, isLabCeo, hasCompute, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
 import { DispositionBadge } from "@/components/table/disposition-badge";
 import { ChevronDown, ChevronUp, Zap, Vote, FlaskConical, MessageSquare, Send, Dices, BookText } from "lucide-react";
 
@@ -16,7 +16,7 @@ interface BriefTabProps {
   roundNarrative: string | undefined;
   roundLabel: string;
   submissionsOpen: boolean;
-  labs?: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }[];
+  labs?: Lab[];
   computeOverview?: ComputeOverview;
   gameStatus?: string;
 }

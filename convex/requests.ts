@@ -61,7 +61,7 @@ async function findOrUpsertRequest(
     fromRoleName: string;
     toRoleId: string;
     toRoleName: string;
-    actionId?: string;
+    actionId: string;
     actionText: string;
     requestType: "endorsement" | "compute";
     computeAmount?: number;
@@ -73,11 +73,10 @@ async function findOrUpsertRequest(
       q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber).eq("fromRoleId", args.fromRoleId)
     )
     .collect();
-  // Match by actionId (stable) when available, fall back to actionText for legacy
   const match = existing.find((request) =>
     request.toRoleId === args.toRoleId &&
     request.requestType === args.requestType &&
-    (args.actionId ? request.actionId === args.actionId : request.actionText === args.actionText)
+    request.actionId === args.actionId
   );
   if (match) {
     await ctx.db.patch(match._id, {
@@ -178,7 +177,7 @@ export const send = mutation({
     fromRoleName: v.string(),
     toRoleId: v.string(),
     toRoleName: v.string(),
-    actionId: v.optional(v.string()),
+    actionId: v.string(),
     actionText: v.string(),
     requestType: v.union(
       v.literal("endorsement"),
@@ -341,7 +340,7 @@ export const sendInternal = internalMutation({
     fromRoleName: v.string(),
     toRoleId: v.string(),
     toRoleName: v.string(),
-    actionId: v.optional(v.string()),
+    actionId: v.string(),
     actionText: v.string(),
     requestType: v.union(v.literal("endorsement"), v.literal("compute")),
     computeAmount: v.optional(v.number()),

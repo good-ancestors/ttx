@@ -10,13 +10,7 @@ function escapeAction(text: string): string {
     .replace(/\n/g, " ");
 }
 
-interface Lab {
-  name: string;
-  computeStock: number;
-  rdMultiplier: number;
-  allocation: { users: number; capability: number; safety: number };
-  spec?: string;
-}
+import type { Lab } from "./game-data";
 
 // Design note: This prompt deliberately avoids stating alignment outcomes as facts.
 // The old version said things like "Agent-4 is adversarially misaligned" which

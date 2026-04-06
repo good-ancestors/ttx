@@ -1,17 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { COMPUTE_CATEGORIES, ROLES } from "@/lib/game-data";
+import { COMPUTE_CATEGORIES, ROLES, type Lab } from "@/lib/game-data";
 import { FullScreenOverlay } from "@/components/full-screen-overlay";
 import { Merge, Plus, Maximize2 } from "lucide-react";
-
-interface Lab {
-  name: string;
-  roleId: string;
-  computeStock: number;
-  rdMultiplier: number;
-  allocation: { users: number; capability: number; safety: number };
-}
 
 export function LabTracker({
   labs,

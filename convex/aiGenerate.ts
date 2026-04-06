@@ -428,7 +428,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
           roleId: p.roleId,
           actions: p.actions,
           computeAllocation: p.computeAllocation,
-        }).then(() => p)
+        }).then((subId) => ({ ...p, submissionId: subId }))
       )
     );
     for (const r of results) {
@@ -437,8 +437,8 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       }
     }
     const submitted = results
-      .filter((r): r is PromiseFulfilledResult<typeof pending[number]> => r.status === "fulfilled")
-      .map((r) => r.value);
+      .filter((r) => r.status === "fulfilled")
+      .map((r) => (r as PromiseFulfilledResult<typeof pending[number] & { submissionId: string }>).value);
 
     // Log submission failures
     const submissionFailures = results.filter((r) => r.status === "rejected");
@@ -463,10 +463,22 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
     }
 
     // Send endorsement/compute requests sequentially to avoid OCC conflicts on requests table.
-    // Parallel sends caused 2000+ OCC retries per game.
+    // Read back submissions to get stable actionIds for endorsement linking
     const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));
+    const allSubs: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
+    const actionIdByRoleAndText = new Map<string, string>();
+    for (const sub of allSubs) {
+      for (const action of sub.actions) {
+        if (action.actionId) {
+          actionIdByRoleAndText.set(`${sub.roleId}:${action.text}`, action.actionId);
+        }
+      }
+    }
+
+    // Send endorsement/compute requests sequentially with stable actionIds
     for (const p of submitted) {
       for (const hint of p.endorseHints ?? []) {
+        const actionId = actionIdByRoleAndText.get(`${p.roleId}:${hint.actionText}`) ?? "";
         for (const targetId of hint.targetRoleIds.slice(0, 1)) {
           try {
             await ctx.runMutation(internal.requests.sendInternal, {
@@ -476,6 +488,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
               fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
               toRoleId: targetId,
               toRoleName: roleMap.get(targetId) ?? targetId,
+              actionId,
               actionText: hint.actionText,
               requestType: "endorsement",
             });
@@ -483,6 +496,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
         }
       }
       for (const hint of p.computeRequestHints ?? []) {
+        const actionId = actionIdByRoleAndText.get(`${p.roleId}:${hint.actionText}`) ?? "";
         try {
           await ctx.runMutation(internal.requests.sendInternal, {
             gameId,
@@ -491,6 +505,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
             fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
             toRoleId: hint.targetRoleId,
             toRoleName: roleMap.get(hint.targetRoleId) ?? hint.targetRoleId,
+            actionId,
             actionText: hint.actionText,
             requestType: "compute",
             computeAmount: hint.amount,

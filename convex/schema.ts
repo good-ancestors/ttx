@@ -231,7 +231,7 @@ export default defineSchema({
     fromRoleName: v.string(),
     toRoleId: v.string(),
     toRoleName: v.string(),
-    actionId: v.optional(v.string()), // Stable link to the action (optional for migration)
+    actionId: v.string(), // Stable link to the action
     actionText: v.string(), // Kept for display — not used as join key when actionId is present
     requestType: v.union(
       v.literal("endorsement"),
