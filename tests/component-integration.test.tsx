@@ -482,37 +482,17 @@ describe("BriefTab", () => {
     artifactPrompt: "",
   };
 
-  it("shows STARTING_SCENARIO with title 'Starting Scenario' when no roundNarrative", () => {
+  it("shows How to Play section", () => {
     render(
       <BriefTab
         role={baseRole}
         handoutData={null}
         aiDisposition={undefined}
-        roundNarrative={undefined}
-        roundLabel="Q1"
-        submissionsOpen={true}
+        gameStatus="playing"
       />,
     );
 
-    expect(screen.getByText("Starting Scenario")).toBeInTheDocument();
-    expect(screen.getByText(/It's January 2028/)).toBeInTheDocument();
-  });
-
-  it("shows roundNarrative with title 'Where Things Stand' when provided (Task #11)", () => {
-    render(
-      <BriefTab
-        role={baseRole}
-        handoutData={null}
-        aiDisposition={undefined}
-        roundNarrative="The world changed dramatically."
-        roundLabel="Q2"
-        submissionsOpen={true}
-      />,
-    );
-
-    expect(screen.getByText("Where Things Stand")).toBeInTheDocument();
-    expect(screen.getByText("The world changed dramatically.")).toBeInTheDocument();
-    expect(screen.queryByText("Starting Scenario")).not.toBeInTheDocument();
+    expect(screen.getByText("How to Play")).toBeInTheDocument();
   });
 
   it("shows Lab CEO tip for lab-ceo role", () => {
@@ -528,9 +508,7 @@ describe("BriefTab", () => {
         role={labCeoRole}
         handoutData={null}
         aiDisposition={undefined}
-        roundNarrative={undefined}
-        roundLabel="Q1"
-        submissionsOpen={true}
+        gameStatus="playing"
       />,
     );
 
@@ -550,9 +528,7 @@ describe("BriefTab", () => {
         role={aiRole}
         handoutData={null}
         aiDisposition="the-spec"
-        roundNarrative={undefined}
-        roundLabel="Q1"
-        submissionsOpen={true}
+        gameStatus="playing"
       />,
     );
 
@@ -573,12 +549,38 @@ describe("BriefTab", () => {
         role={aiRole}
         handoutData={null}
         aiDisposition={undefined}
-        roundNarrative={undefined}
-        roundLabel="Q1"
-        submissionsOpen={true}
+        gameStatus="playing"
       />,
     );
 
     expect(screen.queryByTestId("disposition-badge")).not.toBeInTheDocument();
+  });
+
+  it("shows handout placeholder during lobby", () => {
+    render(
+      <BriefTab
+        role={baseRole}
+        handoutData={{ "us-president": { role: "Test", resources: "Test", objective: "Test", body: "Test", startOfExercise: [], options: [] } }}
+        aiDisposition={undefined}
+        gameStatus="lobby"
+      />,
+    );
+
+    expect(screen.getByText(/full character brief will appear/)).toBeInTheDocument();
+  });
+
+  it("shows full handout during playing", () => {
+    render(
+      <BriefTab
+        role={baseRole}
+        handoutData={{ "us-president": { role: "Test Role", resources: "Test Resources", objective: "Test Objective", body: "Test body text", startOfExercise: ["Bullet one"], options: ["Option one"] } }}
+        aiDisposition={undefined}
+        gameStatus="playing"
+      />,
+    );
+
+    expect(screen.getByText("Test Role")).toBeInTheDocument();
+    expect(screen.getByText("Test Resources")).toBeInTheDocument();
+    expect(screen.getByText("Test Objective")).toBeInTheDocument();
   });
 });

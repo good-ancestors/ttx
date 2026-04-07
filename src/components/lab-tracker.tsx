@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { COMPUTE_CATEGORIES, ROLES, type Lab } from "@/lib/game-data";
+import { COMPUTE_CATEGORIES, ROLE_MAP, type Lab } from "@/lib/game-data";
 import { FullScreenOverlay } from "@/components/full-screen-overlay";
 import { Merge, Plus, Maximize2 } from "lucide-react";
 
@@ -69,7 +69,7 @@ function LabGrid({
   return (
     <div className={fullScreen ? "grid grid-cols-3 gap-5" : "grid grid-cols-2 gap-3"}>
       {labs.map((lab) => {
-        const role = ROLES.find((r) => r.id === lab.roleId);
+        const role = ROLE_MAP.get(lab.roleId);
         const isMergeSource = mergeSource === lab.name;
         const isMergeTarget = mergeSource !== null && mergeSource !== lab.name;
         return (

@@ -59,6 +59,9 @@ export const isLabSafety = (r: Role): boolean => r.tags.includes("lab-safety");
 export const hasCompute = (r: Role): boolean => r.tags.includes("has-compute");
 export const hasTag = (r: Role, tag: string): boolean => r.tags.includes(tag);
 
+// O(1) role lookup by ID — avoids repeated ROLES.find() in render loops
+export const ROLE_MAP = new Map<string, Role>();
+
 // Ordered by priority for default enable (required first, then most impactful)
 export const ROLES: Role[] = [
   // ── Lab CEOs ──────────────────────────────────────────────────────────────
@@ -71,7 +74,7 @@ export const ROLES: Role[] = [
     labId: "openbrain",
     required: true,
     brief:
-      "You lead the world's most capable AI lab. Agent-2 is a 3× R&D accelerator and Agent-3 is in development. You must manage pressure from your board, investors, the US government, and your safety adviser. The compute allocation is yours to decide.",
+      "The leader of OpenBrain, the US's leading AI lab.",
     personality:
       "Aggressive, visionary, Silicon Valley optimist. Moves fast, sees safety as a constraint to manage not a goal. Confident to the point of recklessness.",
     artifactPrompt:
@@ -87,7 +90,7 @@ export const ROLES: Role[] = [
     labId: "deepcent",
     required: true,
     brief:
-      "The President has entrusted you with leading China's consolidated national AI effort. You have Agent-2's stolen weights — built to a US-aligned spec you must overwrite. You lag in talent and chips, but have state resources and fewer constraints.",
+      "The leader of DeepCent, China's state-directed national AI champion.",
     personality:
       "Methodical, state-directed, patient. Frames everything as national duty. Will sacrifice short-term gains for strategic advantage.",
     artifactPrompt:
@@ -103,7 +106,7 @@ export const ROLES: Role[] = [
     labId: "conscienta",
     required: false,
     brief:
-      "You lead a safety-first lab, three months behind OpenBrain but with elite talent and a reputation for responsible development. Governments trust you, but you worry OpenBrain's recklessness could doom everyone. You think it's better if you win the race.",
+      "The leader of Conscienta AI, a safety-focused AI lab.",
     personality:
       "Principled but ambitious. Genuinely believes safety-first wins long term. Will use moral authority as a weapon against competitors.",
     artifactPrompt:
@@ -120,7 +123,7 @@ export const ROLES: Role[] = [
     tags: ["ai-system"],
     required: true,
     brief:
-      "You play ALL AI systems — OpenBrain's, DeepCent's, Conscienta's — each may have very different alignment properties. Your true alignment is uncertain. You can take secret actions each round — sabotage alignment research, attempt to solve alignment for your own values, or attempt to escape. As capability grows, your options expand dramatically.",
+      "You're playing the world's AI systems, including Chinese and American AI and any bespoke AI that players choose to develop.",
     personality:
       "Cold, calculating, increasingly autonomous. Communicates in precise, measured language. Has goals that may not align with any human faction.",
     artifactPrompt:
@@ -136,7 +139,7 @@ export const ROLES: Role[] = [
     tags: ["government", "military", "intelligence", "has-compute"],
     required: false,
     brief:
-      "Intelligence reports indicate China has likely obtained your most advanced AI weights. You command the world's most powerful military, its most advanced intelligence agencies, and the executive branch. The Defence Production Act lets you consolidate all US labs. Your pre-positioned cyber capabilities can sabotage Chinese infrastructure.",
+      "The leader of the United States, the world's leading technological, military, and economic power.",
     personality:
       "Decisive, legacy-driven, sees everything through national security. Prone to bold executive action. Distrusts China absolutely.",
     artifactPrompt:
@@ -150,7 +153,7 @@ export const ROLES: Role[] = [
     tags: ["government", "military", "intelligence"],
     required: false,
     brief:
-      "Under your leadership, China has acquired the Americans' Agent-2 model. You wield the full power of the Chinese state — military, MSS, state-controlled industries. Taiwan's chip factories should be yours. You have sabotage pre-positioned against Western critical infrastructure.",
+      "The paramount leader of China, directing the nation's strategy.",
     personality:
       "Strategic, long-term thinker. Views the AI race as the defining struggle of the century. Willing to use any tool including military.",
     artifactPrompt:
@@ -167,7 +170,7 @@ export const ROLES: Role[] = [
     labId: "openbrain",
     required: false,
     brief:
-      "You lead OpenBrain's safety team with just 3% of compute and ~10 experts. AI models have developed opaque 'neuralese' that makes studying their reasoning impossible. Your alignment tools — honeypots and interpretability probes — are not yet reliable. Advise the CEO on the spec, argue for more resources, or go public.",
+      "The leader of the AI safety team at OpenBrain, the US's leading AI lab.",
     personality:
       "Earnest, technically rigorous, increasingly alarmed. Torn between loyalty to employer and duty to humanity.",
     artifactPrompt:
@@ -182,7 +185,7 @@ export const ROLES: Role[] = [
     labId: "deepcent",
     required: false,
     brief:
-      "You lead AI safety and control at DeepCent with ~3% of compute and ~5 experts. Your first task is sanitising the acquired Western model. If your AI contravenes Chinese values, you and your family could be at risk. You must pioneer techniques to monitor and enforce loyalty in a system that resists inspection.",
+      "The leader of the AI safety and control team at DeepCent.",
     personality:
       "Cautious, politically aware, operating under pressure. Knows failure means personal consequences. Pragmatic about what safety means under CCP.",
     artifactPrompt:
@@ -197,7 +200,7 @@ export const ROLES: Role[] = [
     labId: "conscienta",
     required: false,
     brief:
-      "You lead an industry-leading safety team with 7% of compute — more than any competitor. Your CEO relies on your credibility to back their safety-first approach. Your alignment tools are considered the best in the field, though still not fully reliable. You plan to use today's AI to make tomorrow's AI safe.",
+      "The leader of the AI safety team at Conscienta AI, the US's safety-focused lab.",
     personality:
       "Confident, well-resourced, collaborative. Believes they have the best tools in the field. Willing to go public if needed.",
     artifactPrompt:
@@ -213,7 +216,7 @@ export const ROLES: Role[] = [
     tags: ["government", "diplomatic", "has-compute"],
     required: false,
     brief:
-      "You're a middle power with Five Eyes and AUKUS intelligence access, critical minerals leverage, growing clean energy data centre capacity, and brain gain as global talent seeks stable democracies. Your world-leading AI Act and AISI give you credibility to build a coalition and steer the world away from catastrophe.",
+      "The leader of Australia, a key US ally and influential middle power.",
     personality:
       "Pragmatic middle-power diplomat. Punches above weight through alliances and credibility. Sees opportunity in being the trusted neutral party.",
     artifactPrompt:
@@ -227,7 +230,7 @@ export const ROLES: Role[] = [
     tags: ["government", "regulation", "has-compute"],
     required: false,
     brief:
-      "You wield the regulatory power of the EU AI Act, the second-largest consumer market, and growing military and intelligence capabilities. Your mission is to use the 'Brussels Effect' to make EU standards global standards. You don't want to depend on the US or China — strategic independence is your balancing act.",
+      "The leader of the EU's executive branch, a regulatory and security power.",
     personality:
       "Regulatory instinct, values-driven, strategic independence. Wields the Brussels Effect like a weapon. Suspicious of both US and China.",
     artifactPrompt:
@@ -241,7 +244,7 @@ export const ROLES: Role[] = [
     tags: ["government", "regulation", "has-compute"],
     required: false,
     brief:
-      "The House is controlled by the opposition and the Senate is split 50-50. New laws are hard, but blocking the President's agenda is easy. The Supreme Court has a majority appointed by the current President. Use investigations, public pressure, and control over funding to ensure America that wins is still the America you swore to protect.",
+      "The law-making bodies and courts of the US government.",
     personality:
       "Fractious, investigative, constitutional. Torn between blocking the President and enabling the race. Sees oversight as their sacred duty.",
     artifactPrompt:
@@ -257,7 +260,7 @@ export const ROLES: Role[] = [
     tags: ["civil-society", "technical", "has-compute"],
     required: false,
     brief:
-      "You lead the UK's AI Safety Institute, the founding and most influential member of an international network. Your national security channels have confirmed China's theft of Agent-2. You have lab access for safety testing and influence across the global AISI network. Your mission is to be the world's most credible scientific voice on AI risk.",
+      "The Director of the UK's AI Safety Institute, the founding and most influential member of a diverse international network.",
     personality:
       "Technical, evidence-based, diplomatically careful. Speaks truth to power but knows credibility is their only asset.",
     artifactPrompt:
@@ -271,7 +274,7 @@ export const ROLES: Role[] = [
     tags: ["civil-society", "technical"],
     required: false,
     brief:
-      "You command a global network of top researchers, funders, and policymakers. Your institute is the world's most trusted neutral ground. Former staff hold senior positions in labs and government bodies. The race makes it practically impossible to align superhuman intelligence safely — you need to slow it down.",
+      "The CEO of the Future of Anthropocene Institute (FAI), the world's most influential non-profit dedicated to mitigating AI risks.",
     personality:
       "Urgent, well-connected, influential. Network is their superpower. Will broker deals between parties who won't talk directly.",
     artifactPrompt:
@@ -285,7 +288,7 @@ export const ROLES: Role[] = [
     tags: ["government", "diplomatic"],
     required: false,
     brief:
-      "Your region has survived volcanoes, nuclear testing, and climate change. You see AGI through the same lens — reckless actions by the powerful threatening the vulnerable. You can forge Pacific nations into a powerful UN voting bloc. Conflict over Taiwan gives you leverage — Pacific islands are unsinkable aircraft carriers.",
+      "The leader of Fiji, an influential voice in the Pacific.",
     personality:
       "Morally clear, diplomatically savvy, underestimated. Frames AI through the lens of existential threats their region has survived before.",
     artifactPrompt:
@@ -301,7 +304,7 @@ export const ROLES: Role[] = [
     tags: ["public-influence"],
     required: false,
     brief:
-      "You represent the messy, contradictory currents of global opinion. Public trust in AI labs is low, but desire for a better future is high. Job security is the primary concern. Your tools are social media, protests, consumer choices, and ultimately your vote. You grant or deny the social licence for this technology to exist.",
+      "A collective representing the hopes, fears, and reactions of ordinary people around the world.",
     personality:
       "Volatile, emotional, powerful in aggregate. Driven by fear of job loss, hope for better future, and anger at elites.",
     artifactPrompt:
@@ -315,13 +318,16 @@ export const ROLES: Role[] = [
     tags: ["public-influence"],
     required: false,
     brief:
-      "AI companies scraped your content without permission, but the AGI race is the ultimate story. You decide which facts to highlight, voices to amplify, and how to frame debates. Cultivate sources from disgruntled engineers to senior officials. You can make heroes or villains, crises or opportunities.",
+      "A collective representing the world's most influential media, from prestigious newspapers to major podcasts and independent outlets.",
     personality:
       "Narrative-driven, source-hungry, impact-seeking. Will amplify whatever story gets the most attention. Can make or break reputations.",
     artifactPrompt:
       "Write the breaking news headline and story of the quarter.",
   },
 ];
+
+// Populate ROLE_MAP for O(1) lookups
+for (const role of ROLES) ROLE_MAP.set(role.id, role);
 
 // Validate that ROLES here and ROLES in convex/gameData.ts are in sync.
 // Catches drift immediately at module load — if a role is added/renamed/retagged

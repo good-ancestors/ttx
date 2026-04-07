@@ -1,79 +1,52 @@
 "use client";
 
 import { useState } from "react";
-import { type Role, type Lab, isLabCeo, hasCompute, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
+import { type Role, isLabCeo, hasCompute, getDisposition } from "@/lib/game-data";
+import type { HandoutData, RoleHandout } from "@/lib/role-handouts";
 import { DispositionBadge } from "@/components/table/disposition-badge";
-import { ChevronDown, ChevronUp, Zap, Vote, FlaskConical, MessageSquare, Send, Dices, BookText } from "lucide-react";
-
-interface ComputeOverview {
-  roles: { roleId: string; roleName: string; computeStock: number }[];
-}
+import { ChevronDown, ChevronUp, Zap, Vote, FlaskConical, Send, Dices, BookText } from "lucide-react";
 
 interface BriefTabProps {
   role: Role;
-  handoutData: Record<string, string> | null;
+  handoutData: HandoutData | null;
   aiDisposition: string | undefined;
-  roundNarrative: string | undefined;
-  roundLabel: string;
-  submissionsOpen: boolean;
-  labs?: Lab[];
-  computeOverview?: ComputeOverview;
-  gameStatus?: string;
+  gameStatus?: "lobby" | "playing" | "finished";
 }
 
 export function BriefTab({
   role,
   handoutData,
   aiDisposition,
-  roundNarrative,
-  roundLabel,
-  submissionsOpen,
-  labs,
-  computeOverview,
   gameStatus,
 }: BriefTabProps) {
-  const [fullBriefOpen, setFullBriefOpen] = useState(false);
+  const isPlaying = gameStatus === "playing";
+  const [howToPlayOpen, setHowToPlayOpen] = useState(!isPlaying);
   const disposition = aiDisposition ? getDisposition(aiDisposition) : null;
+  const handout = handoutData?.[role.id];
 
   return (
     <div className="space-y-4">
       {/* ─── Role Card ─── */}
       <div className="bg-white rounded-xl p-5 border border-border">
-        <div className="flex items-center gap-3 mb-3">
-          <div
-            className="w-4 h-4 rounded-full shrink-0"
-            style={{ backgroundColor: role.color }}
-          />
+        <div className="flex items-center gap-3 mb-2">
+          <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
           <div>
             <h1 className="text-lg font-bold text-text leading-tight">{role.name}</h1>
             <p className="text-sm text-text-muted italic">{role.subtitle}</p>
           </div>
         </div>
-
         <p className="text-sm text-text leading-relaxed">{role.brief}</p>
 
-        {/* AI Systems: disposition + lab specs */}
+        {/* AI Systems: disposition badge */}
         {role.tags.includes("ai-system") && disposition && (
           <DispositionBadge disposition={aiDisposition!} className="mt-4" />
         )}
-        {role.tags.includes("ai-system") && labs && labs.length > 0 && (
-          <div className="mt-4 space-y-2">
-            <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Lab Specs</span>
-            {labs.map((lab) => (
-              <div key={lab.name} className="bg-warm-gray rounded-lg p-3 border border-border">
-                <span className="text-xs font-bold text-text">{lab.name}</span>
-                <p className="text-xs text-text-muted mt-0.5">{lab.spec || "No spec set yet"}</p>
-              </div>
-            ))}
-          </div>
-        )}
 
-        {/* Lab CEO tip */}
         {isLabCeo(role) && (
           <div className="mt-3 bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg p-3">
             <span className="text-xs font-bold text-[#0284C7]">Lab CEO</span>
             <p className="text-xs text-[#0369A1] mt-0.5">
-              You control your lab&apos;s compute allocation and AI directive. Use the <FlaskConical className="w-3 h-3 inline" /> Lab tab during submissions.
+              You control your lab&apos;s compute allocation and AI directive.
             </p>
           </div>
         )}
@@ -81,212 +54,145 @@ export function BriefTab({
           <div className="mt-3 bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg p-3">
             <span className="text-xs font-bold text-[#0284C7]">Compute Resources</span>
             <p className="text-xs text-[#0369A1] mt-0.5">
-              You have compute resources other players may request for their actions.
+              You hold compute resources that other players may request.
             </p>
-          </div>
-        )}
-
-        {/* Full brief — expandable */}
-        {handoutData?.[role.id] && (
-          <div className="mt-4">
-            <button
-              onClick={() => setFullBriefOpen(!fullBriefOpen)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-text-muted hover:text-text transition-colors"
-            >
-              Full Brief
-              {fullBriefOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-            {fullBriefOpen && (
-              <div className="mt-2 bg-warm-gray rounded-lg p-4 border border-border">
-                <div className="text-sm text-text whitespace-pre-line leading-relaxed">
-                  {handoutData[role.id]}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
 
-      {/* ─── Where Things Stand (hidden during lobby — scenario revealed at game start) ─── */}
-      {gameStatus !== "lobby" && (
-        (roundNarrative != null) ? (
-          <ScenarioCard title="Where Things Stand" label={roundLabel}>
-            <p className="text-sm text-[#78350F] leading-relaxed">{roundNarrative}</p>
-          </ScenarioCard>
-        ) : (
-          <ScenarioCard title="Starting Scenario" label={roundLabel}>
-            <p className="text-sm text-[#78350F] leading-relaxed">{STARTING_SCENARIO}</p>
-          </ScenarioCard>
-        )
-      )}
+      {/* ─── Full Handout (or placeholder during lobby) ─── */}
+      {handout && (isPlaying ? (
+        <HandoutContent handout={handout} />
+      ) : (
+        <div className="bg-warm-gray rounded-xl border border-border px-5 py-3.5 flex items-center gap-2">
+          <BookText className="w-4 h-4 text-text-muted/50 shrink-0" />
+          <span className="text-sm text-text-muted">Your full character brief will appear here when the game starts.</span>
+        </div>
+      ))}
 
-      {/* ─── How to Play ─── */}
-      <div className="bg-[#EFF6FF] rounded-xl p-5 border border-[#BFDBFE]">
-        <h2 className="text-sm font-bold text-[#1D4ED8] mb-3">How to Play</h2>
+      {/* ─── How to Play (expanded in lobby, collapsed during game) ─── */}
+      <div className="bg-white rounded-xl border border-border overflow-hidden">
+        <button
+          onClick={() => setHowToPlayOpen(!howToPlayOpen)}
+          className="w-full px-5 py-3.5 flex items-center justify-between text-left"
+        >
+          <span className="text-sm font-bold text-text flex items-center gap-2">
+            <BookText className="w-4 h-4 text-text-muted" /> How to Play
+          </span>
+          {howToPlayOpen ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
+        </button>
+        {howToPlayOpen && (
+          <div className="px-5 pb-5 border-t border-border pt-4">
+            <HowToPlayContent role={role} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
-        <p className="text-sm text-[#1E40AF] mb-4">
-          Your goal is not to win, but to explore a plausible future. Simulate your role as best you can &mdash; what would your character really do?
+// ─── How to Play (shared between lobby and in-game) ─────────────────────────
+
+function HowToPlayContent({ role }: { role: Role }) {
+  return (
+    <div className="space-y-2.5 text-sm text-text-muted leading-relaxed">
+      <p className="flex items-start gap-2">
+        <Send className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted/60" />
+        <span>Each turn, submit <strong className="text-text">actions</strong> your character would take. Be creative — anything your role could plausibly do.</span>
+      </p>
+      <p className="flex items-start gap-2">
+        <Vote className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted/60" />
+        <span><strong className="text-text">Support or oppose</strong> other players&apos; actions to influence their chance of success.</span>
+      </p>
+      <p className="flex items-start gap-2">
+        <Dices className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted/60" />
+        <span>Actions are <strong className="text-text">graded and dice-rolled</strong> — bolder actions are harder to pull off.</span>
+      </p>
+      {hasCompute(role) && (
+        <p className="flex items-start gap-2">
+          <Zap className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted/60" />
+          <span>You can <strong className="text-text">send compute</strong> to other players to support their work.</span>
         </p>
+      )}
+      {isLabCeo(role) && (
+        <p className="flex items-start gap-2">
+          <FlaskConical className="w-3.5 h-3.5 mt-0.5 shrink-0 text-text-muted/60" />
+          <span>Use the <strong className="text-text">Lab tab</strong> to set your AI&apos;s directive and allocate compute between capability, safety, and users.</span>
+        </p>
+      )}
+    </div>
+  );
+}
 
-        <div className="space-y-2.5 mb-4">
-          <div className="flex items-start gap-2.5">
-            <MessageSquare className="w-4 h-4 text-[#3B82F6] shrink-0 mt-0.5" />
-            <div>
-              <span className="text-sm font-bold text-[#1E40AF]">Discuss</span>
-              <p className="text-xs text-[#3B82F6]">Talk to other players. Form alliances, negotiate deals, gather intelligence.</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2.5">
-            <Send className="w-4 h-4 text-[#3B82F6] shrink-0 mt-0.5" />
-            <div>
-              <span className="text-sm font-bold text-[#1E40AF]">Submit</span>
-              <span className="text-xs text-[#3B82F6] ml-1">(</span><Zap className="w-3 h-3 text-[#3B82F6] inline" /><span className="text-xs text-[#3B82F6]"> Actions tab)</span>
-              <p className="text-xs text-[#3B82F6]">Write 1&ndash;5 actions describing what you do and what you intend to achieve.</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2.5">
-            <Vote className="w-4 h-4 text-[#3B82F6] shrink-0 mt-0.5" />
-            <div>
-              <span className="text-sm font-bold text-[#1E40AF]">Respond</span>
-              <span className="text-xs text-[#3B82F6] ml-1">(</span><Vote className="w-3 h-3 text-[#3B82F6] inline" /><span className="text-xs text-[#3B82F6]"> Respond tab)</span>
-              <p className="text-xs text-[#3B82F6]">Support or oppose other players&apos; actions to influence their odds.</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2.5">
-            <Dices className="w-4 h-4 text-[#3B82F6] shrink-0 mt-0.5" />
-            <div>
-              <span className="text-sm font-bold text-[#1E40AF]">Resolve</span>
-              <p className="text-xs text-[#3B82F6]">Each action&apos;s probability is evaluated, then dice decide what succeeds.</p>
-            </div>
-          </div>
-          <div className="flex items-start gap-2.5">
-            <BookText className="w-4 h-4 text-[#3B82F6] shrink-0 mt-0.5" />
-            <div>
-              <span className="text-sm font-bold text-[#1E40AF]">Narrate</span>
-              <p className="text-xs text-[#3B82F6]">A narrative of what happened is generated. The world updates and the next round begins.</p>
-            </div>
-          </div>
+// ─── Structured handout renderer ────────────────────────────────────────────
+
+function HandoutContent({ handout }: { handout: RoleHandout }) {
+  return (
+    <div className="space-y-3">
+      {/* Role / Resources / Objective */}
+      <div className="bg-warm-gray rounded-lg p-4 border border-border space-y-2">
+        <div>
+          <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Role</span>
+          <p className="text-sm text-text">{handout.role}</p>
         </div>
-
-        <div className="bg-white/60 rounded-lg p-3 border border-[#BFDBFE]/50">
-          <span className="text-xs font-bold text-[#1E40AF]">Writing Actions</span>
-          <div className="mt-1.5 space-y-1">
-            <p className="text-xs text-[#3B82F6]"><span className="font-semibold">Format:</span> &ldquo;I do [action] so that [intended outcome]&rdquo;</p>
-            <p className="text-xs text-[#3B82F6]"><span className="font-semibold">Priority:</span> Action #1 gets the most priority, #2 less, and so on.</p>
-            <p className="text-xs text-[#3B82F6]"><span className="font-semibold">Secret:</span> Toggle the secret switch to hide an action from others. It&apos;s still resolved normally.</p>
-            <p className="text-xs text-[#3B82F6]"><span className="font-semibold">Support:</span> Request endorsement from other players &mdash; accepted support boosts your probability.</p>
-          </div>
+        <div>
+          <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Resources</span>
+          <p className="text-sm text-text">{handout.resources}</p>
+        </div>
+        <div>
+          <span className="text-[11px] font-bold text-text-muted uppercase tracking-wider">Objective</span>
+          <p className="text-sm text-text">{handout.objective}</p>
         </div>
       </div>
 
-      {/* Note when submissions aren't open */}
-      {!submissionsOpen && (
-        <div className="bg-warm-gray rounded-xl p-4 border border-border text-center">
-          <div className="flex items-center justify-center gap-2 text-text-muted">
-            <Zap className="w-4 h-4" />
-            <p className="text-sm">
-              When the facilitator opens submissions, the <span className="font-bold">Actions</span> tab will activate.
-            </p>
-          </div>
+      {/* Body paragraph */}
+      <p className="text-sm text-text leading-relaxed">{handout.body}</p>
+
+      {/* Role-specific sections */}
+      {handout.sections?.map((section, i) => (
+        <div key={i} className="bg-warm-gray rounded-lg p-4 border border-border">
+          <span className="text-xs font-bold text-text-muted uppercase tracking-wider">{section.title}</span>
+          <p className="text-sm text-text mt-1 whitespace-pre-line leading-relaxed">{section.content}</p>
         </div>
-      )}
+      ))}
 
-      {/* ─── Compute Resources (bottom, collapsed) ─── */}
-      {gameStatus === "playing" && computeOverview && labs && (
-        <CollapsibleComputeOverview computeOverview={computeOverview} labs={labs} currentRoleId={role.id} />
-      )}
-    </div>
-  );
-}
-
-function CollapsibleComputeOverview({ computeOverview, labs, currentRoleId }: { computeOverview: ComputeOverview; labs: BriefTabProps["labs"]; currentRoleId: string }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div className="bg-white rounded-xl border border-border overflow-hidden">
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full flex items-center justify-between p-4 text-left"
-      >
-        <span className="text-sm font-bold text-text flex items-center gap-2">
-          <Zap className="w-4 h-4 text-text-muted" /> Compute Resources
-        </span>
-        {open ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
-      </button>
-      {open && (
-        <div className="px-4 pb-4">
-          <ComputeOverviewCard computeOverview={computeOverview} labs={labs ?? []} currentRoleId={currentRoleId} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ComputeOverviewCard({ computeOverview, labs, currentRoleId }: { computeOverview: ComputeOverview; labs: NonNullable<BriefTabProps["labs"]>; currentRoleId: string }) {
-  const { roles } = computeOverview;
-  const labRoleIds = new Set(labs.map((l) => l.roleId));
-  const nonLabRoles = roles.filter((r) => !labRoleIds.has(r.roleId));
-
-  if (labs.length === 0 && nonLabRoles.length === 0) return null;
-
-  return (
-    <div>
-      {/* Labs */}
-      {labs.length > 0 && (
-        <div className="space-y-2 mb-3">
-          <span className="text-xs font-bold text-[#6D28D9] uppercase tracking-wider">Labs</span>
-          {labs.map((lab) => (
-            <div key={lab.name} className="bg-white/60 rounded-lg p-3 border border-[#DDD6FE]/50">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-bold text-[#5B21B6]">{lab.name}</span>
-                <span className="text-xs font-mono text-[#7C3AED] flex items-center gap-1">
-                  <Zap className="w-3 h-3" /> {lab.computeStock}u
-                </span>
-              </div>
-              <div className="flex items-center gap-3 text-xs text-[#6D28D9]">
-                <span>R&D {lab.rdMultiplier}x</span>
-                <span className="text-[#8B5CF6]">|</span>
-                <span>
-                  Cap {lab.allocation.capability}% / Safety {lab.allocation.safety}% / Users {lab.allocation.users}%
-                </span>
-              </div>
-            </div>
+      {/* At the start of the exercise */}
+      <div>
+        <span className="text-xs font-bold text-text-muted uppercase tracking-wider">At the start of the exercise</span>
+        <ul className="mt-1 space-y-1">
+          {handout.startOfExercise.map((item, i) => (
+            <li key={i} className="text-sm text-text leading-relaxed flex items-start gap-2">
+              <span className="text-text-muted mt-0.5 shrink-0">&bull;</span>
+              {item}
+            </li>
           ))}
-        </div>
-      )}
-
-      {/* Non-lab compute holders */}
-      {nonLabRoles.length > 0 && (
-        <div className="space-y-1">
-          <span className="text-xs font-bold text-[#6D28D9] uppercase tracking-wider">Other Compute Holders</span>
-          {nonLabRoles.map((r) => (
-            <div
-              key={r.roleId}
-              className={`flex items-center justify-between rounded-lg px-3 py-1.5 text-sm ${
-                r.roleId === currentRoleId
-                  ? "bg-[#EDE9FE] border border-[#C4B5FD] font-bold text-[#5B21B6]"
-                  : "text-[#6D28D9]"
-              }`}
-            >
-              <span>{r.roleName}{r.roleId === currentRoleId ? " (you)" : ""}</span>
-              <span className="text-xs font-mono flex items-center gap-1">
-                <Zap className="w-3 h-3" /> {r.computeStock}u
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ScenarioCard({ title, label, children }: { title: string; label: string; children: React.ReactNode }) {
-  return (
-    <div className="bg-[#FEFCE8] rounded-xl p-4 border border-[#FDE68A]">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-bold text-[#92400E]">{title}</span>
-        <span className="text-[11px] text-[#A16207] font-mono">{label}</span>
+        </ul>
       </div>
-      {children}
+
+      {/* Options you may wish to consider */}
+      <div>
+        <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Options you may wish to consider</span>
+        <ol className="mt-1 space-y-1.5 list-decimal list-inside">
+          {handout.options.map((opt, i) => (
+            <li key={i} className="text-sm text-text leading-relaxed">{opt}</li>
+          ))}
+        </ol>
+      </div>
+
+      {/* At the end of each round */}
+      {handout.endOfRound && handout.endOfRound.length > 0 && (
+        <div>
+          <span className="text-xs font-bold text-text-muted uppercase tracking-wider">At the end of each round</span>
+          <ul className="mt-1 space-y-1">
+            {handout.endOfRound.map((item, i) => (
+              <li key={i} className="text-sm text-text leading-relaxed flex items-start gap-2">
+                <span className="text-text-muted mt-0.5 shrink-0">&bull;</span>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

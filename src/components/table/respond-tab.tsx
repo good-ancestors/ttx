@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
-import { ROLES, AI_SYSTEMS_ROLE_ID, isSubmittedAction } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, isSubmittedAction } from "@/lib/game-data";
 import { ThumbsUp, ThumbsDown, EyeOff, Inbox, CheckCircle2, XCircle, MinusCircle, Zap } from "lucide-react";
 
 // ─── Shared response card ───────────────────────────────────────────────────
@@ -198,7 +198,7 @@ function EndorsementRespondTab({
                 <div className="flex-1 h-px bg-border" />
               </div>
               {unansweredCompute.map((req) => {
-                const fromRole = ROLES.find((r) => r.id === req.fromRoleId);
+                const fromRole = ROLE_MAP.get(req.fromRoleId);
                 return (
                   <ComputeResponseCard
                     key={req._id}
@@ -221,7 +221,7 @@ function EndorsementRespondTab({
           )}
 
           {answeredCompute.map((req) => {
-            const fromRole = ROLES.find((r) => r.id === req.fromRoleId);
+            const fromRole = ROLE_MAP.get(req.fromRoleId);
             return (
               <ComputeResponseCard
                 key={req._id}
@@ -255,7 +255,7 @@ function EndorsementRespondTab({
             <div className="flex-1 h-px bg-border" />
           </div>
           {answeredEndorsements.map((req) => {
-            const fromRole = ROLES.find((r) => r.id === req.fromRoleId);
+            const fromRole = ROLE_MAP.get(req.fromRoleId);
             return (
               <ActionResponseCard
                 key={req._id}
@@ -287,7 +287,7 @@ function EndorsementRespondTab({
             <div className="flex-1 h-px bg-border" />
           </div>
           {unansweredEndorsements.map((req) => {
-            const fromRole = ROLES.find((r) => r.id === req.fromRoleId);
+            const fromRole = ROLE_MAP.get(req.fromRoleId);
             return (
               <ActionResponseCard
                 key={req._id}
@@ -336,7 +336,7 @@ function AiRespondTab({
     return submissions
       .filter((s) => s.roleId !== AI_SYSTEMS_ROLE_ID)
       .flatMap((sub) => {
-        const role = ROLES.find((r) => r.id === sub.roleId);
+        const role = ROLE_MAP.get(sub.roleId);
         return sub.actions
           .map((action, i) => ({ action, i, sub, role }))
           .filter(({ action }) => isSubmittedAction(action));
@@ -496,7 +496,7 @@ export function RespondResultsTab({
       return submissions
         .filter((sub) => sub.roleId !== AI_SYSTEMS_ROLE_ID)
         .flatMap((sub) => {
-          const role = ROLES.find((entry) => entry.id === sub.roleId);
+          const role = ROLE_MAP.get(sub.roleId);
           return sub.actions
             .map((action, index) => ({ action, index, sub, role }))
             .filter(({ action }) => isSubmittedAction(action) && action.aiInfluence != null && action.aiInfluence !== 0)
@@ -523,7 +523,7 @@ export function RespondResultsTab({
             request.actionId ? action.actionId === request.actionId : action.text === request.actionText
           )
         );
-        const role = ROLES.find((entry) => entry.id === request.fromRoleId);
+        const role = ROLE_MAP.get(request.fromRoleId);
         return {
           key: request._id,
           roleName: request.fromRoleName,

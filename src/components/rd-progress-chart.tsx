@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ROLES, DEFAULT_LABS, BACKGROUND_LABS, type Lab } from "@/lib/game-data";
+import { ROLE_MAP, DEFAULT_LABS, BACKGROUND_LABS, type Lab } from "@/lib/game-data";
 import { FullScreenOverlay } from "@/components/full-screen-overlay";
 import { Maximize2 } from "lucide-react";
 
@@ -31,7 +31,7 @@ const MILESTONES = [
 ];
 
 function labColor(roleId: string): string {
-  const known = ROLES.find((r) => r.id === roleId)?.color;
+  const known = ROLE_MAP.get(roleId)?.color;
   if (known) return known;
   let hash = 0;
   for (const char of roleId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;

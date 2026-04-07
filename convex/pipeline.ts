@@ -14,6 +14,8 @@ import {
   SCENARIO_CONTEXT,
   type ActionRequest,
 } from "@/lib/ai-prompts";
+import handoutData from "../public/role-handouts.json" with { type: "json" };
+import type { RoleHandout } from "@/lib/role-handouts";
 import {
   ROLES,
   LAB_PROGRESSION,
@@ -23,6 +25,15 @@ import {
   autoGenerateInfluence,
   computeLabGrowth,
 } from "@/lib/game-data";
+
+/** Build role description for the grading LLM from the structured handout.
+ *  Only includes role + objective — resources are dynamic and already
+ *  represented by actual game state (labs, compute, world state). */
+function getRoleDescription(roleId: string, fallbackBrief: string): string {
+  const handout = (handoutData as Record<string, RoleHandout>)[roleId];
+  if (!handout) return fallbackBrief;
+  return `${handout.role}\nObjective: ${handout.objective}`;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -113,7 +124,7 @@ async function gradeSubmissionBatch(
         roundLabel: rounds.find((r) => r.number === roundNumber)?.label ?? `Round ${roundNumber}`,
         worldState: game.worldState,
         roleName: role.name,
-        roleDescription: role.brief ?? "",
+        roleDescription: getRoleDescription(sub.roleId, role.brief ?? ""),
         roleTags: [...role.tags],
         actions: actionsToGrade,
         labs: game.labs,

@@ -4,9 +4,60 @@ import { useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { AI_DISPOSITIONS, DEFAULT_ROUND_LABEL, type Role } from "@/lib/game-data";
-import { BriefTab } from "./brief-tab";
+import { AI_DISPOSITIONS, type Role } from "@/lib/game-data";
+import { getStoredPlayerName, setStoredPlayerName, getOrCreateId } from "@/lib/hooks";
+import type { HandoutData } from "@/lib/role-handouts";
 import { Clock, Dices } from "lucide-react";
+import { BriefTab } from "@/components/table/brief-tab";
+
+/** Inline name prompt — shown when player joins via direct QR without going through the picker. */
+function NamePrompt({ tableId, gameId, roleId }: { tableId: Id<"tables">; gameId: Id<"games">; roleId: string }) {
+  const [name, setName] = useState(getStoredPlayerName);
+  const claimMut = useMutation(api.tables.claimRole);
+
+  const handleSubmit = async () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setStoredPlayerName(trimmed);
+    const sessionId = typeof window !== "undefined"
+      ? getOrCreateId(sessionStorage, `ttx-session-${tableId}`)
+      : "";
+    try {
+      await claimMut({ gameId, roleId, sessionId, playerName: trimmed });
+    } catch (err) {
+      console.error("[NamePrompt] Failed to set name:", err);
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-xl p-5 border border-border mb-4">
+      <p className="text-sm text-text mb-3 font-medium">What&apos;s your name?</p>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") void handleSubmit(); }}
+          placeholder="Your name"
+          maxLength={30}
+          autoFocus
+          spellCheck={false}
+          autoComplete="off"
+          data-1p-ignore
+          data-lpignore="true"
+          className="flex-1 min-h-[44px] px-3 rounded-lg border border-border bg-warm-gray text-sm text-text outline-none focus:border-text-muted"
+        />
+        <button
+          onClick={() => void handleSubmit()}
+          disabled={!name.trim()}
+          className="min-h-[44px] px-4 rounded-lg bg-text text-white text-sm font-bold disabled:opacity-30 transition-colors hover:bg-text/90"
+        >
+          Set
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ─── AI Systems disposition chooser ──────────────────────────────────────────
 
@@ -128,36 +179,48 @@ export function DispositionChooser({ tableId, onChosen }: { tableId: Id<"tables"
   );
 }
 
-// ─── Lobby phase view ────────────────────────────────────────────────────────
+// ─── Lobby holding screen ───────────────────────────────────────────────────
 
 interface TableLobbyProps {
   role: Role;
   tableId: Id<"tables">;
-  aiDisposition: string | undefined;
-  handoutData: Record<string, string> | null;
+  gameId: Id<"games">;
+  handoutData: HandoutData | null;
+  playerName: string | undefined;
 }
 
-export function TableLobby({ role, tableId, aiDisposition, handoutData }: TableLobbyProps) {
+export function TableLobby({ role, tableId, gameId, handoutData, playerName }: TableLobbyProps) {
   return (
-    <div>
+    <div className="space-y-4">
+      {/* Name prompt — shown when player joined via direct QR without the picker */}
+      {!playerName && <NamePrompt tableId={tableId} gameId={gameId} roleId={role.id} />}
+
+      {/* Reuse BriefTab with lobby status — shows role card + how to play (expanded),
+          handout placeholder instead of full brief, AI alignment placeholder */}
       <BriefTab
         role={role}
         handoutData={handoutData}
-        aiDisposition={aiDisposition}
-        roundNarrative={undefined}
-        roundLabel={DEFAULT_ROUND_LABEL}
-        submissionsOpen={false}
+        aiDisposition={undefined}
         gameStatus="lobby"
       />
 
-      {role.tags.includes("ai-system") && !aiDisposition && (
-        <DispositionChooser tableId={tableId} onChosen={() => {}} />
+      {/* AI Systems: alignment locked until game starts */}
+      {role.tags.includes("ai-system") && (
+        <div className="bg-navy-dark text-white rounded-xl p-5 border border-navy-light">
+          <div className="flex items-center gap-2 mb-2">
+            <Dices className="w-5 h-5 text-viz-capability" />
+            <h3 className="text-base font-bold">Your Alignment</h3>
+          </div>
+          <p className="text-sm text-text-light">
+            When the game starts, you&apos;ll choose your secret alignment — how the AI Systems will behave throughout the game.
+          </p>
+        </div>
       )}
 
-      <div className="text-center py-8 text-text-muted">
-        <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+      {/* Waiting indicator */}
+      <div className="text-center py-6 text-text-muted">
+        <Clock className="w-7 h-7 mx-auto mb-2 opacity-50" />
         <p className="text-sm font-medium">Waiting for the facilitator to start the game...</p>
-        <p className="text-xs mt-1">Read your brief above while you wait</p>
       </div>
     </div>
   );

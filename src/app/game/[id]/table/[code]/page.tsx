@@ -4,22 +4,24 @@ import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS } from "@/lib/game-data";
-import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry } from "@/lib/hooks";
+import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS } from "@/lib/game-data";
+import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, getOrCreateId } from "@/lib/hooks";
 import { normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
-import { loadRoleHandouts } from "@/lib/role-handouts";
+import { loadRoleHandouts, type HandoutData } from "@/lib/role-handouts";
 import { ConnectionIndicator } from "@/components/connection-indicator";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
 import { PlayerTabBar, buildPlayerTabs, type PlayerTab } from "@/components/table/player-tabs";
 import { PhaseContent } from "@/components/table/phase-content";
 import type { ResultAction } from "@/components/table/result-action-card";
+import { useRouter } from "next/navigation";
 import {
   Loader2,
   Clock,
   AlertTriangle,
   Info,
   Zap,
+  LogOut,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -77,6 +79,7 @@ export default function TablePlayerPage({
   const { id, code } = use(params);
   const gameId = id as Id<"games">;
   const tableId = code as Id<"tables">;
+  const router = useRouter();
 
   const isVisible = usePageVisibility();
   useSessionExpiry(`ttx-session-expiry-${tableId}`, "/");
@@ -99,6 +102,7 @@ export default function TablePlayerPage({
   const deleteActionMut = useMutation(api.submissions.deleteAction);
   const sendRequest = useMutation(api.requests.send);
   const setConnected = useMutation(api.tables.setConnected);
+  const leaveRole = useMutation(api.tables.leaveRole);
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
   // Lightweight query — only enabled tables' roleId/roleName (for endorsement targets)
   const allTables = useQuery(api.tables.getEnabledRoleNames, isVisible ? { gameId } : "skip");
@@ -123,7 +127,6 @@ export default function TablePlayerPage({
   const [artifact, setArtifact] = useState("");
   const [labSpec, setLabSpec] = useState("");
   const [specSaved, setSpecSaved] = useState(false);
-  const [specSaveError, setSpecSaveError] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [draftRestored, setDraftRestored] = useState(false);
   const [autoSubmitMessage, setAutoSubmitMessage] = useState("");
@@ -147,7 +150,7 @@ export default function TablePlayerPage({
   }, []);
 
   // Load role handouts on mount
-  const [handoutData, setHandoutData] = useState<Record<string, string> | null>(null);
+  const [handoutData, setHandoutData] = useState<HandoutData | null>(null);
   useEffect(() => {
     // Fire-and-forget: handout data is supplementary, failure is non-critical
     loadRoleHandouts().then(setHandoutData).catch(() => {});
@@ -156,7 +159,7 @@ export default function TablePlayerPage({
   const { display: timerDisplay, secondsLeft, isUrgent, isExpired } = useCountdown(game?.phaseEndsAt);
 
   // ── Derived values ────────────────────────────────────────────────────────
-  const role = table ? ROLES.find((r) => r.id === table.roleId) : null;
+  const role = table ? ROLE_MAP.get(table.roleId) ?? null : null;
   const enabledRoles = useMemo(() =>
     (allTables ?? [])
       .filter((t) => t.roleId !== table?.roleId)
@@ -168,11 +171,17 @@ export default function TablePlayerPage({
     (allTables ?? [])
       .filter((t) => {
         if (t.roleId === table?.roleId) return false;
-        const r = ROLES.find((entry) => entry.id === t.roleId);
+        const r = ROLE_MAP.get(t.roleId);
         return r && hasCompute(r);
       })
-      .map((t) => ({ id: t.roleId, name: t.roleName })),
-    [allTables, table?.roleId]
+      .map((t) => {
+        // Lab compute from game.labs; non-lab from computeOverview (different data sources)
+        const stock = game?.labs.find((l) => l.roleId === t.roleId)?.computeStock
+          ?? computeOverview?.roles.find((o) => o.roleId === t.roleId)?.computeStock
+          ?? 0;
+        return { id: t.roleId, name: t.roleName, computeStock: stock };
+      }),
+    [allTables, table?.roleId, game?.labs, computeOverview]
   );
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
   const phase = game?.phase ?? "discuss";
@@ -199,18 +208,18 @@ export default function TablePlayerPage({
   }, [phase]);
 
   // ── Session ID for seat conflict detection ────────────────────────────────
-  const [sessionId] = useState(() => {
-    const key = `ttx-session-${tableId}`;
-    let stored = typeof window !== "undefined" ? sessionStorage.getItem(key) : null;
-    if (!stored) {
-      stored = crypto.randomUUID();
-      if (typeof window !== "undefined") sessionStorage.setItem(key, stored);
-    }
-    return stored;
-  });
+  const [sessionId] = useState(() =>
+    typeof window !== "undefined" ? getOrCreateId(sessionStorage, `ttx-session-${tableId}`) : ""
+  );
   const isConflict = table?.activeSessionId && table.activeSessionId !== sessionId;
 
   // ── Connection lifecycle ──────────────────────────────────────────────────
+  // Only disconnect on beforeunload (page close / navigation away) — NOT on
+  // visibilitychange. Tab switches fire visibilitychange aggressively (especially
+  // on mobile: switching apps, notifications, lock screen) and each toggle
+  // writes to Convex (2 mutations × 30 players × frequent switches = hundreds
+  // of pointless writes per round). The `connected` field is cosmetic — no game
+  // mechanic depends on it. Submission status is the real "is this player done" signal.
   useEffect(() => {
     if (!tableId) return;
     void setConnected({ tableId, connected: true, sessionId });
@@ -218,15 +227,9 @@ export default function TablePlayerPage({
     const handleDisconnect = () => {
       void setConnected({ tableId, connected: false, sessionId });
     };
-    const handleVisibility = () => {
-      if (document.visibilityState === "hidden") handleDisconnect();
-      else void setConnected({ tableId, connected: true, sessionId });
-    };
     window.addEventListener("beforeunload", handleDisconnect);
-    document.addEventListener("visibilitychange", handleVisibility);
     return () => {
       window.removeEventListener("beforeunload", handleDisconnect);
-      document.removeEventListener("visibilitychange", handleVisibility);
       handleDisconnect();
     };
   }, [tableId, setConnected, sessionId]);
@@ -288,7 +291,6 @@ export default function TablePlayerPage({
       setActionDrafts([emptyAction()]);
       setArtifact("");
       setSubmitError("");
-      setSpecSaveError("");
       setAutoSubmitMessage("");
       autoSubmittedRef.current = false;
       draftRestoredRef.current = false;
@@ -405,20 +407,18 @@ export default function TablePlayerPage({
   const handleLabSpecChange = useCallback((spec: string) => {
     setLabSpec(spec);
     setSpecSaved(false);
-    setSpecSaveError("");
   }, []);
 
   const handleSaveSpec = useCallback(async () => {
     if (!labSpec.trim() || !role || !game) return;
     const lab = game.labs.find((l) => l.roleId === role.id);
     if (!lab) return;
-    setSpecSaveError("");
     try {
       await updateLabSpecMut({ gameId, labName: lab.name, spec: labSpec.trim() });
       setSpecSaved(true);
       setTimeout(() => setSpecSaved(false), 2000);
     } catch (err) {
-      setSpecSaveError(`Failed to save spec: ${err instanceof Error ? err.message : "Unknown error"}`);
+      console.error("Failed to save spec:", err);
     }
   }, [labSpec, role, game, gameId, updateLabSpecMut]);
 
@@ -599,7 +599,6 @@ export default function TablePlayerPage({
   const tabs = buildPlayerTabs(role, phase, pendingProposalCount, hasLabAccess);
 
   // Previous round narrative for the brief tab
-  const roundNarrative = round?.summary?.narrative;
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
@@ -630,9 +629,21 @@ export default function TablePlayerPage({
                   <Clock className={`w-3.5 h-3.5 ${isUrgent ? "animate-pulse" : ""}`} aria-hidden="true" /> {timerDisplay}
                 </span>
               )}
-              <span className="text-[11px] text-text-muted font-mono">
-                {round?.label ?? DEFAULT_ROUND_LABEL} — Turn {round?.number ?? 1}/4
-              </span>
+              {game.status === "lobby" ? (
+                <button
+                  onClick={() => {
+                    void leaveRole({ tableId, sessionId });
+                    router.push(`/game/${gameId}/pick`);
+                  }}
+                  className="text-[11px] text-text-muted hover:text-viz-danger transition-colors flex items-center gap-1"
+                >
+                  <LogOut className="w-3 h-3" /> Leave
+                </button>
+              ) : (
+                <span className="text-[11px] text-text-muted font-mono">
+                  {round?.label ?? DEFAULT_ROUND_LABEL} — Turn {round?.number ?? 1}/4
+                </span>
+              )}
               <ConnectionIndicator />
             </div>
           </div>
@@ -668,51 +679,56 @@ export default function TablePlayerPage({
 
           {/* ── Phase routing ── */}
           <PhaseContent
-            gameStatus={game.status}
             phase={phase}
-            activeTab={activeTab}
-            role={role}
-            tableId={tableId}
-            gameId={gameId}
-            isAiSystem={isAiSystem}
-            aiDisposition={table.aiDisposition}
-            handoutData={handoutData}
-            roundNarrative={roundNarrative}
-            roundLabel={round?.label ?? DEFAULT_ROUND_LABEL}
+            playerName={table.playerName}
             labs={game.labs}
-            computeOverview={computeOverview ?? undefined}
-            controlsLab={controlsLab}
-            hasLabAccess={hasLabAccess}
-            currentLab={currentLab}
-            startingStock={DEFAULT_LABS.find((l) => l.name === currentLab?.name)?.computeStock ?? 0}
-            game={game}
-            submittedActions={submission?.actions ?? []}
-            isExpired={isExpired}
-            computeStock={currentLab?.computeStock ?? table.computeStock ?? undefined}
-            computeRecipients={computeRecipients}
-            actionDrafts={actionDrafts}
-            onActionDraftsChange={setActionDrafts}
-            enabledRoles={enabledRoles}
-            onSubmitAction={handleSubmitAction}
-            onEditAction={handleEditAction}
-            onDeleteAction={handleDeleteAction}
-            submitError={submitError}
-            sentRequestsByAction={sentRequestsByAction}
-            shownSuggestions={shownSuggestions}
-            ideasOpen={ideasOpen}
-            onIdeasOpenChange={setIdeasOpen}
-            onSuggestionTap={handleSuggestionTap}
-            currentRound={game.currentRound}
-            allRequests={allRequests}
-            labSpec={labSpec}
-            onLabSpecChange={handleLabSpecChange}
-            specSaved={specSaved}
-            onSaveSpec={handleSaveSpec}
-            specSaveError={specSaveError}
-            computeAllocation={computeAllocation}
-            onComputeAllocationChange={setComputeAllocation}
-            round={round ?? undefined}
-            sortedResultActions={sortedResultActions}
+            common={{
+              activeTab,
+              role,
+              tableId,
+              gameId,
+              gameStatus: game.status,
+              isAiSystem,
+              aiDisposition: table.aiDisposition,
+              handoutData,
+              hasLabAccess,
+              controlsLab,
+            }}
+            submit={{
+              game,
+              submittedActions: submission?.actions ?? [],
+              isExpired,
+              computeStock: currentLab?.computeStock ?? table.computeStock ?? undefined,
+              computeRecipients,
+              actionDrafts,
+              onActionDraftsChange: setActionDrafts,
+              enabledRoles,
+              onSubmitAction: handleSubmitAction,
+              onEditAction: handleEditAction,
+              onDeleteAction: handleDeleteAction,
+              submitError,
+              sentRequestsByAction,
+              shownSuggestions,
+              ideasOpen,
+              onIdeasOpenChange: setIdeasOpen,
+              onSuggestionTap: handleSuggestionTap,
+              currentRound: game.currentRound,
+              allRequests,
+            }}
+            lab={{
+              currentLab,
+              startingStock: DEFAULT_LABS.find((l) => l.name === currentLab?.name)?.computeStock ?? 0,
+              labSpec,
+              onLabSpecChange: handleLabSpecChange,
+              specSaved,
+              onSaveSpec: handleSaveSpec,
+              computeAllocation,
+              onComputeAllocationChange: setComputeAllocation,
+            }}
+            resolve={{
+              round: round ?? undefined,
+              sortedResultActions,
+            }}
           />
         </div>
 

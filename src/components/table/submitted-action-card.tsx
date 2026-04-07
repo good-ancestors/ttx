@@ -18,7 +18,7 @@ export function SubmittedActionCard({
   onDelete,
   sentRequests,
 }: {
-  action: { text: string; priority: number; secret?: boolean; probability?: number };
+  action: { text: string; priority: number; secret?: boolean; probability?: number; rolled?: number };
   index: number;
   canEdit: boolean;
   onEdit: () => void;
@@ -55,9 +55,13 @@ export function SubmittedActionCard({
       {sentRequests && sentRequests.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
           {sentRequests.map((req, i) => {
-            const statusColor = req.status === "accepted"
+            // Don't reveal accept/decline until dice are rolled — prevents players
+            // from cancelling declined requests or gaming NPC responses
+            const revealed = action.rolled != null;
+            const displayStatus = revealed ? req.status : "pending";
+            const statusColor = displayStatus === "accepted"
               ? "bg-[#ECFDF5] text-[#059669]"
-              : req.status === "declined"
+              : displayStatus === "declined"
                 ? "bg-[#FEF2F2] text-[#DC2626]"
                 : "bg-warm-gray text-text-muted";
             const Icon = req.requestType === "compute" ? Zap : Handshake;
@@ -71,8 +75,8 @@ export function SubmittedActionCard({
               >
                 <Icon className="w-3 h-3" />
                 {label}
-                {req.status !== "pending" && (
-                  <span className="font-bold capitalize"> — {req.status}</span>
+                {displayStatus !== "pending" && (
+                  <span className="font-bold capitalize"> — {displayStatus}</span>
                 )}
               </span>
             );

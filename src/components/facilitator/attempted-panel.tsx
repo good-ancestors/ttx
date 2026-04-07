@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ROLES, AI_SYSTEMS_ROLE_ID, cycleProbability, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, cycleProbability, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { ProbabilityBadge } from "@/components/action-card";
 import {
@@ -13,6 +13,7 @@ import {
   Clock,
   ChevronDown,
   ChevronRight,
+  MessageSquare,
 } from "lucide-react";
 import type { Submission, Proposal } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
@@ -59,7 +60,7 @@ export function AttemptedPanel({
 
   const allActions = useMemo(() =>
     submissions.flatMap((sub) => {
-      const role = ROLES.find((r) => r.id === sub.roleId);
+      const role = ROLE_MAP.get(sub.roleId);
       return sub.actions
         .map((action, i) => ({ action, i, sub, role }))
         .filter(({ action }) => isSubmittedAction(action));
@@ -84,10 +85,8 @@ export function AttemptedPanel({
 
   const endorsementsByOwner = useMemo(() => {
     const map = new Map<string, Proposal[]>();
-    // Self-endorsement is rejected server-side (requests.ts send/sendInternal).
-    // The toRoleId !== fromRoleId check below is kept as a safety net.
     for (const proposal of proposals.filter((item) => (
-      item.status === "accepted" &&
+      (item.status === "accepted" || item.status === "declined") &&
       item.requestType === "endorsement" &&
       item.toRoleId !== item.fromRoleId &&
       item.toRoleId !== AI_SYSTEMS_ROLE_ID
@@ -221,6 +220,7 @@ function ActionRow({
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
   allowPregrade: boolean;
 }) {
+  const [reasoningOpen, setReasoningOpen] = useState(false);
   const secretKey = `${sub.roleId}-${i}`;
   const isCovert = action.secret && !revealedSecrets.has(secretKey);
   const roleName = role?.name ?? sub.roleId;
@@ -247,10 +247,14 @@ function ActionRow({
             {endorsements.map((p) => (
               <span
                 key={p._id}
-                className="text-[9px] px-1.5 py-0.5 rounded-full bg-viz-safety/20 text-viz-safety font-semibold"
-                title={`${p.toRoleName} endorsed ${p.fromRoleName}: ${p.actionText}`}
+                className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${
+                  p.status === "accepted"
+                    ? "bg-viz-safety/20 text-viz-safety"
+                    : "bg-viz-danger/20 text-viz-danger"
+                }`}
+                title={`${p.toRoleName} ${p.status} ${p.fromRoleName}'s request`}
               >
-                {p.toRoleName} {"\u2713"}
+                {p.toRoleName} {p.status === "accepted" ? "\u2713" : "\u2717"}
               </span>
             ))}
           </div>
@@ -281,6 +285,23 @@ function ActionRow({
           allowPregrade={allowPregrade}
         />
       </div>
+      {/* Reasoning — facilitator click-to-reveal for inspecting AI grading */}
+      {!isProjector && action.reasoning && (
+        <div className="pl-4 mt-0.5">
+          <button
+            onClick={() => setReasoningOpen(!reasoningOpen)}
+            className="flex items-center gap-1 text-[10px] text-navy-muted hover:text-text-light transition-colors"
+          >
+            <MessageSquare className="w-3 h-3" />
+            {reasoningOpen ? "Hide reasoning" : "Show reasoning"}
+          </button>
+          {reasoningOpen && (
+            <p className="text-xs text-text-light/70 mt-1 leading-relaxed">
+              {action.reasoning}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

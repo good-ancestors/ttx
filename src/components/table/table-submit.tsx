@@ -32,11 +32,12 @@ interface TableSubmitProps {
     priority: number;
     secret?: boolean;
     probability?: number;
+    rolled?: number;
     actionStatus?: string;
   }[];
   isExpired?: boolean;
   computeStock?: number;
-  computeRecipients?: { id: string; name: string }[];
+  computeRecipients?: { id: string; name: string; computeStock?: number }[];
   // Form state (local drafts — not yet submitted)
   actionDrafts: ActionDraft[];
   onActionDraftsChange: (drafts: ActionDraft[]) => void;

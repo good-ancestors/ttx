@@ -73,7 +73,9 @@ export default defineSchema({
     resolveNonce: v.optional(v.string()),
     // Facilitator overrides for next round's compute share distribution (roleId → %)
     computeShareOverrides: v.optional(v.record(v.string(), v.number())),
-  }),
+    // Game-level join code for Jackbox-style lobby (players enter one code → pick role)
+    joinCode: v.optional(v.string()),
+  }).index("by_joinCode", ["joinCode"]),
 
   tables: defineTable({
     gameId: v.id("games"),
@@ -86,8 +88,9 @@ export default defineSchema({
     computeStock: v.optional(v.number()),
     aiDisposition: v.optional(v.string()),
     // Session tracking: random ID per browser tab, used to detect seat conflicts.
-    // Future: add playerName for facilitator visibility; replace with Convex Auth for persistent accounts.
     activeSessionId: v.optional(v.string()),
+    // Display name entered on role picker (not an account — just for facilitator visibility)
+    playerName: v.optional(v.string()),
   })
     .index("by_game", ["gameId"])
     .index("by_game_and_role", ["gameId", "roleId"])

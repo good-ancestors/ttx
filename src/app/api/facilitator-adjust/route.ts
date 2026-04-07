@@ -4,7 +4,7 @@ import { checkApiAuth } from "@/lib/api-auth";
 import { convex } from "@/lib/convex-client";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES } from "@/lib/game-data";
+import { ROLES, ROLE_MAP } from "@/lib/game-data";
 import { GRADING_MODEL, GRADING_FALLBACK } from "@/lib/ai-models";
 import { generateWithFallback } from "@/lib/ai-fallback";
 
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
     const currentRound = allRounds?.find((r) => r.number === game.currentRound);
     const currentNarrative = currentRound?.summary?.narrative ?? "";
     const resolvedActions = (currentSubmissions ?? []).flatMap((sub) => {
-      const role = ROLES.find((r) => r.id === sub.roleId);
+      const role = ROLE_MAP.get(sub.roleId);
       return sub.actions
         .filter((a) => a.rolled != null)
         .map((a) => `[${role?.name ?? sub.roleId}] "${a.text}" → ${a.success ? "SUCCESS" : "FAILED"} (${a.probability}%, rolled ${a.rolled})`);

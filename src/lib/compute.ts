@@ -7,7 +7,7 @@
 // New compute each round distributed via DEFAULT_COMPUTE_SHARES.
 
 import {
-  ROLES,
+  ROLE_MAP,
   NEW_COMPUTE_PER_GAME_ROUND,
   DEFAULT_LABS,
 } from "./game-data";
@@ -73,7 +73,7 @@ export function calculateStartingCompute(enabledRoleIds: Set<string>): {
   const poolAllocations = calculatePoolAllocations(enabledRoleIds);
   for (const [roleId, stock] of poolAllocations) {
     if (stock <= 0) continue;
-    const role = ROLES.find((r) => r.id === roleId);
+    const role = ROLE_MAP.get(roleId);
     if (!role) continue;
     result.push({ roleId, name: role.name, computeStock: stock });
   }

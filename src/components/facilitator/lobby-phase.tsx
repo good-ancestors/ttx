@@ -1,17 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
-import { ROLES, AI_SYSTEMS_ROLE_ID, DEFAULT_LABS } from "@/lib/game-data";
-import { calculateStartingCompute } from "@/lib/compute";
+import { useState } from "react";
+import { api } from "@convex/_generated/api";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, hasCompute, isLabCeo } from "@/lib/game-data";
 import { QRCode } from "@/components/qr-codes";
-import { Play, Lock, QrCode, Zap } from "lucide-react";
+import { Play, Lock, QrCode, Zap, X } from "lucide-react";
 import type { FacilitatorPhaseProps } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
+import { useAuthMutation } from "@/lib/hooks";
 
 interface LobbyPhaseProps extends FacilitatorPhaseProps {
   connectedCount: number;
   safeAction: (label: string, fn: () => Promise<unknown>) => () => Promise<void>;
-  lockGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   startGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   toggleEnabled: (args: { tableId: Id<"tables"> }) => Promise<unknown>;
   setControlMode: (args: { tableId: Id<"tables">; controlMode: "human" | "ai" | "npc" }) => Promise<unknown>;
@@ -25,235 +25,300 @@ export function LobbyPhase({
   isProjector,
   connectedCount,
   safeAction,
-  lockGame,
   startGame,
   toggleEnabled,
   setControlMode,
   kickToAI,
 }: LobbyPhaseProps) {
-
   const [pendingStart, setPendingStart] = useState(false);
-  const [showRejoin, setShowRejoin] = useState<Set<string>>(new Set());
-  const toggleRejoin = (id: string) => setShowRejoin((prev) => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
+  const [qrOverlay, setQrOverlay] = useState<string | null>(null);
+  const updateTableCompute = useAuthMutation(api.games.updateTableCompute);
+  const updateLabs = useAuthMutation(api.games.updateLabs);
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const host = typeof window !== "undefined" ? window.location.host : "";
+  const gameJoinUrl = game.joinCode ? `${origin}/game/join/${game.joinCode}` : null;
+
+  const enabledTables = tables.filter((t) => t.enabled !== false);
+  // Resolve compute: labs store compute in game.labs, non-labs on table.computeStock
+  const getCompute = (table: (typeof tables)[0]) => {
+    const role = ROLE_MAP.get(table.roleId);
+    if (role && isLabCeo(role)) {
+      return game.labs.find((l) => l.roleId === table.roleId)?.computeStock ?? 0;
+    }
+    return table.computeStock ?? 0;
+  };
+  const computeTotal = enabledTables.reduce((sum, t) => sum + getCompute(t), 0);
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto">
-      <div className="text-center mb-6 md:mb-8">
-        <h2 className="text-xl md:text-2xl font-extrabold mb-2">Waiting for Tables</h2>
-        <p className="text-text-light text-sm md:text-base">
-          {connectedCount}/{tables.length} tables connected
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4 mb-8">
-        {tables.map((table) => {
-          const role = ROLES.find((r) => r.id === table.roleId);
-          const isRequired = role?.required ?? false;
-          return (
-            <div
-              key={table._id}
-              className={`bg-navy rounded-xl border p-3 md:p-4 transition-opacity ${
-                table.enabled ? "border-navy-light" : "border-navy-light/40 opacity-60"
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role?.color }} />
-                <span className="text-sm md:text-base font-bold truncate">{table.roleName}</span>
-                {isRequired && (
-                  <span title="Required role — cannot be disabled">
-                    <Lock className="w-3 h-3 text-navy-muted shrink-0" />
-                  </span>
-                )}
-                {table.connected && (
-                  <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                    <span className="text-xs text-viz-safety font-mono">Connected</span>
-                    <button
-                      onClick={() => toggleRejoin(table._id)}
-                      className="text-text-light hover:text-white transition-colors p-0.5"
-                      title="Show QR code for rejoin"
-                    >
-                      <QrCode className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Mode toggle — works for both connected and disconnected players */}
-              {!isProjector && (
-                <div className="flex rounded overflow-hidden border border-navy-light w-full mb-3">
-                  {(["human", "ai", "npc"] as const).map((mode) => {
-                    const isActive = table.enabled && table.controlMode === mode;
-                    return (
-                      <button
-                        key={mode}
-                        onClick={() => {
-                          if (isActive && !isRequired) {
-                            void toggleEnabled({ tableId: table._id });
-                          } else if (!table.enabled) {
-                            void (async () => {
-                              await toggleEnabled({ tableId: table._id });
-                              await setControlMode({ tableId: table._id, controlMode: mode });
-                            })();
-                          } else if (table.connected && table.controlMode === "human" && mode === "ai") {
-                            // Connected human → kick to AI
-                            void kickToAI({ tableId: table._id });
-                          } else {
-                            void setControlMode({ tableId: table._id, controlMode: mode });
-                          }
-                        }}
-                        className={`text-xs px-3 py-1.5 font-semibold transition-colors flex-1 ${
-                          isActive
-                            ? mode === "human" ? "bg-viz-safety text-navy" : mode === "ai" ? "bg-viz-capability text-navy" : "bg-viz-warning text-navy"
-                            : !table.enabled
-                              ? "bg-navy-light/50 text-text-light/60 hover:text-white"
-                              : "bg-navy-dark text-navy-muted hover:text-text-light"
-                        }`}
-                      >
-                        {mode === "human" ? "Human" : mode === "ai" ? "AI" : "NPC"}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {table.enabled && table.controlMode === "human" && (!table.connected || showRejoin.has(table._id)) && (
-                <div className="bg-navy-dark rounded-lg p-3 flex flex-col items-center">
-                  <QRCode
-                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table._id}`}
-                    size={120}
-                  />
-                  <span className="text-xs font-mono text-text-light mt-2 tracking-widest">
-                    {table.joinCode}
-                  </span>
-                </div>
-              )}
-              {table.enabled && table.controlMode === "ai" && !table.connected && (
-                <div className="bg-navy-dark rounded-lg p-3 text-center">
-                  <span className="text-sm text-text-light">AI-controlled</span>
-                </div>
-              )}
-              {table.enabled && table.controlMode === "npc" && !table.connected && (
-                <div className="bg-navy-dark rounded-lg p-3 text-center">
-                  <span className="text-sm text-text-light">NPC (sample actions)</span>
-                </div>
-              )}
-              {/* AI Systems disposition status in lobby */}
-              {table.roleId === AI_SYSTEMS_ROLE_ID && table.enabled && (
-                <div className={`text-xs mt-2 px-2 py-1.5 rounded ${
-                  table.aiDisposition
-                    ? "bg-[#1E1B4B]/50 text-[#A78BFA]"
-                    : "bg-navy-dark text-navy-muted"
-                }`}>
-                  {table.aiDisposition ? "Disposition: chosen" : "Disposition: pending"}
-                </div>
-              )}
+      {/* ─── Game Join Code ─── */}
+      {gameJoinUrl && (
+        <div className="flex flex-col items-center mb-6">
+          <div className="bg-navy rounded-xl border border-navy-light p-5 flex flex-col items-center gap-3">
+            <p className="text-sm text-text-light">
+              Go to <span className="font-mono font-bold text-white">{host}</span> and enter this code
+            </p>
+            <div className="text-4xl md:text-5xl font-mono font-extrabold text-white tracking-[0.3em]">
+              {game.joinCode}
             </div>
-          );
-        })}
-      </div>
-
-      {/* ─── Starting Compute Allocation ─── */}
-      {!isProjector && <ComputeAllocationPreview tables={tables} />}
-
-      {!isProjector && (
-        <div className="flex justify-center gap-3">
-          {!game.locked && (
-            <button
-              onClick={safeAction("Lock game", () => lockGame({ gameId }))}
-              className="py-3 px-6 bg-navy-light text-white rounded-lg font-bold hover:bg-navy-muted transition-colors flex items-center gap-2"
-            >
-              <Lock className="w-4 h-4" /> Lock Game
-            </button>
-          )}
-          {pendingStart ? (
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPendingStart(false)}
-                className="py-3 px-6 bg-navy-light text-text-light rounded-lg font-bold hover:bg-navy-muted transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => { setPendingStart(false); void safeAction("Start game", () => startGame({ gameId }))(); }}
-                className="py-3 px-8 bg-white text-navy rounded-lg font-extrabold text-lg hover:bg-off-white transition-colors flex items-center gap-2"
-              >
-                <Play className="w-5 h-5" /> Confirm Start
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setPendingStart(true)}
-              className="py-3 px-8 bg-white text-navy rounded-lg font-extrabold text-lg hover:bg-off-white transition-colors flex items-center gap-2"
-            >
-              <Play className="w-5 h-5" /> Start Game
-            </button>
-          )}
-          {pendingStart && (
-            <p className="text-xs text-text-light mt-2 text-center">Are you sure? All tables will be locked.</p>
-          )}
+            <QRCode value={gameJoinUrl} size={isProjector ? 240 : 160} />
+            <p className="text-xs text-text-light">
+              {connectedCount}/{enabledTables.length} players joined
+            </p>
+          </div>
         </div>
       )}
+
+      {/* ─── Compact Role Table ─── */}
+      <div className="bg-navy rounded-xl border border-navy-light overflow-hidden mb-6">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-text-light/60 text-left text-xs border-b border-navy-light">
+              <th className="py-2 px-3 font-semibold">Role</th>
+              {!isProjector && <th className="py-2 px-3 font-semibold">Player</th>}
+              {!isProjector && <th className="py-2 px-3 font-semibold text-center">Mode</th>}
+              {!isProjector && (
+                <th className="py-2 px-3 font-semibold text-right">
+                  <span className="flex items-center justify-end gap-1">
+                    <Zap className="w-3 h-3" /> {computeTotal}u
+                  </span>
+                </th>
+              )}
+              {!isProjector && <th className="py-2 px-3 font-semibold">Code</th>}
+              <th className="py-2 px-3 font-semibold text-right">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tables.map((table) => {
+              const role = ROLE_MAP.get(table.roleId);
+              const isRequired = role?.required ?? false;
+              const isEnabled = table.enabled !== false;
+              const isAiSystems = table.roleId === AI_SYSTEMS_ROLE_ID;
+              const showJoinCode = isEnabled && table.controlMode === "human" && !table.connected;
+              const showCompute = isEnabled && role && hasCompute(role);
+
+              return (
+                <tr
+                  key={table._id}
+                  className={`border-b border-navy-light/30 ${!isEnabled ? "opacity-40" : ""}`}
+                >
+                  <td className="py-2 px-3">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: role?.color }}
+                      />
+                      <span className="font-bold text-white truncate">{table.roleName}</span>
+                      {isRequired && <Lock className="w-3 h-3 text-navy-muted shrink-0" />}
+                    </div>
+                  </td>
+
+{!isProjector && (
+                    <td className="py-2 px-3 text-text-light text-xs truncate max-w-[120px]">
+                      {table.playerName ?? "—"}
+                    </td>
+                  )}
+
+{!isProjector && (
+                    <td className="py-2 px-3">
+                      <div className="flex rounded overflow-hidden border border-navy-light w-fit mx-auto">
+                        {(["human", "ai", "npc"] as const).map((mode) => {
+                          const isActive = isEnabled && table.controlMode === mode;
+                          return (
+                            <button
+                              key={mode}
+                              onClick={() => {
+                                if (isActive && !isRequired) {
+                                  void toggleEnabled({ tableId: table._id });
+                                } else if (!isEnabled) {
+                                  void (async () => {
+                                    await toggleEnabled({ tableId: table._id });
+                                    await setControlMode({ tableId: table._id, controlMode: mode });
+                                  })();
+                                } else if (table.connected && table.controlMode === "human" && mode === "ai") {
+                                  void kickToAI({ tableId: table._id });
+                                } else {
+                                  void setControlMode({ tableId: table._id, controlMode: mode });
+                                }
+                              }}
+                              className={`text-[10px] px-2 py-1 font-semibold transition-colors ${
+                                isActive
+                                  ? mode === "human" ? "bg-viz-safety text-navy" : mode === "ai" ? "bg-viz-capability text-navy" : "bg-viz-warning text-navy"
+                                  : !isEnabled
+                                    ? "bg-navy-light/50 text-text-light/60 hover:text-white"
+                                    : "bg-navy-dark text-navy-muted hover:text-text-light"
+                              }`}
+                            >
+                              {mode === "human" ? "H" : mode === "ai" ? "AI" : "NPC"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </td>
+                  )}
+
+{!isProjector && (
+                    <td className="py-2 px-3 text-right">
+                      {showCompute ? (
+                        <InlineComputeInput
+                          value={getCompute(table)}
+                          onChange={(val) => {
+                            if (role && isLabCeo(role)) {
+                              const updatedLabs = game.labs.map((l) =>
+                                l.roleId === table.roleId ? { ...l, computeStock: val } : l
+                              );
+                              void updateLabs({ gameId, labs: updatedLabs });
+                            } else {
+                              void updateTableCompute({ tableId: table._id, computeStock: val });
+                            }
+                          }}
+                        />
+                      ) : (
+                        <span className="text-navy-muted text-xs">—</span>
+                      )}
+                    </td>
+                  )}
+
+{!isProjector && (
+                    <td className="py-2 px-3">
+                      {showJoinCode ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-mono text-xs text-text-light tracking-wider">
+                            {table.joinCode}
+                          </span>
+                          <button
+                            onClick={() => setQrOverlay(table._id)}
+                            className="text-text-light hover:text-white transition-colors p-0.5"
+                            title="Show QR code"
+                          >
+                            <QrCode className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-navy-muted text-xs">—</span>
+                      )}
+                    </td>
+                  )}
+
+                  <td className="py-2 px-3 text-right">
+                    {table.connected ? (
+                      <span className="text-xs text-viz-safety font-mono">Connected</span>
+                    ) : isEnabled && table.controlMode === "ai" ? (
+                      <span className="text-xs text-viz-capability font-mono">AI</span>
+                    ) : isEnabled && table.controlMode === "npc" ? (
+                      <span className="text-xs text-viz-warning font-mono">NPC</span>
+                    ) : isEnabled ? (
+                      <span className="text-xs text-navy-muted font-mono">Waiting</span>
+                    ) : (
+                      <span className="text-xs text-navy-muted font-mono">Disabled</span>
+                    )}
+                    {isAiSystems && isEnabled && (
+                      <div className={`text-[10px] mt-0.5 ${table.aiDisposition ? "text-[#A78BFA]" : "text-navy-muted"}`}>
+                        {table.aiDisposition ? "Disposition set" : "Disposition pending"}
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ─── Start / Lock Buttons ─── */}
+      {!isProjector && !pendingStart && (
+        <div className="flex justify-center mb-6">
+          <button
+            onClick={() => setPendingStart(true)}
+            className="py-2.5 px-6 bg-white text-navy rounded-lg font-extrabold text-base hover:bg-off-white transition-colors flex items-center gap-2"
+          >
+            <Play className="w-5 h-5" /> Start Game
+          </button>
+        </div>
+      )}
+
+      {/* ─── Start Confirmation ─── */}
+      {!isProjector && pendingStart && (
+        <div className="flex flex-col items-center gap-3">
+          <p className="text-sm text-text-light">
+            Review compute allocations above, then confirm.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setPendingStart(false)}
+              className="py-2.5 px-5 bg-navy-light text-text-light rounded-lg font-bold text-sm hover:bg-navy-muted transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => { setPendingStart(false); void safeAction("Start game", () => startGame({ gameId }))(); }}
+              className="py-2.5 px-8 bg-white text-navy rounded-lg font-extrabold text-base hover:bg-off-white transition-colors flex items-center gap-2"
+            >
+              <Play className="w-5 h-5" /> Confirm Start
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── QR Overlay ─── */}
+      {qrOverlay && <QrOverlay table={tables.find((t) => t._id === qrOverlay)} origin={origin} gameId={gameId} onClose={() => setQrOverlay(null)} />}
     </div>
   );
 }
 
-function ComputeAllocationPreview({ tables }: { tables: FacilitatorPhaseProps["tables"] }) {
-  const enabledRoleIds = useMemo(
-    () => new Set(tables.filter((t) => t.enabled).map((t) => t.roleId)),
-    [tables],
+function QrOverlay({ table, origin, gameId, onClose }: { table: FacilitatorPhaseProps["tables"][number] | undefined; origin: string; gameId: Id<"games">; onClose: () => void }) {
+  if (!table) return null;
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-8" onClick={onClose}>
+      <div className="bg-navy rounded-2xl p-8 flex flex-col items-center gap-4 max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-bold text-white">{table.roleName}</h3>
+        <QRCode value={`${origin}/game/${gameId}/table/${table._id}`} size={280} />
+        <span className="text-2xl font-mono text-white tracking-[0.3em]">{table.joinCode}</span>
+        <button onClick={onClose} className="mt-2 text-text-light hover:text-white transition-colors flex items-center gap-1.5 text-sm">
+          <X className="w-4 h-4" /> Close
+        </button>
+      </div>
+    </div>
   );
-  const allocations = useMemo(() => calculateStartingCompute(enabledRoleIds), [enabledRoleIds]);
-  const labRoleIds = new Set(DEFAULT_LABS.map((l) => l.roleId));
-  const labTotal = allocations.filter((a) => labRoleIds.has(a.roleId)).reduce((s, a) => s + a.computeStock, 0);
-  const nonLabTotal = allocations.filter((a) => !labRoleIds.has(a.roleId)).reduce((s, a) => s + a.computeStock, 0);
+}
+
+/** Tiny inline number input for compute stock — click to edit, blur to save. */
+function InlineComputeInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => { setDraft(String(value)); setEditing(true); }}
+        className="font-mono text-xs text-white hover:text-viz-warning transition-colors tabular-nums"
+        title="Click to edit"
+      >
+        {value}u
+      </button>
+    );
+  }
 
   return (
-    <div className="bg-navy-dark rounded-xl border border-navy-light p-4 mb-6 max-w-lg mx-auto">
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-sm font-bold text-white flex items-center gap-2">
-          <Zap className="w-4 h-4 text-text-light" /> Starting Compute
-        </span>
-        <span className="text-xs font-mono text-text-light">{labTotal + nonLabTotal}u total</span>
-      </div>
-
-      <table className="w-full text-xs">
-        <thead>
-          <tr className="text-text-light/60 text-left">
-            <th className="pb-1 font-semibold">Entity</th>
-            <th className="pb-1 font-semibold text-right">Compute</th>
-          </tr>
-        </thead>
-        <tbody>
-          {allocations.map((a) => {
-            const isLab = DEFAULT_LABS.some((l) => l.roleId === a.roleId);
-            return (
-              <tr key={a.roleId} className="border-t border-navy-light/30">
-                <td className="py-1.5 text-white">
-                  {a.name}
-                  {isLab && <span className="ml-1 text-text-light/50 text-[10px]">lab</span>}
-                </td>
-                <td className="py-1.5 text-right font-mono text-white">{a.computeStock}u</td>
-              </tr>
-            );
-          })}
-        </tbody>
-        <tfoot>
-          <tr className="border-t border-navy-light">
-            <td className="py-1.5 text-text-light font-semibold">Total</td>
-            <td className="py-1.5 text-right font-mono text-white font-bold">{labTotal + nonLabTotal}u</td>
-          </tr>
-        </tfoot>
-      </table>
-
-      {nonLabTotal === 0 && (
-        <p className="text-[10px] text-text-light/60 mt-2">
-          No non-lab compute holders enabled. Enable US President, EU President, or Australia PM to distribute pool compute.
-        </p>
-      )}
-    </div>
+    <input
+      type="number"
+      min={0}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => {
+        const parsed = parseInt(draft, 10);
+        if (!isNaN(parsed) && parsed >= 0 && parsed !== value) {
+          onChange(parsed);
+        }
+        setEditing(false);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        if (e.key === "Escape") setEditing(false);
+      }}
+      autoFocus
+      className="w-14 text-right font-mono text-xs text-white bg-navy-dark border border-navy-light rounded px-1.5 py-0.5 outline-none focus:border-text-light tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+    />
   );
 }

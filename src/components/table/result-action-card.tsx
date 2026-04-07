@@ -1,8 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { MAX_PRIORITY } from "@/lib/game-data";
-import { CheckCircle2, XCircle, MessageSquare, ChevronUp, ChevronDown } from "lucide-react";
+import { CheckCircle2, XCircle } from "lucide-react";
 
 export interface ResultAction {
   text: string;
@@ -20,7 +19,6 @@ export function ResultActionCard({
   action: ResultAction;
   index: number;
 }) {
-  const [reasoningOpen, setReasoningOpen] = useState(false);
   const isSuccess = action.success === true;
   const isFailed = action.success === false;
   const borderColor = isSuccess ? "#22C55E" : isFailed ? "#EF4444" : undefined;
@@ -58,24 +56,6 @@ export function ResultActionCard({
         <p className="text-xs font-mono mt-1" style={{ color: isSuccess ? "#22C55E" : "#EF4444" }}>
           Needed ≤{action.probability}, rolled {action.rolled} — {isSuccess ? "Success!" : "Failed"}
         </p>
-      )}
-
-      {action.reasoning && (
-        <div className="mt-2 border-t border-border pt-2">
-          <button
-            onClick={() => setReasoningOpen(!reasoningOpen)}
-            className="flex items-center gap-1 text-[11px] text-text-muted hover:text-text transition-colors"
-          >
-            <MessageSquare className="w-3 h-3" />
-            Why?
-            {reasoningOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-          </button>
-          {reasoningOpen && (
-            <p className="text-xs text-text-muted mt-1.5 leading-relaxed">
-              {action.reasoning}
-            </p>
-          )}
-        </div>
       )}
     </div>
   );

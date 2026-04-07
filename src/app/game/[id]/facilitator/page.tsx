@@ -4,7 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLES, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
 import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { WorldStatePanel } from "@/components/world-state-panel";
@@ -71,7 +71,6 @@ export default function FacilitatorPage({
   );
 
   const startGame = useAuthMutation(api.games.startGame);
-  const lockGame = useAuthMutation(api.games.lock);
   const advanceRound = useAuthMutation(api.games.advanceRound);
   const finishGame = useAuthMutation(api.games.finishGame);
   const overrideProbability = useAuthMutation(api.submissions.overrideProbability);
@@ -254,7 +253,6 @@ export default function FacilitatorPage({
           isProjector={isProjector}
           connectedCount={connectedCount}
           safeAction={safeAction}
-          lockGame={lockGame}
           startGame={startGame}
           toggleEnabled={toggleEnabled}
           setControlMode={setControlMode}
@@ -294,7 +292,7 @@ export default function FacilitatorPage({
       {/* Fullscreen single QR code */}
       {focusedQR && (() => {
         const table = tables.find((t) => t._id === focusedQR);
-        const role = table ? ROLES.find((r) => r.id === table.roleId) : null;
+        const role = table ? ROLE_MAP.get(table.roleId) : null;
         return (
           <div className="fixed inset-0 bg-black z-[60] flex flex-col items-center justify-center cursor-pointer" onClick={() => setFocusedQR(null)}>
             <div className="flex items-center gap-3 mb-6">
@@ -324,7 +322,7 @@ export default function FacilitatorPage({
             {/* Table management grid — same card style as lobby */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
               {tables.map((table) => {
-                const role = ROLES.find((r) => r.id === table.roleId);
+                const role = ROLE_MAP.get(table.roleId);
                 return (
                   <div key={table._id} className="bg-navy rounded-lg border border-navy-light p-3">
                     <div className="flex items-center gap-1.5 mb-2">
@@ -540,7 +538,7 @@ function FacilitatorNav({
     <div className="bg-navy border-b border-navy-light px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-2">
         <div className="w-7 h-7 bg-white rounded-md flex items-center justify-center">
-          <span className="text-sm font-black text-navy">g</span>
+          <img src="/favicon.svg" alt="Good Ancestors" className="w-5 h-5" />
         </div>
         <span className="text-[15px] font-bold text-white">The Race to AGI</span>
       </div>

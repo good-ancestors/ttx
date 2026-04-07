@@ -14,12 +14,10 @@ async function transferCompute(
   requesterRoleId: string,
   amount: number,
 ) {
-  const tables = await db
-    .query("tables")
-    .withIndex("by_game", (q) => q.eq("gameId", gameId))
-    .collect();
-  const giverTable = tables.find((t) => t.roleId === giverRoleId);
-  const requesterTable = tables.find((t) => t.roleId === requesterRoleId);
+  const [giverTable, requesterTable] = await Promise.all([
+    db.query("tables").withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", giverRoleId)).first(),
+    db.query("tables").withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", requesterRoleId)).first(),
+  ]);
   if (giverTable) {
     await db.patch(giverTable._id, {
       computeStock: Math.max(0, (giverTable.computeStock ?? 0) - amount),
@@ -123,9 +121,10 @@ export const directTransfer = mutation({
     }
 
     // Validate recipient exists and is enabled
-    const allTables = await ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const recipientTable = allTables.find((t) => t.roleId === args.toRoleId && t.enabled);
-    if (!recipientTable) {
+    const recipientTable = await ctx.db.query("tables")
+      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.toRoleId))
+      .first();
+    if (!recipientTable || !recipientTable.enabled) {
       throw new Error("Recipient role not found or not enabled");
     }
 
@@ -190,11 +189,9 @@ export const send = mutation({
     assertSubmitWindowOpen(game);
 
     // Verify the sender's table exists and is enabled
-    const tables = await ctx.db
-      .query("tables")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    const senderTable = tables.find((t) => t.roleId === args.fromRoleId);
+    const senderTable = await ctx.db.query("tables")
+      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.fromRoleId))
+      .first();
     if (!senderTable || !senderTable.enabled) {
       throw new Error("Sender role not found or not enabled in this game");
     }
@@ -294,11 +291,9 @@ export const respond = mutation({
       // If accepting (from pending or declined) — do the transfer
       if (args.status === "accepted" && oldStatus !== "accepted") {
         // Check giver has enough compute
-        const tables = await ctx.db
-          .query("tables")
-          .withIndex("by_game", (q) => q.eq("gameId", proposal.gameId))
-          .collect();
-        const giverTable = tables.find((t) => t.roleId === proposal.toRoleId);
+        const giverTable = await ctx.db.query("tables")
+          .withIndex("by_game_and_role", (q) => q.eq("gameId", proposal.gameId).eq("roleId", proposal.toRoleId))
+          .first();
         const available = giverTable?.computeStock ?? 0;
         if (available < proposal.computeAmount) {
           await ctx.db.patch(args.proposalId, { status: "declined" });

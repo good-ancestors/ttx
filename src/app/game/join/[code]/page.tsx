@@ -15,24 +15,30 @@ export default function JoinPage({
 }) {
   const { code } = use(params);
   const router = useRouter();
-  const table = useQuery(api.tables.getByJoinCode, {
-    joinCode: code.toUpperCase(),
-  });
+  const normalizedCode = code.toUpperCase();
+
+  // Check game-level code first (Jackbox-style → role picker)
+  const game = useQuery(api.games.getByJoinCode, { joinCode: normalizedCode });
+  // Fall back to per-table code only if game code didn't match
+  const table = useQuery(api.tables.getByJoinCode, game === null ? { joinCode: normalizedCode } : "skip");
 
   useEffect(() => {
-    if (table) {
+    if (game) {
+      router.replace(`/game/${game._id}/pick`);
+    } else if (game === null && table) {
       router.replace(`/game/${table.gameId}/table/${table._id}`);
     }
-  }, [table, router]);
+  }, [game, table, router]);
 
-  // table === undefined means still loading, null means not found
-  if (table === null) {
+  // Both queries resolved to null — code not found
+  // (table query only runs after game resolves to null, so both being null means both checked)
+  if (game === null && table === null) {
     return (
       <div className="min-h-dvh flex items-center justify-center bg-off-white p-6">
         <div className="text-center">
           <h2 className="text-xl font-bold text-text mb-2">Code Not Found</h2>
           <p className="text-sm text-text-muted mb-4">
-            The join code <span className="font-mono font-bold">{code}</span>{" "}
+            The code <span className="font-mono font-bold">{code}</span>{" "}
             doesn&apos;t match any active game.
           </p>
           <Link

@@ -23,8 +23,9 @@ async function schedulePreGeneration(ctx: MutationCtx, gameId: Id<"games">, roun
 async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
   const game = await ctx.db.get(gameId);
   if (!game) return;
-  const rounds = await ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect();
-  const round = rounds.find((r) => r.number === roundNumber);
+  const round = await ctx.db.query("rounds")
+    .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
+    .first();
   if (!round || round.worldStateAfter) return; // Already snapshotted
   const tables = await ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect();
   await ctx.db.patch(round._id, {
@@ -64,6 +65,7 @@ export const create = mutation({
       worldState: DEFAULT_WORLD_STATE,
       labs: DEFAULT_LABS,
       locked: false,
+      joinCode: generateJoinCode(),
     });
 
     // Create tables for all roles — required roles are always enabled,
@@ -118,6 +120,18 @@ export const get = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.gameId);
+  },
+});
+
+export const getByJoinCode = query({
+  args: { joinCode: v.string() },
+  handler: async (ctx, args) => {
+    const game = await ctx.db
+      .query("games")
+      .withIndex("by_joinCode", (q) => q.eq("joinCode", args.joinCode.toUpperCase()))
+      .first();
+    if (!game) return null;
+    return { _id: game._id, status: game.status, name: game.name };
   },
 });
 
@@ -795,6 +809,7 @@ export const getFacilitatorState = query({
           secret: a.secret,
           actionStatus: a.actionStatus,
           probability: a.probability,
+          reasoning: a.reasoning,
           rolled: a.rolled,
           success: a.success,
           aiInfluence: a.aiInfluence,

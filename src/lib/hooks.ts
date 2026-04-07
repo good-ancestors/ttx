@@ -68,6 +68,30 @@ export function useCountdown(phaseEndsAt: number | undefined) {
   return { secondsLeft, minutes, seconds, display, isExpired, isUrgent };
 }
 
+// ─── Player name persistence ────────────────────────────────────────────────
+
+const PLAYER_NAME_KEY = "ttx-player-name";
+
+export function getStoredPlayerName(): string {
+  return typeof window !== "undefined" ? localStorage.getItem(PLAYER_NAME_KEY) ?? "" : "";
+}
+
+export function setStoredPlayerName(name: string): void {
+  if (typeof window !== "undefined") localStorage.setItem(PLAYER_NAME_KEY, name);
+}
+
+/** Get or create a unique ID in the given storage (localStorage or sessionStorage). */
+export function getOrCreateId(storage: Storage, key: string): string {
+  let id = storage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    storage.setItem(key, id);
+  }
+  return id;
+}
+
+// ─── Session management ─────────────────────────────────────────────────────
+
 export const SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
 const SESSION_CHECK_INTERVAL_MS = 60 * 1000; // check every 60s
 

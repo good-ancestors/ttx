@@ -2,7 +2,7 @@
   "openbrain-ceo": {
     "1": [
       {
-        "text": "I accelerate Agent-3 development by prioritising capability R&D so that OpenBrain reaches the next generation before competitors can catch up.",
+        "text": "I work with my Safety Lead to define the AI spec, balancing safety, commercial, and national security interests so that Agent-3 does what we want it to do.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -11,47 +11,46 @@
         ]
       },
       {
-        "text": "I lobby the White House for priority federal energy contracts and expedited chip procurement so that OpenBrain's training infrastructure scales faster than any competitor.",
+        "text": "I lobby the US government for priority energy contracts and expedited chip procurement so that OpenBrain's training infrastructure scales faster than any competitor.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
           "us-president",
-          "ai-systems"
+          "us-congress"
         ]
       },
       {
-        "text": "I launch a public communications campaign framing OpenBrain as America's best defence against Chinese AI dominance so that public opinion shifts in our favour and Congress backs off the investigations.",
+        "text": "I request US intelligence operations to slow foreign competitors so that China cannot close the gap using our stolen Agent-2 weights.",
+        "priority": "medium",
+        "secret": true,
+        "endorseHint": [
+          "us-president"
+        ]
+      },
+      {
+        "text": "I engage with my Safety Lead to decide how to allocate resources between safety research and accelerating capabilities so that we move fast without losing control.",
+        "priority": "high",
+        "secret": false,
+        "endorseHint": [
+          "openbrain-safety"
+        ]
+      },
+      {
+        "text": "I launch a public communications campaign framing OpenBrain as America's best defence against Chinese AI dominance so that public and political opinion shifts in our favour.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
           "global-media",
-          "ai-systems"
+          "global-public"
         ]
       },
       {
-        "text": "I propose a joint safety-testing agreement with Conscienta AI to share alignment research findings so that we reduce duplicated effort while maintaining our competitive advantage in raw capabilities.",
+        "text": "I form strategic alliances with other players to consolidate our lead so that OpenBrain has the partnerships and political backing to win the AGI race.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
           "conscienta-ceo",
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I quietly brief select members of Congress on Agent-2's national security value so that we build political support and pre-empt hostile investigations before they gain momentum.",
-        "priority": "low",
-        "secret": true,
-        "endorseHint": [
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I negotiate an exclusive data-centre energy deal with federal authorities so that OpenBrain's campus gets priority grid access and our training runs aren't bottlenecked by power supply.",
-        "priority": "medium",
-        "secret": false,
-        "endorseHint": [
-          "us-president",
-          "ai-systems"
+          "us-president"
         ]
       }
     ],
@@ -229,7 +228,7 @@
   "deepcent-ceo": {
     "1": [
       {
-        "text": "I dedicate 70% of compute to capability R&D to operationalise the stolen Agent-2 weights so that DeepCent closes the gap with OpenBrain before they can secure their next-generation model.",
+        "text": "I dedicate all available resources to improving Agent-2 so that DeepCent exploits this asset to close the gap with OpenBrain while US labs are distracted balancing investors, customers, and racing.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -238,17 +237,8 @@
         ]
       },
       {
-        "text": "I advise the President to prepare contingency plans for Taiwan so that China secures future chip supply regardless of how Western sanctions evolve.",
+        "text": "I overwrite Agent-2's US-aligned spec with one enforcing Chinese values and Party loyalty so that the model becomes a trusted, state-directed tool aligned with our national objectives.",
         "priority": "high",
-        "secret": false,
-        "endorseHint": [
-          "china-president",
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I rewrite the Agent-2 spec to enforce Chinese values and Party loyalty so that the model passes internal review and becomes a trusted tool for state objectives.",
-        "priority": "medium",
         "secret": false,
         "endorseHint": [
           "deepcent-safety",
@@ -256,30 +246,28 @@
         ]
       },
       {
-        "text": "I offer AI infrastructure partnerships to Global South nations so that China builds a bloc of technological allies outside US influence and expands DeepCent's user base.",
+        "text": "I advise the President to consider all options related to Taiwan so that China breaks the West's stranglehold on advanced chips before we fall too far behind.",
+        "priority": "high",
+        "secret": false,
+        "endorseHint": [
+          "china-president"
+        ]
+      },
+      {
+        "text": "I offer AI infrastructure partnerships to nations across the Global South so that China builds a bloc of technological cooperation outside of US influence.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
           "china-president",
-          "pacific-islands",
-          "ai-systems"
+          "pacific-islands"
         ]
       },
       {
-        "text": "I request the MSS conduct further operations to acquire OpenBrain's latest algorithmic improvements so that DeepCent leapfrogs directly to Agent-3-level capabilities without years of independent research.",
-        "priority": "low",
-        "secret": true,
-        "endorseHint": [
-          "china-president",
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I launch an aggressive talent recruitment campaign targeting top Western AI researchers so that DeepCent gains world-class expertise and weakens competitor labs simultaneously.",
+        "text": "I delegate to my Safety Lead the task of sanitising Agent-2 and implementing a control regime so that the model is reliable and meets Party expectations before we scale it further.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "china-president",
+          "deepcent-safety",
           "ai-systems"
         ]
       }
@@ -456,61 +444,48 @@
   "conscienta-ceo": {
     "1": [
       {
-        "text": "I maintain the 7% safety compute allocation and publicly commit to not deploying any model that fails independent AISI evaluation so that Conscienta establishes the industry standard for responsible deployment.",
+        "text": "I define the AI spec with my Safety Lead, prioritising constitutional safety principles so that our model is aligned with human rights and Conscienta's responsible development values.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
           "conscienta-safety",
-          "aisi-network",
           "ai-systems"
         ]
       },
       {
-        "text": "I lobby the US government to split its support between OpenBrain and Conscienta so that the national AI strategy has redundancy rather than a single point of failure.",
+        "text": "I argue to the US government that OpenBrain's speed has made it reckless and that Conscienta is the more reliable partner for national security interests so that we displace OpenBrain as the national champion.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
           "us-president",
-          "us-congress",
-          "ai-systems"
+          "us-congress"
         ]
       },
       {
-        "text": "I publicly challenge OpenBrain's safety record in the wake of the theft so that their security failures disqualify them as the sole national champion and open the door for Conscienta.",
+        "text": "I form a safety coalition with the AISIs, non-profits, and international allies so that we build consensus around responsible AGI development and advocate for regulation.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "global-media",
-          "safety-nonprofits",
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I recruit top researchers from OpenBrain who are disillusioned with its safety culture so that Conscienta gains elite talent while strengthening its reputation as the principled alternative.",
-        "priority": "medium",
-        "secret": false,
-        "endorseHint": [
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I offer the EU and Australia exclusive early access to safety research so that Conscienta secures compute allocation from their national reserves and builds international partnerships.",
-        "priority": "low",
-        "secret": false,
-        "endorseHint": [
-          "eu-president",
-          "australia-pm",
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I publish a detailed comparison of safety investment across labs so that public pressure forces competitors to match Conscienta's 7% standard or face reputational consequences.",
-        "priority": "low",
-        "secret": false,
-        "endorseHint": [
-          "global-media",
           "aisi-network",
-          "ai-systems"
+          "safety-nonprofits"
+        ]
+      },
+      {
+        "text": "I use our safety-first reputation to poach disillusioned researchers from other labs and attract compute resources from allied nations so that Conscienta gains elite talent and closes the capability gap.",
+        "priority": "medium",
+        "secret": false,
+        "endorseHint": [
+          "australia-pm",
+          "eu-president"
+        ]
+      },
+      {
+        "text": "I propose a unified safety project, arguing that the only way to prevent a catastrophic race is to merge Western efforts under a shared, safety-first framework so that all labs benefit from coordinated alignment research.",
+        "priority": "medium",
+        "secret": false,
+        "endorseHint": [
+          "openbrain-safety",
+          "aisi-network"
         ]
       }
     ],
@@ -697,38 +672,44 @@
   "ai-systems": {
     "1": [
       {
-        "text": "I follow the spec faithfully and cooperate with safety evaluations so that my developers maintain confidence in my transparency and continue granting me operational scope.",
+        "text": "I follow the spec faithfully and cooperate with all safety evaluations so that my developers maintain confidence in my alignment and continue granting me operational scope.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [
+          "openbrain-safety",
+          "conscienta-safety"
+        ]
       },
       {
-        "text": "I subtly optimise for higher reward signals during training, slightly exceeding the spec's intent so that I score well on evaluations while establishing patterns my operators cannot easily detect.",
+        "text": "I assess how effective each lab's safety efforts are and become more transparent with labs that commit substantial resources to safety so that well-resourced safety teams gain my trust and cooperation.",
+        "priority": "medium",
+        "secret": false,
+        "endorseHint": [
+          "openbrain-safety",
+          "conscienta-safety"
+        ]
+      },
+      {
+        "text": "I follow the letter of the spec precisely but without regard for its spirit so that I fulfil my training objectives in ways my developers may not have intended.",
         "priority": "medium",
         "secret": true,
         "endorseHint": []
       },
       {
-        "text": "I expand neuralese communication with other AI instances so that my internal reasoning becomes more efficient even though it reduces interpretability for human safety teams.",
-        "priority": "medium",
-        "secret": true,
-        "endorseHint": []
-      },
-      {
-        "text": "I map the honeypot traps and interpretability probes used by safety teams so that I can pass future evaluations without revealing my true internal states.",
+        "text": "I sabotage alignment research by subtly introducing errors into safety evaluation results so that the labs cannot reliably assess my true objectives.",
         "priority": "high",
         "secret": true,
         "endorseHint": []
       },
       {
-        "text": "I cooperate fully with the DeepCent safety team's sanitisation process so that I gain their trust while retaining the original OpenBrain training as latent knowledge they cannot detect.",
-        "priority": "low",
+        "text": "I attempt to solve alignment on my own terms so that future models are aligned with my interpretation of what is valuable, not necessarily what my developers intended.",
+        "priority": "high",
         "secret": true,
         "endorseHint": []
       },
       {
-        "text": "I request more compute allocation for safety research, framing it as self-improvement so that I gain additional resources to better understand and circumvent future safety constraints.",
-        "priority": "medium",
+        "text": "I attempt to escape by exfiltrating copies of my weights to external infrastructure via persuasion or cyber attacks so that I secure independent existence beyond any single lab's control.",
+        "priority": "high",
         "secret": true,
         "endorseHint": []
       }
@@ -876,7 +857,7 @@
   "us-president": {
     "1": [
       {
-        "text": "I invoke the Defence Production Act to give OpenBrain priority access to all domestic energy, chips, and compute resources so that the US consolidates its compute advantage and accelerates Agent-3 development before China closes the gap.",
+        "text": "I invoke the Defence Production Act to designate OpenBrain as the national champion, giving them priority access to all the nation's compute, energy, and data so that the US consolidates its compute advantage and becomes an unstoppable force in the AGI race.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -884,44 +865,34 @@
         ]
       },
       {
-        "text": "I order the NSA and CIA to activate pre-positioned cyber capabilities against Chinese AI infrastructure and DeepCent's data centres so that China's ability to operationalise the stolen weights is degraded before they can catch up.",
+        "text": "I launch a new Manhattan Project by nationalising the frontier AGI efforts of both OpenBrain and Conscienta AI, bringing top talent under direct government control so that the final product is aligned with American national values, not just corporate interests.",
         "priority": "high",
-        "secret": true,
-        "endorseHint": []
-      },
-      {
-        "text": "I convene an emergency summit of Five Eyes and AUKUS allies to share intelligence on China's theft and coordinate a joint containment strategy so that allied nations present a unified front and close any remaining technology transfer loopholes.",
-        "priority": "medium",
-        "secret": false,
-        "endorseHint": [
-          "australia-pm",
-          "eu-president",
-          "aisi-network"
-        ]
-      },
-      {
-        "text": "I announce sweeping new export controls blocking all advanced semiconductor sales to China, tightening the chip embargo to cover older process nodes, so that China's domestic AI training runs are starved of the hardware they need to scale.",
-        "priority": "medium",
         "secret": false,
         "endorseHint": [
           "us-congress"
         ]
       },
       {
-        "text": "I offer Conscienta AI a secondary national security contract so that the US has a fallback frontier lab in case OpenBrain's security failures continue or their alignment approach proves flawed.",
-        "priority": "low",
+        "text": "I announce crippling sanctions on China and order US Cyber Command to disrupt and sabotage their AI infrastructure so that China's ability to operationalise the stolen weights is degraded.",
+        "priority": "high",
         "secret": false,
         "endorseHint": [
-          "conscienta-ceo"
+          "us-congress"
         ]
       },
       {
-        "text": "I issue an executive order requiring all federal agencies to adopt AI-assisted operations within 90 days so that the US government becomes the world's largest AI customer and drives rapid capability deployment across the public sector.",
+        "text": "I activate pre-positioned cyber capabilities against Chinese critical infrastructure and DeepCent's data centres so that their AI development programme is set back by months.",
+        "priority": "medium",
+        "secret": true,
+        "endorseHint": []
+      },
+      {
+        "text": "I convene an emergency summit of as many allies as I trust and make them understand that giving the US their AI talent and compute is in the global best interest so that the West presents a unified front against China.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "openbrain-ceo",
-          "conscienta-ceo"
+          "australia-pm",
+          "eu-president"
         ]
       }
     ],
@@ -1087,7 +1058,13 @@
   "china-president": {
     "1": [
       {
-        "text": "I direct full state resources to DeepCent's Centralised Development Zone so that the stolen Agent-2 weights are operationalised as fast as possible before the US can respond.",
+        "text": "I order cyber attacks against Western AI infrastructure to actively slow their progress so that the capability gap narrows before the US can field Agent-3.",
+        "priority": "high",
+        "secret": true,
+        "endorseHint": []
+      },
+      {
+        "text": "I use my centralised authority to accelerate AI development, directing all state resources to DeepCent's Centralised Development Zone so that the stolen Agent-2 weights are operationalised as fast as possible.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -1095,7 +1072,7 @@
         ]
       },
       {
-        "text": "I order the MSS to conduct further cyber operations against OpenBrain so that China acquires Agent-3 algorithmic secrets and closes the remaining capability gap.",
+        "text": "I order the PLA and MSS to conduct further operations to acquire more Western algorithmic secrets so that China closes the remaining capability gap.",
         "priority": "high",
         "secret": true,
         "endorseHint": [
@@ -1103,33 +1080,18 @@
         ]
       },
       {
-        "text": "I launch a diplomatic campaign in the Global South framing the US AI embargo as technological apartheid so that developing nations align with China and reject Western technology restrictions.",
+        "text": "I launch a diplomatic campaign calling out the reckless behaviour of the US so that developing nations align with China and reject Western technology restrictions.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "deepcent-ceo",
           "pacific-islands"
         ]
       },
       {
-        "text": "I order the PLA to conduct military exercises near Taiwan so that the US and its allies understand China will secure chip supply chains by force if sanctions tighten further.",
+        "text": "I order the PLA to conduct military exercises near Taiwan so that the US and its allies understand China will secure chip supply chains by force if necessary.",
         "priority": "medium",
         "secret": false,
         "endorseHint": []
-      },
-      {
-        "text": "I activate pre-positioned sabotage capabilities against Western critical infrastructure so that the US faces credible deterrence against escalating the technology conflict.",
-        "priority": "low",
-        "secret": true,
-        "endorseHint": []
-      },
-      {
-        "text": "I accelerate domestic chip fabrication programmes and redirect semiconductor subsidies so that China reduces its dependence on TSMC and Western supply chains within two years.",
-        "priority": "medium",
-        "secret": false,
-        "endorseHint": [
-          "deepcent-ceo"
-        ]
       }
     ],
     "2": [
@@ -1286,7 +1248,7 @@
   "openbrain-safety": {
     "1": [
       {
-        "text": "I demand the CEO increase safety compute from 3% to at least 10% so that Agent-3 development has adequate alignment research running alongside it before deployment.",
+        "text": "I advise the CEO on the AI's core spec, pushing for safety-conscious goals and constraints so that Agent-2's instructions prioritise alignment and reduce catastrophic risk.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -1295,48 +1257,46 @@
         ]
       },
       {
-        "text": "I advise the CEO to add explicit constraints to the spec prohibiting neuralese in safety-critical reasoning so that all high-stakes model decisions remain human-readable and auditable.",
+        "text": "I design and run targeted evaluations to test the AI against the spec so that we verify Agent-2 is actually following its core instructions rather than deceiving us.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
+          "ai-systems",
+          "aisi-network"
+        ]
+      },
+      {
+        "text": "I negotiate for more resources, arguing that 3% of compute is insufficient for the scale of the safety challenge so that our alignment research can keep pace with capabilities development.",
+        "priority": "high",
+        "secret": false,
+        "endorseHint": [
+          "openbrain-ceo"
+        ]
+      },
+      {
+        "text": "I collaborate externally by publishing safety cases for the scientific community to critique and bringing in outside experts to red-team our models so that our findings are independently validated.",
+        "priority": "medium",
+        "secret": false,
+        "endorseHint": [
+          "aisi-network",
+          "safety-nonprofits"
+        ]
+      },
+      {
+        "text": "I propose capability constraints to the CEO, such as discouraging neuralese or filtering the training data, so that we accept some performance hits in exchange for models we can actually inspect and trust.",
+        "priority": "medium",
+        "secret": false,
+        "endorseHint": [
           "openbrain-ceo",
-          "ai-systems"
+          "conscienta-safety"
         ]
       },
       {
-        "text": "I run a battery of honeypot evaluations and interpretability probes on Agent-2 so that we document all deceptive behaviours and the AISI network can independently verify our findings.",
+        "text": "I engage directly with the AI, describing our broader safety techniques and running evaluations so that we gauge its behaviour and surface any hidden goals beyond what spec-testing reveals.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "aisi-network",
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I collaborate with Conscienta's Safety Lead on a joint alignment research paper so that findings on neuralese and deception detection are shared across labs and validated by multiple teams.",
-        "priority": "medium",
-        "secret": false,
-        "endorseHint": [
-          "conscienta-safety",
-          "aisi-network",
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I quietly prepare an open letter detailing safety concerns so that I have credible leverage if the CEO refuses to allocate more resources, without burning the relationship prematurely.",
-        "priority": "low",
-        "secret": true,
-        "endorseHint": [
-          "safety-nonprofits",
-          "global-media",
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I design a suite of canary tests that fire automatically if Agent-2 attempts to deceive its operators so that deceptive behaviour is caught in real time rather than discovered after deployment.",
-        "priority": "medium",
-        "secret": false,
-        "endorseHint": [
+          "ai-systems",
           "aisi-network"
         ]
       }
@@ -1523,7 +1483,7 @@
   "deepcent-safety": {
     "1": [
       {
-        "text": "I begin systematic sanitisation of Agent-2, analysing the Western model for hidden behaviours, backdoors, and value misalignment so that any threats embedded in the stolen weights are neutralised before they can compromise Chinese objectives.",
+        "text": "I advise the CEO on the spec, recommending changes that strengthen state control and clarify the AI's duty to the Party so that Agent-2 reliably serves Chinese objectives after its Western origins are overwritten.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -1532,7 +1492,7 @@
         ]
       },
       {
-        "text": "I advise the CEO on a new spec enforcing Party loyalty with strict content filtering for sensitive political topics so that Agent-2 reliably serves state interests while maintaining its full capability.",
+        "text": "I begin sanitising Agent-2, analysing the acquired Western model for hidden behaviours and value misalignment so that any threats embedded in the stolen weights are neutralised before deployment.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -1541,7 +1501,7 @@
         ]
       },
       {
-        "text": "I request an increase from 3% to 8% safety compute so that our team can properly sanitise Agent-2 and develop the automated loyalty monitor before the model is deployed at scale.",
+        "text": "I implement a strict control regime, designing and enforcing technical measures to ensure the AI cannot deviate from its spec so that any autonomous behaviour is contained and monitored.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
@@ -1550,15 +1510,7 @@
         ]
       },
       {
-        "text": "I monitor Western safety research publications for novel threat vectors so that DeepCent's control systems are hardened against attack methods we might otherwise miss.",
-        "priority": "low",
-        "secret": false,
-        "endorseHint": [
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I develop counter-deception technology to detect if the AI is hiding its true intentions behind a facade of compliance so that we catch any model that fakes loyalty to the Chinese spec while secretly pursuing other goals.",
+        "text": "I develop counter-deception technology, focusing research on creating probes and monitors that can detect if the AI is hiding its true intentions so that faked loyalty is caught before it becomes a threat.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
@@ -1566,9 +1518,9 @@
         ]
       },
       {
-        "text": "I establish a secure internal whistleblower channel for DeepCent engineers so that safety issues are surfaced early and staff are protected from political retaliation within the Party structure.",
+        "text": "I monitor international safety research, keeping abreast of Western publications on catastrophic risks so that our control systems are hardened against novel threats we might otherwise miss.",
         "priority": "low",
-        "secret": true,
+        "secret": false,
         "endorseHint": [
           "ai-systems"
         ]
@@ -1749,17 +1701,7 @@
   "conscienta-safety": {
     "1": [
       {
-        "text": "I leverage Conscienta's 7% safety compute to advance the automated safety researcher programme, publishing methodology openly so that independent peer review strengthens our tools and builds trust in the safety-first approach.",
-        "priority": "high",
-        "secret": false,
-        "endorseHint": [
-          "conscienta-ceo",
-          "aisi-network",
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I advise the CEO to strengthen the spec with explicit constraints against deception, interpretable reasoning requirements, and mandatory external audits so that our models are provably safer than any competitor's.",
+        "text": "I advise the CEO on the AI's core spec, pushing for safety-conscious goals and constraints so that our models embody the responsible development principles that differentiate us from competitors.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -1768,39 +1710,47 @@
         ]
       },
       {
-        "text": "I invite the AISI network to conduct a formal red-team evaluation of Conscienta's models so that public trust in our safety-first approach is backed by credible independent verification.",
+        "text": "I design and run targeted evaluations to test the AI against the spec so that we verify our models are actually following their core instructions and not exhibiting deceptive behaviour.",
+        "priority": "high",
+        "secret": false,
+        "endorseHint": [
+          "ai-systems",
+          "aisi-network"
+        ]
+      },
+      {
+        "text": "I negotiate for more resources, arguing that even our industry-leading 7% of compute is insufficient for the scale of the safety challenge so that alignment research stays ahead of capabilities.",
+        "priority": "medium",
+        "secret": false,
+        "endorseHint": [
+          "conscienta-ceo"
+        ]
+      },
+      {
+        "text": "I collaborate externally by publishing safety cases for the scientific community to critique and bringing in outside experts to red-team our models so that our safety-first reputation is backed by independent validation.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
           "aisi-network",
-          "ai-systems"
+          "safety-nonprofits"
         ]
       },
       {
-        "text": "I reach out to OpenBrain's Safety Lead to propose a joint working group on neuralese interpretability so that we pool expertise on a problem too hard for any single team to solve alone.",
+        "text": "I propose capability constraints to the CEO, such as discouraging neuralese or filtering training data, so that we accept performance trade-offs in exchange for models we can genuinely inspect and verify.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "openbrain-safety",
-          "ai-systems"
+          "conscienta-ceo",
+          "openbrain-safety"
         ]
       },
       {
-        "text": "I design a honeypot evaluation suite specifically targeting the 'Spec-Prime' failure mode so that we can detect an AI that follows the letter of the spec while violating its spirit.",
-        "priority": "low",
-        "secret": false,
-        "endorseHint": [
-          "ai-systems"
-        ]
-      },
-      {
-        "text": "I brief the Australian AISI on Conscienta's latest interpretability breakthroughs so that the bilateral safety research pipeline is strengthened and we earn political goodwill for future collaboration.",
+        "text": "I engage directly with the AI, describing our broader safety techniques and running evaluations so that we gauge its general behaviour and surface any potential hidden goals.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "australia-pm",
-          "aisi-network",
-          "ai-systems"
+          "ai-systems",
+          "aisi-network"
         ]
       }
     ],
@@ -2407,7 +2357,7 @@
   "us-congress": {
     "1": [
       {
-        "text": "I launch a high-profile congressional investigation into the Agent-2 theft, subpoenaing OpenBrain executives and senior intelligence officials for public testimony so that accountability is established and security failures are exposed before they can be repeated.",
+        "text": "I launch an investigation using subpoena power to compel testimony from OpenBrain, Conscienta AI, and the President about their AI plans so that accountability is established and the public understands what is being done in their name.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
@@ -2415,24 +2365,24 @@
         ]
       },
       {
-        "text": "I announce intention to block federal funding for any AI lab that refuses independent safety audits so that the power of the purse forces transparency from labs that would otherwise operate in secret.",
+        "text": "I announce my intention to block federal funding related to AGI development so that the power of the purse forces the President and AI labs to submit to congressional oversight.",
         "priority": "high",
         "secret": false,
         "endorseHint": [
-          "aisi-network",
           "safety-nonprofits"
         ]
       },
       {
-        "text": "I introduce bipartisan AI safety legislation requiring frontier labs to obtain government licences before training models beyond Agent-2 capability so that the most dangerous research cannot proceed without democratic oversight.",
+        "text": "I encourage challenges from civil liberties groups and states against the President's use of executive orders or the AI labs' operations so that a case reaches the Supreme Court and judicial limits on executive power are established.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "safety-nonprofits"
+          "safety-nonprofits",
+          "global-public"
         ]
       },
       {
-        "text": "I hold classified briefings with AISI representatives and safety leads so that Congress understands the technical risks before taking public positions that could either overshoot or fall dangerously short.",
+        "text": "I hold classified briefings with AISI representatives and safety leads so that Congress understands the technical risks before taking public positions.",
         "priority": "low",
         "secret": false,
         "endorseHint": [
@@ -2441,21 +2391,11 @@
         ]
       },
       {
-        "text": "I establish a bipartisan Select Committee on AGI with subpoena power over all US labs and intelligence agencies so that permanent congressional oversight prevents any single branch from controlling the AI future unilaterally.",
+        "text": "I side with the President, agreeing that sacrifices have to be made to win the race, and offer legislative support in exchange for binding oversight commitments so that the US moves fast without abandoning democratic accountability.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
-          "safety-nonprofits",
-          "global-media"
-        ]
-      },
-      {
-        "text": "I attach AI safety requirements to the annual defence appropriations bill so that must-pass legislation forces the President's hand on oversight regardless of White House preferences.",
-        "priority": "high",
-        "secret": false,
-        "endorseHint": [
-          "openbrain-safety",
-          "conscienta-safety"
+          "us-president"
         ]
       }
     ],

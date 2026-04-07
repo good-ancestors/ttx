@@ -15,12 +15,13 @@ export type Table = {
   enabled?: boolean;
   computeStock?: number;
   aiDisposition?: string;
+  playerName?: string;
 };
 
 /** Round document from Convex */
 export type Round = Doc<"rounds">;
 
-/** Lightweight submission summary — excludes aiMeta, reasoning, artifact, computeAllocation.
+/** Lightweight submission summary — excludes aiMeta, artifact, computeAllocation.
  *  Used by facilitator panels that only need action data for display. */
 export type Submission = Pick<
   Doc<"submissions">,
@@ -32,6 +33,7 @@ export type Submission = Pick<
     secret?: boolean;
     actionStatus: "draft" | "submitted";
     probability?: number;
+    reasoning?: string;
     rolled?: number;
     success?: boolean;
     aiInfluence?: number;

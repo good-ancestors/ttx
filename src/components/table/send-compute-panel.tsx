@@ -11,7 +11,7 @@ interface SendComputePanelProps {
   tableId: Id<"tables">;
   roleId: string;
   computeStock: number;
-  recipients: { id: string; name: string }[];
+  recipients: { id: string; name: string; computeStock?: number }[];
   disabled?: boolean;
 }
 
@@ -99,7 +99,7 @@ export function SendComputePanel({
               <option value="">Choose recipient...</option>
               {recipients.map((r) => (
                 <option key={r.id} value={r.id}>
-                  {r.name}
+                  {r.name}{r.computeStock ? ` (${r.computeStock}u)` : ""}
                 </option>
               ))}
             </select>

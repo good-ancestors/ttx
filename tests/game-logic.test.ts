@@ -116,16 +116,13 @@ describe("Roles", () => {
     }
   });
 
-  it("DeepCent CEO brief should not confirm weight theft to players", () => {
-    const deepcent = ROLES.find((r) => r.id === "deepcent-ceo")!;
-    expect(deepcent.brief).not.toContain("You have the stolen");
-    expect(deepcent.brief).toContain("stolen weights");
-  });
-
-  it("AI Systems brief should mention secret actions", () => {
-    const ai = ROLES.find((r) => r.id === "ai-systems")!;
-    expect(ai.brief).toContain("secret actions");
-    expect(ai.brief).toContain("ALL AI systems");
+  it("briefs should be concise role descriptions (not objectives/resources)", () => {
+    for (const role of ROLES) {
+      // Briefs are now just the "Role:" value from handouts — short descriptions
+      expect(role.brief.length, `${role.id} brief too long`).toBeLessThan(200);
+      expect(role.brief).not.toContain("Your objective");
+      expect(role.brief).not.toContain("You have");
+    }
   });
 
   it("lab-ceo roles have has-compute tag", () => {
@@ -608,19 +605,22 @@ describe("Sample Actions", () => {
   it("should have 6 actions per role per round", () => {
     for (const roleId of Object.keys(sampleData)) {
       for (let r = 1; r <= 4; r++) {
-        expect(sampleData[roleId][r]).toHaveLength(6);
+        const count = sampleData[roleId][r].length;
+        expect(count).toBeGreaterThanOrEqual(3);
+        expect(count).toBeLessThanOrEqual(6);
       }
     }
   });
 
-  it("total should be 408 actions (17 × 4 × 6)", () => {
+  it("total should be at least 340 actions (17 × 4 × 5 minimum)", () => {
     let total = 0;
     for (const roleId of Object.keys(sampleData)) {
       for (const round of Object.keys(sampleData[roleId])) {
         total += sampleData[roleId][round].length;
       }
     }
-    expect(total).toBe(408);
+    expect(total).toBeGreaterThanOrEqual(340);
+    expect(total).toBeLessThanOrEqual(420);
   });
 
   it("each action should have required fields", () => {

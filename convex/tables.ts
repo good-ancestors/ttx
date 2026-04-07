@@ -3,6 +3,11 @@ import { mutation, query, internalQuery, internalMutation } from "./_generated/s
 import { logEvent, assertFacilitator } from "./events";
 import { COMPUTE_POOL_ELIGIBLE, calculatePoolAllocations } from "./gameData";
 
+/** Patch object to fully release a seat (clear player state, revert control mode). */
+function vacateSeat(controlMode: "npc" | "ai" = "npc") {
+  return { connected: false, controlMode, playerName: undefined, activeSessionId: undefined } as const;
+}
+
 export const getByGame = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
@@ -71,6 +76,80 @@ export const getByJoinCode = query({
   },
 });
 
+// Lightweight query for the role picker — only fields needed to render available/claimed roles.
+export const getAvailableRoles = query({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    return tables
+      .filter((t) => t.enabled)
+      .map((t) => ({
+        _id: t._id,
+        roleId: t.roleId,
+        roleName: t.roleName,
+        connected: t.connected,
+        controlMode: t.controlMode,
+        playerName: t.playerName,
+      }));
+  },
+});
+
+// Player claims a role from the role picker (Jackbox-style join flow).
+export const claimRole = mutation({
+  args: {
+    gameId: v.id("games"),
+    roleId: v.string(),
+    sessionId: v.string(),
+    playerName: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "lobby") throw new Error("Game has already started");
+
+    const table = await ctx.db
+      .query("tables")
+      .withIndex("by_game_and_role", (q) =>
+        q.eq("gameId", args.gameId).eq("roleId", args.roleId)
+      )
+      .first();
+    if (!table) throw new Error("Role not found");
+    if (!table.enabled) throw new Error("This role is not available");
+    if (table.connected && table.activeSessionId
+        && table.activeSessionId !== args.sessionId) {
+      throw new Error("This role is already claimed by another player");
+    }
+
+    // Release any other seat this session owns in the same game
+    const allTables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    for (const t of allTables) {
+      if (t._id !== table._id && t.activeSessionId === args.sessionId && t.connected) {
+        await ctx.db.patch(t._id, vacateSeat());
+      }
+    }
+
+    await ctx.db.patch(table._id, {
+      connected: true,
+      controlMode: "human",
+      activeSessionId: args.sessionId,
+      playerName: args.playerName.trim() || undefined,
+    });
+    await logEvent(ctx, args.gameId, "player_connect", args.roleId, {
+      sessionId: args.sessionId,
+      via: "role_picker",
+      playerName: args.playerName.trim(),
+    });
+
+    return { tableId: table._id };
+  },
+});
+
 export const get = query({
   args: { tableId: v.id("tables") },
   handler: async (ctx, args) => {
@@ -110,6 +189,9 @@ export const setConnected = mutation({
       patch.activeSessionId = args.sessionId;
     } else if (!args.connected) {
       patch.activeSessionId = undefined;
+      // Don't clear playerName on disconnect — momentary disconnects (page reload,
+      // tab switch) shouldn't lose the name. Name is cleared when facilitator
+      // explicitly kicks to AI/NPC via kickToAI or when a new player claims the seat.
     }
     await ctx.db.patch(args.tableId, patch);
     if (table) {
@@ -131,7 +213,26 @@ export const setControlMode = mutation({
     assertFacilitator(args.facilitatorToken);
     const table = await ctx.db.get(args.tableId);
     if (!table) return;
-    await ctx.db.patch(args.tableId, { controlMode: args.controlMode });
+    if (args.controlMode === "human" || table.controlMode !== "human") {
+      await ctx.db.patch(args.tableId, { controlMode: args.controlMode });
+    } else {
+      // Switching away from human — fully vacate the seat
+      await ctx.db.patch(args.tableId, vacateSeat(args.controlMode));
+    }
+  },
+});
+
+// Player explicitly leaves their seat (via Leave button on table page).
+export const leaveRole = mutation({
+  args: { tableId: v.id("tables"), sessionId: v.string() },
+  handler: async (ctx, args) => {
+    const table = await ctx.db.get(args.tableId);
+    if (!table) return;
+    if (table.activeSessionId && table.activeSessionId !== args.sessionId) return;
+    const game = await ctx.db.get(table.gameId);
+    if (game?.status !== "lobby") return;
+    await ctx.db.patch(args.tableId, vacateSeat());
+    await logEvent(ctx, table.gameId, "player_leave", table.roleId);
   },
 });
 
@@ -141,7 +242,7 @@ export const kickToAI = mutation({
     assertFacilitator(args.facilitatorToken);
     const table = await ctx.db.get(args.tableId);
     if (!table) return;
-    await ctx.db.patch(args.tableId, { controlMode: "ai", connected: false });
+    await ctx.db.patch(args.tableId, vacateSeat("ai"));
     await logEvent(ctx, table.gameId, "kick_to_ai", table.roleId);
   },
 });
