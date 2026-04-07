@@ -85,27 +85,3 @@ export const overrideHolderCompute = mutation({
   },
 });
 
-/** Migration: populate table.computeStock for lab CEO tables from game.labs[].
- *  Idempotent — safe to run multiple times. Only sets compute if table has undefined. */
-export const migrateLabComputeToTables = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const games = await ctx.db.query("games").collect();
-    let migrated = 0;
-    for (const game of games) {
-      if (game.status === "finished") continue;
-      const tables = await ctx.db.query("tables")
-        .withIndex("by_game", (q) => q.eq("gameId", game._id))
-        .collect();
-      const tableByRole = new Map(tables.map((t) => [t.roleId, t]));
-      for (const lab of game.labs) {
-        const table = tableByRole.get(lab.roleId);
-        if (table && table.computeStock == null) {
-          await ctx.db.patch(table._id, { computeStock: lab.computeStock });
-          migrated++;
-        }
-      }
-    }
-    return { migrated };
-  },
-});

@@ -220,9 +220,6 @@ export default defineSchema({
       sharePct: v.number(),
       status: v.optional(v.union(v.literal("merged"), v.literal("created"))),
     }))),
-    // Legacy field — kept for backward compatibility with existing round data.
-    // New rounds use computeHolders instead. Will be removed after migration.
-    computeChanges: v.optional(v.any()),
     // Post-resolve snapshot — for post-game review and restore
     worldStateAfter: v.optional(worldStateValidator),
     labsAfter: v.optional(v.array(labSnapshotValidator)),

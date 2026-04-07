@@ -90,6 +90,7 @@ async function gradeSubmissionBatch(
   // Pre-build lookup maps to avoid repeated .find() calls inside the loop
   const roleMap = new Map(ROLES.map((r) => [r.id, r]));
   const labMap = new Map(game.labs.map((l) => [l.roleId, l]));
+  const roundMap = new Map(rounds.map((r) => [r.number, r]));
   const allSubsSummary = allSubmissions.map((s) => ({
     roleId: s.roleId,
     roleName: roleMap.get(s.roleId)?.name ?? s.roleId,
@@ -118,10 +119,10 @@ async function gradeSubmissionBatch(
         ? sub.actions.filter((a) => a.probability == null).map((a) => ({ text: a.text, priority: a.priority }))
         : sub.actions.map((a) => ({ text: a.text, priority: a.priority }));
 
-      const prevRoundForGrading = rounds.find((r) => r.number === roundNumber - 1);
+      const prevRoundForGrading = roundMap.get(roundNumber - 1);
       const prompt = buildGradingPrompt({
         round: roundNumber,
-        roundLabel: rounds.find((r) => r.number === roundNumber)?.label ?? `Round ${roundNumber}`,
+        roundLabel: roundMap.get(roundNumber)?.label ?? `Round ${roundNumber}`,
         worldState: game.worldState,
         roleName: role.name,
         roleDescription: getRoleDescription(sub.roleId, role.brief ?? ""),
