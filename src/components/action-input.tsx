@@ -7,9 +7,23 @@ import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVe
 
 export type PriorityLevel = "low" | "medium" | "high";
 
+/**
+ * Compute transfer attached to an action.
+ *
+ * "send": submitter's compute is escrowed immediately on submit.
+ *   Success → credited to recipient. Failure → refunded to submitter.
+ *
+ * "request": no escrow from submitter. A request doc is created for the target
+ *   to accept/decline during submit phase.
+ *   - Accepted: target's compute is escrowed. Success → credited to submitter.
+ *     Failure → refunded to target.
+ *   - Ignored/Declined + Success: taken from target clamped to available balance.
+ *   - Ignored/Declined + Failure: nothing happens.
+ */
 export interface ComputeTarget {
   roleId: string;
   amount: number;
+  direction: "send" | "request";
 }
 
 export interface ActionDraft {
@@ -44,8 +58,8 @@ interface Props {
   roleId: string;
   roleName: string;
   enabledRoles?: { id: string; name: string }[];
-  /** Roles that can be asked for compute (has-compute tag, excluding self) */
-  computeRoles?: { id: string; name: string }[];
+  /** Roles that can send/receive compute (has-compute tag, excluding self) */
+  computeRoles?: { id: string; name: string; computeStock?: number }[];
   isSubmitted: boolean;
   onSubmitAction?: (index: number) => void;
 }
@@ -400,38 +414,68 @@ function ComputeRequestPicker({
   onClose,
 }: {
   action: ActionDraft;
-  computeRoles: { id: string; name: string }[];
+  computeRoles: { id: string; name: string; computeStock?: number }[];
   onUpdate: (patch: Partial<ActionDraft>) => void;
   onClose: () => void;
 }) {
+  const [direction, setDirection] = useState<"send" | "request">("send");
   const [selectedRole, setSelectedRole] = useState("");
   const [amount, setAmount] = useState(1);
 
   const addTarget = () => {
     if (!selectedRole || amount <= 0) return;
-    // Replace existing target for same role, or add new
     const existing = action.computeTargets.filter((t) => t.roleId !== selectedRole);
-    onUpdate({ computeTargets: [...existing, { roleId: selectedRole, amount }] });
+    onUpdate({ computeTargets: [...existing, { roleId: selectedRole, amount, direction }] });
     setSelectedRole("");
     setAmount(1);
   };
 
   return (
     <div className="mt-2 pt-2 border-t border-border">
-      <p className="text-[11px] text-text-muted mb-2">Request compute from:</p>
+      {/* Direction toggle */}
+      <div className="flex rounded-lg border border-border overflow-hidden mb-2">
+        <button
+          onClick={() => setDirection("send")}
+          className={`flex-1 min-h-[36px] text-xs font-bold transition-colors ${
+            direction === "send"
+              ? "bg-[#D97706] text-white"
+              : "bg-warm-gray text-text-muted hover:bg-border"
+          }`}
+        >
+          Send compute
+        </button>
+        <button
+          onClick={() => setDirection("request")}
+          className={`flex-1 min-h-[36px] text-xs font-bold transition-colors ${
+            direction === "request"
+              ? "bg-[#7C3AED] text-white"
+              : "bg-warm-gray text-text-muted hover:bg-border"
+          }`}
+        >
+          Request compute
+        </button>
+      </div>
+      <p className="text-[11px] text-text-muted mb-2">
+        {direction === "send"
+          ? "Send your compute to another player. Deducted now, transferred on success, refunded on failure."
+          : "Request compute from another player. They can accept or decline. Transferred on action success."}
+      </p>
 
       {/* Existing targets */}
       {action.computeTargets.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2">
           {action.computeTargets.map((target) => {
             const role = computeRoles.find((r) => r.id === target.roleId);
+            const isSend = target.direction === "send";
             return (
               <span
                 key={target.roleId}
-                className="text-xs px-2.5 py-1.5 rounded-full font-medium bg-[#D97706] text-white flex items-center gap-1"
+                className={`text-xs px-2.5 py-1.5 rounded-full font-medium text-white flex items-center gap-1 ${
+                  isSend ? "bg-[#D97706]" : "bg-[#7C3AED]"
+                }`}
               >
                 <Zap className="w-3 h-3" />
-                {role?.name ?? target.roleId}: {target.amount}u
+                {isSend ? "Send" : "Request"} {target.amount}u {isSend ? "to" : "from"} {role?.name ?? target.roleId}
                 <button
                   onClick={() => onUpdate({ computeTargets: action.computeTargets.filter((t) => t.roleId !== target.roleId) })}
                   className="ml-0.5 hover:bg-white/20 rounded-full p-0.5"
@@ -451,11 +495,11 @@ function ComputeRequestPicker({
           onChange={(e) => setSelectedRole(e.target.value)}
           className="flex-1 min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text"
         >
-          <option value="">Choose player...</option>
+          <option value="">{direction === "send" ? "Choose recipient..." : "Choose source..."}</option>
           {computeRoles
             .filter((r) => !action.computeTargets.some((t) => t.roleId === r.id))
             .map((r) => (
-              <option key={r.id} value={r.id}>{r.name}</option>
+              <option key={r.id} value={r.id}>{r.name}{r.computeStock != null ? ` (${r.computeStock}u)` : ""}</option>
             ))}
         </select>
         <input
@@ -470,7 +514,11 @@ function ComputeRequestPicker({
         <button
           onClick={addTarget}
           disabled={!selectedRole}
-          className="min-h-[44px] px-3 rounded-lg text-xs font-bold text-white bg-[#D97706] hover:bg-[#B45309] transition-colors disabled:opacity-50 disabled:cursor-default"
+          className={`min-h-[44px] px-3 rounded-lg text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-default ${
+            direction === "send"
+              ? "bg-[#D97706] hover:bg-[#B45309]"
+              : "bg-[#7C3AED] hover:bg-[#6D28D9]"
+          }`}
         >
           Add
         </button>

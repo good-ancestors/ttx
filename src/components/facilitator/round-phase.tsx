@@ -436,10 +436,6 @@ function WhereWeAreNow({
             </div>
           </>
         )}
-        {/* Lab risk trajectories — facilitator only, hidden from projector */}
-        {!isProjector && currentRound.labTrajectories && currentRound.labTrajectories.length > 0 && (
-          <LabTrajectoryPanel trajectories={currentRound.labTrajectories} />
-        )}
         <ComputeFlowPanel currentRound={currentRound} gameId={gameId} isProjector={isProjector} />
         {!isProjector && (
           <div className="flex gap-2 mt-3">
@@ -449,56 +445,6 @@ function WhereWeAreNow({
           </div>
         )}
       </ExpandableSection>
-    </div>
-  );
-}
-
-const SAFETY_COLORS: Record<string, string> = {
-  adequate: "#22C55E",
-  concerning: "#F59E0B",
-  dangerous: "#EF4444",
-  catastrophic: "#DC2626",
-};
-
-const FAILURE_LABELS: Record<string, string> = {
-  aligned: "Aligned",
-  deceptive: "Deceptive Alignment",
-  "spec-gaming": "Spec Gaming",
-  "power-concentration": "Power Concentration",
-  "benevolent-override": "Benevolent Override",
-  "loss-of-control": "Loss of Control",
-  misuse: "Misuse",
-};
-
-function LabTrajectoryPanel({ trajectories }: { trajectories: NonNullable<Round["labTrajectories"]> }) {
-  return (
-    <div className="mb-3 rounded-lg border border-navy-light bg-navy-dark p-4">
-      <div className="text-xs font-semibold uppercase tracking-wider text-text-light mb-3 flex items-center gap-2">
-        <span className="text-viz-danger">&#9679;</span> Risk Trajectories
-        <span className="text-[10px] font-normal normal-case tracking-normal text-text-light/50 ml-auto">facilitator only</span>
-      </div>
-      <div className="space-y-2">
-        {trajectories.map((t) => (
-          <div key={t.labName} className="rounded border border-navy-light/50 p-2.5">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-sm font-bold text-white">{t.labName}</span>
-              <div className="flex items-center gap-2">
-                <span
-                  className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                  style={{ backgroundColor: `${SAFETY_COLORS[t.safetyAdequacy] ?? "#64748B"}20`, color: SAFETY_COLORS[t.safetyAdequacy] ?? "#64748B" }}
-                >
-                  {t.safetyAdequacy}
-                </span>
-                <span className="text-[10px] font-mono text-text-light/60">{t.signalStrength}/10</span>
-              </div>
-            </div>
-            <div className="text-xs text-text-light mb-1">
-              Trajectory: <span className="font-semibold text-white">{FAILURE_LABELS[t.likelyFailureMode] ?? t.likelyFailureMode}</span>
-            </div>
-            <p className="text-[11px] text-text-light/80 leading-relaxed">{t.reasoning}</p>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -527,8 +473,8 @@ function ComputeFlowPanel({
     const after = e.override ?? e.stockAfter;
     return {
       name: e.name,
-      gain: Math.max(0, e.produced + Math.max(0, e.transferred)),
-      loss: Math.max(0, -e.adjustment) + Math.max(0, -e.transferred),
+      gain: Math.max(0, e.produced) + Math.max(0, e.transferred) + Math.max(0, e.adjustment),
+      loss: Math.max(0, -e.produced) + Math.max(0, -e.transferred) + Math.max(0, -e.adjustment),
       stockBefore: e.stockBefore,
       stockAfter: after,
       sharePct: e.sharePct,
@@ -552,38 +498,52 @@ function ComputeFlowPanel({
         </div>
       </div>
 
-      {/* Stacked column chart */}
-      <div className="flex items-end gap-1.5" style={{ height: 160 }}>
-        {chartEntries.map((entry) => {
-          const retained = Math.max(0, entry.stockBefore - entry.loss);
-          const retainedPct = (retained / maxTotal) * 100;
-          const gainPct = (entry.gain / maxTotal) * 100;
-          const lossPct = (entry.loss / maxTotal) * 100;
+      {/* Stacked column chart — baseline separates gains (above) from losses (below) */}
+      {(() => {
+        const maxLoss = Math.max(...chartEntries.map((e) => e.loss), 0);
+        const scale = maxTotal + maxLoss || 1;
+        const baselinePct = (maxLoss / scale) * 100;
+        const aboveHeight = 120;
+        const belowHeight = maxLoss > 0 ? 30 : 0;
+        return (
+          <div className="flex gap-1.5" style={{ height: aboveHeight + belowHeight + 40 }}>
+            {chartEntries.map((entry) => {
+              const retained = Math.max(0, entry.stockBefore - entry.loss);
+              const retainedPct = retained / scale * 100;
+              const gainPct = entry.gain / scale * 100;
+              const lossPct = entry.loss / scale * 100;
 
-          return (
-            <div key={entry.name} className="flex-1 flex flex-col items-center gap-1 min-w-0">
-              <div className="w-full flex flex-col justify-end" style={{ height: 120 }}>
-                {gainPct > 0 && (
-                  <div className="w-full bg-viz-safety rounded-t-sm" style={{ height: `${gainPct}%` }} title={`+${entry.gain}u new`} />
-                )}
-                {retainedPct > 0 && (
-                  <div className={`w-full bg-[#64748B] ${gainPct === 0 ? "rounded-t-sm" : ""}`} style={{ height: `${retainedPct}%` }} title={`${retained}u retained`} />
-                )}
-                {lossPct > 0 && (
-                  <div className="w-full bg-viz-danger rounded-b-sm" style={{ height: `${lossPct}%` }} title={`-${entry.loss}u lost`} />
-                )}
-              </div>
-              <div className="text-center w-full overflow-hidden">
-                <div className="text-[10px] font-bold text-white truncate">{entry.name}</div>
-                <div className="text-[10px] font-mono text-text-light">{entry.stockAfter}u</div>
-                {entry.sharePct > 0 && (
-                  <div className="text-[9px] text-text-light/60">{entry.sharePct}%</div>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+              return (
+                <div key={entry.name} className="flex-1 flex flex-col items-center min-w-0">
+                  {/* Above baseline: gain + retained (grows upward) */}
+                  <div className="w-full flex flex-col justify-end" style={{ height: aboveHeight }}>
+                    {gainPct > 0 && (
+                      <div className="w-full bg-viz-safety rounded-t-sm" style={{ height: `${(gainPct / (100 - baselinePct)) * 100}%` }} title={`+${entry.gain}u new`} />
+                    )}
+                    {retainedPct > 0 && (
+                      <div className={`w-full bg-[#64748B] ${gainPct === 0 ? "rounded-t-sm" : ""}`} style={{ height: `${(retainedPct / (100 - baselinePct)) * 100}%` }} title={`${retained}u retained`} />
+                    )}
+                  </div>
+                  {/* Below baseline: loss (grows downward, red) */}
+                  <div className="w-full" style={{ height: belowHeight }}>
+                    {lossPct > 0 && (
+                      <div className="w-full bg-viz-danger rounded-b-sm" style={{ height: `${belowHeight > 0 ? (lossPct / baselinePct) * 100 : 0}%` }} title={`-${entry.loss}u lost`} />
+                    )}
+                  </div>
+                  {/* Label */}
+                  <div className="text-center w-full overflow-hidden mt-1">
+                    <div className="text-[10px] font-bold text-white truncate">{entry.name}</div>
+                    <div className="text-[10px] font-mono text-text-light">{entry.stockAfter}u</div>
+                    {entry.sharePct > 0 && (
+                      <div className="text-[9px] text-text-light/60">{entry.sharePct}%</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Detail table — only for facilitator, not projector */}
       {!isProjector && (
@@ -608,15 +568,18 @@ function ComputeDetailTable({
   roundNumber: number;
 }) {
   const [editing, setEditing] = useState(false);
-  const [overrides, setOverrides] = useState<Record<string, { value: number; reason: string }>>({});
+  const [overrides, setOverrides] = useState<Record<string, { gained: number; lost: number; reason: string }>>({});
   const overrideCompute = useAuthMutation(api.computeMutations.overrideHolderCompute);
 
   const handleSave = async () => {
     try {
       await Promise.all(
-        Object.entries(overrides).map(([roleId, { value, reason }]) =>
-          overrideCompute({ gameId, roundNumber, roleId, computeStock: value, reason: reason || undefined })
-        )
+        Object.entries(overrides).map(([roleId, { gained, lost, reason }]) => {
+          const entry = entries.find((e) => e.roleId === roleId);
+          if (!entry) return Promise.resolve();
+          const computeStock = Math.max(0, entry.stockBefore + gained - lost);
+          return overrideCompute({ gameId, roundNumber, roleId, computeStock, reason: reason || undefined });
+        })
       );
       setOverrides({});
       setEditing(false);
@@ -662,35 +625,64 @@ function ComputeDetailTable({
         </thead>
         <tbody>
           {entries.map((e) => {
-            const displayAfter = overrides[e.roleId]?.value ?? e.override ?? e.stockAfter;
+            const defaultGained = Math.max(0, e.produced) + Math.max(0, e.transferred) + Math.max(0, e.adjustment);
+            const defaultLost = Math.max(0, -e.produced) + Math.max(0, -e.transferred) + Math.max(0, -e.adjustment);
+            const override = overrides[e.roleId];
             const isOverridden = e.roleId in overrides;
-            const gained = Math.max(0, e.produced) + Math.max(0, e.transferred);
-            const lost = Math.max(0, -e.produced) + Math.max(0, -e.transferred) + Math.max(0, -e.adjustment);
+            const gained = override?.gained ?? defaultGained;
+            const lost = override?.lost ?? defaultLost;
+            const displayAfter = isOverridden
+              ? Math.max(0, e.stockBefore + gained - lost)
+              : e.override ?? e.stockAfter;
 
             return (
               <tr key={e.roleId} className="border-t border-navy-light/30">
                 <td className="py-1 text-white font-medium truncate max-w-[120px]">{e.name}</td>
                 <td className="py-1 text-right font-mono text-text-light">{e.stockBefore}</td>
-                <td className="py-1 text-right font-mono text-viz-safety">{gained > 0 ? `+${gained}` : "—"}</td>
-                <td className="py-1 text-right font-mono text-viz-danger">{lost > 0 ? `−${lost}` : "—"}</td>
                 <td className="py-1 text-right font-mono">
                   {editing ? (
                     <input
                       type="number"
-                      value={displayAfter}
+                      value={gained}
                       onChange={(ev) => {
-                        const val = parseInt(ev.target.value) || 0;
-                        setOverrides((prev) => ({ ...prev, [e.roleId]: { value: Math.max(0, val), reason: prev[e.roleId]?.reason ?? "" } }));
+                        const val = Math.max(0, parseInt(ev.target.value) || 0);
+                        setOverrides((prev) => ({
+                          ...prev,
+                          [e.roleId]: { gained: val, lost: prev[e.roleId]?.lost ?? defaultLost, reason: prev[e.roleId]?.reason ?? "" },
+                        }));
                       }}
-                      className={`w-14 bg-navy-dark border rounded px-1 py-0.5 text-right font-mono text-white outline-none ${
+                      className={`w-14 bg-navy-dark border rounded px-1 py-0.5 text-right font-mono text-viz-safety outline-none ${
                         isOverridden ? "border-[#FCD34D]" : "border-navy-light"
                       } focus:border-text-light`}
                     />
                   ) : (
-                    <span className={e.override != null ? "text-[#FCD34D]" : "text-white"}>
-                      {displayAfter}
-                    </span>
+                    <span className="text-viz-safety">{gained > 0 ? `+${gained}` : "—"}</span>
                   )}
+                </td>
+                <td className="py-1 text-right font-mono">
+                  {editing ? (
+                    <input
+                      type="number"
+                      value={lost}
+                      onChange={(ev) => {
+                        const val = Math.max(0, parseInt(ev.target.value) || 0);
+                        setOverrides((prev) => ({
+                          ...prev,
+                          [e.roleId]: { gained: prev[e.roleId]?.gained ?? defaultGained, lost: val, reason: prev[e.roleId]?.reason ?? "" },
+                        }));
+                      }}
+                      className={`w-14 bg-navy-dark border rounded px-1 py-0.5 text-right font-mono text-viz-danger outline-none ${
+                        isOverridden ? "border-[#FCD34D]" : "border-navy-light"
+                      } focus:border-text-light`}
+                    />
+                  ) : (
+                    <span className="text-viz-danger">{lost > 0 ? `−${lost}` : "—"}</span>
+                  )}
+                </td>
+                <td className="py-1 text-right font-mono">
+                  <span className={isOverridden ? "text-[#FCD34D]" : e.override != null ? "text-[#FCD34D]" : "text-white"}>
+                    {displayAfter}
+                  </span>
                 </td>
                 <td className="py-1 text-right font-mono text-text-light/50">{e.sharePct > 0 ? `${e.sharePct}%` : "—"}</td>
               </tr>
@@ -701,7 +693,7 @@ function ComputeDetailTable({
 
       {editing && (
         <div className="mt-2 text-[9px] text-text-light/60">
-          Edit the &quot;After&quot; values. Changes are saved as facilitator overrides.
+          Edit &quot;New&quot; and &quot;Lost&quot; values. &quot;After&quot; is calculated automatically.
         </div>
       )}
     </div>

@@ -40,14 +40,8 @@ export function LobbyPhase({
   const gameJoinUrl = game.joinCode ? `${origin}/game/join/${game.joinCode}` : null;
 
   const enabledTables = tables.filter((t) => t.enabled !== false);
-  // Resolve compute: labs store compute in game.labs, non-labs on table.computeStock
-  const getCompute = (table: (typeof tables)[0]) => {
-    const role = ROLE_MAP.get(table.roleId);
-    if (role && isLabCeo(role)) {
-      return game.labs.find((l) => l.roleId === table.roleId)?.computeStock ?? 0;
-    }
-    return table.computeStock ?? 0;
-  };
+  // table.computeStock is the single source of truth for all roles (including lab CEOs)
+  const getCompute = (table: (typeof tables)[0]) => table.computeStock ?? 0;
   const computeTotal = enabledTables.reduce((sum, t) => sum + getCompute(t), 0);
 
   return (

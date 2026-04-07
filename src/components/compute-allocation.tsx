@@ -2,7 +2,7 @@
 
 import { COMPUTE_CATEGORIES } from "@/lib/game-data";
 import { ComputeDotsViz } from "./lab-tracker";
-import { Minus, Plus } from "lucide-react";
+import { Check, Minus, Plus, Save } from "lucide-react";
 
 interface Allocation {
   users: number;
@@ -15,11 +15,15 @@ export function ComputeAllocation({
   onChange,
   isSubmitted,
   roleName,
+  saved,
+  onSave,
 }: {
   allocation: Allocation;
   onChange: (a: Allocation) => void;
   isSubmitted: boolean;
   roleName: string;
+  saved?: boolean;
+  onSave?: () => void;
 }) {
   const total = Object.values(allocation).reduce((s, v) => s + v, 0);
 
@@ -128,6 +132,25 @@ export function ComputeAllocation({
           </div>
         ))}
       </div>
+
+      {!isSubmitted && onSave && (
+        <button
+          onClick={onSave}
+          disabled={total !== 100}
+          className="mt-4 w-full h-12 rounded-lg border border-navy bg-navy text-white font-bold text-sm
+                     flex items-center justify-center gap-2 active:bg-navy-dark disabled:opacity-40 transition-colors"
+        >
+          {saved ? (
+            <>
+              <Check className="w-4 h-4" /> Saved
+            </>
+          ) : (
+            <>
+              <Save className="w-4 h-4" /> Save Changes
+            </>
+          )}
+        </button>
+      )}
     </div>
   );
 }

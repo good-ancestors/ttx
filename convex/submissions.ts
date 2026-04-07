@@ -39,6 +39,12 @@ async function findExistingSubmission(
 
 // actionStatus is optional here because submit/submitInternal stamp it server-side
 // before writing. Required in the schema — every persisted action has actionStatus.
+const computeTargetValidator = v.object({
+  roleId: v.string(),
+  amount: v.number(),
+  direction: v.optional(v.union(v.literal("send"), v.literal("request"))),
+});
+
 const actionValidator = v.object({
   text: v.string(),
   priority: v.number(),
@@ -49,6 +55,7 @@ const actionValidator = v.object({
   rolled: v.optional(v.number()),
   success: v.optional(v.boolean()),
   aiInfluence: v.optional(v.number()),
+  computeTargets: v.optional(v.array(computeTargetValidator)),
 });
 
 // Validator for actions that already have actionStatus set (e.g. grading pipeline output).
@@ -63,6 +70,7 @@ const persistedActionValidator = v.object({
   rolled: v.optional(v.number()),
   success: v.optional(v.boolean()),
   aiInfluence: v.optional(v.number()),
+  computeTargets: v.optional(v.array(computeTargetValidator)),
 });
 
 // Full query — includes secret text and reasoning. Requires facilitator token.
@@ -204,6 +212,42 @@ export const submit = mutation({
   },
 });
 
+export const saveComputeAllocation = mutation({
+  args: {
+    tableId: v.id("tables"),
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    roleId: v.string(),
+    computeAllocation: v.object({ users: v.number(), capability: v.number(), safety: v.number() }),
+  },
+  handler: async (ctx, args) => {
+    const table = await ctx.db.get(args.tableId);
+    if (!table) throw new Error("Table not found");
+    if (table.gameId !== args.gameId) throw new Error("Table does not belong to this game");
+    if (table.roleId !== args.roleId) throw new Error("Role does not match table assignment");
+
+    const game = await assertPhase(ctx, args.gameId, ["submit", "discuss"], "save compute allocation");
+    assertSubmitWindowOpen(game);
+    validateComputeAllocation(args.computeAllocation);
+
+    const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
+    if (existing) {
+      await ctx.db.patch(existing._id, { computeAllocation: args.computeAllocation });
+    } else {
+      await ctx.db.insert("submissions", {
+        tableId: args.tableId,
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        roleId: args.roleId,
+        actions: [],
+        computeAllocation: args.computeAllocation,
+        status: "draft",
+      });
+    }
+    await logEvent(ctx, args.gameId, "compute_allocation_saved", args.roleId, args.computeAllocation);
+  },
+});
+
 // ─── Per-action mutations (draft-in-Convex model) ────────────────────────────
 
 /** Save a draft action to Convex. Creates submission doc if needed. */
@@ -317,6 +361,70 @@ export const submitAction = mutation({
   },
 });
 
+/** Escrow "send" compute targets — deducts from submitter's table.computeStock.
+ *  table.computeStock is the single source of truth for all roles.
+ *  game.labs[].computeStock is a derived cache, synced at pipeline resolution.
+ *  Only called for "send" direction targets; "request" targets are escrowed
+ *  from the target when they accept (see requests.ts respond mutation). */
+async function escrowCompute(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  senderRoleId: string,
+  targets: { roleId: string; amount: number }[],
+) {
+  if (targets.length === 0) return;
+  const totalAmount = targets.reduce((s, t) => s + t.amount, 0);
+  if (totalAmount <= 0) return;
+
+  const senderTable = await ctx.db.query("tables")
+    .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", senderRoleId))
+    .first();
+  if (!senderTable) throw new Error("Sender table not found");
+  const available = senderTable.computeStock ?? 0;
+  if (available < totalAmount) {
+    throw new Error(`Insufficient compute: have ${available}u, need ${totalAmount}u`);
+  }
+
+  await ctx.db.patch(senderTable._id, { computeStock: available - totalAmount });
+}
+
+/** Refund escrowed compute back to sender's table.computeStock. */
+async function refundEscrow(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  senderRoleId: string,
+  targets: { roleId: string; amount: number }[],
+) {
+  if (targets.length === 0) return;
+  const totalAmount = targets.reduce((s, t) => s + t.amount, 0);
+  if (totalAmount <= 0) return;
+
+  const senderTable = await ctx.db.query("tables")
+    .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", senderRoleId))
+    .first();
+  if (senderTable) {
+    await ctx.db.patch(senderTable._id, { computeStock: (senderTable.computeStock ?? 0) + totalAmount });
+  }
+}
+
+/** Credit compute to recipients' table.computeStock — used when escrowed action succeeds. */
+async function creditComputeRecipients(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  targets: { roleId: string; amount: number }[],
+) {
+  for (const target of targets) {
+    const recipientTable = await ctx.db.query("tables")
+      .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", target.roleId))
+      .first();
+    if (recipientTable) {
+      await ctx.db.patch(recipientTable._id, {
+        computeStock: (recipientTable.computeStock ?? 0) + target.amount,
+      });
+    }
+  }
+}
+
 /** Save a draft and immediately submit it in a single mutation (avoids two round-trips). */
 export const saveAndSubmit = mutation({
   args: {
@@ -327,6 +435,7 @@ export const saveAndSubmit = mutation({
     text: v.string(),
     priority: v.number(),
     secret: v.optional(v.boolean()),
+    computeTargets: v.optional(v.array(computeTargetValidator)),
   },
   handler: async (ctx, args) => {
     // Validate table ownership: the table must belong to the claimed role
@@ -343,6 +452,25 @@ export const saveAndSubmit = mutation({
     assertSubmitWindowOpen(game);
     if (!args.text.trim()) throw new Error("Action text cannot be empty");
 
+    const targets = (args.computeTargets ?? []).map((t) => ({
+      ...t,
+      direction: t.direction ?? ("send" as const),
+    }));
+
+    // Validate compute targets
+    for (const t of targets) {
+      if (t.amount <= 0) throw new Error("Compute amount must be positive");
+      if (t.roleId === args.roleId) throw new Error("Cannot transfer compute to yourself");
+    }
+
+    // Escrow "send" targets — deduct from submitter's balance immediately.
+    // "request" targets are NOT escrowed here; they create request docs for the
+    // target to accept/decline. Escrow happens when the target accepts.
+    const sendTargets = targets.filter((t) => t.direction === "send");
+    if (sendTargets.length > 0) {
+      await escrowCompute(ctx, args.gameId, args.roleId, sendTargets);
+    }
+
     const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
 
     // Priority is assigned by rank order — 1st submitted gets highest priority.
@@ -358,6 +486,7 @@ export const saveAndSubmit = mutation({
       priority: rank,
       secret: args.secret,
       actionStatus: "submitted" as const,
+      computeTargets: targets.length > 0 ? targets : undefined,
     };
 
     if (existing) {
@@ -374,6 +503,7 @@ export const saveAndSubmit = mutation({
           priority: rank,
           secret: args.secret,
           actionStatus: "submitted" as const,
+          computeTargets: targets.length > 0 ? targets : undefined,
         };
         await ctx.db.patch(existing._id, { actions, status: "submitted" });
         await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
@@ -424,6 +554,37 @@ export const editSubmitted = mutation({
     if (!action) return;
     if (action.rolled != null) throw new Error("Cannot edit rolled actions");
 
+    // Refund escrowed "send" compute back to submitter
+    const sendTargets = (action.computeTargets ?? []).filter((t) => (t.direction ?? "send") === "send");
+    if (sendTargets.length > 0) {
+      await refundEscrow(ctx, sub.gameId, sub.roleId, sendTargets);
+    }
+
+    // Refund escrowed "request" compute back to targets who accepted, and clean up request docs
+    const requestTargets = (action.computeTargets ?? []).filter((t) => t.direction === "request");
+    if (requestTargets.length > 0 && action.actionId) {
+      const requests = await ctx.db.query("requests")
+        .withIndex("by_from_role", (q) =>
+          q.eq("gameId", sub.gameId).eq("roundNumber", sub.roundNumber).eq("fromRoleId", sub.roleId))
+        .collect();
+      for (const target of requestTargets) {
+        const match = requests.find((r) =>
+          r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId
+        );
+        if (match?.status === "accepted" && match.computeAmount) {
+          const targetTable = await ctx.db.query("tables")
+            .withIndex("by_game_and_role", (q) => q.eq("gameId", sub.gameId).eq("roleId", target.roleId))
+            .first();
+          if (targetTable) {
+            await ctx.db.patch(targetTable._id, {
+              computeStock: (targetTable.computeStock ?? 0) + match.computeAmount,
+            });
+          }
+        }
+        if (match) await ctx.db.delete(match._id);
+      }
+    }
+
     const actions = [...sub.actions];
     actions[args.actionIndex] = {
       actionId: action.actionId ?? generateActionId(),
@@ -453,6 +614,12 @@ export const deleteAction = mutation({
     if (!action) return;
     if (action.rolled != null) throw new Error("Cannot delete rolled actions");
 
+    // Refund escrowed "send" compute (request targets are escrowed from the target, not submitter)
+    const sendTargets = (action.computeTargets ?? []).filter((t) => (t.direction ?? "send") === "send");
+    if (sendTargets.length > 0) {
+      await refundEscrow(ctx, sub.gameId, sub.roleId, sendTargets);
+    }
+
     const actions = sub.actions.filter((_, i) => i !== args.actionIndex);
     if (actions.length === 0) {
       await ctx.db.delete(args.submissionId);
@@ -460,7 +627,7 @@ export const deleteAction = mutation({
       await ctx.db.patch(args.submissionId, { actions });
     }
 
-    // Cancel endorsement requests for this action
+    // Clean up requests for this action: refund accepted compute requests, then delete all
     const requests = await ctx.db
       .query("requests")
       .withIndex("by_game_and_round", (q) =>
@@ -471,6 +638,17 @@ export const deleteAction = mutation({
       if (req.fromRoleId === sub.roleId && (
         action.actionId ? req.actionId === action.actionId : req.actionText === action.text
       )) {
+        // Refund accepted compute requests to the target who escrowed
+        if (req.status === "accepted" && req.requestType === "compute" && req.computeAmount) {
+          const targetTable = await ctx.db.query("tables")
+            .withIndex("by_game_and_role", (q) => q.eq("gameId", sub.gameId).eq("roleId", req.toRoleId))
+            .first();
+          if (targetTable) {
+            await ctx.db.patch(targetTable._id, {
+              computeStock: (targetTable.computeStock ?? 0) + req.computeAmount,
+            });
+          }
+        }
         await ctx.db.delete(req._id);
       }
     }
@@ -742,6 +920,71 @@ export const getAllForRound = internalQuery({
   },
 });
 
+/** Settle a single "request" compute target after action roll.
+ *  On success: credit requester. On failure: refund target if escrowed. */
+async function settleRequestTarget(
+  ctx: MutationCtx,
+  opts: {
+    gameId: Id<"games">;
+    roundNumber: number;
+    submitterRoleId: string;
+    actionId: string | undefined;
+    target: { roleId: string; amount: number };
+    success: boolean;
+  },
+) {
+  const { gameId, roundNumber, submitterRoleId, actionId, target, success } = opts;
+
+  // Batch: fetch request doc + both tables upfront
+  const [requests, submitterTable, targetTable] = await Promise.all([
+    ctx.db.query("requests")
+      .withIndex("by_from_role", (q) =>
+        q.eq("gameId", gameId).eq("roundNumber", roundNumber).eq("fromRoleId", submitterRoleId))
+      .collect(),
+    ctx.db.query("tables")
+      .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", submitterRoleId))
+      .first(),
+    ctx.db.query("tables")
+      .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", target.roleId))
+      .first(),
+  ]);
+  const match = requests.find((r) =>
+    r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === actionId
+  );
+
+  if (success) {
+    if (match?.status === "accepted") {
+      // Escrowed from target — credit the requester (submitter)
+      if (submitterTable) {
+        await ctx.db.patch(submitterTable._id, {
+          computeStock: (submitterTable.computeStock ?? 0) + target.amount,
+        });
+      }
+    } else if (match) {
+      // Not accepted — take from target, clamped to available balance.
+      // If no request doc (cancelled), skip — escrow was already refunded.
+      if (!targetTable) return;
+      const available = targetTable.computeStock ?? 0;
+      const clamped = Math.min(target.amount, available);
+      if (clamped <= 0) return;
+      await ctx.db.patch(targetTable._id, { computeStock: available - clamped });
+      if (submitterTable) {
+        await ctx.db.patch(submitterTable._id, {
+          computeStock: (submitterTable.computeStock ?? 0) + clamped,
+        });
+      }
+    }
+  } else {
+    // Failure: refund escrowed compute to the target who accepted
+    if (match?.status === "accepted" && targetTable) {
+      await ctx.db.patch(targetTable._id, {
+        computeStock: (targetTable.computeStock ?? 0) + target.amount,
+      });
+    }
+    // If not accepted, nothing was escrowed, nothing to refund
+  }
+}
+
 export const rollAllInternal = internalMutation({
   args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
@@ -764,6 +1007,45 @@ export const rollAllInternal = internalMutation({
       await ctx.db.patch(sub._id, { actions, status: "resolved" });
       const rolled = actions.filter((a) => a.rolled != null);
       await logEvent(ctx, args.gameId, "roll", sub.roleId, { round: args.roundNumber, total: rolled.length, successes: rolled.filter((a) => a.success).length });
+
+      // ── Process compute transfers ──
+      // Only process submitted+rolled actions — drafts were never escrowed.
+      //
+      // SEND targets: escrowed from submitter at submit time.
+      //   Success → credit recipient. Failure → refund submitter.
+      //
+      // REQUEST targets: escrowed from target if they accepted during submit.
+      //   Accepted + Success → credit requester (submitter).
+      //   Accepted + Failure → refund target.
+      //   Not accepted + Success → take from target, clamped to available balance.
+      //   Not accepted + Failure → nothing (no escrow to settle).
+      for (const action of actions) {
+        if (!action.computeTargets || action.computeTargets.length === 0) continue;
+        if (action.rolled == null) continue;
+
+        const sendTargets = action.computeTargets.filter((t) => (t.direction ?? "send") === "send");
+        const requestTargets = action.computeTargets.filter((t) => t.direction === "request");
+
+        const success = !!action.success;
+        if (success && sendTargets.length > 0) {
+          await creditComputeRecipients(ctx, args.gameId, sendTargets);
+        }
+        if (!success && sendTargets.length > 0) {
+          await refundEscrow(ctx, args.gameId, sub.roleId, sendTargets);
+        }
+        for (const target of requestTargets) {
+          await settleRequestTarget(ctx, {
+            gameId: args.gameId, roundNumber: args.roundNumber,
+            submitterRoleId: sub.roleId, actionId: action.actionId, target, success,
+          });
+        }
+        if (sendTargets.length > 0 || requestTargets.length > 0) {
+          await logEvent(ctx, args.gameId, success ? "compute_transfer_success" : "compute_transfer_refund", sub.roleId, {
+            targets: action.computeTargets,
+            actionText: action.text,
+          });
+        }
+      }
     }
   },
 });

@@ -11,6 +11,9 @@ export const worldStateValidator = v.object({
   australia: v.number(),
 });
 
+/** Lab snapshot. computeStock is a DERIVED CACHE — the source of truth is table.computeStock.
+ *  Synced from tables at: game creation, pipeline resolution (post-growth), facilitator overrides.
+ *  May be slightly stale during submit phase (not reflecting in-flight escrow/transfers). */
 export const labSnapshotValidator = v.object({
   name: v.string(),
   roleId: v.string(),
@@ -113,6 +116,11 @@ export default defineSchema({
         rolled: v.optional(v.number()),
         success: v.optional(v.boolean()),
         aiInfluence: v.optional(v.number()),
+        computeTargets: v.optional(v.array(v.object({
+          roleId: v.string(),
+          amount: v.number(),
+          direction: v.optional(v.union(v.literal("send"), v.literal("request"))),
+        }))),
       })
     ),
     computeAllocation: v.optional(

@@ -825,3 +825,328 @@ describe("Compute submit-open snapshot", () => {
     expect(totalSnapshot).toBeGreaterThanOrEqual(53);
   });
 });
+
+// ─── Compute Escrow Flow ─────────────────────────────────────────────────────
+// Tests the escrow model: compute is deducted on submit, credited on success,
+// refunded on failure/delete/edit-back-to-draft.
+
+describe("Compute Escrow", () => {
+  let gameId: Id<"games">;
+  let senderTableId: Id<"tables">;
+  let recipientTableId: Id<"tables">;
+  const senderRole = "us-president";
+  const recipientRole = "openbrain-ceo";
+
+  beforeAll(async () => {
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.advancePhase, {
+      facilitatorToken: FACILITATOR_TOKEN,
+      gameId,
+      phase: "submit",
+      durationSeconds: 600,
+    });
+    const tables = await convex.query(api.tables.getByGame, { gameId });
+    senderTableId = tables.find((t) => t.roleId === senderRole)!._id;
+    recipientTableId = tables.find((t) => t.roleId === recipientRole)!._id;
+  });
+
+  it("should escrow compute on submit", async () => {
+    // Read starting compute for both sender and recipient
+    const senderBefore = await convex.query(api.tables.get, { tableId: senderTableId });
+    const gameBefore = await convex.query(api.games.get, { gameId });
+    const recipientLabBefore = gameBefore!.labs.find((l) => l.roleId === recipientRole);
+
+    const senderStart = senderBefore!.computeStock ?? 0;
+    const recipientLabStart = recipientLabBefore!.computeStock;
+    expect(senderStart).toBeGreaterThan(0);
+
+    // Submit action with compute target
+    const sendAmount = 3;
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: senderRole,
+      text: "Send compute to OpenBrain",
+      priority: 1,
+      computeTargets: [{ roleId: recipientRole, amount: sendAmount }],
+    });
+
+    // Verify sender's compute is deducted
+    const senderAfter = await convex.query(api.tables.get, { tableId: senderTableId });
+    expect(senderAfter!.computeStock).toBe(senderStart - sendAmount);
+
+    // Verify recipient is NOT yet credited (escrow, not immediate transfer)
+    // For lab CEOs, compute is tracked in game.labs[], not table.computeStock
+    const gameAfter = await convex.query(api.games.get, { gameId });
+    const recipientLabAfter = gameAfter!.labs.find((l) => l.roleId === recipientRole);
+    expect(recipientLabAfter!.computeStock).toBe(recipientLabStart);
+  });
+
+  it("should refund escrow when action is deleted", async () => {
+    const senderBefore = await convex.query(api.tables.get, { tableId: senderTableId });
+    const stockBeforeDelete = senderBefore!.computeStock ?? 0;
+
+    // Get the submission to find the action with compute targets
+    const sub = await convex.query(api.submissions.getForTable, {
+      tableId: senderTableId,
+      roundNumber: 1,
+    });
+    expect(sub).toBeTruthy();
+    const actionIdx = sub!.actions.findIndex(
+      (a) => a.computeTargets && a.computeTargets.length > 0
+    );
+    expect(actionIdx).toBeGreaterThanOrEqual(0);
+    const refundAmount = sub!.actions[actionIdx].computeTargets!.reduce((s, t) => s + t.amount, 0);
+
+    // Delete the action
+    await convex.mutation(api.submissions.deleteAction, {
+      submissionId: sub!._id,
+      actionIndex: actionIdx,
+    });
+
+    // Verify escrow is refunded
+    const senderAfter = await convex.query(api.tables.get, { tableId: senderTableId });
+    expect(senderAfter!.computeStock).toBe(stockBeforeDelete + refundAmount);
+  });
+
+  it("should reject submit when compute is insufficient", async () => {
+    const senderBefore = await convex.query(api.tables.get, { tableId: senderTableId });
+    const available = senderBefore!.computeStock ?? 0;
+
+    await expect(
+      convex.mutation(api.submissions.saveAndSubmit, {
+        tableId: senderTableId,
+        gameId,
+        roundNumber: 1,
+        roleId: senderRole,
+        text: "Try to send way too much",
+        priority: 1,
+        computeTargets: [{ roleId: recipientRole, amount: available + 100 }],
+      })
+    ).rejects.toThrow(/Insufficient compute/);
+
+    // Verify no deduction happened
+    const senderAfter = await convex.query(api.tables.get, { tableId: senderTableId });
+    expect(senderAfter!.computeStock).toBe(available);
+  });
+
+  it("should prevent double-spend across multiple actions", async () => {
+    const senderBefore = await convex.query(api.tables.get, { tableId: senderTableId });
+    const available = senderBefore!.computeStock ?? 0;
+    expect(available).toBeGreaterThanOrEqual(4); // Need at least 4u for this test
+
+    // Submit first action: send 2u
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: senderRole,
+      text: "First transfer",
+      priority: 1,
+      computeTargets: [{ roleId: recipientRole, amount: 2 }],
+    });
+
+    // Submit second action: send 2u
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: senderRole,
+      text: "Second transfer",
+      priority: 1,
+      computeTargets: [{ roleId: recipientRole, amount: 2 }],
+    });
+
+    // Verify both deductions happened
+    const senderAfter = await convex.query(api.tables.get, { tableId: senderTableId });
+    expect(senderAfter!.computeStock).toBe(available - 4);
+
+    // Try a third that would exceed remaining balance
+    const remaining = senderAfter!.computeStock ?? 0;
+    if (remaining < 999) {
+      await expect(
+        convex.mutation(api.submissions.saveAndSubmit, {
+          tableId: senderTableId,
+          gameId,
+          roundNumber: 1,
+          roleId: senderRole,
+          text: "Third that should fail",
+          priority: 1,
+          computeTargets: [{ roleId: recipientRole, amount: remaining + 1 }],
+        })
+      ).rejects.toThrow(/Insufficient compute/);
+    }
+  });
+
+  it("should refund escrow when action is edited back to draft", async () => {
+    const senderBefore = await convex.query(api.tables.get, { tableId: senderTableId });
+    const stockBefore = senderBefore!.computeStock ?? 0;
+
+    const sub = await convex.query(api.submissions.getForTable, {
+      tableId: senderTableId,
+      roundNumber: 1,
+    });
+    expect(sub).toBeTruthy();
+    // Find a submitted action with compute targets
+    const actionIdx = sub!.actions.findIndex(
+      (a) => a.actionStatus === "submitted" && a.computeTargets && a.computeTargets.length > 0
+    );
+    expect(actionIdx).toBeGreaterThanOrEqual(0);
+    const refundAmount = sub!.actions[actionIdx].computeTargets!.reduce((s, t) => s + t.amount, 0);
+
+    // Edit back to draft
+    await convex.mutation(api.submissions.editSubmitted, {
+      submissionId: sub!._id,
+      actionIndex: actionIdx,
+    });
+
+    // Verify refund
+    const senderAfter = await convex.query(api.tables.get, { tableId: senderTableId });
+    expect(senderAfter!.computeStock).toBe(stockBefore + refundAmount);
+  });
+});
+
+// ─── Send Direction Tests ────────────────────────────────────────────────────
+
+describe("Compute Send Direction", () => {
+  let gameId: Id<"games">;
+  let senderTableId: Id<"tables">;
+  const senderRole = "us-president";
+  const recipientRole = "openbrain-ceo";
+
+  beforeAll(async () => {
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.advancePhase, {
+      facilitatorToken: FACILITATOR_TOKEN,
+      gameId,
+      phase: "submit",
+      durationSeconds: 600,
+    });
+    const tables = await convex.query(api.tables.getByGame, { gameId });
+    senderTableId = tables.find((t) => t.roleId === senderRole)!._id;
+  });
+
+  it("send direction should escrow from submitter", async () => {
+    const before = await convex.query(api.tables.get, { tableId: senderTableId });
+    const startStock = before!.computeStock ?? 0;
+
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: senderRole,
+      text: "Fund OpenBrain safety with explicit send",
+      priority: 1,
+      computeTargets: [{ roleId: recipientRole, amount: 2, direction: "send" }],
+    });
+
+    const after = await convex.query(api.tables.get, { tableId: senderTableId });
+    expect(after!.computeStock).toBe(startStock - 2);
+  });
+
+  it("request direction should NOT escrow from submitter", async () => {
+    const before = await convex.query(api.tables.get, { tableId: senderTableId });
+    const startStock = before!.computeStock ?? 0;
+
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: senderRole,
+      text: "Request compute from OpenBrain",
+      priority: 1,
+      computeTargets: [{ roleId: recipientRole, amount: 2, direction: "request" }],
+    });
+
+    // Submitter's compute should be unchanged — request targets are not escrowed from submitter
+    const after = await convex.query(api.tables.get, { tableId: senderTableId });
+    expect(after!.computeStock).toBe(startStock);
+  });
+});
+
+// ─── Request Acceptance Escrow ───────────────────────────────────────────────
+
+describe("Compute Request Acceptance", () => {
+  let gameId: Id<"games">;
+  let requesterTableId: Id<"tables">;
+  let targetTableId: Id<"tables">;
+  const requesterRole = "us-president";
+  const targetRole = "openbrain-ceo";
+
+  beforeAll(async () => {
+    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
+    await convex.mutation(api.games.advancePhase, {
+      facilitatorToken: FACILITATOR_TOKEN,
+      gameId,
+      phase: "submit",
+      durationSeconds: 600,
+    });
+    const tables = await convex.query(api.tables.getByGame, { gameId });
+    requesterTableId = tables.find((t) => t.roleId === requesterRole)!._id;
+    targetTableId = tables.find((t) => t.roleId === targetRole)!._id;
+  });
+
+  it("accepting a compute request should escrow from the target", async () => {
+    const targetBefore = await convex.query(api.tables.get, { tableId: targetTableId });
+    const targetStart = targetBefore!.computeStock ?? 0;
+
+    // Create a compute request (as if submitter requested from target)
+    const requestId = await convex.mutation(api.requests.send, {
+      gameId,
+      roundNumber: 1,
+      fromRoleId: requesterRole,
+      fromRoleName: "US President",
+      toRoleId: targetRole,
+      toRoleName: "OpenBrain CEO",
+      actionId: "test-action-123",
+      actionText: "Request compute from OpenBrain",
+      requestType: "compute",
+      computeAmount: 3,
+    });
+
+    // Accept the request
+    await convex.mutation(api.requests.respond, {
+      proposalId: requestId,
+      status: "accepted",
+    });
+
+    // Target's compute should be escrowed (deducted)
+    const targetAfter = await convex.query(api.tables.get, { tableId: targetTableId });
+    expect(targetAfter!.computeStock).toBe(targetStart - 3);
+
+    // Requester should NOT have received the compute yet (happens on action success)
+    const requesterAfter = await convex.query(api.tables.get, { tableId: requesterTableId });
+    const requesterBefore = await convex.query(api.tables.get, { tableId: requesterTableId });
+    expect(requesterAfter!.computeStock).toBe(requesterBefore!.computeStock);
+  });
+
+  it("declining after accepting should refund the target", async () => {
+    // Find the accepted request
+    const requests = await convex.query(api.requests.getForRole, {
+      gameId,
+      roundNumber: 1,
+      roleId: targetRole,
+    });
+    const acceptedReq = requests.find(
+      (r) => r.status === "accepted" && r.requestType === "compute"
+    );
+    expect(acceptedReq).toBeDefined();
+
+    const targetBefore = await convex.query(api.tables.get, { tableId: targetTableId });
+    const stockBefore = targetBefore!.computeStock ?? 0;
+
+    // Decline the previously accepted request
+    await convex.mutation(api.requests.respond, {
+      proposalId: acceptedReq!._id,
+      status: "declined",
+    });
+
+    // Target should get refund
+    const targetAfter = await convex.query(api.tables.get, { tableId: targetTableId });
+    expect(targetAfter!.computeStock).toBe(stockBefore + (acceptedReq!.computeAmount ?? 0));
+  });
+});

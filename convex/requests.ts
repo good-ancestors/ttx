@@ -5,8 +5,9 @@ import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { logEvent, assertPhase, assertSubmitWindowOpen } from "./events";
 
-/** Transfer compute between two roles. Updates both table.computeStock AND game.labs[].computeStock
- *  when a party is a lab CEO (so loaned compute feeds into R&D growth). */
+/** Transfer compute between two roles via table.computeStock (single source of truth).
+ *  Used for direct transfers only (not escrow). game.labs[].computeStock is a derived
+ *  cache synced at pipeline resolution time. */
 async function transferCompute(
   db: DatabaseWriter,
   gameId: Id<"games">,
@@ -27,25 +28,6 @@ async function transferCompute(
     await db.patch(requesterTable._id, {
       computeStock: Math.max(0, (requesterTable.computeStock ?? 0) + amount),
     });
-  }
-
-  // Also update game.labs[].computeStock when a party is a lab CEO.
-  // This ensures loaned compute feeds into the R&D growth formula.
-  const game = await db.get(gameId);
-  if (!game) return;
-  let labsChanged = false;
-  const updatedLabs = game.labs.map((lab) => {
-    let delta = 0;
-    if (lab.roleId === requesterRoleId) delta += amount;
-    if (lab.roleId === giverRoleId) delta -= amount;
-    if (delta !== 0) {
-      labsChanged = true;
-      return { ...lab, computeStock: Math.max(0, lab.computeStock + delta) };
-    }
-    return lab;
-  });
-  if (labsChanged) {
-    await db.patch(gameId, { labs: updatedLabs });
   }
 }
 
@@ -231,14 +213,20 @@ export const cancel = mutation({
 
     await assertPhase(ctx, request.gameId, ["submit"], "cancel requests");
 
-    // If compute was already transferred (accepted compute request), reverse it
+    // If compute was escrowed (accepted compute request), refund to the target
     if (
       request.status === "accepted" &&
       request.requestType === "compute" &&
       request.computeAmount
     ) {
-      // Reverse the transfer: swap giver and requester, positive amount
-      await transferCompute(ctx.db, request.gameId, request.fromRoleId, request.toRoleId, request.computeAmount);
+      const targetTable = await ctx.db.query("tables")
+        .withIndex("by_game_and_role", (q) => q.eq("gameId", request.gameId).eq("roleId", request.toRoleId))
+        .first();
+      if (targetTable) {
+        await ctx.db.patch(targetTable._id, {
+          computeStock: (targetTable.computeStock ?? 0) + request.computeAmount,
+        });
+      }
     }
 
     await ctx.db.delete(args.requestId);
@@ -277,24 +265,30 @@ export const respond = mutation({
       return;
     }
 
-    // For compute requests: handle transfer/reversal
+    // For compute requests: escrow from target on accept, refund on decline.
+    // The actual transfer to the requester happens in rollAllInternal on action success.
     if (
       proposal.requestType === "compute" &&
       proposal.computeAmount
     ) {
-      // If was accepted and now declining — reverse the transfer
+      // If was accepted and now declining — refund the escrowed compute to the target
       if (oldStatus === "accepted" && args.status === "declined") {
-        // Reverse the transfer: swap giver and requester, positive amount
-        await transferCompute(ctx.db, proposal.gameId, proposal.fromRoleId, proposal.toRoleId, proposal.computeAmount);
-      }
-
-      // If accepting (from pending or declined) — do the transfer
-      if (args.status === "accepted" && oldStatus !== "accepted") {
-        // Check giver has enough compute
-        const giverTable = await ctx.db.query("tables")
+        const targetTable = await ctx.db.query("tables")
           .withIndex("by_game_and_role", (q) => q.eq("gameId", proposal.gameId).eq("roleId", proposal.toRoleId))
           .first();
-        const available = giverTable?.computeStock ?? 0;
+        if (targetTable) {
+          await ctx.db.patch(targetTable._id, {
+            computeStock: (targetTable.computeStock ?? 0) + proposal.computeAmount,
+          });
+        }
+      }
+
+      // If accepting (from pending or declined) — escrow from target (deduct, don't credit requester yet)
+      if (args.status === "accepted" && oldStatus !== "accepted") {
+        const targetTable = await ctx.db.query("tables")
+          .withIndex("by_game_and_role", (q) => q.eq("gameId", proposal.gameId).eq("roleId", proposal.toRoleId))
+          .first();
+        const available = targetTable?.computeStock ?? 0;
         if (available < proposal.computeAmount) {
           await ctx.db.patch(args.proposalId, { status: "declined" });
           await logEvent(ctx, proposal.gameId, "request_declined_insufficient", proposal.toRoleId, {
@@ -304,7 +298,9 @@ export const respond = mutation({
           });
           return;
         }
-        await transferCompute(ctx.db, proposal.gameId, proposal.toRoleId, proposal.fromRoleId, proposal.computeAmount);
+        await ctx.db.patch(targetTable!._id, {
+          computeStock: available - proposal.computeAmount,
+        });
       }
     }
 
@@ -372,6 +368,19 @@ async function triggerAutoResponse(
 
   if (targetTable.controlMode === "npc") {
     const accept = Math.random() < NPC_ACCEPT_RATE;
+    if (accept) {
+      // Escrow compute from target on acceptance (transfer happens on action success in rollAllInternal)
+      const request = await ctx.db.get(requestId);
+      if (request?.requestType === "compute" && request.computeAmount) {
+        const available = targetTable.computeStock ?? 0;
+        if (available >= request.computeAmount) {
+          await ctx.db.patch(targetTable._id, { computeStock: available - request.computeAmount });
+        } else {
+          await ctx.db.patch(requestId, { status: "declined" });
+          return;
+        }
+      }
+    }
     await ctx.db.patch(requestId, { status: accept ? "accepted" : "declined" });
   } else {
     // AI: schedule LLM response immediately (runs in action context)
@@ -424,6 +433,20 @@ export const respondInternal = internalMutation({
   handler: async (ctx, args) => {
     const proposal = await ctx.db.get(args.proposalId);
     if (!proposal || proposal.status !== "pending") return;
+
+    // Escrow compute from target on acceptance (transfer happens on action success in rollAllInternal)
+    if (args.status === "accepted" && proposal.requestType === "compute" && proposal.computeAmount) {
+      const targetTable = await ctx.db.query("tables")
+        .withIndex("by_game_and_role", (q) => q.eq("gameId", proposal.gameId).eq("roleId", proposal.toRoleId))
+        .first();
+      const available = targetTable?.computeStock ?? 0;
+      if (available < proposal.computeAmount) {
+        await ctx.db.patch(args.proposalId, { status: "declined" });
+        return;
+      }
+      await ctx.db.patch(targetTable!._id, { computeStock: available - proposal.computeAmount });
+    }
+
     await ctx.db.patch(args.proposalId, { status: args.status });
   },
 });

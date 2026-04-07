@@ -82,12 +82,12 @@ export default function SplashPage() {
   }
 
   // Default: player join screen
-  return <PlayerJoinScreen onFacilitator={() => setMode("facilitator")} authenticated={authenticated} />;
+  return <PlayerJoinScreen onFacilitator={() => setMode("facilitator")} />;
 }
 
 // ─── Player join screen (default, no Convex queries) ────────────────────────
 
-function PlayerJoinScreen({ onFacilitator, authenticated }: { onFacilitator: () => void; authenticated: boolean }) {
+function PlayerJoinScreen({ onFacilitator }: { onFacilitator: () => void }) {
   const router = useRouter();
   const [joinCode, setJoinCode] = useState("");
   const [joinError, setJoinError] = useState("");
@@ -141,7 +141,7 @@ function PlayerJoinScreen({ onFacilitator, authenticated }: { onFacilitator: () 
           onClick={onFacilitator}
           className="text-sm text-text-light hover:text-white transition-colors"
         >
-          {authenticated ? "Go to facilitator dashboard →" : "I'm the facilitator →"}
+          I&apos;m the facilitator &rarr;
         </button>
       </div>
     </div>

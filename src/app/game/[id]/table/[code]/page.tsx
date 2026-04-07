@@ -6,7 +6,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, getOrCreateId } from "@/lib/hooks";
-import { normaliseActions, emptyAction, type ActionDraft } from "@/components/action-input";
+import { normaliseActions, emptyAction, type ActionDraft, type ComputeTarget } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { loadRoleHandouts, type HandoutData } from "@/lib/role-handouts";
 import { ConnectionIndicator } from "@/components/connection-indicator";
@@ -104,6 +104,7 @@ export default function TablePlayerPage({
   const setConnected = useMutation(api.tables.setConnected);
   const leaveRole = useMutation(api.tables.leaveRole);
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
+  const saveComputeAllocationMut = useMutation(api.submissions.saveComputeAllocation);
   // Lightweight query — only enabled tables' roleId/roleName (for endorsement targets)
   const allTables = useQuery(api.tables.getEnabledRoleNames, isVisible ? { gameId } : "skip");
   // Compute overview — only subscribes to tables (not games doc)
@@ -175,13 +176,11 @@ export default function TablePlayerPage({
         return r && hasCompute(r);
       })
       .map((t) => {
-        // Lab compute from game.labs; non-lab from computeOverview (different data sources)
-        const stock = game?.labs.find((l) => l.roleId === t.roleId)?.computeStock
-          ?? computeOverview?.roles.find((o) => o.roleId === t.roleId)?.computeStock
-          ?? 0;
+        // table.computeStock is the single source of truth for all roles (including lab CEOs)
+        const stock = computeOverview?.roles.find((o) => o.roleId === t.roleId)?.computeStock ?? 0;
         return { id: t.roleId, name: t.roleName, computeStock: stock };
       }),
-    [allTables, table?.roleId, game?.labs, computeOverview]
+    [allTables, table?.roleId, computeOverview]
   );
   const isSubmitted = submission?.status !== undefined && submission.status !== "draft";
   const phase = game?.phase ?? "discuss";
@@ -422,6 +421,24 @@ export default function TablePlayerPage({
     }
   }, [labSpec, role, game, gameId, updateLabSpecMut]);
 
+  const [allocationSaved, setAllocationSaved] = useState(false);
+  const handleSaveAllocation = useCallback(async () => {
+    if (!role || !game) return;
+    try {
+      await saveComputeAllocationMut({
+        tableId,
+        gameId,
+        roundNumber: game.currentRound,
+        roleId: role.id,
+        computeAllocation,
+      });
+      setAllocationSaved(true);
+      setTimeout(() => setAllocationSaved(false), 2000);
+    } catch (err) {
+      console.error("Failed to save allocation:", err);
+    }
+  }, [role, game, tableId, gameId, computeAllocation, saveComputeAllocationMut]);
+
   // ─── Per-action handlers ────────────────────────────────────────────────────
 
   const handleSubmitAction = useCallback(async (draftIndex: number) => {
@@ -430,6 +447,7 @@ export default function TablePlayerPage({
     setSubmitError("");
     try {
       // Save + submit in a single mutation — returns the stable actionId
+      // Compute targets are escrowed server-side and transferred on action success
       const result = await saveAndSubmitMut({
         tableId,
         gameId,
@@ -438,6 +456,7 @@ export default function TablePlayerPage({
         text: draft.text.trim(),
         priority: 1,
         secret: draft.secret || undefined,
+        computeTargets: draft.computeTargets.length > 0 ? draft.computeTargets : undefined,
       });
       const { actionId } = result;
       // Remove from local drafts
@@ -462,8 +481,9 @@ export default function TablePlayerPage({
           });
         }
       }
-      // Send compute requests with stable actionId
-      for (const target of draft.computeTargets) {
+      // Send compute requests for "request" direction targets
+      // ("send" targets are escrowed server-side in saveAndSubmit, no request needed)
+      for (const target of draft.computeTargets.filter((t) => t.direction === "request")) {
         const targetRole = (allTables ?? []).find((t) => t.roleId === target.roleId);
         if (targetRole) {
           void sendRequest({
@@ -512,6 +532,20 @@ export default function TablePlayerPage({
       const actualIndex = nthSubmittedIndex(submission.actions, submittedIndex);
       if (actualIndex === -1) return;
       const action = submission.actions[actualIndex];
+
+      // Warn if editing will cancel accepted compute requests
+      const existingRequests = sentRequestsByAction?.get(action.actionId ?? action.text) ?? [];
+      const hasAcceptedCompute = existingRequests.some(
+        (r) => r.requestType === "compute" && r.status === "accepted"
+      );
+      const hasComputeTargets = action.computeTargets && action.computeTargets.length > 0;
+      if (hasAcceptedCompute || hasComputeTargets) {
+        const confirmed = window.confirm(
+          "Editing this action will cancel any accepted compute requests and refund escrowed compute. Continue?"
+        );
+        if (!confirmed) return;
+      }
+
       await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex });
 
       // Restore endorsement/compute targets from existing requests
@@ -524,13 +558,12 @@ export default function TablePlayerPage({
           return t?.roleId;
         })
         .filter((id): id is string => !!id);
-      const computeTargets = actionRequests
-        .filter((r) => r.requestType === "compute")
-        .map((r) => {
-          const t = (allTables ?? []).find((t) => t.roleName === r.toRoleName);
-          return t ? { roleId: t.roleId, amount: r.computeAmount ?? 1 } : null;
-        })
-        .filter((t): t is { roleId: string; amount: number } => !!t);
+      const computeTargets: ComputeTarget[] = [];
+      for (const r of actionRequests) {
+        if (r.requestType !== "compute") continue;
+        const t = (allTables ?? []).find((t) => t.roleName === r.toRoleName);
+        if (t) computeTargets.push({ roleId: t.roleId, amount: r.computeAmount ?? 1, direction: "request" });
+      }
 
       setActionDrafts((prev) => [
         ...prev.filter((a) => a.text.trim()),
@@ -615,9 +648,9 @@ export default function TablePlayerPage({
               <span className="text-[15px] font-bold text-text">{role.name}</span>
             </div>
             <div className="flex items-center gap-3 overflow-hidden">
-              {hasCompute(role) && (currentLab?.computeStock ?? table.computeStock) != null && (
+              {hasCompute(role) && table.computeStock != null && (
                 <span className="text-xs font-mono text-text-muted flex items-center gap-1">
-                  <Zap className="w-3.5 h-3.5" aria-hidden="true" /> {currentLab?.computeStock ?? table.computeStock ?? 0}u
+                  <Zap className="w-3.5 h-3.5" aria-hidden="true" /> {table.computeStock ?? 0}u
                 </span>
               )}
               {game.phaseEndsAt && !isExpired && (
@@ -698,7 +731,7 @@ export default function TablePlayerPage({
               game,
               submittedActions: submission?.actions ?? [],
               isExpired,
-              computeStock: currentLab?.computeStock ?? table.computeStock ?? undefined,
+              computeStock: table.computeStock ?? undefined,
               computeRecipients,
               actionDrafts,
               onActionDraftsChange: setActionDrafts,
@@ -724,6 +757,8 @@ export default function TablePlayerPage({
               onSaveSpec: handleSaveSpec,
               computeAllocation,
               onComputeAllocationChange: setComputeAllocation,
+              allocationSaved,
+              onSaveAllocation: handleSaveAllocation,
             }}
             resolve={{
               round: round ?? undefined,

@@ -70,6 +70,8 @@ interface LabProps {
   onSaveSpec: () => Promise<void> | void;
   computeAllocation: { users: number; capability: number; safety: number };
   onComputeAllocationChange: (alloc: { users: number; capability: number; safety: number }) => void;
+  allocationSaved: boolean;
+  onSaveAllocation: () => Promise<void> | void;
 }
 
 interface ResolveProps {
@@ -206,8 +208,6 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
       {common.activeTab === "actions" && (
         <TableSubmit
           game={submit.game}
-          gameId={common.gameId}
-          tableId={common.tableId}
           role={common.role}
           submittedActions={submit.submittedActions}
           isExpired={submit.isExpired}
@@ -265,6 +265,8 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
                   onChange={lab.onComputeAllocationChange}
                   isSubmitted={false}
                   roleName={common.role.name}
+                  saved={lab.allocationSaved}
+                  onSave={lab.onSaveAllocation}
                 />
               </>
             )}

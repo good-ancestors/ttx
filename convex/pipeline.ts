@@ -624,8 +624,16 @@ export const rollAndNarrate = internalAction({
       ]);
 
       // Apply lab operations from the LLM
+      // Sync lab compute from tables (table.computeStock is the source of truth,
+      // reflecting any transfers/escrow that happened during submit phase)
+      const tableComputeByRole = new Map(
+        tables.filter((t) => t.computeStock != null).map((t) => [t.roleId, t.computeStock!])
+      );
       const maxMult = LAB_PROGRESSION.maxMultiplier(roundNumber);
-      let updatedLabs = [...game.labs];
+      let updatedLabs = game.labs.map((lab) => ({
+        ...lab,
+        computeStock: tableComputeByRole.get(lab.roleId) ?? lab.computeStock,
+      }));
       const computeModifiers: { labName: string; change: number; reason: string }[] = [];
       const multiplierOverrides: { labName: string; newMultiplier: number }[] = [];
 
@@ -721,9 +729,8 @@ export const rollAndNarrate = internalAction({
 
       // Build role compute from all compute-holding tables + labs
       const labByRoleId = new Map(updatedLabs.map((l) => [l.roleId, l]));
-      const preGrowthLabByRoleId = new Map(game.labs.map((l) => [l.roleId, l]));
       const roleCompute = tables
-        .filter((t) => t.computeStock != null || labByRoleId.has(t.roleId))
+        .filter((t) => t.computeStock != null)
         .map((t) => {
           const lab = labByRoleId.get(t.roleId);
           return {
@@ -734,10 +741,10 @@ export const rollAndNarrate = internalAction({
         });
 
       // Build lab holder records for audit (labs already have final compute from computeLabGrowth)
+      // Pre-growth compute comes from table.computeStock (the source of truth, reflecting transfers)
       const labHolderRecords = updatedLabs.map((lab) => {
-        const preGrowth = preGrowthLabByRoleId.get(lab.roleId);
-        const submitOpenStock = submitOpenByRole.get(lab.roleId) ?? preGrowth?.computeStock ?? lab.computeStock;
-        const resolveStock = preGrowth?.computeStock ?? lab.computeStock;
+        const submitOpenStock = submitOpenByRole.get(lab.roleId) ?? tableComputeByRole.get(lab.roleId) ?? lab.computeStock;
+        const resolveStock = tableComputeByRole.get(lab.roleId) ?? lab.computeStock;
         const transferred = resolveStock - submitOpenStock;
         const adj = computeModifiers.find((m) => m.labName === lab.name);
         const produced = lab.computeStock - resolveStock - (adj?.change ?? 0);

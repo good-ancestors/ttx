@@ -8,6 +8,22 @@ import { internal } from "./_generated/api";
 
 const LOCK_TTL_MS = 3 * 60 * 1000; // 3 minutes
 
+/** Sync lab compute from game.labs[] to table.computeStock.
+ *  game.labs[].computeStock is a derived cache; table.computeStock is the source of truth.
+ *  This syncs game.labs → tables after pipeline growth or facilitator overrides. */
+async function syncLabComputeToTables(ctx: MutationCtx, gameId: Id<"games">, labs: { roleId: string; computeStock: number }[]) {
+  const tables = await ctx.db.query("tables")
+    .withIndex("by_game", (q) => q.eq("gameId", gameId))
+    .collect();
+  const tableByRole = new Map(tables.map((t) => [t.roleId, t]));
+  for (const lab of labs) {
+    const table = tableByRole.get(lab.roleId);
+    if (table && table.computeStock !== lab.computeStock) {
+      await ctx.db.patch(table._id, { computeStock: lab.computeStock });
+    }
+  }
+}
+
 function assertNotResolving(game: { resolving?: boolean; resolvingStartedAt?: number }) {
   if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
     throw new Error("Resolution already in progress");
@@ -87,9 +103,12 @@ export const create = mutation({
 
     // Calculate pool allocations once for all roles
     const poolAllocations = calculatePoolAllocations(enabledRoleIds);
+    // Lab CEO compute — table.computeStock is the single source of truth for ALL roles
+    const labComputeByRole = new Map(DEFAULT_LABS.map((l) => [l.roleId, l.computeStock]));
 
     // Second pass: create tables with pool-aware starting compute
     for (const role of ROLES) {
+      const labStock = labComputeByRole.get(role.id);
       const poolStock = poolAllocations.get(role.id);
       await ctx.db.insert("tables", {
         gameId,
@@ -99,7 +118,7 @@ export const create = mutation({
         connected: false,
         controlMode: "npc",
         enabled: enabledRoleIds.has(role.id),
-        computeStock: poolStock && poolStock > 0 ? poolStock : undefined,
+        computeStock: labStock ?? (poolStock && poolStock > 0 ? poolStock : undefined),
       });
     }
 
@@ -263,6 +282,8 @@ export const updateLabs = mutation({
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
     await ctx.db.patch(args.gameId, { labs: args.labs });
+    // Sync lab compute to tables (table.computeStock is the source of truth)
+    await syncLabComputeToTables(ctx, args.gameId, args.labs);
   },
 });
 
@@ -296,6 +317,20 @@ export const updateTableCompute = mutation({
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
     await ctx.db.patch(args.tableId, { computeStock: args.computeStock });
+
+    // Sync to game.labs[] cache if this table is a lab CEO
+    const table = await ctx.db.get(args.tableId);
+    if (table) {
+      const game = await ctx.db.get(table.gameId);
+      if (game) {
+        const labIndex = game.labs.findIndex((l) => l.roleId === table.roleId);
+        if (labIndex !== -1) {
+          const updatedLabs = [...game.labs];
+          updatedLabs[labIndex] = { ...updatedLabs[labIndex], computeStock: args.computeStock };
+          await ctx.db.patch(table.gameId, { labs: updatedLabs });
+        }
+      }
+    }
   },
 });
 
@@ -465,6 +500,18 @@ export const addLab = mutation({
       allocation: { users: 34, capability: 33, safety: 33 },
     };
     await ctx.db.patch(args.gameId, { labs: [...game.labs, newLab] });
+
+    // Set table.computeStock only if the table doesn't already have compute.
+    // If it does (e.g. EU with pool allocation, or in-flight escrow), keep the table
+    // value — it's the source of truth. game.labs[].computeStock is a cache that syncs
+    // from table at pipeline resolution. If the table has no compute, initialize it.
+    const table = await ctx.db.query("tables")
+      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.roleId))
+      .first();
+    if (table && table.computeStock == null) {
+      await ctx.db.patch(table._id, { computeStock: args.computeStock });
+    }
+
     await logEvent(ctx, args.gameId, "lab_added", args.roleId, { name: args.name, computeStock: args.computeStock });
   },
 });
@@ -480,6 +527,11 @@ export const mergeLabs = mutation({
     assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
+
+    // Block merges during submit phase — active escrows/requests would be orphaned
+    if (game.phase === "submit") {
+      throw new Error("Cannot merge labs during submit phase — wait until discussion or resolution");
+    }
 
     if (args.survivorName === args.absorbedName) {
       throw new Error(`Cannot merge lab "${args.survivorName}" with itself`);
@@ -503,6 +555,19 @@ export const mergeLabs = mutation({
       );
 
     await ctx.db.patch(args.gameId, { labs: mergedLabs });
+
+    // Sync table compute: survivor absorbs absorbed's table compute
+    const [survivorTable, absorbedTable] = await Promise.all([
+      ctx.db.query("tables").withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", survivor.roleId)).first(),
+      ctx.db.query("tables").withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", absorbed.roleId)).first(),
+    ]);
+    if (survivorTable && absorbedTable) {
+      await ctx.db.patch(survivorTable._id, {
+        computeStock: (survivorTable.computeStock ?? 0) + (absorbedTable.computeStock ?? 0),
+      });
+      await ctx.db.patch(absorbedTable._id, { computeStock: undefined });
+    }
+
     await logEvent(ctx, args.gameId, "lab_merged", survivor.roleId, {
       survivor: args.survivorName,
       absorbed: args.absorbedName,
@@ -706,6 +771,8 @@ export const updateLabsInternal = internalMutation({
   args: { gameId: v.id("games"), labs: v.array(labSnapshotValidator) },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, { labs: args.labs });
+    // Sync post-growth lab compute to tables (table.computeStock is the source of truth)
+    await syncLabComputeToTables(ctx, args.gameId, args.labs);
   },
 });
 
@@ -739,21 +806,17 @@ export const openSubmissions = mutation({
     await ctx.db.patch(args.gameId, { phase: "submit", phaseEndsAt });
 
     // Snapshot compute stocks at submit-open (before any player transfers).
-    // Lab CEO compute lives on game.labs[], non-lab compute on tables[].computeStock.
+    // table.computeStock is the single source of truth for all roles (including lab CEOs).
     const tables = await ctx.db.query("tables")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
       .collect();
-    const labByRoleId = new Map(game.labs.map((l) => [l.roleId, l]));
     const roleComputeAtSubmitOpen = tables
-      .filter((t) => t.computeStock != null || labByRoleId.has(t.roleId))
-      .map((t) => {
-        const lab = labByRoleId.get(t.roleId);
-        return {
-          roleId: t.roleId,
-          roleName: t.roleName,
-          computeStock: lab?.computeStock ?? t.computeStock ?? 0,
-        };
-      });
+      .filter((t) => t.computeStock != null)
+      .map((t) => ({
+        roleId: t.roleId,
+        roleName: t.roleName,
+        computeStock: t.computeStock ?? 0,
+      }));
     const rounds = await ctx.db.query("rounds")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
       .collect();

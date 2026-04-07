@@ -48,23 +48,20 @@ export const overrideHolderCompute = mutation({
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
 
-    // Update the underlying compute storage
-    const lab = game.labs.find((l) => l.roleId === args.roleId);
-    if (lab) {
-      // Lab: update game.labs[]
-      const updatedLabs = game.labs.map((l) =>
-        l.roleId === args.roleId ? { ...l, computeStock: args.computeStock } : l
-      );
+    // table.computeStock is the single source of truth for all roles
+    const table = await ctx.db.query("tables")
+      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.roleId))
+      .first();
+    if (table) {
+      await ctx.db.patch(table._id, { computeStock: args.computeStock });
+    }
+
+    // Also sync to game.labs[] cache if this role is a lab CEO
+    const labIndex = game.labs.findIndex((l) => l.roleId === args.roleId);
+    if (labIndex !== -1) {
+      const updatedLabs = [...game.labs];
+      updatedLabs[labIndex] = { ...updatedLabs[labIndex], computeStock: args.computeStock };
       await ctx.db.patch(args.gameId, { labs: updatedLabs });
-    } else {
-      // Non-lab: update table
-      const tables = await ctx.db.query("tables")
-        .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-        .collect();
-      const table = tables.find((t) => t.roleId === args.roleId);
-      if (table) {
-        await ctx.db.patch(table._id, { computeStock: args.computeStock });
-      }
     }
 
     // Update the computeHolders record with override
@@ -85,5 +82,30 @@ export const overrideHolderCompute = mutation({
       computeStock: args.computeStock,
       reason: args.reason,
     });
+  },
+});
+
+/** Migration: populate table.computeStock for lab CEO tables from game.labs[].
+ *  Idempotent — safe to run multiple times. Only sets compute if table has undefined. */
+export const migrateLabComputeToTables = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const games = await ctx.db.query("games").collect();
+    let migrated = 0;
+    for (const game of games) {
+      if (game.status === "finished") continue;
+      const tables = await ctx.db.query("tables")
+        .withIndex("by_game", (q) => q.eq("gameId", game._id))
+        .collect();
+      const tableByRole = new Map(tables.map((t) => [t.roleId, t]));
+      for (const lab of game.labs) {
+        const table = tableByRole.get(lab.roleId);
+        if (table && table.computeStock == null) {
+          await ctx.db.patch(table._id, { computeStock: lab.computeStock });
+          migrated++;
+        }
+      }
+    }
+    return { migrated };
   },
 });

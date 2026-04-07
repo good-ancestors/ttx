@@ -4,9 +4,6 @@ import { type Role, hasCompute } from "@/lib/game-data";
 import { type ActionDraft } from "@/components/action-input";
 import { ActionInput } from "@/components/action-input";
 import { SubmittedActionCard, type SentRequest } from "@/components/table/submitted-action-card";
-import { SendComputePanel } from "@/components/table/send-compute-panel";
-
-import type { Id } from "@convex/_generated/dataModel";
 import type { SampleAction } from "@/lib/sample-actions";
 import {
   Send,
@@ -14,6 +11,7 @@ import {
   ChevronUp,
   EyeOff,
   Lightbulb,
+  Zap,
 } from "lucide-react";
 
 // ─── Submit phase props ──────────────────────────────────────────────────────
@@ -23,8 +21,6 @@ interface TableSubmitProps {
     currentRound: number;
     phase: string;
   };
-  gameId: Id<"games">;
-  tableId: Id<"tables">;
   role: Role;
   submittedActions: {
     actionId?: string;
@@ -57,8 +53,6 @@ interface TableSubmitProps {
 
 export function TableSubmit({
   game,
-  gameId,
-  tableId,
   role,
   submittedActions,
   actionDrafts,
@@ -142,17 +136,18 @@ export function TableSubmit({
         </p>
       )}
 
-      {/* Send compute panel — visible to has-compute roles */}
-      {hasCompute(role) && computeStock != null && computeRecipients && computeRecipients.length > 0 && (
-        <div className="mt-4">
-          <SendComputePanel
-            gameId={gameId}
-            tableId={tableId}
-            roleId={role.id}
-            computeStock={computeStock}
-            recipients={computeRecipients}
-            disabled={isExpired}
-          />
+      {/* Compute stock indicator — visible to has-compute roles */}
+      {hasCompute(role) && computeStock != null && (
+        <div className="mt-4 bg-white rounded-xl border border-border p-4">
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-[#D97706]" />
+            <span className="text-sm font-bold text-text">
+              {computeStock}u available
+            </span>
+          </div>
+          <p className="text-[11px] text-text-muted mt-1">
+            Use the compute button on your actions to send compute. Transfers happen when the action succeeds.
+          </p>
         </div>
       )}
     </>
