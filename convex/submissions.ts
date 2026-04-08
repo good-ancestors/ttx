@@ -560,16 +560,19 @@ export const editSubmitted = mutation({
       await refundEscrow(ctx, sub.gameId, sub.roleId, sendTargets);
     }
 
-    // Refund escrowed "request" compute back to targets who accepted, and clean up request docs
-    const requestTargets = (action.computeTargets ?? []).filter((t) => t.direction === "request");
-    if (requestTargets.length > 0 && action.actionId) {
+    // Clean up all request docs for this action (endorsement + compute)
+    if (action.actionId) {
       const requests = await ctx.db.query("requests")
         .withIndex("by_from_role", (q) =>
           q.eq("gameId", sub.gameId).eq("roundNumber", sub.roundNumber).eq("fromRoleId", sub.roleId))
         .collect();
+      const actionRequests = requests.filter((r) => r.actionId === action.actionId);
+
+      // Refund escrowed "request" compute back to targets who accepted
+      const requestTargets = (action.computeTargets ?? []).filter((t) => t.direction === "request");
       for (const target of requestTargets) {
-        const match = requests.find((r) =>
-          r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId
+        const match = actionRequests.find((r) =>
+          r.toRoleId === target.roleId && r.requestType === "compute"
         );
         if (match?.status === "accepted" && match.computeAmount) {
           const targetTable = await ctx.db.query("tables")
@@ -581,7 +584,11 @@ export const editSubmitted = mutation({
             });
           }
         }
-        if (match) await ctx.db.delete(match._id);
+      }
+
+      // Delete all requests (endorsement + compute) for this action
+      for (const req of actionRequests) {
+        await ctx.db.delete(req._id);
       }
     }
 

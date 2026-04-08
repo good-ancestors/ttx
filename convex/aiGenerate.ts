@@ -159,7 +159,9 @@ export const generateAll = internalAction({
               .filter((a) => a.endorseHint?.length)
               .map((a) => ({
                 actionText: a.text,
-                targetRoleIds: a.endorseHint.filter((id) => activeRoleIds.has(id) && id !== table.roleId),
+                targetRoleIds: a.endorseHint.filter((id) =>
+                  activeRoleIds.has(id) && id !== table.roleId && id !== AI_SYSTEMS_ROLE_ID
+                ),
               }))
               .filter((h) => h.targetRoleIds.length > 0),
             computeAllocation,
@@ -479,7 +481,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
     for (const p of submitted) {
       for (const hint of p.endorseHints ?? []) {
         const actionId = actionIdByRoleAndText.get(`${p.roleId}:${hint.actionText}`) ?? "";
-        for (const targetId of hint.targetRoleIds.slice(0, 1)) {
+        for (const targetId of hint.targetRoleIds) {
           try {
             await ctx.runMutation(internal.requests.sendInternal, {
               gameId,
