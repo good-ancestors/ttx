@@ -31,6 +31,7 @@ interface DraftData {
   parsedActions: { text: string; priority: number }[];
   computeAllocation: { users: number; capability: number; safety: number };
   artifact: string;
+  labSpec?: string;
 }
 
 function draftKey(tableId: string, roundNumber: number) {
@@ -246,7 +247,7 @@ export default function TablePlayerPage({
     if (!game || !role || labSpecInitRef.current) return;
     if (isLabCeo(role)) {
       const lab = game.labs.find((l) => l.roleId === role.id);
-      if (lab?.spec) {
+      if (lab?.spec !== undefined) {
         setLabSpec(lab.spec);
         labSpecInitRef.current = true;
       }
@@ -270,6 +271,10 @@ export default function TablePlayerPage({
       }
       if (draft.computeAllocation) setComputeAllocation(draft.computeAllocation);
       if (draft.artifact) setArtifact(draft.artifact);
+      if (draft.labSpec) {
+        setLabSpec(draft.labSpec);
+        labSpecInitRef.current = true;
+      }
       setDraftRestored(true);
     }
   }, [game, tableId]);
@@ -295,13 +300,16 @@ export default function TablePlayerPage({
       draftRestoredRef.current = false;
       ideasAutoOpenedRef.current = false;
       setActiveTab("brief");
-      // Reload compute allocation from current game state (not defaults)
+      // Reload compute allocation and lab spec from current game state
       const currentRole = roleRef.current;
       const currentGame = gameRef.current;
       if (currentRole && currentGame) {
         const lab = currentGame.labs.find((l) => l.roleId === currentRole.id);
         if (lab?.allocation) {
           setComputeAllocation({ ...lab.allocation });
+        }
+        if (isLabCeo(currentRole) && lab?.spec !== undefined) {
+          setLabSpec(lab.spec);
         }
       }
     }
@@ -325,10 +333,11 @@ export default function TablePlayerPage({
         parsedActions: normaliseActions(actionDrafts),
         computeAllocation,
         artifact,
+        labSpec: labSpec || undefined,
       });
     }, 500);
     return () => clearTimeout(draftSaveTimer.current);
-  }, [actionDrafts, computeAllocation, artifact, game, tableId]);
+  }, [actionDrafts, computeAllocation, artifact, labSpec, game, tableId]);
 
   // ── Sample suggestions ──────────────────────────────────────────────────
   const [shownSuggestions, setShownSuggestions] = useState<SampleAction[]>([]);
@@ -754,10 +763,18 @@ export default function TablePlayerPage({
               labSpec,
               onLabSpecChange: handleLabSpecChange,
               specSaved,
+              specUnsaved: !!currentLab && labSpec.trim() !== (currentLab.spec ?? ""),
               onSaveSpec: handleSaveSpec,
               computeAllocation,
               onComputeAllocationChange: setComputeAllocation,
               allocationSaved,
+              allocationUnsaved: (() => {
+                const saved = submission?.computeAllocation ?? currentLab?.allocation;
+                if (!saved) return false;
+                return computeAllocation.users !== saved.users ||
+                  computeAllocation.capability !== saved.capability ||
+                  computeAllocation.safety !== saved.safety;
+              })(),
               onSaveAllocation: handleSaveAllocation,
             }}
             resolve={{
