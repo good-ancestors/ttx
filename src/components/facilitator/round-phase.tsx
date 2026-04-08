@@ -46,6 +46,8 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
   ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
+  narrativeStale: boolean;
+  onDiceChanged: () => void;
   advanceRound: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   finishGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   addLab: (args: { gameId: Id<"games">; name: string; roleId: string; rdMultiplier: number }) => Promise<unknown>;
@@ -86,6 +88,8 @@ export function RoundPhase({
   overrideProbability,
   ungradeAction,
   rerollAction,
+  narrativeStale,
+  onDiceChanged,
   advanceRound,
   finishGame,
   addLab,
@@ -227,6 +231,8 @@ export function RoundPhase({
           ungradeAction={ungradeAction}
           phase={phase}
           hasNarrative={!!currentRound?.summary?.narrative}
+          narrativeStale={narrativeStale}
+          onDiceChanged={onDiceChanged}
         />
       )}
 

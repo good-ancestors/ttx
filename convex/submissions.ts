@@ -749,9 +749,23 @@ export const overrideProbability = mutation({
     if (!sub) return;
 
     const actions = [...sub.actions];
-    if (actions[args.actionIndex]) {
+    const action = actions[args.actionIndex];
+    if (!action) return;
+
+    // If dice have already been rolled, auto-reroll at the new probability
+    // (AI influence still applies via applyInfluence)
+    if (action.rolled != null) {
+      const rawRoll = Math.floor(Math.random() * 100) + 1;
+      const displayRoll = applyInfluence(rawRoll, action.aiInfluence);
       actions[args.actionIndex] = {
-        ...actions[args.actionIndex],
+        ...action,
+        probability: args.probability,
+        rolled: displayRoll,
+        success: displayRoll <= args.probability,
+      };
+    } else {
+      actions[args.actionIndex] = {
+        ...action,
         probability: args.probability,
       };
     }

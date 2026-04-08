@@ -40,6 +40,8 @@ export function AttemptedPanel({
   ungradeAction,
   phase,
   hasNarrative,
+  narrativeStale,
+  onDiceChanged,
 }: {
   submissions: Submission[];
   proposals: Proposal[];
@@ -56,6 +58,8 @@ export function AttemptedPanel({
   ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   phase: string;
   hasNarrative: boolean;
+  narrativeStale: boolean;
+  onDiceChanged: () => void;
 }) {
   // Collapsed by default — opens when there's content to show
   const [expanded, setExpanded] = useState(false);
@@ -101,6 +105,18 @@ export function AttemptedPanel({
   const allRevealed = isRollingOrNarrate && effectiveRevealedCount >= allActions.length;
 
   const isExpanded = isRollingOrNarrate && hasSubmissions ? true : expanded;
+
+  // Wrap mutation callbacks to flag narrative as stale when changes happen after narrative
+  const wrappedReroll: typeof rerollAction = async (args) => {
+    const result = await rerollAction(args);
+    if (hasNarrative) onDiceChanged();
+    return result;
+  };
+  const wrappedOverrideProbability: typeof overrideProbability = async (args) => {
+    const result = await overrideProbability(args);
+    if (hasNarrative) onDiceChanged();
+    return result;
+  };
 
   const endorsementsByOwner = useMemo(() => {
     const map = new Map<string, Proposal[]>();
@@ -191,25 +207,34 @@ export function AttemptedPanel({
                 revealedSecrets={revealedSecrets}
                 toggleReveal={toggleReveal}
                 getEndorsements={getEndorsements}
-                rerollAction={rerollAction}
-                overrideProbability={overrideProbability}
+                rerollAction={wrappedReroll}
+                overrideProbability={wrappedOverrideProbability}
                 ungradeAction={ungradeAction}
                 allowPregrade={!isProjector && !isRollingOrNarrate}
               />
             ))}
           </div>
-          {!isProjector && hasRolled && isRollingOrNarrate && (
+          {narrativeStale && hasNarrative && !isProjector && (
+            <div className="mt-3 rounded-lg border border-viz-warning/30 bg-viz-warning/10 px-3 py-2 flex items-center justify-between gap-2">
+              <span className="text-[11px] text-viz-warning">
+                Results changed since narrative was generated
+              </span>
+              <button
+                onClick={handleReResolve}
+                disabled={resolving}
+                className="text-[11px] px-3 py-1 rounded font-semibold bg-viz-warning text-navy-dark hover:bg-viz-warning/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
+              >
+                <RefreshCw className="w-3 h-3" /> Regenerate
+              </button>
+            </div>
+          )}
+          {!narrativeStale && hasNarrative && !isProjector && (
             <button
               onClick={handleReResolve}
               disabled={resolving}
-              className={`text-[11px] px-3 py-1.5 rounded font-medium transition-colors flex items-center gap-1 mt-3 disabled:opacity-50 ${
-                hasNarrative
-                  ? "bg-viz-warning/20 text-viz-warning hover:bg-viz-warning/30 border border-viz-warning/30"
-                  : "bg-navy-light text-text-light hover:bg-navy-muted"
-              }`}
+              className="text-[11px] px-3 py-1.5 rounded font-medium transition-colors flex items-center gap-1 mt-3 disabled:opacity-50 bg-viz-warning/20 text-viz-warning hover:bg-viz-warning/30 border border-viz-warning/30"
             >
-              <RefreshCw className="w-3 h-3" />
-              {hasNarrative ? "Regenerate narrative from dice" : "Re-resolve from dice"}
+              <RefreshCw className="w-3 h-3" /> Regenerate narrative
             </button>
           )}
         </>
@@ -344,12 +369,14 @@ function ProbabilityDropdown({
   actionIndex,
   overrideProbability,
   ungradeAction,
+  allowUngrade = true,
 }: {
   current: number;
   submissionId: Id<"submissions">;
   actionIndex: number;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
   ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
+  allowUngrade?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const card = PROBABILITY_CARDS.find((p) => p.pct === current) ?? PROBABILITY_CARDS[2];
@@ -382,16 +409,20 @@ function ProbabilityDropdown({
               <span className="font-mono">{p.pct}%</span>
             </button>
           ))}
-          <div className="border-t border-navy-light my-1" />
-          <button
-            onClick={() => {
-              void ungradeAction({ submissionId, actionIndex });
-              setOpen(false);
-            }}
-            className="w-full text-left px-3 py-1.5 text-xs text-text-light hover:bg-navy-light transition-colors"
-          >
-            Ungrade
-          </button>
+          {allowUngrade && (
+            <>
+              <div className="border-t border-navy-light my-1" />
+              <button
+                onClick={() => {
+                  void ungradeAction({ submissionId, actionIndex });
+                  setOpen(false);
+                }}
+                className="w-full text-left px-3 py-1.5 text-xs text-text-light hover:bg-navy-light transition-colors"
+              >
+                Ungrade
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -435,6 +466,7 @@ function ActionOutcome({
             actionIndex={actionIndex}
             overrideProbability={overrideProbability}
             ungradeAction={ungradeAction}
+            allowUngrade={false}
           />
         </span>
       );
