@@ -32,7 +32,7 @@ async function transferCompute(
 }
 
 /** Find an existing request matching the key fields, or insert a new one. Returns the request ID. */
-async function findOrUpsertRequest(
+export async function findOrUpsertRequest(
   ctx: MutationCtx,
   args: {
     gameId: Id<"games">;
@@ -196,7 +196,12 @@ export const send = mutation({
     });
 
     // Auto-respond if target is AI/NPC
-    await triggerAutoResponse(ctx, args.gameId, args.roundNumber, args.toRoleId, id);
+    await triggerAutoResponse(ctx, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      toRoleId: args.toRoleId,
+      requestId: id,
+    });
 
     return id;
   },
@@ -347,47 +352,53 @@ export const sendInternal = internalMutation({
     const requestId = await findOrUpsertRequest(ctx, args);
 
     // Auto-respond if target is AI/NPC (reactive — no waiting for scheduled poll)
-    await triggerAutoResponse(ctx, args.gameId, args.roundNumber, args.toRoleId, requestId);
+    await triggerAutoResponse(ctx, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      toRoleId: args.toRoleId,
+      requestId,
+    });
   },
 });
 
 const NPC_ACCEPT_RATE = 0.7;
 
-async function triggerAutoResponse(
+export async function triggerAutoResponse(
   ctx: MutationCtx,
-  gameId: Id<"games">,
-  roundNumber: number,
-  toRoleId: string,
-  requestId: Id<"requests">,
+  args: {
+    gameId: Id<"games">;
+    roundNumber: number;
+    toRoleId: string;
+    requestId: Id<"requests">;
+    table?: { _id: Id<"tables">; enabled: boolean; controlMode: string; computeStock?: number };
+  },
 ) {
-  const targetTable = await ctx.db
+  const targetTable = args.table ?? await ctx.db
     .query("tables")
-    .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", toRoleId))
+    .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.toRoleId))
     .first();
   if (!targetTable || !targetTable.enabled || targetTable.controlMode === "human") return;
 
   if (targetTable.controlMode === "npc") {
     const accept = Math.random() < NPC_ACCEPT_RATE;
     if (accept) {
-      // Escrow compute from target on acceptance (transfer happens on action success in rollAllInternal)
-      const request = await ctx.db.get(requestId);
+      const request = await ctx.db.get(args.requestId);
       if (request?.requestType === "compute" && request.computeAmount) {
         const available = targetTable.computeStock ?? 0;
         if (available >= request.computeAmount) {
           await ctx.db.patch(targetTable._id, { computeStock: available - request.computeAmount });
         } else {
-          await ctx.db.patch(requestId, { status: "declined" });
+          await ctx.db.patch(args.requestId, { status: "declined" });
           return;
         }
       }
     }
-    await ctx.db.patch(requestId, { status: accept ? "accepted" : "declined" });
+    await ctx.db.patch(args.requestId, { status: accept ? "accepted" : "declined" });
   } else {
-    // AI: schedule LLM response immediately (runs in action context)
     await ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
-      gameId,
-      roundNumber,
-      roleId: toRoleId,
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      roleId: args.toRoleId,
     });
   }
 }

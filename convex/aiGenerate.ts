@@ -119,10 +119,10 @@ export const generateAll = internalAction({
       computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
     }
     const pending: PendingAction[] = [];
+    const activeRoleIds = new Set(enabledTables.map((t) => t.roleId));
 
     // NPC tables: use sample actions
     if (sampleData) {
-      const activeRoleIds = new Set(enabledTables.map((t) => t.roleId));
       for (const table of npcTables) {
         try {
           const all = getSampleActions(sampleData as never, table.roleId, roundNumber);
@@ -159,7 +159,9 @@ export const generateAll = internalAction({
               .filter((a) => a.endorseHint?.length)
               .map((a) => ({
                 actionText: a.text,
-                targetRoleIds: a.endorseHint.filter((id) => activeRoleIds.has(id) && id !== table.roleId),
+                targetRoleIds: a.endorseHint.filter((id) =>
+                  activeRoleIds.has(id) && id !== table.roleId && id !== AI_SYSTEMS_ROLE_ID
+                ),
               }))
               .filter((h) => h.targetRoleIds.length > 0),
             computeAllocation,
@@ -289,6 +291,9 @@ Rules:
 3. Assign a priority from 1-10 (total budget: 10)
 
 Be strategic, realistic, and scenario-appropriate. Do NOT repeat actions from previous rounds — adapt your strategy.
+For each action, you may request endorsement from other players who would benefit from or support that action.
+Output endorseHints: [{ actionText: "<exact action text>", targetRoleIds: ["<role-id>", ...] }] for actions where you want support. Only request endorsement from roles who have a genuine stake in the action's outcome. Empty array if not needed.
+Available roles: ${enabledTables.filter((t) => t.roleId !== table.roleId && t.roleId !== AI_SYSTEMS_ROLE_ID).map((t) => `${t.roleName} (${t.roleId})`).join(", ")}
 ${isLabCeo(role) ? `Also set your compute allocation (users/capability/safety percentages summing to 100).
 You may also request compute from government players. Output computeRequestHints: [{ targetRoleId: "<government-role-id>", amount: <number>, actionText: "<reason>" }] if you want to request compute. Empty array if not.
 Available government roles: ${enabledTables.filter((t) => ROLES.find((r) => r.id === t.roleId)?.tags.includes("government")).map((t) => `${t.roleName} (${t.roleId})`).join(", ") || "none"}` : ""}
@@ -300,6 +305,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       try {
         const { output } = await callAnthropic<{
           actions: { text: string; priority: number; secret?: boolean }[];
+          endorseHints?: { actionText: string; targetRoleIds: string[] }[];
           computeAllocation?: { users: number; capability: number; safety: number };
           computeTransfers?: { toRoleId: string; amount: number }[];
           computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
@@ -322,6 +328,17 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
                     secret: { type: "boolean" },
                   },
                   required: ["text", "priority"],
+                },
+              },
+              endorseHints: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    actionText: { type: "string" },
+                    targetRoleIds: { type: "array", items: { type: "string" } },
+                  },
+                  required: ["actionText", "targetRoleIds"],
                 },
               },
               computeAllocation: {
@@ -380,19 +397,32 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
           }
           // Filter valid compute transfers (positive amount, valid target, not self)
           const computeTransfers = (output.computeTransfers ?? []).filter(
-            (t) => t.amount > 0 && t.toRoleId !== table.roleId && enabledTables.some((et) => et.roleId === t.toRoleId)
+            (t) => t.amount > 0 && t.toRoleId !== table.roleId && activeRoleIds.has(t.toRoleId)
           );
 
           // Filter valid compute request hints (positive amount, valid target, not self)
           const computeRequestHints = (output.computeRequestHints ?? []).filter(
-            (h) => h.amount > 0 && h.targetRoleId !== table.roleId && enabledTables.some((et) => et.roleId === h.targetRoleId)
+            (h) => h.amount > 0 && h.targetRoleId !== table.roleId && activeRoleIds.has(h.targetRoleId)
           );
+
+          // Filter + validate endorseHints: must reference an actual generated action, valid targets
+          const actionTexts = new Set(actions.map((a) => a.text));
+          const endorseHints = (output.endorseHints ?? [])
+            .filter((h) => actionTexts.has(h.actionText))
+            .map((h) => ({
+              actionText: h.actionText,
+              targetRoleIds: h.targetRoleIds.filter((id) =>
+                activeRoleIds.has(id) && id !== table.roleId && id !== AI_SYSTEMS_ROLE_ID
+              ),
+            }))
+            .filter((h) => h.targetRoleIds.length > 0);
 
           pending.push({
             tableId: table._id,
             roleId: table.roleId,
             actions,
             computeAllocation,
+            endorseHints: endorseHints.length > 0 ? endorseHints : undefined,
             computeTransfers: computeTransfers.length > 0 ? computeTransfers : undefined,
             computeRequestHints: computeRequestHints.length > 0 ? computeRequestHints : undefined,
           });
@@ -479,7 +509,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
     for (const p of submitted) {
       for (const hint of p.endorseHints ?? []) {
         const actionId = actionIdByRoleAndText.get(`${p.roleId}:${hint.actionText}`) ?? "";
-        for (const targetId of hint.targetRoleIds.slice(0, 1)) {
+        for (const targetId of hint.targetRoleIds) {
           try {
             await ctx.runMutation(internal.requests.sendInternal, {
               gameId,

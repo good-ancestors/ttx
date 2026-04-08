@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator } from "./events";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
+import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
 
 const PRIORITY_HARD_CAP = 12;
 
@@ -425,6 +426,81 @@ async function creditComputeRecipients(
   }
 }
 
+/** Create endorsement + compute request docs for a newly submitted action. */
+async function createActionRequests(
+  ctx: MutationCtx,
+  args: {
+    gameId: Id<"games">;
+    roundNumber: number;
+    fromRoleId: string;
+    fromRoleName: string;
+    actionId: string;
+    actionText: string;
+    endorseTargets: string[];
+    computeRequestTargets: { roleId: string; amount: number }[];
+  },
+) {
+  const allTargetRoleIds = [
+    ...args.endorseTargets.filter((id) => id !== args.fromRoleId),
+    ...args.computeRequestTargets.map((t) => t.roleId),
+  ];
+  if (allTargetRoleIds.length === 0) return;
+
+  // Batch-fetch all target tables in one query to avoid N+1 reads
+  const tables = await ctx.db.query("tables")
+    .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+    .collect();
+  const tableByRole = new Map(tables.filter((t) => t.enabled).map((t) => [t.roleId, t]));
+
+  for (const targetRoleId of args.endorseTargets) {
+    if (targetRoleId === args.fromRoleId || targetRoleId === AI_SYSTEMS_ROLE_ID) continue;
+    const targetTable = tableByRole.get(targetRoleId);
+    if (!targetTable) continue;
+    const requestId = await findOrUpsertRequest(ctx, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      fromRoleId: args.fromRoleId,
+      fromRoleName: args.fromRoleName,
+      toRoleId: targetRoleId,
+      toRoleName: targetTable.roleName,
+      actionId: args.actionId,
+      actionText: args.actionText,
+      requestType: "endorsement",
+    });
+    await triggerAutoResponse(ctx, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      toRoleId: targetRoleId,
+      requestId,
+      table: targetTable,
+    });
+  }
+
+  for (const target of args.computeRequestTargets) {
+    const targetTable = tableByRole.get(target.roleId);
+    if (!targetTable) continue;
+    const requestId = await findOrUpsertRequest(ctx, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      fromRoleId: args.fromRoleId,
+      fromRoleName: args.fromRoleName,
+      toRoleId: target.roleId,
+      toRoleName: targetTable.roleName,
+      actionId: args.actionId,
+      actionText: args.actionText,
+      requestType: "compute",
+      computeAmount: target.amount,
+    });
+    await triggerAutoResponse(ctx, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      toRoleId: target.roleId,
+      requestId,
+      table: targetTable,
+    });
+  }
+}
+
 /** Save a draft and immediately submit it in a single mutation (avoids two round-trips). */
 export const saveAndSubmit = mutation({
   args: {
@@ -436,6 +512,7 @@ export const saveAndSubmit = mutation({
     priority: v.number(),
     secret: v.optional(v.boolean()),
     computeTargets: v.optional(v.array(computeTargetValidator)),
+    endorseTargets: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     // Validate table ownership: the table must belong to the claimed role
@@ -489,6 +566,8 @@ export const saveAndSubmit = mutation({
       computeTargets: targets.length > 0 ? targets : undefined,
     };
 
+    let result: { submissionId: Id<"submissions">; actionIndex: number; actionId: string };
+
     if (existing) {
       if (submittedCount >= 5) throw new Error("Maximum 5 actions per round");
 
@@ -510,31 +589,45 @@ export const saveAndSubmit = mutation({
           actionIndex: existingDraftIndex,
           text: args.text,
         });
-        return { submissionId: existing._id, actionIndex: existingDraftIndex, actionId: actions[existingDraftIndex].actionId };
+        result = { submissionId: existing._id, actionIndex: existingDraftIndex, actionId: actions[existingDraftIndex].actionId };
+      } else {
+        const actions = [...existing.actions, newAction];
+        await ctx.db.patch(existing._id, { actions, status: "submitted" });
+        await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
+          actionIndex: actions.length - 1,
+          text: args.text,
+        });
+        result = { submissionId: existing._id, actionIndex: actions.length - 1, actionId: newAction.actionId };
       }
-
-      const actions = [...existing.actions, newAction];
-      await ctx.db.patch(existing._id, { actions, status: "submitted" });
+    } else {
+      const id = await ctx.db.insert("submissions", {
+        tableId: args.tableId,
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        roleId: args.roleId,
+        actions: [newAction],
+        status: "submitted",
+      });
       await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
-        actionIndex: actions.length - 1,
+        actionIndex: 0,
         text: args.text,
       });
-      return { submissionId: existing._id, actionIndex: actions.length - 1, actionId: newAction.actionId };
+      result = { submissionId: id, actionIndex: 0, actionId: newAction.actionId };
     }
 
-    const id = await ctx.db.insert("submissions", {
-      tableId: args.tableId,
+    // Create endorsement + compute request docs atomically with the action
+    await createActionRequests(ctx, {
       gameId: args.gameId,
       roundNumber: args.roundNumber,
-      roleId: args.roleId,
-      actions: [newAction],
-      status: "submitted",
+      fromRoleId: args.roleId,
+      fromRoleName: table.roleName,
+      actionId: result.actionId,
+      actionText: args.text,
+      endorseTargets: args.endorseTargets ?? [],
+      computeRequestTargets: targets.filter((t) => t.direction === "request"),
     });
-    await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
-      actionIndex: 0,
-      text: args.text,
-    });
-    return { submissionId: id, actionIndex: 0, actionId: newAction.actionId };
+
+    return result;
   },
 });
 
@@ -560,16 +653,19 @@ export const editSubmitted = mutation({
       await refundEscrow(ctx, sub.gameId, sub.roleId, sendTargets);
     }
 
-    // Refund escrowed "request" compute back to targets who accepted, and clean up request docs
-    const requestTargets = (action.computeTargets ?? []).filter((t) => t.direction === "request");
-    if (requestTargets.length > 0 && action.actionId) {
+    // Clean up all request docs for this action (endorsement + compute)
+    if (action.actionId) {
       const requests = await ctx.db.query("requests")
         .withIndex("by_from_role", (q) =>
           q.eq("gameId", sub.gameId).eq("roundNumber", sub.roundNumber).eq("fromRoleId", sub.roleId))
         .collect();
+      const actionRequests = requests.filter((r) => r.actionId === action.actionId);
+
+      // Refund escrowed "request" compute back to targets who accepted
+      const requestTargets = (action.computeTargets ?? []).filter((t) => t.direction === "request");
       for (const target of requestTargets) {
-        const match = requests.find((r) =>
-          r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId
+        const match = actionRequests.find((r) =>
+          r.toRoleId === target.roleId && r.requestType === "compute"
         );
         if (match?.status === "accepted" && match.computeAmount) {
           const targetTable = await ctx.db.query("tables")
@@ -581,7 +677,11 @@ export const editSubmitted = mutation({
             });
           }
         }
-        if (match) await ctx.db.delete(match._id);
+      }
+
+      // Delete all requests (endorsement + compute) for this action
+      for (const req of actionRequests) {
+        await ctx.db.delete(req._id);
       }
     }
 
