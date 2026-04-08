@@ -518,6 +518,20 @@ describe("computeLabGrowth", () => {
     expect(highOB.rdMultiplier).toBeGreaterThan(lowOB.rdMultiplier);
   });
 
+  it("zero capability allocation nearly stalls R&D growth", () => {
+    const zeroCap = new Map([
+      ["OpenBrain", { users: 100, capability: 0, safety: 0 }],
+      ["DeepCent", { users: 100, capability: 0, safety: 0 }],
+      ["Conscienta", { users: 100, capability: 0, safety: 0 }],
+    ]);
+    const result = computeLabGrowth(baseLabs, zeroCap, 2, 200);
+    for (const lab of result) {
+      const original = baseLabs.find(l => l.name === lab.name)!;
+      // With zero capability, multiplier should grow by less than 50% (not 5x as before)
+      expect(lab.rdMultiplier).toBeLessThan(original.rdMultiplier * 1.5);
+    }
+  });
+
   it("uses proportional fallback for unknown labs", () => {
     const labsWithNew = [...baseLabs, {
       name: "NewLab", roleId: "custom-newlab", computeStock: 5, rdMultiplier: 1,

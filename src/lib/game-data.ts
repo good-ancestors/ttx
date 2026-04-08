@@ -661,8 +661,8 @@ export const BASELINE_RD_TARGETS: Record<string, Record<number, number>> = {
 export const LAB_PROGRESSION = {
   /** Converts effective R&D advantage into faster/slower growth around the baseline curve. */
   PERFORMANCE_SENSITIVITY: 0.55,
-  /** Keep growth responsive without letting one good round explode unrealistically. */
-  MIN_GROWTH_FACTOR: 0.5,
+  /** Floor for growth modifier — near-zero R&D investment yields near-zero growth (small industry spillover). */
+  MIN_GROWTH_FACTOR: 0.05,
   /** Cap growth so the curve still feels dramatic but not fully hard-coded. */
   MAX_GROWTH_FACTOR: 3.5,
   /** Min multiplier floor after event modifiers. */
@@ -754,8 +754,10 @@ export function computeLabGrowth(
         Math.max(P.MIN_GROWTH_FACTOR, Math.pow(performanceRatio, P.PERFORMANCE_SENSITIVITY)),
       );
       const baselineGrowthFactor = baselineTarget / Math.max(P.MIN_MULTIPLIER, baselineMultiplier);
+      // Apply growthModifier to growth portion only: at modifier=0 → no growth, modifier=1 → baseline growth
+      const effectiveFactor = 1 + (baselineGrowthFactor - 1) * growthModifier;
       newMultiplier = Math.round(
-        Math.max(P.MIN_MULTIPLIER, lab.rdMultiplier * baselineGrowthFactor * growthModifier) * 10,
+        Math.max(P.MIN_MULTIPLIER, lab.rdMultiplier * effectiveFactor) * 10,
       ) / 10;
     } else {
       const poolGrowth: Record<number, number> = { 1: 3, 2: 10, 3: 10, 4: 10 };
