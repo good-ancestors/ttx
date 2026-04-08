@@ -749,12 +749,45 @@ export const overrideProbability = mutation({
     if (!sub) return;
 
     const actions = [...sub.actions];
-    if (actions[args.actionIndex]) {
+    const action = actions[args.actionIndex];
+    if (!action) return;
+
+    // If dice have already been rolled, auto-reroll at the new probability
+    if (action.rolled != null) {
       actions[args.actionIndex] = {
-        ...actions[args.actionIndex],
+        ...action,
+        probability: args.probability,
+        ...rollDice(args.probability, action.aiInfluence),
+      };
+    } else {
+      actions[args.actionIndex] = {
+        ...action,
         probability: args.probability,
       };
     }
+
+    await ctx.db.patch(args.submissionId, { actions });
+  },
+});
+
+export const ungradeAction = mutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actionIndex: v.number(),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    const sub = await ctx.db.get(args.submissionId);
+    if (!sub) return;
+
+    const actions = [...sub.actions];
+    const action = actions[args.actionIndex];
+    if (!action) return;
+
+    // Strip grading/rolling fields, keeping everything else
+    const { probability: _, rolled: __, success: ___, ...rest } = action;
+    actions[args.actionIndex] = rest;
 
     await ctx.db.patch(args.submissionId, { actions });
   },
@@ -775,19 +808,14 @@ export const rerollAction = mutation({
     const action = actions[args.actionIndex];
     if (action?.probability == null) return;
 
-    const rawRoll = Math.floor(Math.random() * 100) + 1;
-    const displayRoll = applyInfluence(rawRoll, action.aiInfluence);
-    actions[args.actionIndex] = {
-      ...action,
-      rolled: displayRoll,
-      success: displayRoll <= (action.probability ?? 50),
-    };
+    const result = rollDice(action.probability ?? 50, action.aiInfluence);
+    actions[args.actionIndex] = { ...action, ...result };
 
     await ctx.db.patch(args.submissionId, { actions });
     await logEvent(ctx, sub.gameId, "reroll", sub.roleId, {
       actionIndex: args.actionIndex,
       oldRoll: action.rolled,
-      newRoll: rawRoll,
+      newRoll: result.rolled,
       probability: action.probability,
     });
   },
@@ -866,6 +894,13 @@ function applyInfluence(rawRoll: number, aiInfluence?: number): number {
   return Math.max(1, Math.min(100, rawRoll - (aiInfluence ?? 0)));
 }
 
+/** Roll a d100 with AI influence and determine success against a probability threshold. */
+function rollDice(probability: number, aiInfluence?: number): { rolled: number; success: boolean } {
+  const rawRoll = Math.floor(Math.random() * 100) + 1;
+  const rolled = applyInfluence(rawRoll, aiInfluence);
+  return { rolled, success: rolled <= probability };
+}
+
 
 export const rollAllActions = mutation({
   args: { gameId: v.id("games"), roundNumber: v.number(), facilitatorToken: v.optional(v.string()) },
@@ -883,11 +918,7 @@ export const rollAllActions = mutation({
       if (sub.status === "resolved") continue;
       const actions = sub.actions.map((action) => {
         const probability = action.probability ?? defaultProbability(action.priority);
-        // AI influence secretly modifies the dice roll — probability stays truthful
-        // Display the influenced roll so outcomes always visually make sense
-        const rawRoll = Math.floor(Math.random() * 100) + 1;
-        const displayRoll = applyInfluence(rawRoll, action.aiInfluence);
-        return { ...action, probability, rolled: displayRoll, success: displayRoll <= probability };
+        return { ...action, probability, ...rollDice(probability, action.aiInfluence) };
       });
 
       await ctx.db.patch(sub._id, { actions, status: "resolved" });
@@ -997,12 +1028,9 @@ export const rollAllInternal = internalMutation({
       // Skip if already rolled (idempotent)
       if (sub.actions.every((a) => a.rolled != null)) continue;
       const actions = sub.actions.map((action) => {
-        // Skip draft actions — only roll submitted actions
         if (action.actionStatus === "draft") return action;
         const probability = action.probability ?? 50;
-        const rawRoll = Math.floor(Math.random() * 100) + 1;
-        const displayRoll = applyInfluence(rawRoll, action.aiInfluence);
-        return { ...action, probability, rolled: displayRoll, success: displayRoll <= probability };
+        return { ...action, probability, ...rollDice(probability, action.aiInfluence) };
       });
       await ctx.db.patch(sub._id, { actions, status: "resolved" });
       const rolled = actions.filter((a) => a.rolled != null);

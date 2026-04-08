@@ -17,7 +17,6 @@ import {
   AI_SYSTEMS_ROLE_ID,
   DEFAULT_ROUND_LABEL,
   getProbabilityCard,
-  cycleProbability,
   isLabCeo,
   isLabSafety,
   hasCompute,
@@ -214,17 +213,6 @@ describe("Probability Cards", () => {
     expect(getProbabilityCard(100).label).toBe("Possible");
   });
 
-  it("cycleProbability should cycle through all values", () => {
-    expect(cycleProbability(90)).toBe(70);
-    expect(cycleProbability(70)).toBe(50);
-    expect(cycleProbability(50)).toBe(30);
-    expect(cycleProbability(30)).toBe(10);
-    expect(cycleProbability(10)).toBe(90);
-  });
-
-  it("cycleProbability with unknown value should return 90", () => {
-    expect(cycleProbability(42)).toBe(90);
-  });
 });
 
 // ─── COMPUTE ──────────────────────────────────────────────────────────────────

@@ -74,6 +74,7 @@ export default function FacilitatorPage({
   const advanceRound = useAuthMutation(api.games.advanceRound);
   const finishGame = useAuthMutation(api.games.finishGame);
   const overrideProbability = useAuthMutation(api.submissions.overrideProbability);
+  const ungradeAction = useAuthMutation(api.submissions.ungradeAction);
   const rerollAction = useAuthMutation(api.submissions.rerollAction);
   const setControlMode = useAuthMutation(api.tables.setControlMode);
   const toggleEnabled = useAuthMutation(api.tables.toggleEnabled);
@@ -115,14 +116,15 @@ export default function FacilitatorPage({
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
   const [editDials, setEditDials] = useState(false);
   const [addLabOpen, setAddLabOpen] = useState(false);
+  const [narrativeStale, setNarrativeStale] = useState(false);
 
   // Staggered dice reveal animation
   const [revealedCount, setRevealedCount] = useState(0);
   const isRollingPhase = gamePhase === "rolling" || gamePhase === "narrate";
-  // Reset reveal count when leaving rolling/narrate phase
+  // Reset reveal count and stale flag when leaving rolling/narrate phase
   useEffect(() => {
     if (!isRollingPhase) {
-      const t = setTimeout(() => setRevealedCount(0), 0);
+      const t = setTimeout(() => { setRevealedCount(0); setNarrativeStale(false); }, 0);
       return () => clearTimeout(t);
     }
   }, [isRollingPhase]);
@@ -159,6 +161,10 @@ export default function FacilitatorPage({
       });
     }
     setRevealedSecrets(keys);
+  };
+
+  const hideAllSecrets = () => {
+    setRevealedSecrets(new Set());
   };
 
   // Lobby needs game + tables; playing needs facilitatorState + rounds; finished needs roundsFull
@@ -233,6 +239,7 @@ export default function FacilitatorPage({
 
   const handleReResolve = async () => {
     try {
+      setNarrativeStale(false);
       await clearResolution({ gameId, roundNumber: game.currentRound });
       await triggerRoll({
         gameId,
@@ -441,6 +448,7 @@ export default function FacilitatorPage({
               revealedSecrets={revealedSecrets}
               toggleReveal={toggleReveal}
               revealAllSecrets={revealAllSecrets}
+              hideAllSecrets={hideAllSecrets}
               handleGradeRemaining={handleGradeRemaining}
               handleRollDice={handleRollDice}
               handleReResolve={handleReResolve}
@@ -450,7 +458,10 @@ export default function FacilitatorPage({
               openSubmissions={openSubmissions}
               skipTimer={skipTimer}
               overrideProbability={overrideProbability}
+              ungradeAction={ungradeAction}
               rerollAction={rerollAction}
+              narrativeStale={narrativeStale}
+              onDiceChanged={() => setNarrativeStale(true)}
               advanceRound={advanceRound}
               finishGame={finishGame}
               addLab={addLab}
