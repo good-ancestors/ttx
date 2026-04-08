@@ -457,6 +457,7 @@ export default function TablePlayerPage({
     try {
       // Save + submit in a single mutation — returns the stable actionId
       // Compute targets are escrowed server-side and transferred on action success
+      // Endorsement requests are created atomically with the action in saveAndSubmit
       const result = await saveAndSubmitMut({
         tableId,
         gameId,
@@ -466,6 +467,7 @@ export default function TablePlayerPage({
         priority: 1,
         secret: draft.secret || undefined,
         computeTargets: draft.computeTargets.length > 0 ? draft.computeTargets : undefined,
+        endorseTargets: draft.endorseTargets.length > 0 ? [...new Set(draft.endorseTargets)] : undefined,
       });
       const { actionId } = result;
       // Remove from local drafts
@@ -473,23 +475,6 @@ export default function TablePlayerPage({
         const next = prev.filter((_, i) => i !== draftIndex);
         return next.length === 0 ? [emptyAction()] : next;
       });
-      // Send endorsement requests with stable actionId
-      for (const targetId of new Set(draft.endorseTargets)) {
-        const targetRole = (allTables ?? []).find((t) => t.roleId === targetId);
-        if (targetRole) {
-          void sendRequest({
-            gameId,
-            roundNumber: game.currentRound,
-            fromRoleId: role.id,
-            fromRoleName: role.name,
-            toRoleId: targetId,
-            toRoleName: targetRole.roleName,
-            actionId,
-            actionText: draft.text.trim(),
-            requestType: "endorsement" as const,
-          });
-        }
-      }
       // Send compute requests for "request" direction targets
       // ("send" targets are escrowed server-side in saveAndSubmit, no request needed)
       for (const target of draft.computeTargets.filter((t) => t.direction === "request")) {

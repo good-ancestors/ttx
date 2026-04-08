@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator } from "./events";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
+import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
 
 const PRIORITY_HARD_CAP = 12;
 
@@ -436,6 +437,7 @@ export const saveAndSubmit = mutation({
     priority: v.number(),
     secret: v.optional(v.boolean()),
     computeTargets: v.optional(v.array(computeTargetValidator)),
+    endorseTargets: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     // Validate table ownership: the table must belong to the claimed role
@@ -489,6 +491,8 @@ export const saveAndSubmit = mutation({
       computeTargets: targets.length > 0 ? targets : undefined,
     };
 
+    let result: { submissionId: Id<"submissions">; actionIndex: number; actionId: string };
+
     if (existing) {
       if (submittedCount >= 5) throw new Error("Maximum 5 actions per round");
 
@@ -510,31 +514,58 @@ export const saveAndSubmit = mutation({
           actionIndex: existingDraftIndex,
           text: args.text,
         });
-        return { submissionId: existing._id, actionIndex: existingDraftIndex, actionId: actions[existingDraftIndex].actionId };
+        result = { submissionId: existing._id, actionIndex: existingDraftIndex, actionId: actions[existingDraftIndex].actionId };
+      } else {
+        const actions = [...existing.actions, newAction];
+        await ctx.db.patch(existing._id, { actions, status: "submitted" });
+        await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
+          actionIndex: actions.length - 1,
+          text: args.text,
+        });
+        result = { submissionId: existing._id, actionIndex: actions.length - 1, actionId: newAction.actionId };
       }
-
-      const actions = [...existing.actions, newAction];
-      await ctx.db.patch(existing._id, { actions, status: "submitted" });
+    } else {
+      const id = await ctx.db.insert("submissions", {
+        tableId: args.tableId,
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        roleId: args.roleId,
+        actions: [newAction],
+        status: "submitted",
+      });
       await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
-        actionIndex: actions.length - 1,
+        actionIndex: 0,
         text: args.text,
       });
-      return { submissionId: existing._id, actionIndex: actions.length - 1, actionId: newAction.actionId };
+      result = { submissionId: id, actionIndex: 0, actionId: newAction.actionId };
     }
 
-    const id = await ctx.db.insert("submissions", {
-      tableId: args.tableId,
-      gameId: args.gameId,
-      roundNumber: args.roundNumber,
-      roleId: args.roleId,
-      actions: [newAction],
-      status: "submitted",
-    });
-    await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
-      actionIndex: 0,
-      text: args.text,
-    });
-    return { submissionId: id, actionIndex: 0, actionId: newAction.actionId };
+    // Create endorsement requests atomically with the action submission
+    const endorseTargets = args.endorseTargets ?? [];
+    if (endorseTargets.length > 0) {
+      const roleName = table.roleName;
+      for (const targetRoleId of endorseTargets) {
+        if (targetRoleId === args.roleId) continue;
+        const targetTable = await ctx.db.query("tables")
+          .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", targetRoleId))
+          .first();
+        if (!targetTable || !targetTable.enabled) continue;
+        const requestId = await findOrUpsertRequest(ctx, {
+          gameId: args.gameId,
+          roundNumber: args.roundNumber,
+          fromRoleId: args.roleId,
+          fromRoleName: roleName,
+          toRoleId: targetRoleId,
+          toRoleName: targetTable.roleName,
+          actionId: result.actionId,
+          actionText: args.text,
+          requestType: "endorsement",
+        });
+        await triggerAutoResponse(ctx, args.gameId, args.roundNumber, targetRoleId, requestId);
+      }
+    }
+
+    return result;
   },
 });
 

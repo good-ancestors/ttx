@@ -32,7 +32,7 @@ async function transferCompute(
 }
 
 /** Find an existing request matching the key fields, or insert a new one. Returns the request ID. */
-async function findOrUpsertRequest(
+export async function findOrUpsertRequest(
   ctx: MutationCtx,
   args: {
     gameId: Id<"games">;
@@ -353,7 +353,7 @@ export const sendInternal = internalMutation({
 
 const NPC_ACCEPT_RATE = 0.7;
 
-async function triggerAutoResponse(
+export async function triggerAutoResponse(
   ctx: MutationCtx,
   gameId: Id<"games">,
   roundNumber: number,
