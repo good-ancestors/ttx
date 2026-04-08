@@ -34,6 +34,7 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   revealedSecrets: Set<string>;
   toggleReveal: (key: string) => void;
   revealAllSecrets: () => void;
+  hideAllSecrets: () => void;
   handleGradeRemaining: () => Promise<void>;
   handleRollDice: () => Promise<void>;
   handleReResolve: () => Promise<void>;
@@ -43,6 +44,7 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   openSubmissions: (args: { gameId: Id<"games">; durationSeconds: number }) => Promise<unknown>;
   skipTimer: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+  ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   advanceRound: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   finishGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
@@ -72,6 +74,7 @@ export function RoundPhase({
   revealedSecrets,
   toggleReveal,
   revealAllSecrets,
+  hideAllSecrets,
   handleGradeRemaining,
   handleRollDice,
   handleReResolve,
@@ -81,6 +84,7 @@ export function RoundPhase({
   openSubmissions,
   skipTimer,
   overrideProbability,
+  ungradeAction,
   rerollAction,
   advanceRound,
   finishGame,
@@ -216,10 +220,13 @@ export function RoundPhase({
           revealedSecrets={revealedSecrets}
           toggleReveal={toggleReveal}
           revealAllSecrets={revealAllSecrets}
+          hideAllSecrets={hideAllSecrets}
           handleReResolve={handleReResolve}
           rerollAction={rerollAction}
           overrideProbability={overrideProbability}
+          ungradeAction={ungradeAction}
           phase={phase}
+          hasNarrative={!!currentRound?.summary?.narrative}
         />
       )}
 

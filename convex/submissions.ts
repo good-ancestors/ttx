@@ -760,6 +760,31 @@ export const overrideProbability = mutation({
   },
 });
 
+export const ungradeAction = mutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actionIndex: v.number(),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    const sub = await ctx.db.get(args.submissionId);
+    if (!sub) return;
+
+    const actions = [...sub.actions];
+    if (actions[args.actionIndex]) {
+      actions[args.actionIndex] = {
+        ...actions[args.actionIndex],
+        probability: undefined,
+        rolled: undefined,
+        success: undefined,
+      };
+    }
+
+    await ctx.db.patch(args.submissionId, { actions });
+  },
+});
+
 export const rerollAction = mutation({
   args: {
     submissionId: v.id("submissions"),

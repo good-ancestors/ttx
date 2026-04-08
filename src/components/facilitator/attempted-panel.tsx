@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
-import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, cycleProbability, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, PROBABILITY_CARDS, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { ProbabilityBadge } from "@/components/action-card";
 import {
   Lock,
   Dices,
+  Eye,
   EyeOff,
   RefreshCw,
   CheckCircle,
@@ -32,10 +33,13 @@ export function AttemptedPanel({
   revealedSecrets,
   toggleReveal,
   revealAllSecrets,
+  hideAllSecrets,
   handleReResolve,
   rerollAction,
   overrideProbability,
+  ungradeAction,
   phase,
+  hasNarrative,
 }: {
   submissions: Submission[];
   proposals: Proposal[];
@@ -45,10 +49,13 @@ export function AttemptedPanel({
   revealedSecrets: Set<string>;
   toggleReveal: (key: string) => void;
   revealAllSecrets: () => void;
+  hideAllSecrets: () => void;
   handleReResolve: () => Promise<void>;
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+  ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   phase: string;
+  hasNarrative: boolean;
 }) {
   // Collapsed by default — opens when there's content to show
   const [expanded, setExpanded] = useState(false);
@@ -57,6 +64,18 @@ export function AttemptedPanel({
   const hasGraded = submissions.some((s) => s.actions.some((a) => a.probability != null));
   const hasSubmissions = submissions.length > 0;
   const isRollingOrNarrate = isResolvingPhase(phase);
+
+  const allSecretKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const sub of submissions) {
+      sub.actions.forEach((a, i) => {
+        if (a.secret) keys.add(`${sub.roleId}-${i}`);
+      });
+    }
+    return keys;
+  }, [submissions]);
+  const hasSecrets = allSecretKeys.size > 0;
+  const allSecretsRevealed = hasSecrets && [...allSecretKeys].every((k) => revealedSecrets.has(k));
 
   const allActions = useMemo(() =>
     submissions.flatMap((sub) => {
@@ -138,12 +157,16 @@ export function AttemptedPanel({
             </span>
           )}
         </div>
-        {isExpanded && (
+        {isExpanded && hasSecrets && (
           <button
-            onClick={revealAllSecrets}
+            onClick={allSecretsRevealed ? hideAllSecrets : revealAllSecrets}
             className="text-[10px] text-viz-warning hover:text-white transition-colors flex items-center gap-1"
           >
-            <EyeOff className="w-3 h-3" /> Reveal secrets
+            {allSecretsRevealed ? (
+              <><Eye className="w-3 h-3" /> Hide secrets</>
+            ) : (
+              <><EyeOff className="w-3 h-3" /> Reveal secrets</>
+            )}
           </button>
         )}
       </div>
@@ -170,6 +193,7 @@ export function AttemptedPanel({
                 getEndorsements={getEndorsements}
                 rerollAction={rerollAction}
                 overrideProbability={overrideProbability}
+                ungradeAction={ungradeAction}
                 allowPregrade={!isProjector && !isRollingOrNarrate}
               />
             ))}
@@ -178,9 +202,14 @@ export function AttemptedPanel({
             <button
               onClick={handleReResolve}
               disabled={resolving}
-              className="text-[11px] px-3 py-1.5 bg-navy-light text-text-light rounded font-medium hover:bg-navy-muted transition-colors flex items-center gap-1 mt-3 disabled:opacity-50"
+              className={`text-[11px] px-3 py-1.5 rounded font-medium transition-colors flex items-center gap-1 mt-3 disabled:opacity-50 ${
+                hasNarrative
+                  ? "bg-viz-warning/20 text-viz-warning hover:bg-viz-warning/30 border border-viz-warning/30"
+                  : "bg-navy-light text-text-light hover:bg-navy-muted"
+              }`}
             >
-              <RefreshCw className="w-3 h-3" /> Re-resolve from dice
+              <RefreshCw className="w-3 h-3" />
+              {hasNarrative ? "Regenerate narrative from dice" : "Re-resolve from dice"}
             </button>
           )}
         </>
@@ -203,6 +232,7 @@ function ActionRow({
   getEndorsements,
   rerollAction,
   overrideProbability,
+  ungradeAction,
   allowPregrade,
 }: {
   action: Submission["actions"][number];
@@ -218,6 +248,7 @@ function ActionRow({
   getEndorsements: (roleId: string, actionText: string) => Proposal[];
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+  ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   allowPregrade: boolean;
 }) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
@@ -282,6 +313,7 @@ function ActionRow({
           isProjector={isProjector}
           rerollAction={rerollAction}
           overrideProbability={overrideProbability}
+          ungradeAction={ungradeAction}
           allowPregrade={allowPregrade}
         />
       </div>
@@ -306,6 +338,66 @@ function ActionRow({
   );
 }
 
+function ProbabilityDropdown({
+  current,
+  submissionId,
+  actionIndex,
+  overrideProbability,
+  ungradeAction,
+}: {
+  current: number;
+  submissionId: Id<"submissions">;
+  actionIndex: number;
+  overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+  ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const card = PROBABILITY_CARDS.find((p) => p.pct === current) ?? PROBABILITY_CARDS[2];
+
+  return (
+    <div className="relative shrink-0">
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-[11px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1"
+        style={{ backgroundColor: card.bgColor, color: card.color }}
+      >
+        {card.label} ({card.pct}%)
+        <ChevronDown className="w-3 h-3" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-50 bg-navy-dark border border-navy-light rounded-lg shadow-xl py-1 min-w-[160px]">
+          {PROBABILITY_CARDS.map((p) => (
+            <button
+              key={p.pct}
+              onClick={() => {
+                void overrideProbability({ submissionId, actionIndex, probability: p.pct });
+                setOpen(false);
+              }}
+              className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-navy-light transition-colors ${
+                p.pct === current ? "font-bold" : ""
+              }`}
+              style={{ color: p.color }}
+            >
+              <span>{p.label}</span>
+              <span className="font-mono">{p.pct}%</span>
+            </button>
+          ))}
+          <div className="border-t border-navy-light my-1" />
+          <button
+            onClick={() => {
+              void ungradeAction({ submissionId, actionIndex });
+              setOpen(false);
+            }}
+            className="w-full text-left px-3 py-1.5 text-xs text-text-light hover:bg-navy-light transition-colors"
+          >
+            Ungrade
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ActionOutcome({
   action,
   submissionId,
@@ -313,6 +405,7 @@ function ActionOutcome({
   isProjector,
   rerollAction,
   overrideProbability,
+  ungradeAction,
   allowPregrade,
 }: {
   action: Submission["actions"][number];
@@ -321,6 +414,7 @@ function ActionOutcome({
   isProjector: boolean;
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+  ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   allowPregrade: boolean;
 }) {
   if (action.rolled != null) {
@@ -335,17 +429,13 @@ function ActionOutcome({
             {action.rolled}
           </button>
           <span className={`text-xs ${action.success ? "text-viz-safety" : "text-viz-danger"}`}>/</span>
-          <button
-            onClick={() => void overrideProbability({
-              submissionId,
-              actionIndex,
-              probability: cycleProbability(action.probability ?? 50),
-            })}
-            className="text-xs font-mono px-1 rounded hover:bg-navy-light text-text-light"
-            title="Click to cycle probability"
-          >
-            {action.probability}%
-          </button>
+          <ProbabilityDropdown
+            current={action.probability ?? 50}
+            submissionId={submissionId}
+            actionIndex={actionIndex}
+            overrideProbability={overrideProbability}
+            ungradeAction={ungradeAction}
+          />
         </span>
       );
     }
@@ -357,16 +447,18 @@ function ActionOutcome({
   }
 
   if (action.probability != null) {
-    return (
-      <ProbabilityBadge
-        probability={action.probability}
-        onClick={!isProjector ? () => overrideProbability({
-          submissionId,
-          actionIndex,
-          probability: cycleProbability(action.probability!),
-        }) : undefined}
-      />
-    );
+    if (!isProjector) {
+      return (
+        <ProbabilityDropdown
+          current={action.probability}
+          submissionId={submissionId}
+          actionIndex={actionIndex}
+          overrideProbability={overrideProbability}
+          ungradeAction={ungradeAction}
+        />
+      );
+    }
+    return <ProbabilityBadge probability={action.probability} />;
   }
 
   if (allowPregrade) {

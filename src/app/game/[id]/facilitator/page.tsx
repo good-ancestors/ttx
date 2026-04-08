@@ -74,6 +74,7 @@ export default function FacilitatorPage({
   const advanceRound = useAuthMutation(api.games.advanceRound);
   const finishGame = useAuthMutation(api.games.finishGame);
   const overrideProbability = useAuthMutation(api.submissions.overrideProbability);
+  const ungradeAction = useAuthMutation(api.submissions.ungradeAction);
   const rerollAction = useAuthMutation(api.submissions.rerollAction);
   const setControlMode = useAuthMutation(api.tables.setControlMode);
   const toggleEnabled = useAuthMutation(api.tables.toggleEnabled);
@@ -159,6 +160,10 @@ export default function FacilitatorPage({
       });
     }
     setRevealedSecrets(keys);
+  };
+
+  const hideAllSecrets = () => {
+    setRevealedSecrets(new Set());
   };
 
   // Lobby needs game + tables; playing needs facilitatorState + rounds; finished needs roundsFull
@@ -441,6 +446,7 @@ export default function FacilitatorPage({
               revealedSecrets={revealedSecrets}
               toggleReveal={toggleReveal}
               revealAllSecrets={revealAllSecrets}
+              hideAllSecrets={hideAllSecrets}
               handleGradeRemaining={handleGradeRemaining}
               handleRollDice={handleRollDice}
               handleReResolve={handleReResolve}
@@ -450,6 +456,7 @@ export default function FacilitatorPage({
               openSubmissions={openSubmissions}
               skipTimer={skipTimer}
               overrideProbability={overrideProbability}
+              ungradeAction={ungradeAction}
               rerollAction={rerollAction}
               advanceRound={advanceRound}
               finishGame={finishGame}
