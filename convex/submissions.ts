@@ -440,12 +440,22 @@ async function createActionRequests(
     computeRequestTargets: { roleId: string; amount: number }[];
   },
 ) {
+  const allTargetRoleIds = [
+    ...args.endorseTargets.filter((id) => id !== args.fromRoleId),
+    ...args.computeRequestTargets.map((t) => t.roleId),
+  ];
+  if (allTargetRoleIds.length === 0) return;
+
+  // Batch-fetch all target tables in one query to avoid N+1 reads
+  const tables = await ctx.db.query("tables")
+    .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+    .collect();
+  const tableByRole = new Map(tables.filter((t) => t.enabled).map((t) => [t.roleId, t]));
+
   for (const targetRoleId of args.endorseTargets) {
     if (targetRoleId === args.fromRoleId) continue;
-    const targetTable = await ctx.db.query("tables")
-      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", targetRoleId))
-      .first();
-    if (!targetTable || !targetTable.enabled) continue;
+    const targetTable = tableByRole.get(targetRoleId);
+    if (!targetTable) continue;
     const requestId = await findOrUpsertRequest(ctx, {
       gameId: args.gameId,
       roundNumber: args.roundNumber,
@@ -457,14 +467,12 @@ async function createActionRequests(
       actionText: args.actionText,
       requestType: "endorsement",
     });
-    await triggerAutoResponse(ctx, args.gameId, args.roundNumber, targetRoleId, requestId);
+    await triggerAutoResponse(ctx, args.gameId, args.roundNumber, targetRoleId, requestId, targetTable);
   }
 
   for (const target of args.computeRequestTargets) {
-    const targetTable = await ctx.db.query("tables")
-      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", target.roleId))
-      .first();
-    if (!targetTable || !targetTable.enabled) continue;
+    const targetTable = tableByRole.get(target.roleId);
+    if (!targetTable) continue;
     const requestId = await findOrUpsertRequest(ctx, {
       gameId: args.gameId,
       roundNumber: args.roundNumber,
@@ -477,7 +485,7 @@ async function createActionRequests(
       requestType: "compute",
       computeAmount: target.amount,
     });
-    await triggerAutoResponse(ctx, args.gameId, args.roundNumber, target.roleId, requestId);
+    await triggerAutoResponse(ctx, args.gameId, args.roundNumber, target.roleId, requestId, targetTable);
   }
 }
 

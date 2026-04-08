@@ -119,10 +119,10 @@ export const generateAll = internalAction({
       computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
     }
     const pending: PendingAction[] = [];
+    const activeRoleIds = new Set(enabledTables.map((t) => t.roleId));
 
     // NPC tables: use sample actions
     if (sampleData) {
-      const activeRoleIds = new Set(enabledTables.map((t) => t.roleId));
       for (const table of npcTables) {
         try {
           const all = getSampleActions(sampleData as never, table.roleId, roundNumber);
@@ -397,12 +397,12 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
           }
           // Filter valid compute transfers (positive amount, valid target, not self)
           const computeTransfers = (output.computeTransfers ?? []).filter(
-            (t) => t.amount > 0 && t.toRoleId !== table.roleId && enabledTables.some((et) => et.roleId === t.toRoleId)
+            (t) => t.amount > 0 && t.toRoleId !== table.roleId && activeRoleIds.has(t.toRoleId)
           );
 
           // Filter valid compute request hints (positive amount, valid target, not self)
           const computeRequestHints = (output.computeRequestHints ?? []).filter(
-            (h) => h.amount > 0 && h.targetRoleId !== table.roleId && enabledTables.some((et) => et.roleId === h.targetRoleId)
+            (h) => h.amount > 0 && h.targetRoleId !== table.roleId && activeRoleIds.has(h.targetRoleId)
           );
 
           // Filter + validate endorseHints: must reference an actual generated action, valid targets
@@ -412,7 +412,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
             .map((h) => ({
               actionText: h.actionText,
               targetRoleIds: h.targetRoleIds.filter((id) =>
-                enabledTables.some((et) => et.roleId === id) && id !== table.roleId && id !== AI_SYSTEMS_ROLE_ID
+                activeRoleIds.has(id) && id !== table.roleId && id !== AI_SYSTEMS_ROLE_ID
               ),
             }))
             .filter((h) => h.targetRoleIds.length > 0);

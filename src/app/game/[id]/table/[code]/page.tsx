@@ -454,9 +454,6 @@ export default function TablePlayerPage({
     if (!draft?.text.trim() || !role || !game) return;
     setSubmitError("");
     try {
-      // Save + submit in a single mutation — returns the stable actionId
-      // Compute targets are escrowed server-side and transferred on action success
-      // Endorsement requests are created atomically with the action in saveAndSubmit
       await saveAndSubmitMut({
         tableId,
         gameId,

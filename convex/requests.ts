@@ -359,8 +359,9 @@ export async function triggerAutoResponse(
   roundNumber: number,
   toRoleId: string,
   requestId: Id<"requests">,
+  prefetchedTable?: { _id: Id<"tables">; enabled: boolean; controlMode: string; computeStock?: number },
 ) {
-  const targetTable = await ctx.db
+  const targetTable = prefetchedTable ?? await ctx.db
     .query("tables")
     .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", toRoleId))
     .first();
