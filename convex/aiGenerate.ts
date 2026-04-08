@@ -291,6 +291,9 @@ Rules:
 3. Assign a priority from 1-10 (total budget: 10)
 
 Be strategic, realistic, and scenario-appropriate. Do NOT repeat actions from previous rounds — adapt your strategy.
+For each action, you may request endorsement from other players who would benefit from or support that action.
+Output endorseHints: [{ actionText: "<exact action text>", targetRoleIds: ["<role-id>", ...] }] for actions where you want support. Only request endorsement from roles who have a genuine stake in the action's outcome. Empty array if not needed.
+Available roles: ${enabledTables.filter((t) => t.roleId !== table.roleId && t.roleId !== AI_SYSTEMS_ROLE_ID).map((t) => `${t.roleName} (${t.roleId})`).join(", ")}
 ${isLabCeo(role) ? `Also set your compute allocation (users/capability/safety percentages summing to 100).
 You may also request compute from government players. Output computeRequestHints: [{ targetRoleId: "<government-role-id>", amount: <number>, actionText: "<reason>" }] if you want to request compute. Empty array if not.
 Available government roles: ${enabledTables.filter((t) => ROLES.find((r) => r.id === t.roleId)?.tags.includes("government")).map((t) => `${t.roleName} (${t.roleId})`).join(", ") || "none"}` : ""}
@@ -302,6 +305,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       try {
         const { output } = await callAnthropic<{
           actions: { text: string; priority: number; secret?: boolean }[];
+          endorseHints?: { actionText: string; targetRoleIds: string[] }[];
           computeAllocation?: { users: number; capability: number; safety: number };
           computeTransfers?: { toRoleId: string; amount: number }[];
           computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
@@ -324,6 +328,17 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
                     secret: { type: "boolean" },
                   },
                   required: ["text", "priority"],
+                },
+              },
+              endorseHints: {
+                type: "array",
+                items: {
+                  type: "object",
+                  properties: {
+                    actionText: { type: "string" },
+                    targetRoleIds: { type: "array", items: { type: "string" } },
+                  },
+                  required: ["actionText", "targetRoleIds"],
                 },
               },
               computeAllocation: {
@@ -390,11 +405,24 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
             (h) => h.amount > 0 && h.targetRoleId !== table.roleId && enabledTables.some((et) => et.roleId === h.targetRoleId)
           );
 
+          // Filter + validate endorseHints: must reference an actual generated action, valid targets
+          const actionTexts = new Set(actions.map((a) => a.text));
+          const endorseHints = (output.endorseHints ?? [])
+            .filter((h) => actionTexts.has(h.actionText))
+            .map((h) => ({
+              actionText: h.actionText,
+              targetRoleIds: h.targetRoleIds.filter((id) =>
+                enabledTables.some((et) => et.roleId === id) && id !== table.roleId && id !== AI_SYSTEMS_ROLE_ID
+              ),
+            }))
+            .filter((h) => h.targetRoleIds.length > 0);
+
           pending.push({
             tableId: table._id,
             roleId: table.roleId,
             actions,
             computeAllocation,
+            endorseHints: endorseHints.length > 0 ? endorseHints : undefined,
             computeTransfers: computeTransfers.length > 0 ? computeTransfers : undefined,
             computeRequestHints: computeRequestHints.length > 0 ? computeRequestHints : undefined,
           });
