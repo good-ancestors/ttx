@@ -161,8 +161,12 @@ export default function FacilitatorPage({
     setRevealedSecrets(keys);
   };
 
-  // Lobby only needs game + tables; playing needs facilitatorState + rounds
-  const isLoading = !game || (game.status === "lobby" ? !allTablesForLobby : (!facilitatorState || !roundsLite));
+  // Lobby needs game + tables; playing needs facilitatorState + rounds; finished needs roundsFull
+  const isLoading = !game || (
+    game.status === "lobby" ? !allTablesForLobby :
+    game.status === "finished" ? !roundsFull :
+    (!facilitatorState || !roundsLite)
+  );
   if (isLoading) {
     return (
       <div className="min-h-screen bg-navy-dark flex items-center justify-center">

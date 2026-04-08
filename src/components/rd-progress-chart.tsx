@@ -95,13 +95,15 @@ function buildChartData(
   compact: boolean,
 ): ChartData {
   const snapshotLabs = rounds.flatMap((round) => round.labsAfter ?? []);
+  // Deduplicate by roleId (stable identity) — keeps DEFAULT_LABS entry first
+  // so Pre/Start points use the original starting values, not current values.
   const allLabs = [
     ...DEFAULT_LABS,
     ...currentLabs,
     ...snapshotLabs,
     ...BACKGROUND_LABS.map((l, i) => ({ ...l, roleId: `bg-${i}` })),
   ].reduce<Lab[]>((labs, lab) => {
-    if (labs.some((existing) => existing.name === lab.name)) return labs;
+    if (labs.some((existing) => existing.roleId === lab.roleId)) return labs;
     labs.push(lab);
     return labs;
   }, []);
@@ -127,18 +129,20 @@ function buildChartData(
   }
 
   // Build per-lab point series
+  const currentByRoleId = new Map(currentLabs.map(l => [l.roleId, l]));
   const series: LabSeries[] = [];
 
   for (const lab of allLabs) {
     const isBackground = lab.roleId.startsWith("bg-");
-    const isInactive = !isBackground && !currentLabs.some((l) => l.name === lab.name);
+    const currentLab = currentByRoleId.get(lab.roleId);
+    const isInactive = !isBackground && !currentLab;
     const points: ChartPoint[] = [];
 
     points.push({ x: xPos(0), y: 0, value: PRE_GAME_MULTIPLIERS[lab.name] ?? 1.1 });
     points.push({ x: xPos(1), y: 0, value: lab.rdMultiplier });
 
     for (let i = 0; i < completedRounds.length; i++) {
-      const roundLab = completedRounds[i].labsAfter?.find((l) => l.name === lab.name);
+      const roundLab = completedRounds[i].labsAfter?.find((l) => l.roleId === lab.roleId);
       if (!roundLab && isInactive) break;
       points.push({
         x: xPos(2 + i),
@@ -149,7 +153,8 @@ function buildChartData(
 
     // Only plot round data from actual snapshots — no live fallbacks
 
-    series.push({ name: lab.name, roleId: lab.roleId, points, isBackground, isInactive });
+    // Use the latest name so renames (e.g. "DeepCent" → "DeepCent (Inspected)") display correctly
+    series.push({ name: currentLab?.name ?? lab.name, roleId: lab.roleId, points, isBackground, isInactive });
   }
 
   // Scale
