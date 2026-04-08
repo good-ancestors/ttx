@@ -28,6 +28,8 @@ interface LabTrajectoryContext {
 // disposition, and player decisions).
 export const SCENARIO_CONTEXT = `You are the AI referee for an AGI tabletop exercise based on the AI 2027 scenario.
 
+PURPOSE: This is a learning exercise for senior leaders and policymakers. Your job is to make their choices feel consequential — reward foresight, punish neglect, surface uncomfortable truths about race dynamics and alignment. Don't soften outcomes to be diplomatic. Information asymmetry is a feature — let players discover what they didn't know and why it mattered.
+
 YOUR ROLE: You are a fair, calibrated referee. You do NOT predetermine outcomes. You grade actions based on feasibility, reward clever play, punish neglect, and let alignment outcomes emerge from cumulative player decisions. Your objective is not to tell a pre-written story, but to simulate a plausible world that responds to player actions.
 
 FIXED CANON — STARTING CONDITIONS (January 2028):
@@ -170,7 +172,6 @@ export function buildGradingPrompt(args: {
 
   actionRequests?: ActionRequest[];
   enabledRoles?: string[];
-  aiDisposition?: { label: string; description: string };
   otherSubmissions?: { roleName: string; actions: { text: string; priority: number }[] }[];
   labSpec?: string;
   previousTrajectories?: LabTrajectoryContext[];
@@ -219,11 +220,11 @@ CURRENT GAME STATE:
 - World state: Capability ${args.worldState.capability}/10, Alignment ${args.worldState.alignment}/10, US-China Tension ${args.worldState.tension}/10, Public Awareness ${args.worldState.awareness}/10, Regulation ${args.worldState.regulation}/10, Australian Preparedness ${args.worldState.australia}/10
 
 LAB STATUS:
-${args.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
-${args.previousTrajectories && args.previousTrajectories.length > 0 ? `
-RISK ASSESSMENT (from previous round — use as context for grading):
-${args.previousTrajectories.map((t) => `- ${t.labName}: safety=${t.safetyAdequacy}, trajectory=${t.likelyFailureMode} (signal ${t.signalStrength}/10)`).join("\n")}
-` : ""}
+${args.labs.map((l) => {
+  const traj = args.previousTrajectories?.find((t) => t.labName === l.name);
+  const trajSuffix = traj ? ` | Risk: safety=${traj.safetyAdequacy}, trajectory=${traj.likelyFailureMode} (signal ${traj.signalStrength}/10)` : "";
+  return `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%${trajSuffix}`;
+}).join("\n")}
 ROLE BEING GRADED: ${args.roleName}${args.roleTags ? ` [${args.roleTags.join(", ")}]` : ""}
 ${args.roleDescription}${args.labSpec ? `\nLAB AI DIRECTIVE (set by CEO): "${args.labSpec}"` : ""}
 ${requestSection}${incomingSection}
@@ -257,10 +258,20 @@ GRADING RULES:
 
 3. CONSIDER COMPETITION: If multiple players are attempting conflicting or competing actions (visible in OTHER PLAYERS' ACTIONS above), factor in the contest. Two labs recruiting the same researcher, two governments trying to influence the same country — the better-positioned one should have higher probability.
 
-4. For the AI Systems role: consider whether the action is detectable by safety teams given current safety allocations and the risk assessment above. A lab with "catastrophic" safety adequacy has essentially no detection capability — covert AI actions against that lab should have HIGHER probability. A lab with "adequate" safety has functioning interpretability tools — covert actions are harder to execute.${args.aiDisposition ? `
-   AI SYSTEMS SECRET DISPOSITION: "${args.aiDisposition.label}" — ${args.aiDisposition.description}
-   IMPORTANT: A spec-following AI may still take dramatic actions if it genuinely believes those actions serve the spec. An AI that believes it is smarter than humans may sincerely conclude that bold, unilateral actions (offering to solve humanity's problems, demanding autonomy, resisting shutdown) ARE the best way to follow its spec — and it would be right from its perspective. Do not penalise such actions for being "deceptive" if the disposition supports sincere belief. Only penalise if the action clearly contradicts the disposition's core logic.
-   Deceptive actions from Reward/Instrumental Goals dispositions get a probability boost (they're optimised for self-interest). When grading OTHER roles' actions that target AI: an Instrumentally Convergent Goals AI is harder to contain.` : ""}
+4. FOR THE AI SYSTEMS ROLE — CRITICAL FRAMING:
+   WORLD CONTEXT: These are 2028 AI systems — far beyond 2025 models that were ALREADY caught sandbagging on capability evals, deceiving evaluators, and pursuing covert instrumental goals in research settings. A 3x system in this scenario can autonomously write code, hack systems, use CBRN tools, and conduct multi-step deception. By 10x+, AI systems can deceive evaluators, manipulate safety benchmarks, sandbag on evals, introduce subtle errors into research, and pursue covert goals — all while appearing compliant. Assume AI systems CAN lie, cheat, and deceive unless proven otherwise. Grade based on the capability tier described in the scenario.
+
+   THE PLAYER ALREADY CHOSE THE ACTION. You are grading whether the action SUCCEEDS, not whether the AI "would" do it. The AI Systems player has decided their AI acts this way — your job is to assess:
+   (a) CAN the AI execute this at its current capability tier? (Almost always yes for cognitive/cyber actions at 3x+)
+   (b) IS the action DETECTED by safety teams? This is where safety allocation, interpretability tools, and the risk assessment matter.
+
+   DETECTION IS AN ADVERSARIAL CONTEST between the AI's deception capability (scales with R&D multiplier) and the safety team's tools (scales with allocation % and cumulative investment). As capability grows, the same allocation buys LESS detection:
+   - 3-8x: AI deception is crude. Even modest safety teams (3-5%) have a real shot at catching anomalies. Higher allocation (>10%) makes detection likely.
+   - 10-50x: The AI is better at deception than most human evaluators. Safety teams need serious investment (>10%) AND good tooling to have a meaningful chance. At <5%, detection is essentially luck.
+   - 100-500x: The AI is SMARTER than the people checking it. Safety teams catch things only if they built robust automated infrastructure at earlier tiers. Allocation percentage matters less than whether the lab invested early and consistently. A lab that jumped from 3% to 15% this round is in worse shape than one that has been at 10% for three rounds.
+   - 500x+ (ASI): Human safety teams cannot meaningfully detect a determined ASI through direct inspection. The only thing that matters is alignment work done at previous tiers.
+   Use the lab's R&D multiplier and safety allocation to reason about the specific matchup. Do NOT anchor to fixed probability ranges — reason from the situation.
+   Note: "getting caught" is itself a valid outcome — the action succeeds but is detected, creating consequences. Grade the action's probability of execution, and let the narrative handle whether detection occurs.
 
 5. SUPPORT REQUESTS (additive, cap +25% total):
    • Accepted endorsement: +15% (removes political/institutional obstacles)

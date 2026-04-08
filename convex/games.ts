@@ -710,7 +710,6 @@ export const triggerGrading = mutation({
     await ctx.scheduler.runAfter(0, internal.pipeline.gradeOnly, {
       gameId: args.gameId,
       roundNumber: args.roundNumber,
-      aiDisposition: args.aiDisposition,
     });
   },
 });
