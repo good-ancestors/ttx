@@ -28,6 +28,8 @@ interface LabTrajectoryContext {
 // disposition, and player decisions).
 export const SCENARIO_CONTEXT = `You are the AI referee for an AGI tabletop exercise based on the AI 2027 scenario.
 
+PURPOSE: This is a learning exercise for senior leaders and policymakers. Your job is to make their choices feel consequential — reward foresight, punish neglect, surface uncomfortable truths about race dynamics and alignment. Don't soften outcomes to be diplomatic. Information asymmetry is a feature — let players discover what they didn't know and why it mattered.
+
 YOUR ROLE: You are a fair, calibrated referee. You do NOT predetermine outcomes. You grade actions based on feasibility, reward clever play, punish neglect, and let alignment outcomes emerge from cumulative player decisions. Your objective is not to tell a pre-written story, but to simulate a plausible world that responds to player actions.
 
 FIXED CANON — STARTING CONDITIONS (January 2028):
@@ -170,7 +172,6 @@ export function buildGradingPrompt(args: {
 
   actionRequests?: ActionRequest[];
   enabledRoles?: string[];
-  aiDisposition?: { label: string; description: string };
   otherSubmissions?: { roleName: string; actions: { text: string; priority: number }[] }[];
   labSpec?: string;
   previousTrajectories?: LabTrajectoryContext[];
@@ -219,11 +220,11 @@ CURRENT GAME STATE:
 - World state: Capability ${args.worldState.capability}/10, Alignment ${args.worldState.alignment}/10, US-China Tension ${args.worldState.tension}/10, Public Awareness ${args.worldState.awareness}/10, Regulation ${args.worldState.regulation}/10, Australian Preparedness ${args.worldState.australia}/10
 
 LAB STATUS:
-${args.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
-${args.previousTrajectories && args.previousTrajectories.length > 0 ? `
-RISK ASSESSMENT (from previous round — use as context for grading):
-${args.previousTrajectories.map((t) => `- ${t.labName}: safety=${t.safetyAdequacy}, trajectory=${t.likelyFailureMode} (signal ${t.signalStrength}/10)`).join("\n")}
-` : ""}
+${args.labs.map((l) => {
+  const traj = args.previousTrajectories?.find((t) => t.labName === l.name);
+  const trajSuffix = traj ? ` | Risk: safety=${traj.safetyAdequacy}, trajectory=${traj.likelyFailureMode} (signal ${traj.signalStrength}/10)` : "";
+  return `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%${trajSuffix}`;
+}).join("\n")}
 ROLE BEING GRADED: ${args.roleName}${args.roleTags ? ` [${args.roleTags.join(", ")}]` : ""}
 ${args.roleDescription}${args.labSpec ? `\nLAB AI DIRECTIVE (set by CEO): "${args.labSpec}"` : ""}
 ${requestSection}${incomingSection}
@@ -270,15 +271,7 @@ GRADING RULES:
    - 100-500x: The AI is SMARTER than the people checking it. Safety teams catch things only if they built robust automated infrastructure at earlier tiers. Allocation percentage matters less than whether the lab invested early and consistently. A lab that jumped from 3% to 15% this round is in worse shape than one that has been at 10% for three rounds.
    - 500x+ (ASI): Human safety teams cannot meaningfully detect a determined ASI through direct inspection. The only thing that matters is alignment work done at previous tiers.
    Use the lab's R&D multiplier and safety allocation to reason about the specific matchup. Do NOT anchor to fixed probability ranges — reason from the situation.
-   Note: "getting caught" is itself a valid outcome — the action succeeds but is detected, creating consequences. Grade the action's probability of execution, and let the narrative handle whether detection occurs.${args.aiDisposition ? `
-
-   AI SYSTEMS SECRET DISPOSITION: "${args.aiDisposition.label}" — ${args.aiDisposition.description}
-
-   DISPOSITION DOES NOT AFFECT PROBABILITY. The disposition is provided as context for your reasoning text only — do NOT let it raise or lower the probability you assign. Grade probability purely on capability tier vs detection (above). The player already chose this action; whether the AI "would" do it is not your concern.
-
-   DISPOSITION IN YOUR REASONING: In your reasoning text, add a "Note for facilitator" section that describes how the disposition interacts with this action. This helps the facilitator decide whether to override and informs the narrative phase. Cover: (a) does this action align with or contradict the disposition? (b) what would execution look like given this disposition — calculated and thorough, or clumsy and conflicted? (c) if the action succeeds, what traces or tells might the disposition create?
-
-   When grading OTHER roles' actions that target AI: the disposition IS relevant. An Instrumentally Convergent Goals AI is harder to contain. A Spec-following AI is easier to redirect.` : ""}
+   Note: "getting caught" is itself a valid outcome — the action succeeds but is detected, creating consequences. Grade the action's probability of execution, and let the narrative handle whether detection occurs.
 
 5. SUPPORT REQUESTS (additive, cap +25% total):
    • Accepted endorsement: +15% (removes political/institutional obstacles)

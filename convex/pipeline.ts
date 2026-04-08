@@ -78,11 +78,10 @@ async function gradeSubmissionBatch(
     requests: { fromRoleId: string; toRoleId: string; actionText: string; fromRoleName: string; toRoleName: string; requestType: string; computeAmount?: number; status: string }[];
     enabledRoleNames: string[];
     roundNumber: number;
-    aiDisposition?: { label: string; description: string };
     onlyUngraded?: boolean; // If true, only grade actions without probability
   },
 ) {
-  const { gameId, game, ungraded, allSubmissions, rounds, requests, enabledRoleNames, roundNumber, aiDisposition, onlyUngraded } = opts;
+  const { gameId, game, ungraded, allSubmissions, rounds, requests, enabledRoleNames, roundNumber, onlyUngraded } = opts;
   const GRADING_CONCURRENCY = 6;
   let completed = 0;
   const total = ungraded.length;
@@ -131,7 +130,8 @@ async function gradeSubmissionBatch(
         labs: game.labs,
         actionRequests,
         enabledRoles: enabledRoleNames,
-        aiDisposition: sub.roleId === AI_SYSTEMS_ROLE_ID ? aiDisposition : undefined,
+        // Disposition deliberately excluded from grading — it biases probability
+        // even when instructed not to. Disposition is passed to narrative phase only.
         otherSubmissions: otherSubs,
         labSpec: labMap.get(sub.roleId)?.spec,
         previousTrajectories: prevRoundForGrading?.labTrajectories as
@@ -227,10 +227,9 @@ export const gradeOnly = internalAction({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
-    aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
   },
   handler: async (ctx, args) => {
-    const { gameId, roundNumber, aiDisposition } = args;
+    const { gameId, roundNumber } = args;
 
     try {
       // Quick check: fetch submissions first to see if there's anything to grade
@@ -292,7 +291,7 @@ export const gradeOnly = internalAction({
 
       await gradeSubmissionBatch(ctx, {
         gameId, game, ungraded, allSubmissions: submissions, rounds, requests: requests ?? [],
-        enabledRoleNames, roundNumber, aiDisposition, onlyUngraded: true,
+        enabledRoleNames, roundNumber, onlyUngraded: true,
       });
 
       // Done grading — release lock, don't proceed to roll
