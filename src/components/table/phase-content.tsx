@@ -67,10 +67,12 @@ interface LabProps {
   labSpec: string;
   onLabSpecChange: (spec: string) => void;
   specSaved: boolean;
+  specUnsaved: boolean;
   onSaveSpec: () => Promise<void> | void;
   computeAllocation: { users: number; capability: number; safety: number };
   onComputeAllocationChange: (alloc: { users: number; capability: number; safety: number }) => void;
   allocationSaved: boolean;
+  allocationUnsaved: boolean;
   onSaveAllocation: () => Promise<void> | void;
 }
 
@@ -259,6 +261,7 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
                   onLabSpecChange={lab.onLabSpecChange}
                   specSaved={lab.specSaved}
                   onSaveSpec={lab.onSaveSpec}
+                  unsaved={lab.specUnsaved}
                 />
                 <ComputeAllocation
                   allocation={lab.computeAllocation}
@@ -266,6 +269,7 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
                   isSubmitted={false}
                   roleName={common.role.name}
                   saved={lab.allocationSaved}
+                  unsaved={lab.allocationUnsaved}
                   onSave={lab.onSaveAllocation}
                 />
               </>

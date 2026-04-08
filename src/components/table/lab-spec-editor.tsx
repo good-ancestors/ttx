@@ -1,4 +1,4 @@
-import { FileText, CheckCircle2 } from "lucide-react";
+import { FileText, CheckCircle2, AlertCircle } from "lucide-react";
 
 export function LabSpecEditor({
   labSpec,
@@ -6,12 +6,14 @@ export function LabSpecEditor({
   specSaved,
   onSaveSpec,
   readOnly = false,
+  unsaved = false,
 }: {
   labSpec: string;
   onLabSpecChange: (spec: string) => void;
   specSaved: boolean;
   onSaveSpec: () => void;
   readOnly?: boolean;
+  unsaved?: boolean;
 }) {
   return (
     <div className="bg-white rounded-xl border border-border p-4 mb-4">
@@ -42,6 +44,11 @@ export function LabSpecEditor({
           {specSaved && (
             <span className="text-xs text-[#059669] font-medium flex items-center gap-1">
               <CheckCircle2 className="w-3 h-3" /> Saved
+            </span>
+          )}
+          {unsaved && !specSaved && (
+            <span className="text-xs text-[#D97706] font-medium flex items-center gap-1">
+              <AlertCircle className="w-3 h-3" /> Unsaved changes
             </span>
           )}
         </div>
