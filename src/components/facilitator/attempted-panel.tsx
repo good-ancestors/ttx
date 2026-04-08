@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, PROBABILITY_CARDS, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { ProbabilityBadge } from "@/components/action-card";
@@ -379,10 +379,20 @@ function ProbabilityDropdown({
   allowUngrade?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
   const card = PROBABILITY_CARDS.find((p) => p.pct === current) ?? PROBABILITY_CARDS[2];
 
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
   return (
-    <div className="relative shrink-0">
+    <div ref={ref} className="relative shrink-0">
       <button
         onClick={() => setOpen(!open)}
         className="text-[11px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1"

@@ -472,11 +472,6 @@ export function getProbabilityCard(pct: number): ProbabilityCard {
   );
 }
 
-export function cycleProbability(current: number): number {
-  const values = [90, 70, 50, 30, 10];
-  const idx = values.indexOf(current);
-  return values[(idx + 1) % values.length];
-}
 
 // ─── COMPUTE CATEGORIES ──────────────────────────────────────────────────────
 

@@ -783,18 +783,11 @@ export const ungradeAction = mutation({
 
     const actions = [...sub.actions];
     const action = actions[args.actionIndex];
-    if (action) {
-      actions[args.actionIndex] = {
-        actionId: action.actionId,
-        text: action.text,
-        priority: action.priority,
-        secret: action.secret,
-        actionStatus: action.actionStatus,
-        reasoning: action.reasoning,
-        aiInfluence: action.aiInfluence,
-        computeTargets: action.computeTargets,
-      };
-    }
+    if (!action) return;
+
+    // Strip grading/rolling fields, keeping everything else
+    const { probability: _, rolled: __, success: ___, ...rest } = action;
+    actions[args.actionIndex] = rest;
 
     await ctx.db.patch(args.submissionId, { actions });
   },
