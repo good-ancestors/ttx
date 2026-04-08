@@ -271,7 +271,7 @@ export default function TablePlayerPage({
       }
       if (draft.computeAllocation) setComputeAllocation(draft.computeAllocation);
       if (draft.artifact) setArtifact(draft.artifact);
-      if (draft.labSpec) {
+      if (draft.labSpec !== undefined) {
         setLabSpec(draft.labSpec);
         labSpecInitRef.current = true;
       }
@@ -333,7 +333,7 @@ export default function TablePlayerPage({
         parsedActions: normaliseActions(actionDrafts),
         computeAllocation,
         artifact,
-        labSpec: labSpec || undefined,
+        labSpec,
       });
     }, 500);
     return () => clearTimeout(draftSaveTimer.current);
@@ -642,6 +642,15 @@ export default function TablePlayerPage({
 
   // Previous round narrative for the brief tab
 
+  // ── Derived unsaved flags ────────────────────────────────────────────────
+  const specUnsaved = !!currentLab && labSpec.trim() !== (currentLab.spec ?? "");
+  const savedAllocation = submission?.computeAllocation ?? currentLab?.allocation;
+  const allocationUnsaved = !!savedAllocation && (
+    computeAllocation.users !== savedAllocation.users ||
+    computeAllocation.capability !== savedAllocation.capability ||
+    computeAllocation.safety !== savedAllocation.safety
+  );
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <InAppBrowserGate>
@@ -763,18 +772,12 @@ export default function TablePlayerPage({
               labSpec,
               onLabSpecChange: handleLabSpecChange,
               specSaved,
-              specUnsaved: !!currentLab && labSpec.trim() !== (currentLab.spec ?? ""),
+              specUnsaved,
               onSaveSpec: handleSaveSpec,
               computeAllocation,
               onComputeAllocationChange: setComputeAllocation,
               allocationSaved,
-              allocationUnsaved: (() => {
-                const saved = submission?.computeAllocation ?? currentLab?.allocation;
-                if (!saved) return false;
-                return computeAllocation.users !== saved.users ||
-                  computeAllocation.capability !== saved.capability ||
-                  computeAllocation.safety !== saved.safety;
-              })(),
+              allocationUnsaved,
               onSaveAllocation: handleSaveAllocation,
             }}
             resolve={{
