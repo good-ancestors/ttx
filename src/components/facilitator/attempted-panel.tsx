@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, PROBABILITY_CARDS, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { ProbabilityBadge } from "@/components/action-card";
@@ -106,17 +106,17 @@ export function AttemptedPanel({
 
   const isExpanded = isRollingOrNarrate && hasSubmissions ? true : expanded;
 
-  // Wrap mutation callbacks to flag narrative as stale when changes happen after narrative
-  const wrappedReroll: typeof rerollAction = async (args) => {
+  // Flag narrative as stale when dice/probability change after narrative is generated
+  const wrappedReroll: typeof rerollAction = useCallback(async (args) => {
     const result = await rerollAction(args);
     if (hasNarrative) onDiceChanged();
     return result;
-  };
-  const wrappedOverrideProbability: typeof overrideProbability = async (args) => {
+  }, [rerollAction, hasNarrative, onDiceChanged]);
+  const wrappedOverrideProbability: typeof overrideProbability = useCallback(async (args) => {
     const result = await overrideProbability(args);
     if (hasNarrative) onDiceChanged();
     return result;
-  };
+  }, [overrideProbability, hasNarrative, onDiceChanged]);
 
   const endorsementsByOwner = useMemo(() => {
     const map = new Map<string, Proposal[]>();
