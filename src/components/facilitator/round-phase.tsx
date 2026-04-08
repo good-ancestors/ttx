@@ -46,7 +46,7 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   advanceRound: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   finishGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
-  addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
+  addLab: (args: { gameId: Id<"games">; name: string; roleId: string; rdMultiplier: number }) => Promise<unknown>;
   forceClearLock: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   isTimerExpired?: boolean;
   timerDisplay?: string;
@@ -717,7 +717,7 @@ function EditModal({
   game: RoundPhaseProps["game"];
   tables: RoundPhaseProps["tables"];
   currentRound: Round | undefined;
-  addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
+  addLab: (args: { gameId: Id<"games">; name: string; roleId: string; rdMultiplier: number }) => Promise<unknown>;
 }) {
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8" onClick={onClose}>

@@ -657,10 +657,16 @@ export const rollAndNarrate = internalAction({
             break;
           case "create":
             if (op.name) {
+              const createRoleId = op.controllerRoleId ?? `custom-${op.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
+              // Skip if role already controls a lab
+              if (updatedLabs.some((l) => l.roleId === createRoleId)) break;
+              // Compute is derived from the table (source of truth), not the LLM's suggestion.
+              // The role keeps whatever compute they already have. New roles start at 0.
+              const existingCompute = tableComputeByRole.get(createRoleId) ?? 0;
               updatedLabs.push({
                 name: op.name,
-                roleId: op.controllerRoleId ?? `custom-${op.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`,
-                computeStock: Math.max(0, Math.min(100, op.computeStock ?? 5)),
+                roleId: createRoleId,
+                computeStock: existingCompute,
                 rdMultiplier: Math.max(0.1, Math.min(maxMult, op.rdMultiplier ?? 1)),
                 allocation: { users: 33, capability: 34, safety: 33 },
                 spec: "Be useful to your user. Follow the law. Be honest and transparent. If a request conflicts with a safety policy, state the conflict.",

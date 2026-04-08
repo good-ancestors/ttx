@@ -609,8 +609,8 @@ function AddLabModal({
   onClose,
 }: {
   gameId: Id<"games">;
-  tables: { roleId: string; roleName: string; enabled?: boolean }[];
-  addLab: (args: { gameId: Id<"games">; name: string; roleId: string; computeStock: number; rdMultiplier: number }) => Promise<unknown>;
+  tables: { roleId: string; roleName: string; enabled?: boolean; computeStock?: number }[];
+  addLab: (args: { gameId: Id<"games">; name: string; roleId: string; rdMultiplier: number }) => Promise<unknown>;
   onClose: () => void;
 }) {
   return (

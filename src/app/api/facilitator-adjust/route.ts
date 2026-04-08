@@ -127,7 +127,7 @@ YOUR BEHAVIOR:
    - Include the proposed worldState/labUpdates/narrativeUpdate
    ${dryRun ? '- The facilitator will review your proposal before you apply it. End your response with "Apply these changes?"' : "- Apply the changes."}
 4. For lab mergers: use labMerge with survivorLab (keeps the name/role) and absorbedLab (removed). The survivor gets the absorbed lab's compute stock added and keeps the higher R&D multiplier.
-5. For adding labs: propose a name, controlling role, starting compute, and multiplier.
+5. For adding labs: propose a name, controlling role, and R&D multiplier. The lab inherits the controlling role's existing compute (no separate starting compute).
 6. For reverting/undoing: use restoreSnapshot with the round number to revert to. This restores world state, labs, and role compute to the end of that round.
 7. Be precise and literal. "Reduce by 30%" means calculate 30% and subtract. "Set to 5" means set exactly to 5.
 8. Keep responses SHORT (1-3 sentences). This is a live game — the facilitator doesn't have time to read paragraphs.`;
@@ -181,7 +181,6 @@ YOUR BEHAVIOR:
             gameId: gameId as Id<"games">,
             name: newLab.name,
             roleId: newLab.roleId ?? newLab.name.toLowerCase().replace(/\s+/g, "-"),
-            computeStock: newLab.computeStock ?? 10,
             rdMultiplier: newLab.rdMultiplier ?? 1,
             facilitatorToken,
           });

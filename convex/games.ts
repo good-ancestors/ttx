@@ -484,7 +484,6 @@ export const addLab = mutation({
     gameId: v.id("games"),
     name: v.string(),
     roleId: v.string(),
-    computeStock: v.number(),
     rdMultiplier: v.number(),
     facilitatorToken: v.optional(v.string()),
   },
@@ -492,27 +491,34 @@ export const addLab = mutation({
     assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
+
+    // Guard: no duplicate labs for the same role
+    if (game.labs.some((l) => l.roleId === args.roleId)) {
+      throw new Error(`Role ${args.roleId} already controls a lab`);
+    }
+
+    // Lab creation is metadata only — compute is derived from the table (source of truth).
+    // The role keeps whatever compute they already have. If they have none, they start at 0.
+    const table = await ctx.db.query("tables")
+      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.roleId))
+      .first();
+    const computeStock = table?.computeStock ?? 0;
+
+    // Enable compute tracking if the table didn't have it
+    if (table && table.computeStock == null) {
+      await ctx.db.patch(table._id, { computeStock: 0 });
+    }
+
     const newLab = {
       name: args.name,
       roleId: args.roleId,
-      computeStock: args.computeStock,
+      computeStock,
       rdMultiplier: args.rdMultiplier,
       allocation: { users: 34, capability: 33, safety: 33 },
     };
     await ctx.db.patch(args.gameId, { labs: [...game.labs, newLab] });
 
-    // Set table.computeStock only if the table doesn't already have compute.
-    // If it does (e.g. EU with pool allocation, or in-flight escrow), keep the table
-    // value — it's the source of truth. game.labs[].computeStock is a cache that syncs
-    // from table at pipeline resolution. If the table has no compute, initialize it.
-    const table = await ctx.db.query("tables")
-      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.roleId))
-      .first();
-    if (table && table.computeStock == null) {
-      await ctx.db.patch(table._id, { computeStock: args.computeStock });
-    }
-
-    await logEvent(ctx, args.gameId, "lab_added", args.roleId, { name: args.name, computeStock: args.computeStock });
+    await logEvent(ctx, args.gameId, "lab_added", args.roleId, { name: args.name, computeStock });
   },
 });
 
@@ -565,7 +571,7 @@ export const mergeLabs = mutation({
       await ctx.db.patch(survivorTable._id, {
         computeStock: (survivorTable.computeStock ?? 0) + (absorbedTable.computeStock ?? 0),
       });
-      await ctx.db.patch(absorbedTable._id, { computeStock: undefined });
+      await ctx.db.patch(absorbedTable._id, { computeStock: 0 });
     }
 
     await logEvent(ctx, args.gameId, "lab_merged", survivor.roleId, {
