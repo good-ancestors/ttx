@@ -453,7 +453,7 @@ async function createActionRequests(
   const tableByRole = new Map(tables.filter((t) => t.enabled).map((t) => [t.roleId, t]));
 
   for (const targetRoleId of args.endorseTargets) {
-    if (targetRoleId === args.fromRoleId) continue;
+    if (targetRoleId === args.fromRoleId || targetRoleId === AI_SYSTEMS_ROLE_ID) continue;
     const targetTable = tableByRole.get(targetRoleId);
     if (!targetTable) continue;
     const requestId = await findOrUpsertRequest(ctx, {
