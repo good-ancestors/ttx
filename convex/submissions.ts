@@ -467,7 +467,13 @@ async function createActionRequests(
       actionText: args.actionText,
       requestType: "endorsement",
     });
-    await triggerAutoResponse(ctx, args.gameId, args.roundNumber, targetRoleId, requestId, targetTable);
+    await triggerAutoResponse(ctx, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      toRoleId: targetRoleId,
+      requestId,
+      table: targetTable,
+    });
   }
 
   for (const target of args.computeRequestTargets) {
@@ -485,7 +491,13 @@ async function createActionRequests(
       requestType: "compute",
       computeAmount: target.amount,
     });
-    await triggerAutoResponse(ctx, args.gameId, args.roundNumber, target.roleId, requestId, targetTable);
+    await triggerAutoResponse(ctx, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      toRoleId: target.roleId,
+      requestId,
+      table: targetTable,
+    });
   }
 }
 
