@@ -101,7 +101,6 @@ export default function TablePlayerPage({
   const saveAndSubmitMut = useMutation(api.submissions.saveAndSubmit);
   const editSubmittedMut = useMutation(api.submissions.editSubmitted);
   const deleteActionMut = useMutation(api.submissions.deleteAction);
-  const sendRequest = useMutation(api.requests.send);
   const setConnected = useMutation(api.tables.setConnected);
   const leaveRole = useMutation(api.tables.leaveRole);
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
@@ -458,7 +457,7 @@ export default function TablePlayerPage({
       // Save + submit in a single mutation — returns the stable actionId
       // Compute targets are escrowed server-side and transferred on action success
       // Endorsement requests are created atomically with the action in saveAndSubmit
-      const result = await saveAndSubmitMut({
+      await saveAndSubmitMut({
         tableId,
         gameId,
         roundNumber: game.currentRound,
@@ -469,35 +468,15 @@ export default function TablePlayerPage({
         computeTargets: draft.computeTargets.length > 0 ? draft.computeTargets : undefined,
         endorseTargets: draft.endorseTargets.length > 0 ? [...new Set(draft.endorseTargets)] : undefined,
       });
-      const { actionId } = result;
       // Remove from local drafts
       setActionDrafts((prev) => {
         const next = prev.filter((_, i) => i !== draftIndex);
         return next.length === 0 ? [emptyAction()] : next;
       });
-      // Send compute requests for "request" direction targets
-      // ("send" targets are escrowed server-side in saveAndSubmit, no request needed)
-      for (const target of draft.computeTargets.filter((t) => t.direction === "request")) {
-        const targetRole = (allTables ?? []).find((t) => t.roleId === target.roleId);
-        if (targetRole) {
-          void sendRequest({
-            gameId,
-            roundNumber: game.currentRound,
-            fromRoleId: role.id,
-            fromRoleName: role.name,
-            toRoleId: target.roleId,
-            toRoleName: targetRole.roleName,
-            actionId,
-            actionText: draft.text.trim(),
-            requestType: "compute" as const,
-            computeAmount: target.amount,
-          });
-        }
-      }
     } catch (err) {
       setSubmitError(`Failed to submit action: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [actionDrafts, role, game, tableId, gameId, saveAndSubmitMut, sendRequest, allTables]);
+  }, [actionDrafts, role, game, tableId, gameId, saveAndSubmitMut]);
 
   // ── Sent requests grouped by actionId (stable across text edits) ────
   const sentRequestsByAction = useMemo(() => {
