@@ -1,7 +1,6 @@
 // Shared game constants — single source of truth lives in convex/gameData.ts
 import {
   ROUND_CONFIGS,
-  DEFAULT_WORLD_STATE,
   DEFAULT_LABS,
   STARTING_SCENARIO,
   AI_SYSTEMS_ROLE_ID,
@@ -357,7 +356,7 @@ export interface RoundConfig {
   label: string;
 }
 
-export { ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, STARTING_SCENARIO, AI_SYSTEMS_ROLE_ID };
+export { ROUND_CONFIGS, DEFAULT_LABS, STARTING_SCENARIO, AI_SYSTEMS_ROLE_ID };
 
 // ─── CAPABILITY DESCRIPTIONS (from source material + slides) ─────────────────
 // Maps the leading lab's R&D multiplier range to human-readable capability descriptions
@@ -623,18 +622,6 @@ export const CAPABILITY_PROGRESSION = [
       "Race path: Agent-5 designed by misaligned Agent-4. Slowdown path: transparent Safer models with lower capability but trustworthy alignment.",
   },
 ];
-
-// ─── WORLD STATE ─────────────────────────────────────────────────────────────
-
-export const WORLD_STATE_INDICATORS = [
-  { key: "capability" as const, label: "AI Capability", color: "#06B6D4" },
-  { key: "alignment" as const, label: "Alignment Confidence", color: "#22C55E" },
-  { key: "tension" as const, label: "US–China Tension", color: "#EF4444" },
-  { key: "awareness" as const, label: "Public Awareness", color: "#F59E0B" },
-  { key: "regulation" as const, label: "Regulatory Response", color: "#7C3AED" },
-  { key: "australia" as const, label: "Australian Preparedness", color: "#059669" },
-];
-
 
 // Context-only labs — not individually tracked but inform the AI narrative
 export const BACKGROUND_LABS = [

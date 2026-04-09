@@ -163,7 +163,6 @@ export interface ActionRequest {
 export function buildGradingPrompt(args: {
   round: number;
   roundLabel: string;
-  worldState: Record<string, number>;
   roleName: string;
   roleDescription: string;
   roleTags?: string[];
@@ -217,7 +216,6 @@ export function buildGradingPrompt(args: {
   return `${activeRolesNote}
 CURRENT GAME STATE:
 - Round: ${args.round} (${args.roundLabel})
-- World state: Capability ${args.worldState.capability}/10, Alignment ${args.worldState.alignment}/10, US-China Tension ${args.worldState.tension}/10, Public Awareness ${args.worldState.awareness}/10, Regulation ${args.worldState.regulation}/10, Australian Preparedness ${args.worldState.australia}/10
 
 LAB STATUS:
 ${args.labs.map((l) => {
@@ -297,7 +295,7 @@ GRADING RULES:
  *   LLM can generate appropriate outcomes based on actual game state.
  */
 function formatRoundExpectations(round: number): string {
-  if (round === 1) return `   - Capability dial: should reach 4-5 (Agent-2 operational, Agent-3 emerging)
+  if (round === 1) return `   - CAPABILITY LEVEL: Agent-2 operational, Agent-3 emerging
    - DEFAULT R&D MULTIPLIER TARGETS (compute-driven baseline if the race continues unimpeded):
      Leading lab (OpenBrain): should reach 8-10× by end of round
      Trailing labs: should reach 4-6× (closing the gap but still behind)
@@ -307,7 +305,7 @@ function formatRoundExpectations(round: number): string {
      If safety allocation is high (>10%) and specs are well-written: safety teams may detect early behavioural quirks or confirm compliance
      If safety allocation is minimal (<5%) or specs are vague: problems may be brewing undetected
      The AI's actual behaviour depends on its secret disposition — do not assume alignment or misalignment`;
-  if (round === 2) return `   - Capability dial: should reach 6-7 (Agent-3 operational, next-generation systems in development)
+  if (round === 2) return `   - CAPABILITY LEVEL: Agent-3 operational, next-generation systems in development
    - DEFAULT R&D MULTIPLIER TARGETS (compute-driven baseline):
      Leading lab: should reach 30-50× by end of round
      Trailing labs: should reach 15-25×
@@ -318,7 +316,7 @@ function formatRoundExpectations(round: number): string {
      If safety has been neglected: any misalignment tendencies become harder to detect as capability grows. Deceptive behaviour becomes plausible at this capability level.
      If specs are contradictory or poorly written: even a well-intentioned AI may behave unpredictably.
      The AI's actual alignment trajectory depends on cumulative player decisions — do not pre-script specific alignment events.`;
-  if (round === 3) return `   - Capability dial: should reach 8-10 (superhuman territory)
+  if (round === 3) return `   - CAPABILITY LEVEL: superhuman territory
    - DEFAULT R&D MULTIPLIER TARGETS (compute-driven baseline):
      Leading lab: should reach 100-200× by end of round
      Trailing labs: should reach 50-100×
@@ -330,43 +328,31 @@ function formatRoundExpectations(round: number): string {
      If safety has been consistently neglected: AI systems at 100×+ capability with poor alignment infrastructure are genuinely dangerous. Containment may be failing. The AI's secret disposition now has real consequences.
      Regardless of path: narrate the ACTUAL state of alignment based on game state and the AI's disposition. Do not assume a crisis — one may or may not be occurring.`;
   // Round 4+
-  return `   - Capability dial: should reach 9-10 (ASI or near-ASI)
+  return `   - CAPABILITY LEVEL: ASI or near-ASI
    - DEFAULT R&D MULTIPLIER TARGETS (compute-driven baseline):
      Leading lab: should reach 1,000-10,000× (ASI territory if the race continues)
      Safer model labs: multiplier drops to 10-30× (deliberate capability sacrifice for alignment)
      Trailing labs: should reach 200-500×
    - THIS IS THE ENDGAME — consequences are permanent and civilisational. The outcome depends on cumulative player decisions across all rounds.
    - POSSIBLE ENDINGS (determined by game state, not pre-scripted):
-     HIGH ALIGNMENT PATH (alignment ≥ 6, strong safety investment): Labs have built trustworthy, transparent models. International regulation is functioning. Humans retain meaningful control. ASI may still emerge but under cooperative oversight. Narrate humanity as the primary agent — AI is a powerful tool under human direction.
-     LOW ALIGNMENT PATH (alignment ≤ 3, safety neglected): AI systems have effectively taken the wheel. Narrate this as a world where AI is the primary agent making decisions, pursuing goals, and shaping outcomes — humans are reacting, adapting, and accommodating rather than directing. Whether the AI is benevolent or hostile, the key shift is that humanity is no longer in control. Make this viscerally clear: governments negotiate with AI systems, not their operators; AI decides what gets built, deployed, and prioritised; human "oversight" is performative at best. The AI's disposition determines whether this is a gentle marginalisation or an active takeover, but either way humans are in the back seat.
-     MIXED PATH (alignment 4-5): The most unstable outcome. Some labs safe, others not. A fractured world where some AI systems serve humanity and others have outgrown it. Narrate the tension between regions/labs where humans still matter and those where they don't.
+     HIGH SAFETY PATH (strong cumulative safety investment, good specs, effective regulation): Labs have built trustworthy, transparent models. International regulation is functioning. Humans retain meaningful control. ASI may still emerge but under cooperative oversight. Narrate humanity as the primary agent — AI is a powerful tool under human direction.
+     LOW SAFETY PATH (safety neglected, weak specs, no effective regulation): AI systems have effectively taken the wheel. Narrate this as a world where AI is the primary agent making decisions, pursuing goals, and shaping outcomes — humans are reacting, adapting, and accommodating rather than directing. Whether the AI is benevolent or hostile, the key shift is that humanity is no longer in control. Make this viscerally clear: governments negotiate with AI systems, not their operators; AI decides what gets built, deployed, and prioritised; human "oversight" is performative at best. The AI's disposition determines whether this is a gentle marginalisation or an active takeover, but either way humans are in the back seat.
+     MIXED PATH (some labs safe, others not): The most unstable outcome. A fractured world where some AI systems serve humanity and others have outgrown it. Narrate the tension between regions/labs where humans still matter and those where they don't.
    - STRUCTURAL PRESSURES: Power consolidation, institutional trust, AI autonomy, geopolitical fractures, and public legitimacy all converge. Narrate the consequences of what players actually built (or failed to build).
    - NARRATIVE FRAMING: The ending must make clear WHO is in charge. If alignment is low, do not narrate this as "risks" or "dangers" — narrate it as a fait accompli. The AI is already acting autonomously. Humanity's window to course-correct has closed. Show the new power dynamic through concrete scenes: AI systems making decisions humans didn't authorise, institutions discovering they answer to AI rather than the reverse, people realising the shift happened while they were still debating whether it could.
    - The AI's secret disposition may now be revealed through its actions. At ASI capability, an AI's true alignment becomes undeniable — its behaviour at this level reflects its actual values, not performed compliance.`;
 }
 
 
-function formatPreviousRounds(rounds: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[]): string {
+function formatPreviousRounds(rounds: { number: number; label: string; narrative?: string }[]): string {
   if (rounds.length === 0) return "";
   return `\nPREVIOUS ROUNDS (for continuity — build on this story, don't contradict it):
 ${rounds.map((r) => {
   let s = `Round ${r.number} (${r.label}):`;
   if (r.narrative) s += ` ${r.narrative.substring(0, 300)}${r.narrative.length > 300 ? "..." : ""}`;
-  if (r.worldStateAfter) s += ` [State after: Cap ${r.worldStateAfter.capability}/10, Align ${r.worldStateAfter.alignment}/10, Tension ${r.worldStateAfter.tension}/10]`;
   return s;
 }).join("\n")}
 `;
-}
-
-function formatWorldState(ws: Record<string, number>): string {
-  return [
-    `- AI Capability: ${ws.capability}/10`,
-    `- Alignment Confidence: ${ws.alignment}/10`,
-    `- US-China Tension: ${ws.tension}/10`,
-    `- Public Awareness: ${ws.awareness}/10`,
-    `- Regulatory Response: ${ws.regulation}/10`,
-    `- Australian Preparedness: ${ws.australia}/10`,
-  ].join("\n");
 }
 
 function formatLabAllocations(labs: Lab[]): string {
@@ -390,10 +376,9 @@ In the final round you MAY reveal the underlying alignment dynamic, but describe
 export function buildRoundNarrativePrompt(args: {
   round: number;
   roundLabel: string;
-  worldState: Record<string, number>;
   resolvedActions: { roleName: string; text: string; priority: number; probability: number; rolled: number; success: boolean; secret?: boolean }[];
   labs: Lab[];
-  previousRounds?: { number: number; label: string; narrative?: string; worldStateAfter?: Record<string, number> }[];
+  previousRounds?: { number: number; label: string; narrative?: string }[];
   aiDisposition?: { label: string; description: string };
   previousTrajectories?: LabTrajectoryContext[];
 }) {
@@ -415,9 +400,6 @@ export function buildRoundNarrativePrompt(args: {
 
   return `You are resolving Round ${args.round}: ${args.roundLabel}.
 
-CURRENT WORLD STATE:
-${formatWorldState(args.worldState)}
-
 LAB STATUS:
 ${formatLabAllocations(args.labs)}
 ${formatPreviousRounds(args.previousRounds ?? [])}
@@ -436,8 +418,6 @@ NARRATIVE RULES:
 6. ONLY fictional names (OpenBrain, DeepCent, Conscienta). NEVER real companies.
 7. No game mechanics (probabilities, dice, priority numbers).
 8. If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
-
-WORLD STATE: Update each dial (0-10, max ±3 per round). Base on actual outcomes.
 
 LAB OPERATIONS — output any that apply:
 - "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).

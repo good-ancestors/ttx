@@ -32,15 +32,6 @@ export const ROUND_CONFIGS = [
   { number: 4, label: "Q4" },
 ] as const;
 
-export const DEFAULT_WORLD_STATE = {
-  capability: 3,
-  alignment: 3,
-  tension: 4,
-  awareness: 4,
-  regulation: 1,
-  australia: 2,
-};
-
 export const DEFAULT_LABS = [
   {
     name: "OpenBrain",

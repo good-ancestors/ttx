@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { worldStateValidator, labSnapshotValidator, labTrajectoryValidator } from "./schema";
+import { labSnapshotValidator, labTrajectoryValidator } from "./schema";
 import { assertFacilitator } from "./events";
 
 /** Find a single round by game + number using compound index (1 doc read). */
@@ -38,12 +38,11 @@ export const getByGameLightweight = query({
       gameId: r.gameId,
       number: r.number,
       label: r.label,
-      worldStateAfter: r.worldStateAfter,
       labsAfter: r.labsAfter,
       // Just the narrative string from summary (not full headlines/events arrays)
       summaryNarrative: r.summary?.narrative,
       // Minimal flags for snapshot restore dropdown
-      hasWorldStateBefore: r.worldStateBefore != null,
+      hasLabsBefore: r.labsBefore != null,
     }));
   },
 });
@@ -274,15 +273,13 @@ export const snapshotBeforeInternal = internalMutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
-    worldStateBefore: worldStateValidator,
     labsBefore: v.array(labSnapshotValidator),
     roleComputeBefore: v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() })),
   },
   handler: async (ctx, args) => {
     const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (!round || round.worldStateBefore) return; // Already snapshotted
+    if (!round || round.labsBefore) return; // Already snapshotted
     await ctx.db.patch(round._id, {
-      worldStateBefore: args.worldStateBefore,
       labsBefore: args.labsBefore,
       roleComputeBefore: args.roleComputeBefore,
     });
@@ -293,7 +290,6 @@ export const snapshotAfterInternal = internalMutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
-    worldStateAfter: worldStateValidator,
     labsAfter: v.array(labSnapshotValidator),
     roleComputeAfter: v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() })),
   },
@@ -301,7 +297,6 @@ export const snapshotAfterInternal = internalMutation({
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
     await ctx.db.patch(round._id, {
-      worldStateAfter: args.worldStateAfter,
       labsAfter: args.labsAfter,
       roleComputeAfter: args.roleComputeAfter,
     });

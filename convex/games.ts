@@ -1,9 +1,9 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { ROLES, ROUND_CONFIGS, DEFAULT_WORLD_STATE, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID, calculatePoolAllocations } from "./gameData";
+import { ROLES, ROUND_CONFIGS, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID, calculatePoolAllocations } from "./gameData";
 import { logEvent, assertFacilitator } from "./events";
-import { worldStateValidator, labSnapshotValidator } from "./schema";
+import { labSnapshotValidator } from "./schema";
 import { internal } from "./_generated/api";
 
 const LOCK_TTL_MS = 3 * 60 * 1000; // 3 minutes
@@ -35,17 +35,16 @@ async function schedulePreGeneration(ctx: MutationCtx, gameId: Id<"games">, roun
   await ctx.scheduler.runAfter(0, internal.aiGenerate.generateAll, { gameId, roundNumber });
 }
 
-/** Auto-snapshot a round's final state (world state, labs, role compute). */
+/** Auto-snapshot a round's final state (labs, role compute). */
 async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
   const game = await ctx.db.get(gameId);
   if (!game) return;
   const round = await ctx.db.query("rounds")
     .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
     .first();
-  if (!round || round.worldStateAfter) return; // Already snapshotted
+  if (!round || round.labsAfter) return; // Already snapshotted
   const tables = await ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect();
   await ctx.db.patch(round._id, {
-    worldStateAfter: game.worldState,
     labsAfter: game.labs,
     roleComputeBefore: round.roleComputeBefore,
     roleComputeAfter: tables.filter((t) => t.computeStock != null).map((t) => ({
@@ -78,7 +77,6 @@ export const create = mutation({
       status: "lobby",
       currentRound: 1,
       phase: "discuss",
-      worldState: DEFAULT_WORLD_STATE,
       labs: DEFAULT_LABS,
       locked: false,
       joinCode: generateJoinCode(),
@@ -169,7 +167,6 @@ export const getForPlayer = query({
       currentRound: game.currentRound,
       phase: game.phase,
       phaseEndsAt: game.phaseEndsAt,
-      worldState: game.worldState,
       labs: game.labs,
       locked: game.locked,
       // Excluded: pipelineStatus, resolving, resolvingStartedAt, resolveNonce, computeShareOverrides
@@ -183,7 +180,7 @@ export const list = query({
     const games = await ctx.db.query("games").order("desc").take(10);
     if (games.length === 0) return [];
 
-    // Return minimal fields — splash page doesn't need labs, worldState, etc.
+    // Return minimal fields — splash page doesn't need labs, etc.
     // Avoid reading tables to reduce bandwidth; use cached counts from game doc
     // if available, otherwise show 0 (acceptable for a list view).
     return games.map((game) => ({
@@ -258,18 +255,6 @@ export const advancePhase = mutation({
       phaseEndsAt,
     });
     await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: args.phase, durationSeconds: args.durationSeconds });
-  },
-});
-
-export const updateWorldState = mutation({
-  args: {
-    gameId: v.id("games"),
-    worldState: worldStateValidator,
-    facilitatorToken: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    assertFacilitator(args.facilitatorToken);
-    await ctx.db.patch(args.gameId, { worldState: args.worldState });
   },
 });
 
@@ -401,16 +386,14 @@ export const restoreSnapshot = mutation({
     if (!round) throw new Error(`Round ${args.roundNumber} not found for game ${args.gameId}`);
 
     // Choose before or after snapshot
-    const ws = args.useBefore ? round.worldStateBefore : round.worldStateAfter;
     const labs = args.useBefore ? round.labsBefore : round.labsAfter;
     const snapshotType = args.useBefore ? "before" : "after";
-    if (!ws || !labs) throw new Error(`No ${snapshotType} snapshot data for round ${args.roundNumber}`);
+    if (!labs) throw new Error(`No ${snapshotType} snapshot data for round ${args.roundNumber}`);
 
-    // Restore world state, labs, round, and phase
+    // Restore labs, round, and phase
     // "Before resolve" → rewind to submit phase of that round (re-resolve)
     // "After resolve" → rewind to narrate phase of that round (re-narrate or advance)
     await ctx.db.patch(args.gameId, {
-      worldState: ws,
       labs,
       currentRound: args.roundNumber,
       phase: args.useBefore ? "submit" : "narrate",
@@ -426,7 +409,6 @@ export const restoreSnapshot = mutation({
         summary: undefined,
         computeHolders: undefined,
         roleComputeAtSubmitOpen: undefined,
-        worldStateAfter: undefined,
         labsAfter: undefined,
         roleComputeAfter: undefined,
         partialEvents: undefined,
@@ -762,13 +744,6 @@ export const setShareOverridesInternal = internalMutation({
   args: { gameId: v.id("games"), overrides: v.record(v.string(), v.number()) },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.gameId, { computeShareOverrides: args.overrides });
-  },
-});
-
-export const updateWorldStateInternal = internalMutation({
-  args: { gameId: v.id("games"), worldState: worldStateValidator },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.gameId, { worldState: args.worldState });
   },
 });
 

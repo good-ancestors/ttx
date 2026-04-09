@@ -13,16 +13,6 @@ const AdjustOutput = z.object({
   intent: z.enum(["question", "proposal", "info"]),
   response: z.string(), // The conversational reply
   // Only present when intent === "proposal"
-  worldState: z.optional(
-    z.object({
-      capability: z.optional(z.number()),
-      alignment: z.optional(z.number()),
-      tension: z.optional(z.number()),
-      awareness: z.optional(z.number()),
-      regulation: z.optional(z.number()),
-      australia: z.optional(z.number()),
-    })
-  ),
   labUpdates: z.optional(
     z.array(
       z.object({
@@ -101,14 +91,6 @@ export async function POST(request: Request) {
 
 CURRENT GAME PHASE: ${game.phase} | Round ${game.currentRound}
 
-CURRENT WORLD STATE:
-- Capability: ${game.worldState.capability}/10
-- Alignment: ${game.worldState.alignment}/10
-- US-China Tension: ${game.worldState.tension}/10
-- Public Awareness: ${game.worldState.awareness}/10
-- Regulatory Response: ${game.worldState.regulation}/10
-- Australian Preparedness: ${game.worldState.australia}/10
-
 CURRENT LABS:
 ${game.labs.map((l) => `- ${l.name} (${l.roleId}): ${l.computeStock}u compute, ${l.rdMultiplier}x R&D | Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
 ${resolvedActions.length > 0 ? `\nTHIS ROUND'S RESOLVED ACTIONS:\n${resolvedActions.join("\n")}` : ""}
@@ -124,7 +106,7 @@ YOUR BEHAVIOR:
 2. If the facilitator wants to CHANGE something but the request is ambiguous or has multiple valid interpretations: set intent to "question" and ask for clarification. Be specific about what you need to know.
 3. If the facilitator wants to CHANGE something and it's clear enough to act on: set intent to "proposal" and:
    - In "response", describe what you'll change and why (be specific with numbers)
-   - Include the proposed worldState/labUpdates/narrativeUpdate
+   - Include the proposed labUpdates/narrativeUpdate
    ${dryRun ? '- The facilitator will review your proposal before you apply it. End your response with "Apply these changes?"' : "- Apply the changes."}
 4. For lab mergers: use labMerge with survivorLab (keeps the name/role) and absorbedLab (removed). The survivor gets the absorbed lab's compute stock added and keeps the higher R&D multiplier.
 5. For adding labs: propose a name, controlling role, and R&D multiplier. The lab inherits the controlling role's existing compute (no separate starting compute).
@@ -144,7 +126,6 @@ YOUR BEHAVIOR:
     }
 
     const hasChanges = output.intent === "proposal" && (
-      output.worldState !== undefined ||
       (output.labUpdates !== undefined && output.labUpdates.length > 0) ||
       output.narrativeUpdate !== undefined ||
       output.labMerge !== undefined ||
@@ -155,21 +136,6 @@ YOUR BEHAVIOR:
     const shouldApply = hasChanges && (!dryRun || isApply);
 
     if (shouldApply) {
-      // Apply world state changes
-      if (output.worldState) {
-        const ws = { ...game.worldState };
-        for (const [key, val] of Object.entries(output.worldState)) {
-          if (val !== undefined && val !== null) {
-            (ws as Record<string, number>)[key] = Math.max(0, Math.min(10, Math.round(val)));
-          }
-        }
-        await convex.mutation(api.games.updateWorldState, {
-          gameId: gameId as Id<"games">,
-          worldState: ws,
-          facilitatorToken,
-        });
-      }
-
       // Apply lab changes
       if (output.labUpdates && output.labUpdates.length > 0) {
         const existingNames = new Set(game.labs.map((l) => l.name));
