@@ -28,7 +28,7 @@ import {
 
 /** Build role description for the grading LLM from the structured handout.
  *  Only includes role + objective — resources are dynamic and already
- *  represented by actual game state (labs, compute, world state). */
+ *  represented by actual game state (labs, compute, allocations). */
 function getRoleDescription(roleId: string, fallbackBrief: string): string {
   const handout = (handoutData as Record<string, RoleHandout>)[roleId];
   if (!handout) return fallbackBrief;
@@ -311,7 +311,7 @@ export const rollAndNarrate = internalAction({
     roundNumber: v.number(),
     aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
   },
-  // Complexity is inherent: multi-step pipeline (roll, narrate, apply world state,
+  // Complexity is inherent: multi-step pipeline (roll, narrate,
   // compute lab growth, snapshot) that must run as a single atomic action.
   // eslint-disable-next-line complexity
   handler: async (ctx, args) => {
