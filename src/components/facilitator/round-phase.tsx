@@ -381,11 +381,7 @@ function WhereWeAreNow({
       <ExpandableSection
         title="Where We Are Now"
         defaultOpen
-        badge={
-          <>
-            <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
-          </>
-        }
+        badge={<CheckCircle className="w-3.5 h-3.5 text-viz-safety" />}
       >
         <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           {game.labs.map((lab) => {
