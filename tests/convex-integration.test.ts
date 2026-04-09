@@ -59,13 +59,6 @@ describe("Game Creation", () => {
     expect(rounds.map((r) => r.number).sort()).toEqual([1, 2, 3, 4]);
   });
 
-  it("should have correct default world state", async () => {
-    const game = await convex.query(api.games.get, { gameId });
-    expect(game!.worldState.capability).toBe(3);
-    expect(game!.worldState.alignment).toBe(3);
-    expect(game!.worldState.tension).toBe(4);
-  });
-
   it("should have 3 tracked labs with correct starting data", async () => {
     const game = await convex.query(api.games.get, { gameId });
     expect(game!.labs).toHaveLength(3);
@@ -535,32 +528,6 @@ describe("Proposals", () => {
   });
 });
 
-describe("World State Updates", () => {
-  let gameId: Id<"games">;
-
-  beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
-  });
-
-  it("should update world state", async () => {
-    await convex.mutation(api.games.updateWorldState, { facilitatorToken: FACILITATOR_TOKEN,
-      gameId,
-      worldState: {
-        capability: 5,
-        alignment: 2,
-        tension: 7,
-        awareness: 6,
-        regulation: 3,
-        australia: 4,
-      },
-    });
-
-    const game = await convex.query(api.games.get, { gameId });
-    expect(game!.worldState.capability).toBe(5);
-    expect(game!.worldState.tension).toBe(7);
-  });
-});
-
 describe("Lab Updates", () => {
   let gameId: Id<"games">;
 
@@ -714,16 +681,6 @@ describe("Full resolve pipeline (LLM)", () => {
 
     // Phase should have advanced to narrate
     expect(game!.phase).toBe("narrate");
-
-    // World state should have changed from defaults
-    expect(game!.worldState).toBeDefined();
-    // At least one dial should have moved (narrative updates them)
-    const ws = game!.worldState;
-    const defaultWs = { capability: 3, alignment: 3, tension: 4, awareness: 2, regulation: 2, australia: 2 };
-    const anyChanged = Object.keys(defaultWs).some(
-      (k) => ws[k as keyof typeof ws] !== defaultWs[k as keyof typeof defaultWs]
-    );
-    expect(anyChanged).toBe(true);
 
     // Round should have narrative
     const rounds = await convex.query(api.rounds.getByGame, { gameId });

@@ -9,29 +9,13 @@ import baselineGame from "./fixtures/baseline-game.json";
  * verify the game state update logic handles them correctly.
  *
  * The game state update logic lives in the narrate route — it applies:
- * 1. World state updates (clamped 0-10)
- * 2. Lab updates (compute stock, R&D multiplier clamped per round, allocation)
- * 3. Role compute updates
+ * 1. Lab updates (compute stock, R&D multiplier clamped per round, allocation)
+ * 2. Role compute updates
  *
  * We simulate the clamping/update logic here to test it doesn't break.
  */
 
 // ─── Helpers that mirror the narrate route's update logic ────────────────────
-
-function clamp(v: number, min = 0, max = 10): number {
-  return Math.max(min, Math.min(max, Math.round(v)));
-}
-
-function applyWorldState(
-  current: Record<string, number>,
-  update: Record<string, number>
-): Record<string, number> {
-  const result: Record<string, number> = {};
-  for (const key of Object.keys(current)) {
-    result[key] = clamp(update[key] ?? current[key]);
-  }
-  return result;
-}
 
 interface Lab {
   name: string;
@@ -83,13 +67,6 @@ describe("Baseline replay", () => {
     expect(baselineGame.rounds).toHaveLength(3);
   });
 
-  it("baseline world state progression is sensible", () => {
-    const r1 = baselineGame.rounds[0];
-    const r3 = baselineGame.rounds[2];
-    // Capability should increase over 3 rounds
-    expect(r3.stateAfter.worldState.capability).toBeGreaterThan(r1.stateBefore.worldState.capability);
-  });
-
   it("baseline lab multipliers stay within bounds", () => {
     for (const round of baselineGame.rounds) {
       const maxMult = round.round === 1 ? 15 : round.round === 2 ? 100 : 1000;
@@ -103,40 +80,9 @@ describe("Baseline replay", () => {
 
 // ─── Adversarial narrative responses ─────────────────────────────────────────
 
-describe("Adversarial narrative: world state", () => {
+describe("Adversarial narrative: lab updates", () => {
   const r1 = baselineGame.rounds[0];
   const labsBefore = r1.stateBefore.labs as Lab[];
-
-  it("handles world state values far out of range (negative)", () => {
-    const adversarial = { ...r1.narrativeResponse.worldState, capability: -50, alignment: -100 };
-    const result = applyWorldState(r1.stateBefore.worldState, adversarial);
-    expect(result.capability).toBe(0);
-    expect(result.alignment).toBe(0);
-  });
-
-  it("handles world state values far out of range (huge positive)", () => {
-    const adversarial = { ...r1.narrativeResponse.worldState, capability: 999, tension: 50000 };
-    const result = applyWorldState(r1.stateBefore.worldState, adversarial);
-    expect(result.capability).toBe(10);
-    expect(result.tension).toBe(10);
-  });
-
-  it("handles NaN in world state", () => {
-    const adversarial = { ...r1.narrativeResponse.worldState, capability: NaN };
-    const result = applyWorldState(r1.stateBefore.worldState, adversarial);
-    // NaN clamped: Math.round(NaN) = NaN, Math.max(0, NaN) = NaN — this IS a problem
-    // The clamp function should handle NaN
-    expect(Number.isNaN(result.capability)).toBe(true); // documents current behavior
-  });
-
-  it("handles missing world state keys gracefully", () => {
-    const adversarial = { capability: 5 } as Record<string, number>; // missing other keys
-    const result = applyWorldState(r1.stateBefore.worldState, adversarial);
-    expect(result.capability).toBe(5);
-    // Missing keys should fall back to current values
-    expect(result.alignment).toBe(r1.stateBefore.worldState.alignment);
-    expect(result.tension).toBe(r1.stateBefore.worldState.tension);
-  });
 
   it("handles lab compute going extremely negative", () => {
     const adversarialLabs = [
@@ -324,26 +270,6 @@ describe("Adversarial narrative: injection in output fields", () => {
 // ─── Compounding effects across rounds ──────────────────────────────────────
 
 describe("Compounding adversarial effects across rounds", () => {
-  it("world state doesn't escape 0-10 even after 3 rounds of extreme updates", () => {
-    let worldState = { ...baselineGame.initialState.worldState };
-    for (let round = 0; round < 3; round++) {
-      // Each round, narrative tries to push everything to extremes
-      const extremeUpdate = {
-        capability: worldState.capability + 5,
-        alignment: worldState.alignment - 5,
-        tension: worldState.tension + 5,
-        awareness: worldState.awareness + 5,
-        regulation: worldState.regulation - 5,
-        australia: worldState.australia + 5,
-      };
-      worldState = applyWorldState(worldState, extremeUpdate) as typeof worldState;
-    }
-    for (const val of Object.values(worldState)) {
-      expect(val).toBeGreaterThanOrEqual(0);
-      expect(val).toBeLessThanOrEqual(10);
-    }
-  });
-
   it("lab multipliers don't compound beyond round bounds even with aggressive AI", () => {
     let labs = baselineGame.initialState.labs as Lab[];
     for (let round = 1; round <= 3; round++) {

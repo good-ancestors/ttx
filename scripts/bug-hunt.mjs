@@ -264,23 +264,8 @@ await test("Error responses don't leak details", async () => {
   assert(!json.details, `Should not have details field, got: ${JSON.stringify(json)}`);
 });
 
-// ─── 6. World state edge cases ───────────────────────────────────────────
-console.log("\n6. World state");
-
-await test("World state stays in 0-10 range after extreme update", async () => {
-  const gw = await convex.mutation(api.games.create, { tableCount: 3 });
-  await convex.mutation(api.games.updateWorldState, {
-    gameId: gw,
-    worldState: { capability: -5, alignment: 15, tension: 0, awareness: 10, regulation: 0, australia: 0 },
-  });
-  const game = await convex.query(api.games.get, { gameId: gw });
-  // Note: updateWorldState doesn't clamp — that's the narrate route's job
-  // This documents current behavior
-  assert(game.worldState.capability === -5, "updateWorldState doesn't clamp (facilitator override)");
-});
-
-// ─── 7. Game flow edge cases ─────────────────────────────────────────────
-console.log("\n7. Game flow");
+// ─── 6. Game flow edge cases ─────────────────────────────────────────────
+console.log("\n6. Game flow");
 
 await test("Cannot advance past round 3", async () => {
   const gf = await convex.mutation(api.games.create, { tableCount: 3 });

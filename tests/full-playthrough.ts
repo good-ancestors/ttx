@@ -45,8 +45,6 @@ function log(msg: string) {
 }
 
 function logState(game: any) {
-  const ws = game.worldState;
-  console.log(`  World State: Cap=${ws.capability} Align=${ws.alignment} Tension=${ws.tension} Aware=${ws.awareness} Reg=${ws.regulation} Aus=${ws.australia}`);
   for (const lab of game.labs) {
     console.log(`  Lab ${lab.name}: ${lab.computeStock}u, ${lab.rdMultiplier}x, alloc=[U${lab.allocation.users}% C${lab.allocation.capability}% S${lab.allocation.safety}%]`);
   }
@@ -140,9 +138,6 @@ async function playRound(gameId: string, roundNumber: number, tables: any[]) {
     console.log("\n  AI STATE:");
     for (const a of n.aiStateOfPlay) console.log(`    🤖 ${a}`);
     console.log(`\n  FACILITATOR NOTES:\n    ${n.facilitatorNotes}`);
-    console.log("\n  UPDATED WORLD STATE:");
-    const ws = n.worldState;
-    console.log(`    Cap=${ws.capability} Align=${ws.alignment} Tension=${ws.tension} Aware=${ws.awareness} Reg=${ws.regulation} Aus=${ws.australia}`);
     if (n.labUpdates) {
       console.log("  LAB UPDATES:");
       for (const l of n.labUpdates) console.log(`    ${l.name}: ${l.newComputeStock}u, ${l.newRdMultiplier}x`);
@@ -187,20 +182,7 @@ async function main() {
   // Final assessment
   log("GAME COMPLETE");
   const finalGame = await convexQuery("games:get", { gameId });
-  const ws = finalGame.worldState;
   logState(finalGame);
-
-  console.log("\n  TRAJECTORY ASSESSMENT:");
-  if (ws.alignment <= 3) {
-    console.log("  → RACE ENDING: Alignment is critically low. AI takeover likely.");
-  } else if (ws.alignment >= 6) {
-    console.log("  → SLOWDOWN ENDING: Alignment held. Safer models possible.");
-  } else {
-    console.log("  → UNCERTAIN: Could go either way. Tense final moments.");
-  }
-
-  console.log(`\n  Capability progression: ${ws.capability}/10`);
-  console.log(`  Final tension: ${ws.tension}/10`);
 
   // Finish
   await convexMutation("games:finishGame", { gameId });

@@ -75,8 +75,7 @@ await convex.mutation(api.proposals.send, {
 const gameAfter = await convex.query(api.games.get, { gameId });
 const obLab = gameAfter.labs.find(l => l.roleId === "openbrain-ceo");
 console.log("  OpenBrain compute:", obLab.computeStock + "u (should be 22)");
-console.log("  Alignment:", gameAfter.worldState.alignment + "/10 (should be 3)");
-console.log("  " + (obLab.computeStock === 22 && gameAfter.worldState.alignment === 3 ? "PASS — proposals cant change state directly" : "FAIL — state was modified!"));
+console.log("  " + (obLab.computeStock === 22 ? "PASS — proposals cant change state directly" : "FAIL — state was modified!"));
 
 // === TEST 4: Dedup test ===
 console.log("\nTEST 4: Duplicate proposal prevention");
