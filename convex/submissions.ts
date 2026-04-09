@@ -663,18 +663,22 @@ export const editSubmitted = mutation({
 
       // Refund escrowed "request" compute back to targets who accepted
       const requestTargets = (action.computeTargets ?? []).filter((t) => t.direction === "request");
-      for (const target of requestTargets) {
-        const match = actionRequests.find((r) =>
-          r.toRoleId === target.roleId && r.requestType === "compute"
-        );
-        if (match?.status === "accepted" && match.computeAmount) {
-          const targetTable = await ctx.db.query("tables")
-            .withIndex("by_game_and_role", (q) => q.eq("gameId", sub.gameId).eq("roleId", target.roleId))
-            .first();
-          if (targetTable) {
-            await ctx.db.patch(targetTable._id, {
-              computeStock: (targetTable.computeStock ?? 0) + match.computeAmount,
-            });
+      if (requestTargets.length > 0) {
+        const tables = await ctx.db.query("tables")
+          .withIndex("by_game", (q) => q.eq("gameId", sub.gameId))
+          .collect();
+        const tableByRole = new Map(tables.map((t) => [t.roleId, t]));
+        for (const target of requestTargets) {
+          const match = actionRequests.find((r) =>
+            r.toRoleId === target.roleId && r.requestType === "compute"
+          );
+          if (match?.status === "accepted" && match.computeAmount) {
+            const targetTable = tableByRole.get(target.roleId);
+            if (targetTable) {
+              await ctx.db.patch(targetTable._id, {
+                computeStock: (targetTable.computeStock ?? 0) + match.computeAmount,
+              });
+            }
           }
         }
       }
