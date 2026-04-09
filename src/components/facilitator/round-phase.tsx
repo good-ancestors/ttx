@@ -5,7 +5,7 @@ import { api } from "@convex/_generated/api";
 import { getCapabilityDescription, TOTAL_ROUNDS, isSubmittedAction, isResolvingPhase as checkResolvingPhase } from "@/lib/game-data";
 import { useAuthMutation } from "@/lib/hooks";
 import { NarrativePanel } from "@/components/narrative-panel";
-import { NarrativeEditor, WorldStateEditor } from "@/components/manual-controls";
+import { NarrativeEditor } from "@/components/manual-controls";
 import { AttemptedPanel } from "./attempted-panel";
 import { ExpandableSection } from "./expandable-section";
 import { AddLabForm } from "./add-lab-form";
@@ -112,7 +112,7 @@ export function RoundPhase({
     };
   }, [submissions]);
 
-  const [editModal, setEditModal] = useState<"narrative" | "dials" | "addlab" | null>(null);
+  const [editModal, setEditModal] = useState<"narrative" | "addlab" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
 
   return (
@@ -375,25 +375,13 @@ function WhereWeAreNow({
     ? game.labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b))
     : null;
   const cap = leading ? getCapabilityDescription(leading.rdMultiplier) : null;
-  const alignmentColor = game.worldState.alignment <= 3 ? "#EF4444" : game.worldState.alignment >= 7 ? "#22C55E" : "#F59E0B";
-  const trajectory = game.worldState.alignment <= 3 ? "RACE" : game.worldState.alignment >= 6 ? "SLOWDOWN" : "UNCERTAIN";
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
       <ExpandableSection
         title="Where We Are Now"
         defaultOpen
-        badge={
-          <>
-            <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
-            <span
-              className="text-xs font-bold px-2 py-0.5 rounded-full ml-auto"
-              style={{ backgroundColor: `${alignmentColor}20`, color: alignmentColor }}
-            >
-              {trajectory}
-            </span>
-          </>
-        }
+        badge={<CheckCircle className="w-3.5 h-3.5 text-viz-safety" />}
       >
         <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           {game.labs.map((lab) => {
@@ -724,7 +712,7 @@ function EditModal({
   currentRound,
   addLab,
 }: {
-  editModal: "narrative" | "dials" | "addlab";
+  editModal: "narrative" | "addlab";
   onClose: () => void;
   gameId: Id<"games">;
   game: RoundPhaseProps["game"];
@@ -737,15 +725,12 @@ function EditModal({
       <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <span className="text-sm font-bold text-white capitalize">
-            {editModal === "addlab" ? "Add Lab" : editModal === "dials" ? "Edit World State" : "Edit Narrative"}
+            {editModal === "addlab" ? "Add Lab" : "Edit Narrative"}
           </span>
           <button onClick={onClose} className="text-text-light hover:text-white text-sm">Close</button>
         </div>
         {editModal === "narrative" && (
           <NarrativeEditor gameId={gameId} roundNumber={game.currentRound} currentSummary={currentRound?.summary ?? undefined} startOpen />
-        )}
-        {editModal === "dials" && (
-          <WorldStateEditor gameId={gameId} worldState={game.worldState} startOpen />
         )}
         {editModal === "addlab" && (
           <AddLabForm gameId={gameId} tables={tables} addLab={addLab} onDone={onClose} />

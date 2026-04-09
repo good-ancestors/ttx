@@ -208,10 +208,6 @@ export const generateAll = internalAction({
         if (prevRound.summary.geopoliticalEvents.length > 0) {
           previousContext += `\nKey events: ${prevRound.summary.geopoliticalEvents.slice(0, 3).join("; ")}`;
         }
-        if (prevRound.worldStateAfter) {
-          const ws = prevRound.worldStateAfter;
-          previousContext += `\nWorld state after last round: Cap ${ws.capability}/10, Align ${ws.alignment}/10, Tension ${ws.tension}/10`;
-        }
       }
 
       // Own previous actions and outcomes
@@ -269,7 +265,6 @@ export const generateAll = internalAction({
 
 CURRENT GAME STATE:
 - Round: ${roundNumber} (${currentRound?.label ?? ""})
-- World state: Capability ${game.worldState.capability}/10, Alignment ${game.worldState.alignment}/10, US-China Tension ${game.worldState.tension}/10, Public Awareness ${game.worldState.awareness}/10, Regulation ${game.worldState.regulation}/10, Australian Preparedness ${game.worldState.australia}/10
 
 LAB STATUS:
 ${game.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}

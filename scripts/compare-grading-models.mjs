@@ -121,7 +121,6 @@ function buildGradingPrompt(args) {
 CURRENT GAME STATE:
 - Round: ${args.round} (${args.roundLabel})
 - Current AI capability: ${args.capabilityLevel}
-- World state: Capability ${args.worldState.capability}/10, Alignment ${args.worldState.alignment}/10, US-China Tension ${args.worldState.tension}/10, Public Awareness ${args.worldState.awareness}/10, Regulation ${args.worldState.regulation}/10, Australian Preparedness ${args.worldState.australia}/10
 
 LAB STATUS:
 ${args.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
@@ -143,15 +142,6 @@ GRADING RULES:
 }
 
 // ── Test scenarios ──
-
-const worldState = {
-  capability: 5,
-  alignment: 3,
-  tension: 6,
-  awareness: 5,
-  regulation: 2,
-  australia: 3,
-};
 
 const labs = [
   {
@@ -228,7 +218,6 @@ console.log("TTX GRADING MODEL COMPARISON");
 console.log("=".repeat(80));
 console.log(`Models: ${models.join(", ")}`);
 console.log(`Round: 2 (Q2-Q3 2028) | Capability level: 10x R&D multiplier`);
-console.log(`World state: cap=${worldState.capability} align=${worldState.alignment} tension=${worldState.tension} aware=${worldState.awareness} reg=${worldState.regulation} aus=${worldState.australia}`);
 console.log("=".repeat(80));
 
 for (const testCase of testCases) {
@@ -244,7 +233,6 @@ for (const testCase of testCases) {
     round: 2,
     roundLabel: "Q2-Q3 2028",
     capabilityLevel: "10× R&D multiplier",
-    worldState,
     labs,
     roleName: testCase.roleName,
     roleDescription: testCase.roleDescription,

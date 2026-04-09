@@ -8,7 +8,6 @@ import { useAuthMutation } from "@/lib/hooks";
 import { Wand2, Loader2, Check, Undo2, Send } from "lucide-react";
 
 export interface Snapshot {
-  worldState: { capability: number; alignment: number; tension: number; awareness: number; regulation: number; australia: number };
   labs: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
 }
 
@@ -23,16 +22,13 @@ interface CopilotMessage {
 
 export function CopilotChat({
   gameId,
-  currentWorldState,
   currentLabs,
   variant,
 }: {
   gameId: Id<"games">;
-  currentWorldState: Snapshot["worldState"];
   currentLabs: Snapshot["labs"];
   variant: "modal" | "bar";
 }) {
-  const updateWorldState = useAuthMutation(api.games.updateWorldState);
   const updateLabs = useAuthMutation(api.games.updateLabs);
 
   const [messages, setMessages] = useState<CopilotMessage[]>([]);
@@ -87,7 +83,6 @@ export function CopilotChat({
         if (!apply && data.hasChanges) {
           // Take snapshot before any changes are applied
           setSnapshot({
-            worldState: { ...currentWorldState },
             labs: currentLabs.map((l) => ({ ...l, allocation: { ...l.allocation } })),
           });
         }
@@ -105,7 +100,6 @@ export function CopilotChat({
 
   const handleRevert = async () => {
     if (!snapshot) return;
-    await updateWorldState({ gameId, worldState: snapshot.worldState });
     await updateLabs({ gameId, labs: snapshot.labs });
     setSnapshot(null);
     // Mark the last applied message as reverted

@@ -5,8 +5,6 @@ import {
   PROBABILITY_CARDS,
   COMPUTE_CATEGORIES,
   CAPABILITY_PROGRESSION,
-  WORLD_STATE_INDICATORS,
-  DEFAULT_WORLD_STATE,
   DEFAULT_LABS,
   BACKGROUND_LABS,
   NEW_COMPUTE_PER_GAME_ROUND,
@@ -315,33 +313,6 @@ describe("Compute Distribution", () => {
   });
 });
 
-// ─── WORLD STATE ──────────────────────────────────────────────────────────────
-
-describe("World State", () => {
-  it("should have 6 indicators", () => {
-    expect(WORLD_STATE_INDICATORS).toHaveLength(6);
-  });
-
-  it("default values should all be 0-10", () => {
-    for (const [, val] of Object.entries(DEFAULT_WORLD_STATE)) {
-      expect(val).toBeGreaterThanOrEqual(0);
-      expect(val).toBeLessThanOrEqual(10);
-    }
-  });
-
-  it("alignment should start low (reflecting whistleblower crisis)", () => {
-    expect(DEFAULT_WORLD_STATE.alignment).toBeLessThanOrEqual(4);
-  });
-
-  it("awareness should start moderate (NYT leak)", () => {
-    expect(DEFAULT_WORLD_STATE.awareness).toBeGreaterThanOrEqual(3);
-  });
-
-  it("regulation should start very low", () => {
-    expect(DEFAULT_WORLD_STATE.regulation).toBeLessThanOrEqual(2);
-  });
-});
-
 // ─── CAPABILITY PROGRESSION ──────────────────────────────────────────────────
 
 describe("Capability Progression", () => {
@@ -421,12 +392,6 @@ describe("Edge Cases", () => {
 
   it("MAX_ACTIONS should be 5", () => {
     expect(MAX_ACTIONS).toBe(5);
-  });
-
-  it("all WORLD_STATE_INDICATORS keys should exist in DEFAULT_WORLD_STATE", () => {
-    for (const indicator of WORLD_STATE_INDICATORS) {
-      expect(DEFAULT_WORLD_STATE).toHaveProperty(indicator.key);
-    }
   });
 
   it("compute category keys should match lab allocation keys", () => {

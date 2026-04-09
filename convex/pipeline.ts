@@ -28,7 +28,7 @@ import {
 
 /** Build role description for the grading LLM from the structured handout.
  *  Only includes role + objective — resources are dynamic and already
- *  represented by actual game state (labs, compute, world state). */
+ *  represented by actual game state (labs, compute, allocations). */
 function getRoleDescription(roleId: string, fallbackBrief: string): string {
   const handout = (handoutData as Record<string, RoleHandout>)[roleId];
   if (!handout) return fallbackBrief;
@@ -63,9 +63,6 @@ async function failPipeline(ctx: ActionCtx, gameId: Id<"games">, stage: string, 
 function generateNonce(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
-
-const DIAL_NAMES = ["capability", "alignment", "tension", "awareness", "regulation", "australia"] as const;
-
 
 async function gradeSubmissionBatch(
   ctx: ActionCtx,
@@ -122,7 +119,6 @@ async function gradeSubmissionBatch(
       const prompt = buildGradingPrompt({
         round: roundNumber,
         roundLabel: roundMap.get(roundNumber)?.label ?? `Round ${roundNumber}`,
-        worldState: game.worldState,
         roleName: role.name,
         roleDescription: getRoleDescription(sub.roleId, role.brief ?? ""),
         roleTags: [...role.tags],
@@ -315,7 +311,7 @@ export const rollAndNarrate = internalAction({
     roundNumber: v.number(),
     aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
   },
-  // Complexity is inherent: multi-step pipeline (roll, narrate, apply world state,
+  // Complexity is inherent: multi-step pipeline (roll, narrate,
   // compute lab growth, snapshot) that must run as a single atomic action.
   // eslint-disable-next-line complexity
   handler: async (ctx, args) => {
@@ -391,7 +387,6 @@ export const rollAndNarrate = internalAction({
       await ctx.runMutation(internal.rounds.snapshotBeforeInternal, {
         gameId,
         roundNumber,
-        worldStateBefore: game.worldState as { capability: number; alignment: number; tension: number; awareness: number; regulation: number; australia: number },
         labsBefore: game.labs.map(stripLabForSnapshot),
         roleComputeBefore: tablesBeforeResolve
           .filter((table) => table.computeStock != null)
@@ -438,7 +433,6 @@ export const rollAndNarrate = internalAction({
       const prompt = buildRoundNarrativePrompt({
         round: roundNumber,
         roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
-        worldState: game.worldState,
         resolvedActions,
         labs: game.labs,
         aiDisposition,
@@ -448,14 +442,12 @@ export const rollAndNarrate = internalAction({
             number: r.number,
             label: r.label,
             narrative: r.summary?.narrative,
-            worldStateAfter: r.worldStateAfter as Record<string, number> | undefined,
           })),
         previousTrajectories,
       });
 
       type NarrativeOutput = {
         narrative: string;
-        worldState: { capability: { reasoning: string; value: number }; alignment: { reasoning: string; value: number }; tension: { reasoning: string; value: number }; awareness: { reasoning: string; value: number }; regulation: { reasoning: string; value: number }; australia: { reasoning: string; value: number } };
         labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string; controllerRoleId?: string; spec?: string }[];
         shareChanges?: { roleId: string; sharePct: number; reason: string }[];
         labTrajectories: { labName: string; safetyAdequacy: "adequate" | "concerning" | "dangerous" | "catastrophic"; likelyFailureMode: "aligned" | "deceptive" | "spec-gaming" | "power-concentration" | "benevolent-override" | "loss-of-control" | "misuse"; reasoning: string; signalStrength: number }[];
@@ -478,15 +470,6 @@ export const rollAndNarrate = internalAction({
             type: "object",
             properties: {
               narrative: { type: "string", description: "6-8 dramatic sentences" },
-              worldState: (() => {
-                const dialSchema = { type: "object", properties: { reasoning: { type: "string", description: "1 sentence", maxLength: 150 }, value: { type: "number" } }, required: ["reasoning", "value"] };
-                return {
-                  type: "object",
-                  description: "For each dial, reason about the change BEFORE giving the value",
-                  properties: Object.fromEntries(DIAL_NAMES.map((d) => [d, dialSchema])),
-                  required: [...DIAL_NAMES],
-                };
-              })(),
               labOperations: {
                 type: "array",
                 items: {
@@ -541,7 +524,7 @@ export const rollAndNarrate = internalAction({
                 required: ["labName", "safetyAdequacy", "likelyFailureMode", "reasoning", "signalStrength"],
               },
             },
-            required: ["narrative", "worldState", "labOperations", "labTrajectories"],
+            required: ["narrative", "labOperations", "labTrajectories"],
           },
         });
 
@@ -570,9 +553,6 @@ export const rollAndNarrate = internalAction({
           : "";
         narrativeOutput = {
           narrative: `${successSummary}${failSummary} [AI narrative generation failed — use Edit Narrative to write or regenerate.]`,
-          worldState: Object.fromEntries(
-            DIAL_NAMES.map(k => [k, { reasoning: "LLM unavailable — value unchanged", value: game.worldState[k] }])
-          ) as NarrativeOutput["worldState"],
           labOperations: [],
           labTrajectories: [],
         };
@@ -591,20 +571,7 @@ export const rollAndNarrate = internalAction({
         return;
       }
 
-      // Write narrative + apply world state in parallel (different documents)
-      const maxDelta = roundNumber >= 3 ? 4 : 3;
-      const clamp = (newVal: number, current: number) => {
-        if (!Number.isFinite(newVal)) return current;
-        const clamped = Math.max(0, Math.min(10, Math.round(newVal)));
-        const delta = clamped - current;
-        return Math.abs(delta) > maxDelta ? current + Math.sign(delta) * maxDelta : clamped;
-      };
-      const ws = game.worldState;
-      const ows = narrativeOutput.worldState;
-      const clampedWorldState = Object.fromEntries(
-        DIAL_NAMES.map((d) => [d, clamp(ows[d]?.value ?? ws[d], ws[d])])
-      ) as typeof ws;
-      // Write narrative (rounds doc) + world state (games doc) in parallel
+      // Write narrative + lab trajectories in parallel
       await Promise.all([
         ctx.runMutation(internal.rounds.applySummaryInternal, {
           gameId,
@@ -620,7 +587,6 @@ export const rollAndNarrate = internalAction({
         narrativeOutput.labTrajectories.length > 0
           ? ctx.runMutation(internal.rounds.setLabTrajectories, { gameId, roundNumber, trajectories: narrativeOutput.labTrajectories })
           : Promise.resolve(),
-        ctx.runMutation(internal.games.updateWorldStateInternal, { gameId, worldState: clampedWorldState }),
       ]);
 
       // Apply lab operations from the LLM
@@ -819,7 +785,6 @@ export const rollAndNarrate = internalAction({
       await ctx.runMutation(internal.rounds.snapshotAfterInternal, {
         gameId,
         roundNumber,
-        worldStateAfter: clampedWorldState,
         labsAfter: strippedLabs,
         roleComputeAfter,
       });

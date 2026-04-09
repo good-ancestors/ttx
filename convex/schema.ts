@@ -1,16 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-// Shared validators for world state and lab snapshot shapes
-export const worldStateValidator = v.object({
-  capability: v.number(),
-  alignment: v.number(),
-  tension: v.number(),
-  awareness: v.number(),
-  regulation: v.number(),
-  australia: v.number(),
-});
-
 /** Lab snapshot. computeStock is a DERIVED CACHE — the source of truth is table.computeStock.
  *  Synced from tables at: game creation, pipeline resolution (post-growth), facilitator overrides.
  *  May be slightly stale during submit phase (not reflecting in-flight escrow/transfers). */
@@ -58,7 +48,6 @@ export default defineSchema({
       v.literal("narrate")
     ),
     phaseEndsAt: v.optional(v.number()),
-    worldState: worldStateValidator,
     labs: v.array(labSnapshotValidator),
     locked: v.boolean(),
     // Resolve lock with TTL: auto-expires after 3 minutes if process dies
@@ -190,7 +179,6 @@ export default defineSchema({
       })
     ),
     // Pre-resolve snapshot — captured before resolve runs (safe revert point)
-    worldStateBefore: v.optional(worldStateValidator),
     labsBefore: v.optional(v.array(labSnapshotValidator)),
     roleComputeBefore: v.optional(
       v.array(
@@ -221,7 +209,6 @@ export default defineSchema({
       status: v.optional(v.union(v.literal("merged"), v.literal("created"))),
     }))),
     // Post-resolve snapshot — for post-game review and restore
-    worldStateAfter: v.optional(worldStateValidator),
     labsAfter: v.optional(v.array(labSnapshotValidator)),
     roleComputeAfter: v.optional(
       v.array(

@@ -7,11 +7,10 @@ import type { Id } from "@convex/_generated/dataModel";
 import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
 import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
-import { WorldStatePanel } from "@/components/world-state-panel";
 import { LabTracker } from "@/components/lab-tracker";
 import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
-import { WorldStateEditor, FacilitatorCopilot } from "@/components/manual-controls";
+import { FacilitatorCopilot } from "@/components/manual-controls";
 import { DebugPanel } from "@/components/debug-panel";
 import {
   Loader2,
@@ -114,7 +113,6 @@ export default function FacilitatorPage({
   const [focusedQR, setFocusedQR] = useState<string | null>(null);
   const [submitDuration, setSubmitDuration] = useState(4);
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
-  const [editDials, setEditDials] = useState(false);
   const [addLabOpen, setAddLabOpen] = useState(false);
   const [narrativeStale, setNarrativeStale] = useState(false);
 
@@ -192,8 +190,8 @@ export default function FacilitatorPage({
   const connectedCount = tables.filter((t) => t.connected).length;
   const snapshotOptions = isProjector ? [] : rounds.flatMap(r => {
     const opts: { number: number; label: string; useBefore: boolean; desc: string }[] = [];
-    if (r.hasWorldStateBefore) opts.push({ number: r.number, label: r.label, useBefore: true, desc: `Before ${r.label} resolve` });
-    if (r.worldStateAfter) opts.push({ number: r.number, label: r.label, useBefore: false, desc: `After ${r.label} resolve` });
+    if (r.hasLabsBefore) opts.push({ number: r.number, label: r.label, useBefore: true, desc: `Before ${r.label} resolve` });
+    if (r.labsAfter) opts.push({ number: r.number, label: r.label, useBefore: false, desc: `After ${r.label} resolve` });
     return opts;
   });
 
@@ -286,7 +284,6 @@ export default function FacilitatorPage({
           </div>
           <GameTimeline
             rounds={roundsFull ?? []}
-            initialWorldState={game.worldState}
             initialLabs={game.labs}
           />
         </div>
@@ -410,8 +407,6 @@ export default function FacilitatorPage({
           {/* Left sidebar */}
           <div className="flex flex-col gap-4">
             <RdProgressChart rounds={rounds} currentLabs={game.labs} currentRound={game.currentRound} />
-            <WorldStatePanel worldState={game.worldState} variant="dark" onEdit={isProjector ? undefined : () => setEditDials(true)} />
-            {editDials && !isProjector && <WorldStateEditor gameId={gameId} worldState={game.worldState} startOpen />}
             <LabTracker
               labs={game.labs}
               onMerge={isProjector ? undefined : async (survivor, absorbed) => {
@@ -479,7 +474,6 @@ export default function FacilitatorPage({
           <div className="sticky bottom-0 z-40 bg-navy-dark">
             <FacilitatorCopilot
               gameId={gameId}
-              currentWorldState={game.worldState}
               currentLabs={game.labs}
             />
           </div>
