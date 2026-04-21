@@ -8,6 +8,31 @@ import { Pencil, Save, AlertTriangle } from "lucide-react";
 import { CopilotChat } from "@/components/copilot-chat";
 import type { Snapshot } from "@/components/copilot-chat";
 
+type SectionedSummary = {
+  labs: string[];
+  geopolitics: string[];
+  publicAndMedia: string[];
+  aiSystems: string[];
+};
+
+const SECTION_ORDER: { key: keyof SectionedSummary; label: string; hint: string }[] = [
+  { key: "labs", label: "Labs", hint: "Lab outcomes, mergers, failed deals — one line each." },
+  { key: "geopolitics", label: "Geopolitics", hint: "Government, diplomatic, regulatory moves." },
+  { key: "publicAndMedia", label: "Public & Media", hint: "Press framing, sentiment, NGO positions." },
+  { key: "aiSystems", label: "AI Systems", hint: "Observable AI behaviour only — not alignment secrets." },
+];
+
+function splitLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+function joinLines(lines: string[] | undefined): string {
+  return (lines ?? []).join("\n");
+}
+
 // Manual narrative editor — facilitator can type/edit narrative
 export function NarrativeEditor({
   gameId,
@@ -17,36 +42,43 @@ export function NarrativeEditor({
 }: {
   gameId: Id<"games">;
   roundNumber: number;
-  currentSummary?: {
-    narrative?: string;
-    geopoliticalEvents: string[];
-    aiStateOfPlay: string[];
-    headlines: string[];
-  };
+  currentSummary?: SectionedSummary;
   startOpen?: boolean;
 }) {
   const applySummary = useAuthMutation(api.rounds.applySummary);
   const [editing, setEditing] = useState(startOpen);
-  // Derive current narrative from summary, updating when summary changes reactively
-  const existingNarrative = currentSummary?.narrative
-    ?? (currentSummary ? [...currentSummary.geopoliticalEvents, ...currentSummary.aiStateOfPlay].join("\n") : "");
-  const [narrative, setNarrative] = useState(existingNarrative);
-  // Sync state when summary updates (e.g., AI generates narrative after editor was opened)
-  const [lastSynced, setLastSynced] = useState(existingNarrative);
-  if (existingNarrative !== lastSynced) {
-    setNarrative(existingNarrative);
-    setLastSynced(existingNarrative);
+  const [labs, setLabs] = useState(joinLines(currentSummary?.labs));
+  const [geopolitics, setGeopolitics] = useState(joinLines(currentSummary?.geopolitics));
+  const [publicAndMedia, setPublicAndMedia] = useState(joinLines(currentSummary?.publicAndMedia));
+  const [aiSystems, setAiSystems] = useState(joinLines(currentSummary?.aiSystems));
+
+  // Sync when summary updates reactively (e.g. AI regenerates after editor was opened)
+  const snapshotKey = `${joinLines(currentSummary?.labs)}|${joinLines(currentSummary?.geopolitics)}|${joinLines(currentSummary?.publicAndMedia)}|${joinLines(currentSummary?.aiSystems)}`;
+  const [lastSynced, setLastSynced] = useState(snapshotKey);
+  if (snapshotKey !== lastSynced) {
+    setLabs(joinLines(currentSummary?.labs));
+    setGeopolitics(joinLines(currentSummary?.geopolitics));
+    setPublicAndMedia(joinLines(currentSummary?.publicAndMedia));
+    setAiSystems(joinLines(currentSummary?.aiSystems));
+    setLastSynced(snapshotKey);
   }
+
+  const values: Record<keyof SectionedSummary, string> = {
+    labs, geopolitics, publicAndMedia, aiSystems,
+  };
+  const setters: Record<keyof SectionedSummary, (v: string) => void> = {
+    labs: setLabs, geopolitics: setGeopolitics, publicAndMedia: setPublicAndMedia, aiSystems: setAiSystems,
+  };
 
   const handleSave = async () => {
     await applySummary({
       gameId,
       roundNumber,
       summary: {
-        narrative: narrative || undefined,
-        geopoliticalEvents: [],
-        aiStateOfPlay: [],
-        headlines: [],
+        labs: splitLines(labs),
+        geopolitics: splitLines(geopolitics),
+        publicAndMedia: splitLines(publicAndMedia),
+        aiSystems: splitLines(aiSystems),
       },
     });
     setEditing(false);
@@ -58,7 +90,7 @@ export function NarrativeEditor({
         onClick={() => setEditing(true)}
         className="text-[11px] text-text-light hover:text-white flex items-center gap-1 mt-2 transition-colors"
       >
-        <Pencil className="w-3 h-3" /> {currentSummary ? "Edit narrative" : "Write narrative manually"}
+        <Pencil className="w-3 h-3" /> {currentSummary ? "Edit summary" : "Write summary manually"}
       </button>
     );
   }
@@ -69,7 +101,7 @@ export function NarrativeEditor({
         <div className="flex items-center gap-2">
           <AlertTriangle className="w-4 h-4 text-viz-warning" />
           <span className="text-xs font-semibold text-viz-warning uppercase tracking-wider">
-            Manual Narrative
+            Manual Summary
           </span>
         </div>
         <button
@@ -80,14 +112,23 @@ export function NarrativeEditor({
         </button>
       </div>
 
-      <label className="text-[11px] text-text-light block mb-1">Narrative (the story read aloud)</label>
-      <textarea
-        value={narrative}
-        onChange={(e) => setNarrative(e.target.value)}
-        rows={8}
-        className="w-full p-2 bg-navy-dark border border-navy-light rounded text-sm text-white resize-none outline-none"
-        placeholder="Enter the narrative for this round..."
-      />
+      <div className="space-y-3">
+        {SECTION_ORDER.map(({ key, label, hint }) => (
+          <div key={key}>
+            <label className="text-[11px] text-text-light block mb-1">
+              {label}{" "}
+              <span className="text-text-muted">— {hint}</span>
+            </label>
+            <textarea
+              value={values[key]}
+              onChange={(e) => setters[key](e.target.value)}
+              rows={3}
+              className="w-full p-2 bg-navy-dark border border-navy-light rounded text-sm text-white resize-none outline-none"
+              placeholder="One sentence per line"
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

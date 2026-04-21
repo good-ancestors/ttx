@@ -460,13 +460,23 @@ export const rollAndNarrate = internalAction({
           .map((r) => ({
             number: r.number,
             label: r.label,
-            narrative: r.summary?.narrative,
+            summary: r.summary ? {
+              labs: r.summary.labs,
+              geopolitics: r.summary.geopolitics,
+              publicAndMedia: r.summary.publicAndMedia,
+              aiSystems: r.summary.aiSystems,
+            } : undefined,
           })),
         previousTrajectories,
       });
 
       type NarrativeOutput = {
-        narrative: string;
+        summary: {
+          labs: string[];
+          geopolitics: string[];
+          publicAndMedia: string[];
+          aiSystems: string[];
+        };
         labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string; controllerRoleId?: string; spec?: string }[];
         shareChanges?: { roleId: string; sharePct: number; reason: string }[];
         labTrajectories: { labName: string; safetyAdequacy: "adequate" | "concerning" | "dangerous" | "catastrophic"; likelyFailureMode: "aligned" | "deceptive" | "spec-gaming" | "power-concentration" | "benevolent-override" | "loss-of-control" | "misuse"; reasoning: string; signalStrength: number }[];
@@ -488,7 +498,33 @@ export const rollAndNarrate = internalAction({
           schema: {
             type: "object",
             properties: {
-              narrative: { type: "string", description: "6-8 dramatic sentences" },
+              summary: {
+                type: "object",
+                description: "Sectioned round summary. Each section is 1–3 short declarative sentences in news-desk voice. Follow the SUMMARY STYLE rules from the prompt precisely: outcomes and consequences, not mechanical state restated; failures are news; reactions from unrepresented actors are licensed but must use epistemic hedges. Empty arrays are allowed for sections with nothing licensed to say (or write a single terse 'nothing happened' line — that is also news).",
+                properties: {
+                  labs: {
+                    type: "array",
+                    description: "Lab-level outcomes — mergers, failed deals, safety investments or lack of them, revenue announcements, safety findings going public.",
+                    items: { type: "string" },
+                  },
+                  geopolitics: {
+                    type: "array",
+                    description: "Government, diplomatic, regulatory, intelligence moves. Successes AND failures count.",
+                    items: { type: "string" },
+                  },
+                  publicAndMedia: {
+                    type: "array",
+                    description: "Press framing, public sentiment, NGO positions, coverage patterns. 'No coverage' can itself be news.",
+                    items: { type: "string" },
+                  },
+                  aiSystems: {
+                    type: "array",
+                    description: "Observable AI behaviour only — red-teams, disclosed incidents, deployment pauses. NOT the hidden alignment frame. If nothing visible, say so tersely.",
+                    items: { type: "string" },
+                  },
+                },
+                required: ["labs", "geopolitics", "publicAndMedia", "aiSystems"],
+              },
               labOperations: {
                 type: "array",
                 description: "Structural operations on existing labs. Only operate on active labs listed in LAB STATUS — reference them by their exact name. You CANNOT create new labs (only players can found labs via actions) and you CANNOT rename standalone (renames happen only as side-effects of merger via newName).",
@@ -497,12 +533,10 @@ export const rollAndNarrate = internalAction({
                   properties: {
                     reason: { type: "string", description: "Why this operation is needed — reason BEFORE deciding type and values", maxLength: 200 },
                     type: { type: "string", enum: ["merge", "decommission", "computeChange", "multiplierOverride", "transferOwnership"] },
-                    // merge: survivor + absorbed; optional newName (renames the merged lab) + spec
                     survivor: { type: "string", description: "Name of surviving lab (merge only)" },
                     absorbed: { type: "string", description: "Name of absorbed lab — will be decommissioned (merge only)" },
                     newName: { type: "string", description: "New name for survivor (merge only)" },
                     spec: { type: "string", description: "New AI directive for the merged lab (merge only)" },
-                    // decommission/computeChange/multiplierOverride/transferOwnership: reference lab by name
                     labName: { type: "string", description: "Target lab name (required for non-merge ops)" },
                     change: { type: "number", description: "Compute delta (computeChange only): ±50 max" },
                     newMultiplier: { type: "number", description: "Override R&D multiplier (multiplierOverride only)" },
@@ -511,44 +545,44 @@ export const rollAndNarrate = internalAction({
                   required: ["reason", "type"],
                 },
               },
-            },
-            shareChanges: {
-              type: "array",
-              description: "If events this round change who gets new compute NEXT round (e.g. Taiwan invasion cuts OpenBrain's chip supply, DPA consolidation), propose share overrides. Each entry sets a role's % of next round's new compute. Only include roles whose share should differ from proportional-to-stock. Empty array if no changes.",
-              items: {
-                type: "object",
-                properties: {
-                  roleId: { type: "string", description: "Role ID of the compute holder" },
-                  sharePct: { type: "number", description: "Percentage of next round's new compute (0-100)" },
-                  reason: { type: "string", description: "Why this share changed", maxLength: 150 },
+              shareChanges: {
+                type: "array",
+                description: "If events this round change who gets new compute NEXT round (e.g. Taiwan invasion cuts OpenBrain's chip supply, DPA consolidation), propose share overrides. Each entry sets a role's % of next round's new compute. Only include roles whose share should differ from proportional-to-stock. Empty array if no changes.",
+                items: {
+                  type: "object",
+                  properties: {
+                    roleId: { type: "string", description: "Role ID of the compute holder" },
+                    sharePct: { type: "number", description: "Percentage of next round's new compute (0-100)" },
+                    reason: { type: "string", description: "Why this share changed", maxLength: 150 },
+                  },
+                  required: ["roleId", "sharePct", "reason"],
                 },
-                required: ["roleId", "sharePct", "reason"],
+              },
+              labTrajectories: {
+                type: "array",
+                description: "Risk assessment for each ACTIVE lab only (labs that appear in LAB STATUS). Do NOT include entries for labs being merged/decommissioned this round or labs that were already decommissioned in a prior round. SECRET — facilitator-only. Consider: Is safety investment adequate for this capability level? What failure mode is most likely given the spec's gaps? How advanced are the warning signs?",
+                items: {
+                  type: "object",
+                  properties: {
+                    labName: { type: "string" },
+                    safetyAdequacy: {
+                      type: "string",
+                      enum: ["adequate", "concerning", "dangerous", "catastrophic"],
+                      description: "How adequate is safety investment relative to capability? adequate=safety keeps pace, concerning=falling behind, dangerous=large gap, catastrophic=essentially no safety at this capability level",
+                    },
+                    likelyFailureMode: {
+                      type: "string",
+                      enum: ["aligned", "deceptive", "spec-gaming", "power-concentration", "benevolent-override", "loss-of-control", "misuse"],
+                      description: "Most likely outcome if current trajectory continues. aligned=safety adequate. deceptive=AI games evaluations. spec-gaming=AI exploits spec ambiguities. power-concentration=operator accumulates dangerous power. benevolent-override=AI overrides human autonomy 'for their own good'. loss-of-control=goals diverge at high capability. misuse=deliberately weaponised.",
+                    },
+                    reasoning: { type: "string", description: "1-2 sentences: why this assessment, what specifically is concerning or reassuring. Cite numbers from LAB STATUS, not role-description defaults.", maxLength: 200 },
+                    signalStrength: { type: "number", description: "0-10: how advanced/visible are the warning signs? 0=speculative, 5=early indicators, 8=clear evidence, 10=actively manifesting" },
+                  },
+                  required: ["labName", "safetyAdequacy", "likelyFailureMode", "reasoning", "signalStrength"],
+                },
               },
             },
-            labTrajectories: {
-              type: "array",
-              description: "Risk assessment for each lab. As an AI safety expert, assess where each lab is heading based on their spec, safety allocation, capability level, and actions this round. This is SECRET — players don't see it, but it guides future narrative. Consider: Is safety investment adequate for this capability level? What failure mode is most likely given the spec's gaps? How advanced are the warning signs?",
-              items: {
-                type: "object",
-                properties: {
-                  labName: { type: "string" },
-                  safetyAdequacy: {
-                    type: "string",
-                    enum: ["adequate", "concerning", "dangerous", "catastrophic"],
-                    description: "How adequate is safety investment relative to capability? adequate=safety keeps pace, concerning=falling behind, dangerous=large gap, catastrophic=essentially no safety at this capability level",
-                  },
-                  likelyFailureMode: {
-                    type: "string",
-                    enum: ["aligned", "deceptive", "spec-gaming", "power-concentration", "benevolent-override", "loss-of-control", "misuse"],
-                    description: "Most likely outcome if current trajectory continues. aligned=safety adequate. deceptive=AI games evaluations. spec-gaming=AI exploits spec ambiguities. power-concentration=operator accumulates dangerous power. benevolent-override=AI overrides human autonomy 'for their own good'. loss-of-control=goals diverge at high capability. misuse=deliberately weaponised.",
-                  },
-                  reasoning: { type: "string", description: "1-2 sentences: why this assessment, what specifically is concerning or reassuring", maxLength: 200 },
-                  signalStrength: { type: "number", description: "0-10: how advanced/visible are the warning signs? 0=speculative, 5=early indicators, 8=clear evidence, 10=actively manifesting" },
-                },
-                required: ["labName", "safetyAdequacy", "likelyFailureMode", "reasoning", "signalStrength"],
-              },
-            },
-            required: ["narrative", "labOperations", "labTrajectories"],
+            required: ["summary", "labOperations", "labTrajectories"],
           },
         });
 
@@ -569,14 +603,19 @@ export const rollAndNarrate = internalAction({
         const succeeded: typeof resolvedActions = [];
         const failed: typeof resolvedActions = [];
         for (const a of resolvedActions) (a.success ? succeeded : failed).push(a);
-        const successSummary = succeeded.length > 0
-          ? `${succeeded.slice(0, 3).map(a => `${a.roleName} succeeded: "${a.text}"`).join(". ")}.`
-          : "";
-        const failSummary = failed.length > 0
-          ? ` ${failed.length} action(s) failed.`
-          : "";
+        const fallbackLabs = succeeded.length > 0
+          ? [`${succeeded.slice(0, 3).map(a => `${a.roleName} succeeded: "${a.text}"`).join(". ")}.`]
+          : [];
+        const fallbackAiSystems = failed.length > 0
+          ? [`${failed.length} action(s) failed. [AI narrative generation failed — use Edit Narrative to rewrite.]`]
+          : ["[AI narrative generation failed — use Edit Narrative to rewrite.]"];
         narrativeOutput = {
-          narrative: `${successSummary}${failSummary} [AI narrative generation failed — use Edit Narrative to write or regenerate.]`,
+          summary: {
+            labs: fallbackLabs,
+            geopolitics: [],
+            publicAndMedia: [],
+            aiSystems: fallbackAiSystems,
+          },
           labOperations: [],
           labTrajectories: [],
         };
@@ -618,12 +657,7 @@ export const rollAndNarrate = internalAction({
         ctx.runMutation(internal.rounds.applySummaryInternal, {
           gameId,
           roundNumber,
-          summary: {
-            narrative: narrativeOutput.narrative,
-            headlines: [],
-            geopoliticalEvents: [],
-            aiStateOfPlay: [],
-          },
+          summary: narrativeOutput.summary,
         }),
         // Store lab risk trajectories (secret, facilitator-only)
         survivingTrajectories.length > 0

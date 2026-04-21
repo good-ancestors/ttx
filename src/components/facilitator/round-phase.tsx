@@ -231,7 +231,12 @@ export function RoundPhase({
           overrideProbability={overrideProbability}
           ungradeAction={ungradeAction}
           phase={phase}
-          hasNarrative={!!currentRound?.summary?.narrative}
+          hasNarrative={!!currentRound?.summary && (
+            (currentRound.summary.labs?.length ?? 0) > 0 ||
+            (currentRound.summary.geopolitics?.length ?? 0) > 0 ||
+            (currentRound.summary.publicAndMedia?.length ?? 0) > 0 ||
+            (currentRound.summary.aiSystems?.length ?? 0) > 0
+          )}
           narrativeStale={narrativeStale}
           onDiceChanged={onDiceChanged}
         />

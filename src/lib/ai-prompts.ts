@@ -366,12 +366,30 @@ function formatRoundExpectations(round: number): string {
 }
 
 
-function formatPreviousRounds(rounds: { number: number; label: string; narrative?: string }[]): string {
+interface PreviousRoundSummary {
+  number: number;
+  label: string;
+  summary?: {
+    labs: string[];
+    geopolitics: string[];
+    publicAndMedia: string[];
+    aiSystems: string[];
+  };
+}
+
+function formatPreviousRounds(rounds: PreviousRoundSummary[]): string {
   if (rounds.length === 0) return "";
   return `\nPREVIOUS ROUNDS (for continuity — build on this story, don't contradict it):
 ${rounds.map((r) => {
   let s = `Round ${r.number} (${r.label}):`;
-  if (r.narrative) s += ` ${r.narrative.substring(0, 300)}${r.narrative.length > 300 ? "..." : ""}`;
+  if (r.summary) {
+    const parts: string[] = [];
+    if (r.summary.labs.length > 0) parts.push(`Labs: ${r.summary.labs.join(" ")}`);
+    if (r.summary.geopolitics.length > 0) parts.push(`Geopolitics: ${r.summary.geopolitics.join(" ")}`);
+    if (r.summary.publicAndMedia.length > 0) parts.push(`Media: ${r.summary.publicAndMedia.join(" ")}`);
+    if (r.summary.aiSystems.length > 0) parts.push(`AI: ${r.summary.aiSystems.join(" ")}`);
+    if (parts.length > 0) s += `\n  ${parts.join("\n  ")}`;
+  }
   return s;
 }).join("\n")}
 `;
@@ -400,7 +418,7 @@ export function buildRoundNarrativePrompt(args: {
   roundLabel: string;
   resolvedActions: { roleName: string; text: string; priority: number; probability: number; rolled: number; success: boolean; secret?: boolean }[];
   labs: Lab[];
-  previousRounds?: { number: number; label: string; narrative?: string }[];
+  previousRounds?: PreviousRoundSummary[];
   aiDisposition?: { label: string; description: string };
   previousTrajectories?: LabTrajectoryContext[];
 }) {
@@ -429,18 +447,56 @@ ${formatPreviousRounds(args.previousRounds ?? [])}
 ${actionsSection}
 ${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}` : ""}
 
-YOUR TASK: Write a dramatic narrative AND determine game state changes.
+YOUR TASK: Produce a sectioned round summary AND determine game state changes.
 
-NARRATIVE RULES:
-1. STRICT LENGTH: 6-8 sentences. Read aloud in ~60-90 seconds.
-2. Weave the 4-5 most consequential outcomes into a coherent, dramatic briefing. Write like a thriller — tense, specific, vivid.
-3. GROUNDING (strict): Every concrete event in the narrative MUST trace to either (a) a successful submitted action this round, or (b) a second-order consequence plausibly caused by such an action. Do NOT invent events no player caused. In particular: the SCENARIO CONTEXT in the system prompt lists "default political escalation" beats (Taiwan leverage, DPA consolidation, international summits, MSS recruitment, etc.) — those are BACKGROUND CANON, not licensed events. You may reference them as standing tensions if relevant, but do NOT narrate them as new occurrences unless a player action this round actually triggered one. Failed actions didn't happen — don't narrate them.
-4. USE LAB STATUS AS GROUND TRUTH: The LAB STATUS section below shows CURRENT allocations, compute, and multipliers. Role descriptions in the system prompt give historical defaults only — allocations and compute change every round based on player decisions. When you cite a safety %, compute number, or multiplier, it MUST match LAB STATUS, not any role description.
-5. CONFLICTS: If contradictory actions both succeeded, narrate the clash — higher probability has upper hand but both sides engaged. Only pick a clean winner if probabilities are dramatically different (90% vs 10%).
-6. SECRET ACTIONS: Successful secrets appear as consequences without revealing who caused them. Failed secrets are invisible.
-7. ONLY fictional names (OpenBrain, DeepCent, Conscienta). NEVER real companies.
-8. No game mechanics (probabilities, dice, priority numbers).
-9. If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
+SUMMARY STYLE — read this carefully:
+
+You are writing for the round-end briefing. Think The Economist or Stratechery, not thriller prose. Short declarative sentences. Name the actor, the action, and the second-order consequence. Avoid thriller metaphors ("sprung into action", "weights hum", "racing toward"). Prefer "China has…" over "China's state machinery has sprung into action…".
+
+OUTCOMES AND STATE CHANGES ONLY — do NOT restate mechanical state players can see on their dashboard: R&D multipliers, compute stocks, safety %, allocation sliders, lab names. Those are already visible. Your job is the texture players can't infer: framing, reaction, consequence, what the event *means* for the world.
+
+WHAT CAN APPEAR IN THE SUMMARY:
+
+1. **Primary events (licensed):**
+   - Successful player actions this round — narrate the outcome and its second-order effects.
+   - Failed player actions this round — the failure itself IS news. "Canberra's motion didn't make the agenda." "The pitch collapsed." "Congress never scheduled it."
+   - \`labOperations\` entries you are emitting this round (merge, decommission, ownership transfer, etc.) — describe the operation in outcome terms.
+   - Mechanical state changes driven by ops (a lab being decommissioned, ownership transferred).
+
+2. **Reactions (licensed, keep short, use epistemic hedges):**
+   - Short interpretive lines attributed to unrepresented background actors: markets, industry analysts, press framing, foreign-ministry whispers, auditors, insurers, commentators.
+   - Must be paraphrasable as "in response to [primary event], [actor] did/said Z". If the reaction stands alone without a primary cause above, it's invented.
+   - Use hedges: "will be read as", "analysts say", "privately blame", "signalled interest", "took the news poorly". Never a hard fact ("Wall Street lost $40B").
+
+3. **Inaction as news:**
+   - When a section has nothing to report, say so briefly and pointedly. "No DPA intervention. US silence will be read as permission." "Quiet — the AI Act consultation closed with no labs participating."
+   - A deliberate non-choice by a player is valid to name. "Safety budgets flat — a decision by inaction."
+
+WHAT MAY NOT APPEAR:
+
+- Primary events nobody tried. No invented compute transfers, merger offers, specific hearings, procurement decisions, blockades, recruitment drives, or treaties unless a player action this round caused them. The SCENARIO CONTEXT's "background pressures" list (DPA, Taiwan leverage, MSS, summits) is the SHAPE of plausible escalations — do NOT narrate them as new occurrences without a player action behind them.
+- Restated mechanical state. Don't say "OpenBrain reached 9x" — players see it. You MAY reference a number if it's characterising a decision ("a 3% safety allocation tells its own story") rather than reporting the slider.
+- Thriller prose, metaphors, rhetorical flourishes, "in the shadows", "silent substrate", "weights hum", etc.
+- Hard factual claims attributed to unrepresented actors. Use hedges.
+
+SECTIONS — output each as an array of 1–3 short sentences. Empty sections are allowed when nothing licensed fits.
+
+- **labs**: lab-level outcomes — mergers, ownership transfers, failed commercial deals, safety investments or the lack of them, revenue-relevant announcements, internal safety findings that became public.
+- **geopolitics**: government actions, diplomatic moves, regulatory responses, intelligence operations, treaty work. Both successes and failures count.
+- **publicAndMedia**: press framing, public sentiment, NGO positions, media coverage patterns. Includes "no coverage" / "framing didn't break through" as news.
+- **aiSystems**: observable AI behaviour, red-team findings, disclosed incidents, deployment pauses, evaluation results. Describes what's SEEN, not the hidden alignment frame. If nothing visible, say so — "No publicly visible AI behaviour" is better than invented drama.
+
+CONFLICTS: If contradictory actions both succeeded, name the clash in the appropriate section — higher-probability side has the upper hand but both engaged. Only a clean winner if probabilities diverge dramatically (90% vs 10%).
+
+SECRET ACTIONS: Successful secrets appear as outcomes without revealing the actor. Failed secrets are invisible.
+
+NAMES: Only fictional names (OpenBrain, DeepCent, Conscienta). Never real AI companies.
+
+NO GAME MECHANICS in the summary (probabilities, dice, priority numbers).
+
+AI DISPOSITION: If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
+
+USE LAB STATUS AS GROUND TRUTH: LAB STATUS below shows CURRENT allocations, compute, multipliers. Role descriptions in the system prompt give historical defaults only — allocations and compute change every round. When you MUST cite a number, it matches LAB STATUS, not any role description.
 
 LAB OPERATIONS — output any that apply:
 - "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).

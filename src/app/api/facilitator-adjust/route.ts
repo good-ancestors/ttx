@@ -30,7 +30,12 @@ const AdjustOutput = z.object({
       })
     )
   ),
-  narrativeUpdate: z.optional(z.string()),
+  narrativeUpdate: z.optional(z.object({
+    labs: z.array(z.string()).optional(),
+    geopolitics: z.array(z.string()).optional(),
+    publicAndMedia: z.array(z.string()).optional(),
+    aiSystems: z.array(z.string()).optional(),
+  })),
   labMerge: z.optional(z.object({
     survivorLab: z.string(),
     absorbedLab: z.string(),
@@ -71,7 +76,15 @@ export async function POST(request: Request) {
       convex.query(api.labs.getActiveLabs, { gameId: gameId as Id<"games"> }),
     ]);
     const currentRound = allRounds?.find((r) => r.number === game.currentRound);
-    const currentNarrative = currentRound?.summary?.narrative ?? "";
+    const currentSummarySections = currentRound?.summary
+      ? [
+          ...(currentRound.summary.labs ?? []).map((l) => `[Labs] ${l}`),
+          ...(currentRound.summary.geopolitics ?? []).map((l) => `[Geopolitics] ${l}`),
+          ...(currentRound.summary.publicAndMedia ?? []).map((l) => `[Media] ${l}`),
+          ...(currentRound.summary.aiSystems ?? []).map((l) => `[AI] ${l}`),
+        ].join("\n")
+      : "";
+    const currentNarrative = currentSummarySections;
     const resolvedActions = (currentSubmissions ?? []).flatMap((sub) => {
       const role = ROLE_MAP.get(sub.roleId);
       return sub.actions
@@ -210,17 +223,22 @@ YOUR BEHAVIOR:
         });
       }
 
-      // Apply narrative update
+      // Apply narrative update — merge proposed sections over existing summary
       if (output.narrativeUpdate) {
         const freshRounds = await convex.query(api.rounds.getByGame, { gameId: gameId as Id<"games"> });
         const freshRound = freshRounds?.find((r) => r.number === game.currentRound);
         if (freshRound) {
+          const existing = freshRound.summary ?? {
+            labs: [], geopolitics: [], publicAndMedia: [], aiSystems: [],
+          };
           await convex.mutation(api.rounds.applySummary, {
             gameId: gameId as Id<"games">,
             roundNumber: game.currentRound,
             summary: {
-              ...(freshRound.summary ?? { geopoliticalEvents: [], aiStateOfPlay: [], headlines: [] }),
-              narrative: output.narrativeUpdate,
+              labs: output.narrativeUpdate.labs ?? existing.labs,
+              geopolitics: output.narrativeUpdate.geopolitics ?? existing.geopolitics,
+              publicAndMedia: output.narrativeUpdate.publicAndMedia ?? existing.publicAndMedia,
+              aiSystems: output.narrativeUpdate.aiSystems ?? existing.aiSystems,
             },
             facilitatorToken,
           });

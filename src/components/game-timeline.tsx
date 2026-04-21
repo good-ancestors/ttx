@@ -20,9 +20,10 @@ interface RoundData {
   number: number;
   label: string;
   summary?: {
-    headlines: string[];
-    geopoliticalEvents: string[];
-    aiStateOfPlay: string[];
+    labs: string[];
+    geopolitics: string[];
+    publicAndMedia: string[];
+    aiSystems: string[];
   };
   labsAfter?: LabSnapshot[];
   aiMeta?: {
@@ -30,6 +31,12 @@ interface RoundData {
     narrativeTimeMs?: number;
     narrativeTokens?: number;
   };
+}
+
+/** First non-empty line across sections, in priority order — for a timeline headline. */
+function leadLine(summary: RoundData["summary"]): string | undefined {
+  if (!summary) return undefined;
+  return summary.labs[0] ?? summary.geopolitics[0] ?? summary.publicAndMedia[0] ?? summary.aiSystems[0];
 }
 
 interface Props {
@@ -54,19 +61,19 @@ export function GameTimeline({ rounds, initialLabs }: Props) {
         <h3 className="text-lg font-extrabold text-white">Game Timeline</h3>
       </div>
 
-      {/* Headlines per Round */}
-      {completedRounds.some((r) => r.summary?.headlines?.length) && (
+      {/* One-line per round — first populated section line */}
+      {completedRounds.some((r) => leadLine(r.summary)) && (
         <div>
           <div className="flex items-center gap-2 mb-3">
             <Newspaper className="w-4 h-4 text-text-light" />
             <span className="text-[11px] font-semibold uppercase tracking-wider text-text-light">
-              Headlines
+              Round leads
             </span>
           </div>
           <div className="space-y-2">
             {completedRounds.map((r) => {
-              const headline = r.summary?.headlines?.[0];
-              if (!headline) return null;
+              const lead = leadLine(r.summary);
+              if (!lead) return null;
               return (
                 <div
                   key={r.number}
@@ -75,7 +82,7 @@ export function GameTimeline({ rounds, initialLabs }: Props) {
                   <span className="text-[11px] font-mono text-text-light shrink-0 mt-0.5">
                     R{r.number}
                   </span>
-                  <span className="text-[13px] text-white leading-snug">{headline}</span>
+                  <span className="text-[13px] text-white leading-snug">{lead}</span>
                 </div>
               );
             })}

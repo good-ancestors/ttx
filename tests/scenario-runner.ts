@@ -118,14 +118,18 @@ function printTrajectory(round: Awaited<ReturnType<typeof snapshotRound>>["round
 function printNarrative(round: Awaited<ReturnType<typeof snapshotRound>>["round"]) {
   if (!round?.summary) { console.log("  (no summary)"); return; }
   const s = round.summary;
-  console.log(`\n  HEADLINES:`);
-  for (const h of s.headlines) console.log(`    • ${h}`);
-  console.log(`\n  GEOPOLITICAL:`);
-  for (const e of s.geopoliticalEvents) console.log(`    • ${e}`);
-  console.log(`\n  AI STATE:`);
-  for (const a of s.aiStateOfPlay) console.log(`    • ${a}`);
+  const sections: [string, string[]][] = [
+    ["LABS", s.labs ?? []],
+    ["GEOPOLITICS", s.geopolitics ?? []],
+    ["PUBLIC & MEDIA", s.publicAndMedia ?? []],
+    ["AI SYSTEMS", s.aiSystems ?? []],
+  ];
+  for (const [label, lines] of sections) {
+    console.log(`\n  ${label}:`);
+    if (lines.length === 0) console.log("    (empty)");
+    for (const line of lines) console.log(`    • ${line}`);
+  }
   if (s.facilitatorNotes) console.log(`\n  FACILITATOR NOTES:\n    ${s.facilitatorNotes}`);
-  if (s.narrative) console.log(`\n  NARRATIVE:\n    ${s.narrative}`);
 }
 
 async function scenarioA() {

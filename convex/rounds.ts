@@ -39,8 +39,13 @@ export const getByGameLightweight = query({
       number: r.number,
       label: r.label,
       labsAfter: r.labsAfter,
-      // Just the narrative string from summary (not full headlines/events arrays)
-      summaryNarrative: r.summary?.narrative,
+      // Sectioned summary — four short section arrays
+      summary: r.summary ? {
+        labs: r.summary.labs,
+        geopolitics: r.summary.geopolitics,
+        publicAndMedia: r.summary.publicAndMedia,
+        aiSystems: r.summary.aiSystems,
+      } : undefined,
       // Minimal flags for snapshot restore dropdown
       hasLabsBefore: r.labsBefore != null,
     }));
@@ -80,10 +85,10 @@ export const getForPlayer = query({
       number: round.number,
       label: round.label,
       summary: round.summary ? {
-        narrative: round.summary.narrative,
-        headlines: round.summary.headlines,
-        geopoliticalEvents: round.summary.geopoliticalEvents,
-        aiStateOfPlay: round.summary.aiStateOfPlay,
+        labs: round.summary.labs,
+        geopolitics: round.summary.geopolitics,
+        publicAndMedia: round.summary.publicAndMedia,
+        aiSystems: round.summary.aiSystems,
       } : undefined,
     };
   },
@@ -94,10 +99,10 @@ export const applySummary = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     summary: v.object({
-      narrative: v.optional(v.string()),
-      geopoliticalEvents: v.array(v.string()),
-      aiStateOfPlay: v.array(v.string()),
-      headlines: v.array(v.string()),
+      labs: v.array(v.string()),
+      geopolitics: v.array(v.string()),
+      publicAndMedia: v.array(v.string()),
+      aiSystems: v.array(v.string()),
       facilitatorNotes: v.optional(v.string()),
     }),
     facilitatorToken: v.optional(v.string()),
@@ -255,10 +260,10 @@ export const applySummaryInternal = internalMutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     summary: v.object({
-      narrative: v.optional(v.string()),
-      headlines: v.array(v.string()),
-      geopoliticalEvents: v.array(v.string()),
-      aiStateOfPlay: v.array(v.string()),
+      labs: v.array(v.string()),
+      geopolitics: v.array(v.string()),
+      publicAndMedia: v.array(v.string()),
+      aiSystems: v.array(v.string()),
       facilitatorNotes: v.optional(v.string()),
     }),
   },

@@ -196,10 +196,13 @@ export default defineSchema({
     facilitatorNotes: v.optional(v.string()),
     summary: v.optional(
       v.object({
-        narrative: v.optional(v.string()),
-        headlines: v.array(v.string()),
-        geopoliticalEvents: v.array(v.string()),
-        aiStateOfPlay: v.array(v.string()),
+        // Sectioned news-style summary. Each section: 1–3 short sentences.
+        // Outcomes and framing only — do NOT restate mechanical state (multipliers,
+        // compute stocks, safety %) that players can already see on their dashboard.
+        labs: v.array(v.string()),
+        geopolitics: v.array(v.string()),
+        publicAndMedia: v.array(v.string()),
+        aiSystems: v.array(v.string()),
         facilitatorNotes: v.optional(v.string()),
       })
     ),

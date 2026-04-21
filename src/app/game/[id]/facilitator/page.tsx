@@ -199,9 +199,18 @@ export default function FacilitatorPage({
   const currentRound = currentRoundFull ?? undefined;
   // rounds is guaranteed non-null after loading guard for playing/finished states
   const rounds = roundsLite ?? [];
-  // Previous narrative from lightweight rounds (summaryNarrative) or current round's narrative for round 1
+  // Previous-round summary text for copilot context (joined sectioned summary) or
+  // the fixed starting scenario for round 1.
   const prevRoundLite = rounds.find(r => r.number === game.currentRound - 1);
-  const previousNarrative = prevRoundLite?.summaryNarrative ?? (game.currentRound === 1 ? STARTING_SCENARIO : undefined);
+  const prevSummary = prevRoundLite?.summary;
+  const previousNarrative = prevSummary
+    ? [
+        ...prevSummary.labs.map((l) => `[Labs] ${l}`),
+        ...prevSummary.geopolitics.map((l) => `[Geopolitics] ${l}`),
+        ...prevSummary.publicAndMedia.map((l) => `[Media] ${l}`),
+        ...prevSummary.aiSystems.map((l) => `[AI] ${l}`),
+      ].join("\n") || undefined
+    : (game.currentRound === 1 ? STARTING_SCENARIO : undefined);
   const phase = game.phase;
   const connectedCount = tables.filter((t) => t.connected).length;
   const snapshotOptions = isProjector ? [] : rounds.flatMap(r => {

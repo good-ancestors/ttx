@@ -207,10 +207,11 @@ export const generateAll = internalAction({
       let previousContext = "";
       if (roundNumber > 1 && prevRound?.summary) {
         previousContext += `\nPREVIOUS ROUND (${prevRound.label}) — WHAT HAPPENED:`;
-        previousContext += `\nHeadlines: ${prevRound.summary.headlines.join(" | ")}`;
-        if (prevRound.summary.geopoliticalEvents.length > 0) {
-          previousContext += `\nKey events: ${prevRound.summary.geopoliticalEvents.slice(0, 3).join("; ")}`;
-        }
+        const s = prevRound.summary;
+        if (s.labs.length > 0) previousContext += `\nLabs: ${s.labs.join(" | ")}`;
+        if (s.geopolitics.length > 0) previousContext += `\nGeopolitics: ${s.geopolitics.join(" | ")}`;
+        if (s.publicAndMedia.length > 0) previousContext += `\nPublic & media: ${s.publicAndMedia.join(" | ")}`;
+        if (s.aiSystems.length > 0) previousContext += `\nAI systems: ${s.aiSystems.join(" | ")}`;
       }
 
       // Own previous actions and outcomes

@@ -22,14 +22,21 @@ interface Round {
   _id: string;
   label: string;
   summary?: {
-    narrative?: string;
-    geopoliticalEvents: string[];
-    aiStateOfPlay: string[];
-    headlines: string[];
+    labs: string[];
+    geopolitics: string[];
+    publicAndMedia: string[];
+    aiSystems: string[];
     facilitatorNotes?: string;
   };
   fallbackNarrative?: string;
 }
+
+const SECTIONS: { key: keyof NonNullable<Round["summary"]>; label: string }[] = [
+  { key: "labs", label: "Labs" },
+  { key: "geopolitics", label: "Geopolitics" },
+  { key: "publicAndMedia", label: "Public & Media" },
+  { key: "aiSystems", label: "AI Systems" },
+];
 
 export function NarrativePanel({
   round,
@@ -43,22 +50,21 @@ export function NarrativePanel({
   const [verbIdx, setVerbIdx] = useState(0);
   const [expanded, setExpanded] = useState(defaultExpanded);
   const summary = round?.summary;
-  const storyText = summary?.narrative
-    ?? (summary
-      ? [...summary.geopoliticalEvents, ...summary.aiStateOfPlay].join(" ")
-      : round?.fallbackNarrative);
+  const hasContent = summary
+    ? SECTIONS.some(({ key }) => (summary[key] as string[] | undefined)?.length)
+    : false;
 
   useEffect(() => {
-    if (storyText || round?.fallbackNarrative) return;
+    if (hasContent || round?.fallbackNarrative) return;
     const interval = setInterval(() => {
       setVerbIdx((prev) => (prev + 1) % LOADING_VERBS.length);
     }, 2000);
     return () => clearInterval(interval);
-  }, [storyText, round?.fallbackNarrative]);
+  }, [hasContent, round?.fallbackNarrative]);
 
   if (!round) return null;
 
-  if (!storyText && !round.fallbackNarrative) {
+  if (!hasContent && !round.fallbackNarrative) {
     return (
       <div className="bg-navy-dark rounded-xl border border-navy-light p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -76,6 +82,8 @@ export function NarrativePanel({
     );
   }
 
+  const textSize = isProjector ? "text-xl" : "text-base";
+
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
       <button
@@ -86,14 +94,35 @@ export function NarrativePanel({
         <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
           What Happened
         </span>
-        {storyText && (
+        {hasContent && (
           <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
         )}
       </button>
-      {expanded && storyText && (
-        <p className={`${isProjector ? "text-xl" : "text-base"} text-[#E2E8F0] leading-relaxed mt-3`}>
-          {storyText}
-        </p>
+      {expanded && (
+        <div className="mt-4 space-y-4">
+          {hasContent && summary ? (
+            SECTIONS.map(({ key, label }) => {
+              const lines = summary[key] as string[] | undefined;
+              if (!lines?.length) return null;
+              return (
+                <div key={key}>
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
+                    {label}
+                  </div>
+                  <ul className="space-y-1.5">
+                    {lines.map((line, i) => (
+                      <li key={i} className={`${textSize} text-[#E2E8F0] leading-relaxed`}>
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })
+          ) : round.fallbackNarrative ? (
+            <p className={`${textSize} text-[#E2E8F0] leading-relaxed`}>{round.fallbackNarrative}</p>
+          ) : null}
+        </div>
       )}
     </div>
   );
