@@ -358,8 +358,15 @@ export const getComputeHolderView = query({
       .query("computeTransactions")
       .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId))
       .collect();
-    const priorRounds = allTx.filter((t) => t.status === "settled" && t.roundNumber < args.roundNumber);
-    const thisRound = allTx.filter((t) => t.roundNumber === args.roundNumber);
+    // `starting` rows are emitted at roundNumber=1 but represent seed stock present before
+    // the first round's activity — include them in stockBefore regardless of target round.
+    const priorRounds = allTx.filter((t) =>
+      t.status === "settled" &&
+      (t.roundNumber < args.roundNumber || t.type === "starting")
+    );
+    const thisRound = allTx.filter(
+      (t) => t.roundNumber === args.roundNumber && t.type !== "starting"
+    );
 
     const stockBeforeByRole = new Map<string, number>();
     for (const tx of priorRounds) {
@@ -400,7 +407,7 @@ export const getComputeHolderView = query({
           case "adjusted": adjusted += tx.amount; break;
           case "merged": merged += tx.amount; break;
           case "facilitator": facilitator += tx.amount; break;
-          case "starting": /* shown in stockBefore aggregate for round 1 */ break;
+          case "starting": break; // already folded into stockBefore above; filtered out of thisRound
         }
       }
       const delta = acquired + transferred + adjusted + merged + facilitator;

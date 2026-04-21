@@ -551,7 +551,32 @@ export const saveAndSubmit = mutation({
     // Escrow "send" targets — emit pending ledger pairs tied to actionId.
     // "request" targets are NOT escrowed here; they create request docs and the target's
     // accept emits the pending pair (see requests.ts respond mutation).
+    // Validate foundLab args early (cheap checks before any writes).
+    if (args.foundLab) {
+      if (args.foundLab.seedCompute < 10) {
+        throw new Error("Minimum 10u compute required to found a lab");
+      }
+      if (!args.foundLab.name.trim()) {
+        throw new Error("Lab name required");
+      }
+    }
+
+    // Compose availability check: send-escrow total + foundLab seedCompute must fit in
+    // available stock. Done up-front so a send + foundLab on the same action can't each
+    // pass independently while summing over the limit.
     const sendTargets = targets.filter((t) => t.direction === "send");
+    const sendTotal = sendTargets.reduce((sum, t) => sum + t.amount, 0);
+    const foundLabCost = args.foundLab?.seedCompute ?? 0;
+    if (sendTotal + foundLabCost > 0) {
+      const available = await getAvailableStock(ctx, args.gameId, args.roleId, args.roundNumber);
+      if (available < sendTotal + foundLabCost) {
+        throw new Error(
+          `Insufficient compute: have ${available}u available, need ${sendTotal + foundLabCost}u ` +
+          `(${sendTotal}u send + ${foundLabCost}u found-lab)`
+        );
+      }
+    }
+
     if (sendTargets.length > 0) {
       await escrowSendTargets(ctx, {
         gameId: args.gameId,
@@ -563,18 +588,7 @@ export const saveAndSubmit = mutation({
       });
     }
 
-    // Found-a-lab: validate + escrow the founding cost via a pending `adjusted` ledger row.
     if (args.foundLab) {
-      if (args.foundLab.seedCompute < 10) {
-        throw new Error("Minimum 10u compute required to found a lab");
-      }
-      if (!args.foundLab.name.trim()) {
-        throw new Error("Lab name required");
-      }
-      const available = await getAvailableStock(ctx, args.gameId, args.roleId, args.roundNumber);
-      if (available < args.foundLab.seedCompute) {
-        throw new Error(`Insufficient compute: have ${available}u available, need ${args.foundLab.seedCompute}u to found a lab`);
-      }
       // Pending row — counts as escrow (subtracted from availableStock) but not from settled cache.
       await ctx.db.insert("computeTransactions", {
         gameId: args.gameId,
@@ -605,15 +619,12 @@ export const saveAndSubmit = mutation({
       if (submittedCount >= 5) throw new Error("Maximum 5 actions per round");
 
       // Draft-upgrade case reuses actionId computed above so ledger rows stay linked.
+      // Overwrite with newAction (which carries foundLab and current text) rather than
+      // spread-merging — prevents stale fields like foundLab=undefined from a prior draft
+      // clobbering the submitted intent, and vice versa.
       if (existingDraftIndex !== -1) {
         const actions = [...existing.actions];
-        actions[existingDraftIndex] = {
-          ...actions[existingDraftIndex],
-          priority: rank,
-          secret: args.secret,
-          actionStatus: "submitted" as const,
-          computeTargets: targets.length > 0 ? targets : undefined,
-        };
+        actions[existingDraftIndex] = newAction;
         await ctx.db.patch(existing._id, { actions, status: "submitted" });
         await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
           actionIndex: existingDraftIndex,

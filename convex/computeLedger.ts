@@ -181,9 +181,11 @@ export async function settlePendingForAction(
   return settled;
 }
 
-/** Wipe all regenerable rows for a round — acquired / adjusted / merged — and refund the cache.
- *  Preserves starting (can't happen in non-initial rounds anyway), transferred, facilitator.
- *  Used at the start of a re-resolve to reset narrative-driven compute moves. */
+/** Wipe narrative-driven regenerable rows for a round — settled acquired / adjusted / merged —
+ *  and refund the cache. Preserves starting / transferred / facilitator (non-regenerable) AND
+ *  pending rows (player-action-owned escrows: foundLab + send targets, settled/cancelled by
+ *  rollAllInternal). Pending rows have an `actionId` and must survive resolve re-runs so the
+ *  dice-roll settle/cancel pass still has something to act on. */
 export async function clearRegenerableRows(
   ctx: MutationCtx,
   gameId: Id<"games">,
@@ -195,11 +197,12 @@ export async function clearRegenerableRows(
     .collect();
   let deleted = 0;
   for (const r of rows) {
+    // Preserve any row with actionId — those are player-action-owned escrows/settlements
+    // (send targets, foundLab), owned by roll-all not narrative. Also preserve pending.
+    if (r.actionId) continue;
+    if (r.status !== "settled") continue;
     if (r.type === "acquired" || r.type === "adjusted" || r.type === "merged") {
-      if (r.status === "settled") {
-        // Reverse the cache impact before deleting.
-        await patchTableStock(ctx, r.gameId, r.roleId, -r.amount);
-      }
+      await patchTableStock(ctx, r.gameId, r.roleId, -r.amount);
       await ctx.db.delete(r._id);
       deleted++;
     }
