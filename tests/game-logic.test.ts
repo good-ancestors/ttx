@@ -22,8 +22,6 @@ import {
   isResolvingPhase,
   isSubmittedAction,
   computeLabGrowth,
-  applyLabMerge,
-  stripLabForSnapshot,
   buildComputeHolders,
   calculateStartingCompute,
   COMPUTE_POOL_ELIGIBLE,
@@ -502,51 +500,6 @@ describe("computeLabGrowth", () => {
       const original = DEFAULT_LABS.find(l => l.name === lab.name)!;
       expect(lab.spec).toBe(original.spec);
     }
-  });
-});
-
-describe("stripLabForSnapshot", () => {
-  it("preserves spec field", () => {
-    const lab = { name: "Test", roleId: "test", computeStock: 10, rdMultiplier: 3, allocation: { deployment: 50, research: 40, safety: 10 }, spec: "Follow instructions" };
-    const stripped = stripLabForSnapshot(lab);
-    expect(stripped.spec).toBe("Follow instructions");
-  });
-
-  it("handles undefined spec", () => {
-    const lab = { name: "Test", roleId: "test", computeStock: 10, rdMultiplier: 3, allocation: { deployment: 50, research: 40, safety: 10 } };
-    const stripped = stripLabForSnapshot(lab);
-    expect(stripped.spec).toBeUndefined();
-  });
-});
-
-describe("applyLabMerge", () => {
-  const labs = [
-    { name: "A", computeStock: 20, rdMultiplier: 3 },
-    { name: "B", computeStock: 10, rdMultiplier: 5 },
-    { name: "C", computeStock: 15, rdMultiplier: 2 },
-  ];
-
-  it("survivor absorbs compute and takes higher multiplier", () => {
-    const result = applyLabMerge(labs, "A", "B");
-    expect(result).toHaveLength(2);
-    const survivor = result.find(l => l.name === "A")!;
-    expect(survivor.computeStock).toBe(30);
-    expect(survivor.rdMultiplier).toBe(5);
-  });
-
-  it("absorbed lab is removed", () => {
-    const result = applyLabMerge(labs, "A", "B");
-    expect(result.find(l => l.name === "B")).toBeUndefined();
-  });
-
-  it("self-merge returns original array", () => {
-    const result = applyLabMerge(labs, "A", "A");
-    expect(result).toHaveLength(3);
-  });
-
-  it("merge with nonexistent lab returns original", () => {
-    const result = applyLabMerge(labs, "A", "Z");
-    expect(result).toHaveLength(3);
   });
 });
 

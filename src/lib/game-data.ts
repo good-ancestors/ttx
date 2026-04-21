@@ -643,28 +643,6 @@ function getBaselineMultiplierBeforeRound(labName: string, roundNumber: number):
     ?? 1;
 }
 
-/** Strip lab fields to only those accepted by the round snapshot validator */
-export function stripLabForSnapshot(lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { deployment: number; research: number; safety: number }; spec?: string }) {
-  return { name: lab.name, roleId: lab.roleId, computeStock: lab.computeStock, rdMultiplier: lab.rdMultiplier, allocation: lab.allocation, spec: lab.spec };
-}
-
-/** Apply a lab merge: survivor absorbs target's compute, keeps higher multiplier, target is removed. */
-export function applyLabMerge<T extends { name: string; computeStock: number; rdMultiplier: number }>(
-  labs: T[],
-  survivorName: string,
-  absorbedName: string,
-): T[] {
-  const absorbed = labs.find(l => l.name === absorbedName);
-  if (!absorbed || survivorName === absorbedName) return labs;
-  return labs
-    .filter(l => l.name !== absorbedName)
-    .map(l => l.name === survivorName ? {
-      ...l,
-      computeStock: l.computeStock + absorbed.computeStock,
-      rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier),
-    } : l);
-}
-
 /** Compute lab R&D growth for a round based on allocations and compute stock.
  *  roleId is optional — used only for looking up default allocation via ROLES. Labs without
  *  a roleId (e.g. recently-founded labs with no default-compute match) fall back to 50% cap. */

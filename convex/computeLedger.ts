@@ -6,7 +6,7 @@
 // stays consistent. Never patch table.computeStock directly.
 
 import { v } from "convex/values";
-import { mutation, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { mutation, internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { assertFacilitator } from "./events";
 
@@ -270,26 +270,6 @@ export async function getAvailableStock(
 
 // ─── Exposed internal query/mutation for scripts/tests ────────────────────────
 
-/** Audit helper — verifies cache invariant for every role. Returns any drift. */
-export const auditStockInvariantInternal = internalQuery({
-  args: { gameId: v.id("games") },
-  handler: async (ctx, args) => {
-    const tables = await ctx.db
-      .query("tables")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    const drifts: { roleId: string; cached: number; ledger: number }[] = [];
-    for (const t of tables) {
-      if (t.computeStock == null) continue;
-      const ledger = await getStock(ctx, args.gameId, t.roleId);
-      if (t.computeStock !== ledger) {
-        drifts.push({ roleId: t.roleId, cached: t.computeStock, ledger });
-      }
-    }
-    return drifts;
-  },
-});
-
 /** Clear regenerable rows for a round — used at the start of a re-resolve so the
  *  pipeline reads table.computeStock at the correct pre-growth baseline. */
 export const clearRegenerableRowsInternal = internalMutation({
@@ -311,79 +291,6 @@ export const clearRegenerableRowsFacilitator = mutation({
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
     return await clearRegenerableRows(ctx, args.gameId, args.roundNumber);
-  },
-});
-
-/** Test-only mutation — apply a manual facilitator-style delta via the ledger. */
-export const applyFacilitatorDeltaInternal = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    roleId: v.string(),
-    amount: v.number(),
-    reason: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    return await emitTransaction(ctx, {
-      gameId: args.gameId,
-      roundNumber: args.roundNumber,
-      type: "facilitator",
-      status: "settled",
-      roleId: args.roleId,
-      amount: args.amount,
-      reason: args.reason,
-    });
-  },
-});
-
-/** Apply all ledger writes for a resolve pass atomically. Wipes regenerable rows first,
- *  then emits acquired (pool share), adjusted (narrative computeChange), merged (pair) rows.
- *  Transferred and facilitator rows from this round stay untouched. */
-export const applyResolveLedgerInternal = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    acquired: v.array(v.object({ roleId: v.string(), amount: v.number() })),
-    adjusted: v.array(v.object({ roleId: v.string(), amount: v.number(), reason: v.string() })),
-    merged: v.array(v.object({ fromRoleId: v.string(), toRoleId: v.string(), amount: v.number(), reason: v.string() })),
-  },
-  handler: async (ctx, args) => {
-    await clearRegenerableRows(ctx, args.gameId, args.roundNumber);
-    for (const row of args.acquired) {
-      if (row.amount === 0) continue;
-      await emitTransaction(ctx, {
-        gameId: args.gameId,
-        roundNumber: args.roundNumber,
-        type: "acquired",
-        status: "settled",
-        roleId: row.roleId,
-        amount: row.amount,
-        reason: "Round pool share",
-      });
-    }
-    for (const row of args.adjusted) {
-      await emitTransaction(ctx, {
-        gameId: args.gameId,
-        roundNumber: args.roundNumber,
-        type: "adjusted",
-        status: "settled",
-        roleId: row.roleId,
-        amount: row.amount,
-        reason: row.reason,
-      });
-    }
-    for (const row of args.merged) {
-      await emitPair(ctx, {
-        gameId: args.gameId,
-        roundNumber: args.roundNumber,
-        type: "merged",
-        status: "settled",
-        fromRoleId: row.fromRoleId,
-        toRoleId: row.toRoleId,
-        amount: row.amount,
-        reason: row.reason,
-      });
-    }
   },
 });
 

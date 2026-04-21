@@ -60,15 +60,20 @@ describe("Game Creation", () => {
   });
 
   it("should have 3 tracked labs with correct starting data", async () => {
-    const game = await convex.query(api.games.get, { gameId });
-    expect(game!.labs).toHaveLength(3);
-    const ob = game!.labs.find((l) => l.roleId === "openbrain-ceo");
+    const labs = await convex.query(api.labs.getActiveLabs, { gameId });
+    expect(labs).toHaveLength(3);
+    const ob = labs.find((l) => l.ownerRoleId === "openbrain-ceo");
     expect(ob).toBeDefined();
-    expect(ob!.computeStock).toBe(22);
     expect(ob!.rdMultiplier).toBe(3);
-    const con = game!.labs.find((l) => l.roleId === "conscienta-ceo");
+    const con = labs.find((l) => l.ownerRoleId === "conscienta-ceo");
     expect(con).toBeDefined();
-    expect(con!.computeStock).toBe(14);
+
+    // Compute lives on tables (tables.computeStock), not on labs.
+    const tables = await convex.query(api.tables.getByGame, { gameId });
+    const obTable = tables.find((t) => t.roleId === "openbrain-ceo")!;
+    const conTable = tables.find((t) => t.roleId === "conscienta-ceo")!;
+    expect(obTable.computeStock).toBe(22);
+    expect(conTable.computeStock).toBe(14);
   });
 });
 
@@ -262,7 +267,7 @@ describe("Submission Flow", () => {
         { text: "Deploy Agent-2 commercially", priority: 3 },
         { text: "Begin Agent-3 development", priority: 2 },
       ],
-      computeAllocation: { users: 40, capability: 55, safety: 5 },
+      computeAllocation: { deployment: 40, research: 55, safety: 5 },
     });
 
     expect(subId).toBeTruthy();
@@ -542,30 +547,31 @@ describe("Lab Updates", () => {
   });
 
   it("should update lab data", async () => {
-    await convex.mutation(api.games.updateLabs, { facilitatorToken: FACILITATOR_TOKEN,
+    const labsBefore = await convex.query(api.labs.getActiveLabs, { gameId });
+    const openbrain = labsBefore.find((l) => l.name === "OpenBrain")!;
+    const deepcent = labsBefore.find((l) => l.name === "DeepCent")!;
+
+    await convex.mutation(api.games.updateLabs, {
+      facilitatorToken: FACILITATOR_TOKEN,
       gameId,
-      labs: [
+      patches: [
         {
-          name: "OpenBrain",
-          roleId: "openbrain-ceo",
-          computeStock: 33,
+          labId: openbrain._id,
           rdMultiplier: 10,
-          allocation: { users: 30, capability: 65, safety: 5 },
+          allocation: { deployment: 30, research: 65, safety: 5 },
         },
         {
-          name: "DeepCent",
-          roleId: "deepcent-ceo",
-          computeStock: 23,
+          labId: deepcent._id,
           rdMultiplier: 5,
-          allocation: { users: 35, capability: 63, safety: 2 },
+          allocation: { deployment: 35, research: 63, safety: 2 },
         },
       ],
     });
 
-    const game = await convex.query(api.games.get, { gameId });
-    const ob = game!.labs.find((l) => l.roleId === "openbrain-ceo")!;
-    expect(ob.computeStock).toBe(33);
+    const labsAfter = await convex.query(api.labs.getActiveLabs, { gameId });
+    const ob = labsAfter.find((l) => l._id === openbrain._id)!;
     expect(ob.rdMultiplier).toBe(10);
+    expect(ob.allocation.deployment).toBe(30);
   });
 });
 
@@ -614,7 +620,7 @@ describe("Full resolve pipeline (LLM)", () => {
         { text: "I accelerate Agent-3 development by prioritising capability R&D so that OpenBrain maintains its lead in the AI race.", priority: 7 },
         { text: "I lobby the White House for priority federal energy contracts and expedited chip procurement so that I can scale compute faster than competitors.", priority: 3 },
       ],
-      computeAllocation: { users: 30, capability: 65, safety: 5 },
+      computeAllocation: { deployment: 30, research: 65, safety: 5 },
     });
 
     await convex.mutation(api.submissions.submit, {
@@ -626,7 +632,7 @@ describe("Full resolve pipeline (LLM)", () => {
         { text: "I dedicate 70% of compute to reverse-engineering the stolen Agent-2 weights and overwriting the US-aligned spec so that DeepCent has a model aligned to Chinese values.", priority: 8 },
         { text: "I advise the President to prepare cyber sabotage against US data centres so that we can slow the American lead.", priority: 2 },
       ],
-      computeAllocation: { users: 10, capability: 80, safety: 10 },
+      computeAllocation: { deployment: 10, research: 80, safety: 10 },
     });
 
     // US President — includes a compute-relevant action
@@ -697,33 +703,40 @@ describe("Full resolve pipeline (LLM)", () => {
     // Should NOT be the fallback text
     expect(round1.summary!.narrative).not.toContain("AI narrative generation failed");
 
-    // Compute holders should be populated
-    expect(round1.computeHolders).toBeDefined();
-    expect(round1.computeHolders!.length).toBeGreaterThanOrEqual(3); // at least the 3 labs
+    // Compute holders are derived via getComputeHolderView (no longer stored on the round).
+    const holderView = await convex.query(api.rounds.getComputeHolderView, {
+      gameId,
+      roundNumber: 1,
+    });
+    expect(holderView.length).toBeGreaterThanOrEqual(3); // at least the 3 labs
 
-    // Each holder should have the correct structure
-    for (const holder of round1.computeHolders!) {
+    // Each holder row should have the derived-view shape.
+    for (const holder of holderView) {
       expect(holder.roleId).toBeDefined();
       expect(holder.name).toBeDefined();
       expect(typeof holder.stockBefore).toBe("number");
-      expect(typeof holder.produced).toBe("number");
+      expect(typeof holder.acquired).toBe("number");
       expect(typeof holder.transferred).toBe("number");
-      expect(typeof holder.adjustment).toBe("number");
+      expect(typeof holder.adjusted).toBe("number");
+      expect(typeof holder.merged).toBe("number");
+      expect(typeof holder.facilitator).toBe("number");
       expect(typeof holder.stockAfter).toBe("number");
-      expect(typeof holder.sharePct).toBe("number");
       expect(holder.stockAfter).toBeGreaterThanOrEqual(0);
     }
 
-    // Labs should have received new compute (produced > 0)
-    const obHolder = round1.computeHolders!.find((h) => h.name === "OpenBrain");
+    // OpenBrain (the lab owner role) should have received new compute.
+    const obHolder = holderView.find((h) => h.roleId === "openbrain-ceo");
     expect(obHolder).toBeDefined();
-    expect(obHolder!.produced).toBeGreaterThanOrEqual(0);
-    // Invariant: stockAfter = stockBefore + produced + transferred + adjustment
-    const expectedAfter = obHolder!.stockBefore + obHolder!.produced + obHolder!.transferred + obHolder!.adjustment;
+    expect(obHolder!.acquired).toBeGreaterThanOrEqual(0);
+    // Invariant: stockAfter = stockBefore + acquired + transferred + adjusted + merged + facilitator
+    const expectedAfter =
+      obHolder!.stockBefore +
+      obHolder!.acquired +
+      obHolder!.transferred +
+      obHolder!.adjusted +
+      obHolder!.merged +
+      obHolder!.facilitator;
     expect(obHolder!.stockAfter).toBe(Math.max(0, expectedAfter));
-
-    // Submit-open snapshot should exist
-    expect(round1.roleComputeAtSubmitOpen).toBeDefined();
 
     // AI meta should record the model used
     expect(round1.aiMeta?.resolveModel).toBeDefined();
@@ -741,52 +754,6 @@ describe("Full resolve pipeline (LLM)", () => {
       expect(t.signalStrength).toBeLessThanOrEqual(10);
     }
   }, 200_000); // 200s timeout for LLM calls
-});
-
-describe("Compute submit-open snapshot", () => {
-  let gameId: Id<"games">;
-
-  beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
-    await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
-  });
-
-  it("should capture roleComputeAtSubmitOpen when submissions open", async () => {
-    // Open submissions — this should snapshot compute stocks
-    await convex.mutation(api.games.openSubmissions, {
-      gameId,
-      durationSeconds: 300,
-      facilitatorToken: FACILITATOR_TOKEN,
-    });
-
-    const rounds = await convex.query(api.rounds.getByGame, { gameId });
-    const round1 = rounds.find((r) => r.number === 1);
-    expect(round1).toBeDefined();
-    expect(round1!.roleComputeAtSubmitOpen).toBeDefined();
-    expect(round1!.roleComputeAtSubmitOpen!.length).toBeGreaterThan(0);
-
-    // Lab CEOs should have compute in the snapshot (from game.labs[])
-    const obSnapshot = round1!.roleComputeAtSubmitOpen!.find(
-      (r) => r.roleId === "openbrain-ceo"
-    );
-    expect(obSnapshot).toBeDefined();
-    expect(obSnapshot!.computeStock).toBe(22); // starting stock from DEFAULT_LABS
-  });
-
-  it("snapshot should reflect pre-transfer state", async () => {
-    // The snapshot was captured when submissions opened,
-    // before any player transfers happen during the submit phase.
-    const rounds = await convex.query(api.rounds.getByGame, { gameId });
-    const round1 = rounds.find((r) => r.number === 1)!;
-
-    // Total compute in snapshot should include at least the 3 labs (53u)
-    const totalSnapshot = round1.roleComputeAtSubmitOpen!.reduce(
-      (s, r) => s + r.computeStock, 0
-    );
-    // Labs: 22 + 17 + 14 = 53u minimum (always enabled)
-    // Non-labs depend on which tables are enabled in this game
-    expect(totalSnapshot).toBeGreaterThanOrEqual(53);
-  });
 });
 
 // ─── Compute Escrow Flow ─────────────────────────────────────────────────────
@@ -815,13 +782,13 @@ describe("Compute Escrow", () => {
   });
 
   it("should escrow compute on submit", async () => {
-    // Read starting compute for both sender and recipient
+    // Read starting compute for both sender and recipient.
+    // Lab CEO compute lives on the table too (tables.computeStock), not game.labs[].
     const senderBefore = await convex.query(api.tables.get, { tableId: senderTableId });
-    const gameBefore = await convex.query(api.games.get, { gameId });
-    const recipientLabBefore = gameBefore!.labs.find((l) => l.roleId === recipientRole);
+    const recipientBefore = await convex.query(api.tables.get, { tableId: recipientTableId });
 
     const senderStart = senderBefore!.computeStock ?? 0;
-    const recipientLabStart = recipientLabBefore!.computeStock;
+    const recipientStart = recipientBefore!.computeStock ?? 0;
     expect(senderStart).toBeGreaterThan(0);
 
     // Submit action with compute target
@@ -836,15 +803,27 @@ describe("Compute Escrow", () => {
       computeTargets: [{ roleId: recipientRole, amount: sendAmount }],
     });
 
-    // Verify sender's compute is deducted
+    // Pending escrow rows do NOT mutate the settled cache — computeStock is unchanged on
+    // both sides. availableStock = cache − pending is computed per-call; proven below.
     const senderAfter = await convex.query(api.tables.get, { tableId: senderTableId });
-    expect(senderAfter!.computeStock).toBe(senderStart - sendAmount);
+    expect(senderAfter!.computeStock).toBe(senderStart);
+    const recipientAfter = await convex.query(api.tables.get, { tableId: recipientTableId });
+    expect(recipientAfter!.computeStock).toBe(recipientStart);
 
-    // Verify recipient is NOT yet credited (escrow, not immediate transfer)
-    // For lab CEOs, compute is tracked in game.labs[], not table.computeStock
-    const gameAfter = await convex.query(api.games.get, { gameId });
-    const recipientLabAfter = gameAfter!.labs.find((l) => l.roleId === recipientRole);
-    expect(recipientLabAfter!.computeStock).toBe(recipientLabStart);
+    // Proof the pending row reduced availableStock: attempting to spend more than
+    // (cache − pending) is rejected.
+    const remaining = senderStart - sendAmount;
+    await expect(
+      convex.mutation(api.submissions.saveAndSubmit, {
+        tableId: senderTableId,
+        gameId,
+        roundNumber: 1,
+        roleId: senderRole,
+        text: "Overspend attempt",
+        priority: 1,
+        computeTargets: [{ roleId: recipientRole, amount: remaining + 1 }],
+      })
+    ).rejects.toThrow(/Insufficient compute/);
   });
 
   it("should refund escrow when action is deleted", async () => {
@@ -861,17 +840,41 @@ describe("Compute Escrow", () => {
       (a) => a.computeTargets && a.computeTargets.length > 0
     );
     expect(actionIdx).toBeGreaterThanOrEqual(0);
-    const refundAmount = sub!.actions[actionIdx].computeTargets!.reduce((s, t) => s + t.amount, 0);
 
-    // Delete the action
+    // Delete the action — this cancels the pending ledger row.
     await convex.mutation(api.submissions.deleteAction, {
       submissionId: sub!._id,
       actionIndex: actionIdx,
     });
 
-    // Verify escrow is refunded
+    // Cache was never deducted by the pending escrow, so it stays the same.
     const senderAfter = await convex.query(api.tables.get, { tableId: senderTableId });
-    expect(senderAfter!.computeStock).toBe(stockBeforeDelete + refundAmount);
+    expect(senderAfter!.computeStock).toBe(stockBeforeDelete);
+
+    // Proof the pending row is fully released: the full cache balance is spendable again.
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: senderRole,
+      text: "Full balance after cancel",
+      priority: 1,
+      computeTargets: [{ roleId: recipientRole, amount: stockBeforeDelete, direction: "send" }],
+    });
+    // Clean up that probe action so later tests start from a clean escrow slate.
+    const cleanupSub = await convex.query(api.submissions.getForTable, {
+      tableId: senderTableId,
+      roundNumber: 1,
+    });
+    const probeIdx = cleanupSub!.actions.findIndex((a) =>
+      a.computeTargets?.some((t) => t.amount === stockBeforeDelete),
+    );
+    if (probeIdx >= 0) {
+      await convex.mutation(api.submissions.deleteAction, {
+        submissionId: cleanupSub!._id,
+        actionIndex: probeIdx,
+      });
+    }
   });
 
   it("should reject submit when compute is insufficient", async () => {
