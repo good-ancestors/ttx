@@ -64,15 +64,14 @@ describe("edge: multi-round ledger continuity", () => {
     expect(targetAfter.computeStock).toBe(targetStart + 2);
   });
 
-  // Skipped — surfaced a real cache-ledger drift during NPC pre-generation (see task #42).
-  // DeepCent cache settles at 18u but ledger-derived stockBefore=17u after NPC auto-gen
-  // wrote some transfer. The invariant `cache == sum(settled rows)` is violated somewhere
-  // in the NPC-auto-generation path. Not blocking the rest of the edge suite; investigate
-  // separately.
-  it.skip("getComputeHolderView across rounds aggregates stockBefore correctly", async () => {
+  it("getComputeHolderView across rounds aggregates stockAfter correctly", async () => {
     // Round 1 already has a transferred row from the test above. Advance to round 2
-    // and assert stockBefore for round 2 equals the current cache for every role with
-    // settled round-1 activity (the cache-ledger invariant carried across rounds).
+    // and assert cache == stockAfter for every role (the cache-ledger invariant carried
+    // across rounds). Using stockAfter — not stockBefore — because advanceRound schedules
+    // round-2 NPC pre-generation which may settle new transfers before the query runs;
+    // those legitimately count toward cache but not toward stockBefore (which is pre-round-2
+    // activity only). stockAfter = stockBefore + round-N delta = sum of all settled rows
+    // through round N, which is what the invariant pins.
     await convex.mutation(api.games.advanceRound, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     const game = await convex.query(api.games.get, { gameId });
     expect(game!.currentRound).toBe(2);
@@ -82,10 +81,9 @@ describe("edge: multi-round ledger continuity", () => {
     for (const row of r2) {
       const t = tables.find((x) => x.roleId === row.roleId);
       if (!t || t.computeStock == null) continue;
-      // Before any round-2 activity, stockBefore == current cache.
       expect(
-        row.stockBefore,
-        `round-2 stockBefore drift for ${row.roleId}: stockBefore=${row.stockBefore} cache=${t.computeStock}`,
+        row.stockAfter,
+        `round-2 cache-ledger drift for ${row.roleId}: stockAfter=${row.stockAfter} cache=${t.computeStock}`,
       ).toBe(t.computeStock);
     }
   });
