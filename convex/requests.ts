@@ -84,9 +84,12 @@ export const directTransfer = mutation({
       throw new Error("Cannot transfer compute to yourself");
     }
 
-    const available = senderTable.computeStock ?? 0;
+    // Use available stock (cache − pending own-negative rows) not raw cache —
+    // otherwise a player could direct-transfer compute they've already escrowed
+    // into pending action send-targets, over-committing the same 1u across paths.
+    const available = await getAvailableStock(ctx, args.gameId, args.fromRoleId, game.currentRound);
     if (available < args.amount) {
-      throw new Error(`Insufficient compute: have ${available}u, tried to send ${args.amount}u`);
+      throw new Error(`Insufficient compute: have ${available}u available, tried to send ${args.amount}u`);
     }
 
     // Validate recipient exists and is enabled

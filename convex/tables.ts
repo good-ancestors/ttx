@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
 import { logEvent, assertFacilitator } from "./events";
-import { COMPUTE_POOL_ELIGIBLE, calculatePoolAllocations } from "./gameData";
+import { COMPUTE_POOL_ELIGIBLE, calculatePoolAllocations, AI_SYSTEMS_ROLE_ID } from "./gameData";
 
 /** Patch object to fully release a seat (clear player state, revert control mode). */
 function vacateSeat(controlMode: "npc" | "ai" = "npc") {
@@ -311,6 +311,12 @@ export const setDisposition = mutation({
   handler: async (ctx, args) => {
     const table = await ctx.db.get(args.tableId);
     if (!table) return;
+    // Only the AI Systems role has a disposition — reject attempts to set it on
+    // any other table. Prior to this, any client could claim any tableId and
+    // set its aiDisposition until it was populated.
+    if (table.roleId !== AI_SYSTEMS_ROLE_ID) {
+      throw new Error("Only the AI Systems role has a disposition");
+    }
     if (table.aiDisposition) {
       throw new Error("AI disposition already set — cannot change");
     }

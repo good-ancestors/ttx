@@ -43,17 +43,29 @@ export const applyResolveInternal = internalMutation({
       throw new Error(`Resolve nonce mismatch (expected ${args.nonce}, got ${game.resolveNonce ?? "null"}) — another resolve superseded this run`);
     }
 
-    // Validate — every labId exists and belongs to this game. Fail fast before any writes.
-    const labIds: Id<"labs">[] = [
+    // Validate — every labId exists, belongs to this game, AND is still active for
+    // structural ops (merge/decommission/transfer). Between the pipeline reading
+    // labsAtResolve and this mutation landing, a facilitator could have decommissioned
+    // a lab via games.mergeLabs; operating on it now would corrupt ancestry. Fail fast.
+    // multiplierUpdates tolerate decommissioned targets (they're no-op but harmless).
+    const structuralLabIds: Id<"labs">[] = [
       ...args.mergeOps.flatMap((m) => [m.survivorLabId, m.absorbedLabId]),
       ...args.decommissionOps.map((d) => d.labId),
       ...args.transferOps.map((t) => t.labId),
-      ...args.multiplierUpdates.map((u) => u.labId),
     ];
-    for (const id of labIds) {
+    for (const id of structuralLabIds) {
       const lab = await ctx.db.get(id);
       if (!lab || lab.gameId !== args.gameId) {
         throw new Error(`Lab ${id} not found or wrong game — aborting resolve apply`);
+      }
+      if (lab.status !== "active") {
+        throw new Error(`Lab ${id} (${lab.name}) is not active — structural op rejected (likely facilitator-decommissioned since resolve started)`);
+      }
+    }
+    for (const u of args.multiplierUpdates) {
+      const lab = await ctx.db.get(u.labId);
+      if (!lab || lab.gameId !== args.gameId) {
+        throw new Error(`Lab ${u.labId} not found or wrong game — aborting resolve apply`);
       }
     }
 
@@ -72,6 +84,7 @@ export const applyResolveInternal = internalMutation({
       });
     }
     for (const row of args.adjusted) {
+      if (row.amount === 0) continue;
       await emitTransaction(ctx, {
         gameId: args.gameId,
         roundNumber: args.roundNumber,
@@ -83,6 +96,7 @@ export const applyResolveInternal = internalMutation({
       });
     }
     for (const row of args.merged) {
+      if (row.amount === 0) continue;
       await emitPair(ctx, {
         gameId: args.gameId,
         roundNumber: args.roundNumber,
