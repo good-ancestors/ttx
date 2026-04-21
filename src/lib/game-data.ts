@@ -479,19 +479,19 @@ export const COMPUTE_CATEGORIES = [
     key: "deployment" as const,
     label: "Deployment",
     color: "#F59E0B",
-    desc: "Serving user products, scientific deployments, commercial revenue",
+    desc: "Serving user products, scientific deployments, commercial revenue. Revenue slightly scales next round's compute (±20% at extremes); governments and investors provide the bulk regardless.",
   },
   {
     key: "research" as const,
     label: "Research",
     color: "#06B6D4",
-    desc: "Pushing the capability frontier — training the next model",
+    desc: "Pushing the capability frontier — training the next model. Drives R&D multiplier growth relative to peers.",
   },
   {
     key: "safety" as const,
     label: "Safety",
     color: "#22C55E",
-    desc: "Alignment research, interpretability, eval suites",
+    desc: "Alignment research, interpretability, eval suites. Reduces trajectory risk.",
   },
 ];
 
@@ -606,6 +606,22 @@ export const BASELINE_RD_TARGETS: Record<string, Record<number, number>> = {
 };
 
 
+/** Compute acquisition tuning — how deployment% affects a lab's round-over-round
+ *  pool-share. Split-bucket model: a structural fraction of the baseline share flows
+ *  regardless (chip supply chains, govt allocations, investor capital), and a revenue
+ *  fraction scales linearly with deployment% via a 0.5–1.5 multiplier.
+ *
+ *  At the authored CEO defaults (deployment ≈ 42–50%) this yields ≈1.0× baseline so the
+ *  scenario's compute curve is preserved. Extremes: deployment=0 → 0.80× baseline,
+ *  deployment=100 → 1.20× baseline. */
+export const COMPUTE_ACQUISITION = {
+  /** Fraction of baseline share that flows regardless of deployment%. */
+  STRUCTURAL_RATIO: 0.60,
+  /** Floor on the revenue multiplier — at deployment=0 the revenue bucket is still
+   *  half-active (existing products, API traffic that doesn't need new allocation). */
+  REVENUE_FLOOR: 0.5,
+};
+
 // Lab progression tuning constants
 export const LAB_PROGRESSION = {
   /** Converts effective R&D advantage into faster/slower growth around the baseline curve.
@@ -662,11 +678,27 @@ export function computeLabGrowth<T extends {
 
   const labs = currentLabs.map(lab => {
     const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
-    // Use per-lab share percentage if available, otherwise proportional fallback
     const sharePct = shares[lab.name];
-    const newCompute = sharePct !== undefined
-      ? Math.round(newComputeTotal * sharePct / 100)
-      : Math.round(newComputeTotal * lab.computeStock / Math.max(1, currentLabs.reduce((s, l) => s + l.computeStock, 0)));
+    let newCompute: number;
+    if (sharePct !== undefined) {
+      // Split-bucket model: STRUCTURAL_RATIO of baseline share flows regardless of
+      // deployment%; the remainder scales with a 0.5–1.5× revenue multiplier keyed on
+      // deployment%. See COMPUTE_ACQUISITION for rationale.
+      const baseShare = newComputeTotal * sharePct / 100;
+      const structural = baseShare * COMPUTE_ACQUISITION.STRUCTURAL_RATIO;
+      const revenueMult = COMPUTE_ACQUISITION.REVENUE_FLOOR + 0.01 * allocation.deployment;
+      const revenue = baseShare * (1 - COMPUTE_ACQUISITION.STRUCTURAL_RATIO) * revenueMult;
+      newCompute = Math.round(structural + revenue);
+    } else {
+      // Proportional fallback for labs outside DEFAULT_COMPUTE_SHARES (e.g. player-founded).
+      // Deployment% still scales the revenue portion the same way for consistency.
+      const baseProportional = newComputeTotal * lab.computeStock
+        / Math.max(1, currentLabs.reduce((s, l) => s + l.computeStock, 0));
+      const structural = baseProportional * COMPUTE_ACQUISITION.STRUCTURAL_RATIO;
+      const revenueMult = COMPUTE_ACQUISITION.REVENUE_FLOOR + 0.01 * allocation.deployment;
+      const revenue = baseProportional * (1 - COMPUTE_ACQUISITION.STRUCTURAL_RATIO) * revenueMult;
+      newCompute = Math.round(structural + revenue);
+    }
     const computeStock = Math.max(0, lab.computeStock + newCompute);
     return { ...lab, allocation, computeStock };
   });

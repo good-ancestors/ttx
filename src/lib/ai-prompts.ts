@@ -504,12 +504,13 @@ AI DISPOSITION: If the AI systems have a hidden alignment frame, keep it secret 
 USE LAB STATUS AS GROUND TRUTH: LAB STATUS below shows CURRENT allocations, compute, multipliers. Role descriptions in the system prompt give historical defaults only — allocations and compute change every round. When you MUST cite a number, it matches LAB STATUS, not any role description.
 
 LAB OPERATIONS — output any that apply:
-- "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).
-- "create": New entity forms (rogue AI escaping containment, government lab). Name it, set starting compute and R&D multiplier. Optionally set controllerRoleId to assign it to an existing player role (e.g., "eu-president" for a government-backed lab).
-- "decommission": Lab shut down or destroyed.
-- "rename": Lab changes identity (Safer pivot, government takeover).
-- "computeChange": Direct compute changes from events (sanctions, infrastructure damage, deals). NOT baseline growth.
+- "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Use newName to rename the merged lab. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).
+- "decommission": Lab shut down or destroyed. Specify labName.
+- "transferOwnership": Lab moves to a different controller (nationalisation, forced acquisition). Specify labName + controllerRoleId (empty string = unowned).
+- "computeChange": Direct compute stock change from a specific narrative event — DPA transfer, sanctions, infrastructure damage, theft, grant. Use for ONE-OFF shocks tied to player actions or world events. DO NOT use to simulate routine revenue: each lab's deployment% already scales baseline compute inflow (±20% at extremes) automatically. Reserve computeChange for unexpected revenue shocks (hit product, lost contract) or political events.
 - "multiplierOverride": Event changes R&D capability (Safer pivot halves it, sabotage, breakthrough). Absolute new value.
+
+NOT AVAILABLE: lab creation (players-only, via the found-a-lab action) and standalone rename (use merge with newName for consolidation-driven renames).
 
 Only output operations DIRECTLY caused by successful actions. Empty array if nothing affects labs.
 
