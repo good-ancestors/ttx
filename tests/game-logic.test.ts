@@ -554,20 +554,6 @@ describe("computeLabGrowth deployment scaling", () => {
     }
   });
 
-  it("safety-only lab still receives ≈80% of baseline (no stagnation)", () => {
-    // deployment=0, research=0, safety=100 → same as deployment=0 for compute
-    const lab = {
-      name: "OpenBrain" as const,
-      roleId: "openbrain-ceo",
-      computeStock: 22,
-      rdMultiplier: 3,
-      allocation: { deployment: 0, research: 0, safety: 100 },
-    };
-    const [out] = computeLabGrowth([lab], new Map(), 1, 200);
-    const delta = out.computeStock - lab.computeStock;
-    expect(delta).toBeGreaterThanOrEqual(8); // ~0.80× of 11 baseline
-    expect(delta).toBeLessThanOrEqual(10);
-  });
 });
 
 

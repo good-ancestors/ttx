@@ -676,29 +676,23 @@ export function computeLabGrowth<T extends {
   const newComputeTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 3;
   const shares = DEFAULT_COMPUTE_SHARES[roundNumber] ?? {};
 
+  // Total stock for the proportional fallback (labs outside DEFAULT_COMPUTE_SHARES,
+  // e.g. player-founded). Hoisted so we compute once per round, not once per lab.
+  const totalCurrentStock = currentLabs.reduce((s, l) => s + l.computeStock, 0);
+  const { STRUCTURAL_RATIO, REVENUE_FLOOR } = COMPUTE_ACQUISITION;
+
   const labs = currentLabs.map(lab => {
     const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
     const sharePct = shares[lab.name];
-    let newCompute: number;
-    if (sharePct !== undefined) {
-      // Split-bucket model: STRUCTURAL_RATIO of baseline share flows regardless of
-      // deployment%; the remainder scales with a 0.5–1.5× revenue multiplier keyed on
-      // deployment%. See COMPUTE_ACQUISITION for rationale.
-      const baseShare = newComputeTotal * sharePct / 100;
-      const structural = baseShare * COMPUTE_ACQUISITION.STRUCTURAL_RATIO;
-      const revenueMult = COMPUTE_ACQUISITION.REVENUE_FLOOR + 0.01 * allocation.deployment;
-      const revenue = baseShare * (1 - COMPUTE_ACQUISITION.STRUCTURAL_RATIO) * revenueMult;
-      newCompute = Math.round(structural + revenue);
-    } else {
-      // Proportional fallback for labs outside DEFAULT_COMPUTE_SHARES (e.g. player-founded).
-      // Deployment% still scales the revenue portion the same way for consistency.
-      const baseProportional = newComputeTotal * lab.computeStock
-        / Math.max(1, currentLabs.reduce((s, l) => s + l.computeStock, 0));
-      const structural = baseProportional * COMPUTE_ACQUISITION.STRUCTURAL_RATIO;
-      const revenueMult = COMPUTE_ACQUISITION.REVENUE_FLOOR + 0.01 * allocation.deployment;
-      const revenue = baseProportional * (1 - COMPUTE_ACQUISITION.STRUCTURAL_RATIO) * revenueMult;
-      newCompute = Math.round(structural + revenue);
-    }
+    // Baseline share of this round's new compute: authored per-round DEFAULT_COMPUTE_SHARES
+    // when present, else proportional to current stock.
+    const baseShare = sharePct !== undefined
+      ? newComputeTotal * sharePct / 100
+      : newComputeTotal * lab.computeStock / Math.max(1, totalCurrentStock);
+    // Split-bucket: STRUCTURAL_RATIO of baseShare flows regardless of deployment%;
+    // the remainder scales 0.5–1.5× with deployment% (REVENUE_FLOOR at D=0 → 1.0+ at D=50).
+    const revenueMult = REVENUE_FLOOR + 0.01 * allocation.deployment;
+    const newCompute = Math.round(baseShare * (STRUCTURAL_RATIO + (1 - STRUCTURAL_RATIO) * revenueMult));
     const computeStock = Math.max(0, lab.computeStock + newCompute);
     return { ...lab, allocation, computeStock };
   });
