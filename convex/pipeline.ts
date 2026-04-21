@@ -807,6 +807,7 @@ export const rollAndNarrate = internalAction({
       await ctx.runMutation(internal.pipelineApply.applyResolveInternal, {
         gameId,
         roundNumber,
+        nonce,
         mergeOps,
         decommissionOps,
         transferOps,

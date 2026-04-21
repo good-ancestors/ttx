@@ -328,9 +328,17 @@ export const updateLabs = mutation({
   },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
+    // Same uniqueness guarantee as createLabInternal / mergeLabsInternal: no two active
+    // labs in a game may share a name. Narrative-LLM ops key on name so collisions silently
+    // drop one lab out of reach.
+    const active = await getActiveLabsForGame(ctx, args.gameId);
     for (const p of args.patches) {
       const lab = await ctx.db.get(p.labId);
       if (!lab || lab.gameId !== args.gameId) continue;
+      if (p.name !== undefined && p.name !== lab.name) {
+        const clash = active.find((l) => l._id !== p.labId && l.status === "active" && l.name === p.name);
+        if (clash) throw new Error(`Active lab named "${p.name}" already exists`);
+      }
       const patch: Partial<typeof lab> = {};
       if (p.name !== undefined) patch.name = p.name;
       if (p.spec !== undefined) patch.spec = p.spec;
@@ -477,6 +485,9 @@ export const restoreSnapshot = mutation({
     });
 
     // Restore labs table: upsert from snapshot by labId; delete any current labs not in snapshot.
+    // Two-pass so we can rewrite mergedIntoLabId through a labId remap — when a snapshot lab
+    // was hard-deleted after the target round and has to be re-inserted, it gets a fresh _id;
+    // any surviving snapshot entry whose mergedIntoLabId pointed at it would otherwise dangle.
     const currentLabs = await ctx.db.query("labs")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
       .collect();
@@ -486,27 +497,53 @@ export const restoreSnapshot = mutation({
         await ctx.db.delete(current._id);
       }
     }
+    // Pass 1: determine target labId per snap entry (existing _id or fresh insert).
+    const labIdRemap = new Map<Id<"labs">, Id<"labs">>();
+    const pendingInserts: { snap: typeof labsSnapshot[number]; newId: Id<"labs"> }[] = [];
     for (const snap of labsSnapshot) {
       const existing = currentLabs.find((l) => l._id === snap.labId);
-      const fields = {
-        name: snap.name,
-        spec: snap.spec,
-        rdMultiplier: snap.rdMultiplier,
-        allocation: snap.allocation,
-        ownerRoleId: snap.roleId,
-        status: snap.status,
-        mergedIntoLabId: snap.mergedIntoLabId,
-        createdRound: snap.createdRound,
-      };
       if (existing) {
-        await ctx.db.patch(snap.labId, { ...fields, colour: snap.colour });
+        labIdRemap.set(snap.labId, snap.labId);
       } else {
-        // Lab was hard-deleted after target round. Re-insert with a new labId (identity lost,
-        // but restorable is still valuable). Chart queries keyed on labId will see a fresh row.
-        await ctx.db.insert("labs", {
+        const insertedId = await ctx.db.insert("labs", {
           gameId: args.gameId,
-          ...fields,
+          name: snap.name,
+          spec: snap.spec,
+          rdMultiplier: snap.rdMultiplier,
+          allocation: snap.allocation,
+          ownerRoleId: snap.roleId,
           colour: snap.colour,
+          status: snap.status,
+          createdRound: snap.createdRound,
+          // mergedIntoLabId set in pass 2 once remap is complete.
+        });
+        labIdRemap.set(snap.labId, insertedId);
+        pendingInserts.push({ snap, newId: insertedId });
+      }
+    }
+    // Pass 2: patch each existing snapshot target with remapped mergedIntoLabId.
+    for (const snap of labsSnapshot) {
+      const targetId = labIdRemap.get(snap.labId)!;
+      const remappedMerged = snap.mergedIntoLabId
+        ? labIdRemap.get(snap.mergedIntoLabId) ?? undefined
+        : undefined;
+      const isFreshInsert = pendingInserts.some((p) => p.newId === targetId);
+      if (isFreshInsert) {
+        // Insert already landed name/spec/etc.; only need to set remapped mergedIntoLabId.
+        if (remappedMerged) {
+          await ctx.db.patch(targetId, { mergedIntoLabId: remappedMerged });
+        }
+      } else {
+        await ctx.db.patch(targetId, {
+          name: snap.name,
+          spec: snap.spec,
+          rdMultiplier: snap.rdMultiplier,
+          allocation: snap.allocation,
+          ownerRoleId: snap.roleId,
+          colour: snap.colour,
+          status: snap.status,
+          mergedIntoLabId: remappedMerged,
+          createdRound: snap.createdRound,
         });
       }
     }

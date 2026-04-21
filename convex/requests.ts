@@ -195,10 +195,19 @@ export const send = mutation({
 export const cancel = mutation({
   args: {
     requestId: v.id("requests"),
+    callerTableId: v.id("tables"),
   },
   handler: async (ctx, args) => {
     const request = await ctx.db.get(args.requestId);
     if (!request) return;
+
+    // Authorize: caller must be the sender of this request.
+    const callerTable = await ctx.db.get(args.callerTableId);
+    if (!callerTable) throw new Error("Caller table not found");
+    if (callerTable.gameId !== request.gameId) throw new Error("Caller table does not belong to this game");
+    if (callerTable.roleId !== request.fromRoleId) {
+      throw new Error("Only the request sender can cancel this request");
+    }
 
     await assertPhase(ctx, request.gameId, ["submit"], "cancel requests");
 
@@ -227,10 +236,19 @@ export const respond = mutation({
   args: {
     proposalId: v.id("requests"),
     status: v.union(v.literal("accepted"), v.literal("declined"), v.literal("pending")),
+    callerTableId: v.id("tables"),
   },
   handler: async (ctx, args) => {
     const proposal = await ctx.db.get(args.proposalId);
     if (!proposal) return;
+
+    // Authorize: caller must occupy the target role (only the recipient decides).
+    const callerTable = await ctx.db.get(args.callerTableId);
+    if (!callerTable) throw new Error("Caller table not found");
+    if (callerTable.gameId !== proposal.gameId) throw new Error("Caller table does not belong to this game");
+    if (callerTable.roleId !== proposal.toRoleId) {
+      throw new Error("Only the target role can respond to this request");
+    }
 
     const game = await assertPhase(ctx, proposal.gameId, ["submit"], "respond to requests");
     assertSubmitWindowOpen(game);

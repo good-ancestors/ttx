@@ -489,9 +489,12 @@ describe("Proposals", () => {
       gameId,
       roundNumber: 1,
     });
+    const tables = await convex.query(api.tables.getByGame, { gameId });
+    const callerTableId = tables.find((t) => t.roleId === proposals[0].toRoleId)!._id;
     await convex.mutation(api.requests.respond, {
       proposalId: proposals[0]._id,
       status: "accepted",
+      callerTableId,
     });
 
     const updated = await convex.query(api.requests.getByGameAndRound, {
@@ -514,9 +517,12 @@ describe("Proposals", () => {
       requestType: "endorsement",
     });
 
+    const declinerTables = await convex.query(api.tables.getByGame, { gameId });
+    const declinerTableId = declinerTables.find((t) => t.roleId === "openbrain-ceo")!._id;
     await convex.mutation(api.requests.respond, {
       proposalId,
       status: "declined",
+      callerTableId: declinerTableId,
     });
 
     const proposals = await convex.query(api.requests.getByGameAndRound, {
@@ -1069,6 +1075,7 @@ describe("Compute Request Acceptance", () => {
     await convex.mutation(api.requests.respond, {
       proposalId: requestId,
       status: "accepted",
+      callerTableId: targetTableId,
     });
 
     // Target's compute should be escrowed (deducted)
@@ -1100,6 +1107,7 @@ describe("Compute Request Acceptance", () => {
     await convex.mutation(api.requests.respond, {
       proposalId: acceptedReq!._id,
       status: "declined",
+      callerTableId: targetTableId,
     });
 
     // Target should get refund

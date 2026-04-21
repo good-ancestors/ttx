@@ -120,10 +120,12 @@ function isGroupFullyAnswered(g: ActionRequestGroup): boolean {
 function EndorsementRespondTab({
   allRequests,
   roleId,
+  tableId,
   allowEdits,
 }: {
   allRequests: Doc<"requests">[];
   roleId: string;
+  tableId: Id<"tables">;
   allowEdits: boolean;
 }) {
   const respondToProposal = useMutation(api.requests.respond);
@@ -158,6 +160,7 @@ function EndorsementRespondTab({
       key={g.key}
       group={g}
       respondToProposal={respondToProposal}
+      callerTableId={tableId}
       allowEdits={allowEdits}
     />
   );
@@ -198,10 +201,12 @@ function EndorsementRespondTab({
 function CombinedRequestCard({
   group,
   respondToProposal,
+  callerTableId,
   allowEdits,
 }: {
   group: ActionRequestGroup;
   respondToProposal: ReturnType<typeof useMutation<typeof api.requests.respond>>;
+  callerTableId: Id<"tables">;
   allowEdits: boolean;
 }) {
   const fromRole = ROLE_MAP.get(group.fromRoleId);
@@ -242,6 +247,7 @@ function CombinedRequestCard({
           <div className="flex items-center gap-2">
             <button
               onClick={() => void respondToProposal({
+                callerTableId,
                 proposalId: endorsement._id,
                 status: endorsementResponse === "support" ? "pending" : "accepted",
               })}
@@ -256,6 +262,7 @@ function CombinedRequestCard({
             </button>
             <button
               onClick={() => void respondToProposal({
+                callerTableId,
                 proposalId: endorsement._id,
                 status: endorsementResponse === "oppose" ? "pending" : "declined",
               })}
@@ -280,6 +287,7 @@ function CombinedRequestCard({
           <div className="flex items-center gap-2">
             <button
               onClick={() => void respondToProposal({
+                callerTableId,
                 proposalId: compute._id,
                 status: computeResponse === "accept" ? "pending" : "accepted",
               })}
@@ -294,6 +302,7 @@ function CombinedRequestCard({
             </button>
             <button
               onClick={() => void respondToProposal({
+                callerTableId,
                 proposalId: compute._id,
                 status: computeResponse === "decline" ? "pending" : "declined",
               })}
@@ -331,11 +340,13 @@ function effectiveAiResponse(action: { aiInfluence?: number }, roleId: string): 
 function AiRespondTab({
   gameId,
   roundNumber,
+  tableId,
   power,
   allowEdits,
 }: {
   gameId: Id<"games">;
   roundNumber: number;
+  tableId: Id<"tables">;
   power: number;
   allowEdits: boolean;
 }) {
@@ -418,13 +429,13 @@ function AiRespondTab({
                 actionText={action.text}
                 response={effectiveAiResponse(action, sub.roleId)}
                 onSupport={() =>
-                  void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: power })
+                  void setInfluence({ callerTableId: tableId, submissionId: sub._id, actionIndex: i, modifier: power })
                 }
                 onOppose={() =>
-                  void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: -power })
+                  void setInfluence({ callerTableId: tableId, submissionId: sub._id, actionIndex: i, modifier: -power })
                 }
                 onClear={() =>
-                  void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: 0 })
+                  void setInfluence({ callerTableId: tableId, submissionId: sub._id, actionIndex: i, modifier: 0 })
                 }
                 disabled={!allowEdits}
               />
@@ -452,10 +463,10 @@ function AiRespondTab({
                 actionText={action.text}
                 response={null}
                 onSupport={() =>
-                  void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: power })
+                  void setInfluence({ callerTableId: tableId, submissionId: sub._id, actionIndex: i, modifier: power })
                 }
                 onOppose={() =>
-                  void setInfluence({ submissionId: sub._id, actionIndex: i, modifier: -power })
+                  void setInfluence({ callerTableId: tableId, submissionId: sub._id, actionIndex: i, modifier: -power })
                 }
                 disabled={!allowEdits}
               />
@@ -606,6 +617,7 @@ interface RespondTabProps {
   gameId: Id<"games">;
   roundNumber: number;
   roleId: string;
+  tableId: Id<"tables">;
   isAiSystem: boolean;
   aiInfluencePower: number;
   allRequests: Doc<"requests">[] | undefined;
@@ -616,6 +628,7 @@ export function RespondTab({
   gameId,
   roundNumber,
   roleId,
+  tableId,
   isAiSystem,
   aiInfluencePower,
   allRequests,
@@ -626,6 +639,7 @@ export function RespondTab({
       <AiRespondTab
         gameId={gameId}
         roundNumber={roundNumber}
+        tableId={tableId}
         power={aiInfluencePower}
         allowEdits={allowEdits}
       />
@@ -636,6 +650,7 @@ export function RespondTab({
     <EndorsementRespondTab
       allRequests={allRequests ?? []}
       roleId={roleId}
+      tableId={tableId}
       allowEdits={allowEdits}
     />
   );

@@ -235,6 +235,7 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
           gameId={common.gameId}
           roundNumber={submit.currentRound}
           roleId={common.role.id}
+          tableId={common.tableId}
           isAiSystem={common.isAiSystem}
           aiInfluencePower={getAiInfluencePower(labs)}
           allRequests={submit.allRequests}
@@ -312,6 +313,7 @@ function ResolveContent({ common, resolve, submit, lab, labs }: {
             gameId={common.gameId}
             roundNumber={submit.currentRound}
             roleId={common.role.id}
+            tableId={common.tableId}
             isAiSystem
             aiInfluencePower={getAiInfluencePower(labs)}
             allRequests={submit.allRequests}

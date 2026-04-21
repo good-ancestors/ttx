@@ -17,6 +17,7 @@ export const applyResolveInternal = internalMutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
+    nonce: v.string(),
     mergeOps: v.array(v.object({
       survivorLabId: v.id("labs"),
       absorbedLabId: v.id("labs"),
@@ -32,6 +33,16 @@ export const applyResolveInternal = internalMutation({
     merged: v.array(v.object({ fromRoleId: v.string(), toRoleId: v.string(), amount: v.number(), reason: v.string() })),
   },
   handler: async (ctx, args) => {
+    // Re-verify the resolve nonce inside the atomic mutation. The pipeline action checks
+    // the nonce earlier, but several runMutation/runQuery calls separate that check from
+    // here — a concurrent resolve could have overwritten the nonce in between. Failing
+    // here prevents two runs from both landing structural lab mutations.
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.resolveNonce !== args.nonce) {
+      throw new Error(`Resolve nonce mismatch (expected ${args.nonce}, got ${game.resolveNonce ?? "null"}) — another resolve superseded this run`);
+    }
+
     // Validate — every labId exists and belongs to this game. Fail fast before any writes.
     const labIds: Id<"labs">[] = [
       ...args.mergeOps.flatMap((m) => [m.survivorLabId, m.absorbedLabId]),

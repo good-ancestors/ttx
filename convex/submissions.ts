@@ -966,10 +966,19 @@ export const setActionInfluence = mutation({
     submissionId: v.id("submissions"),
     actionIndex: v.number(),
     modifier: v.number(), // +power = boost, -power = sabotage, 0 = remove
+    callerTableId: v.id("tables"),
   },
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) throw new Error("Submission not found");
+
+    // Authorize: only the AI Systems player may push influence.
+    const callerTable = await ctx.db.get(args.callerTableId);
+    if (!callerTable) throw new Error("Caller table not found");
+    if (callerTable.gameId !== sub.gameId) throw new Error("Caller table does not belong to this game");
+    if (callerTable.roleId !== AI_SYSTEMS_ROLE_ID) {
+      throw new Error("Only the AI Systems player can set action influence");
+    }
 
     const game = await ctx.db.get(sub.gameId);
     if (!game) throw new Error("Game not found");
