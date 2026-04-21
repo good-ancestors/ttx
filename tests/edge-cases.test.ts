@@ -207,6 +207,7 @@ describe("edge: respond/cancel auth hardening", () => {
       actionId: "cross-game-auth-check",
       actionText: "Send me 3u",
       requestType: "compute", computeAmount: 3,
+      callerTableId: requesterTable,
     });
 
     await expect(
@@ -224,6 +225,7 @@ describe("edge: respond/cancel auth hardening", () => {
       actionId: "grief-auth-check",
       actionText: "Send me 3u",
       requestType: "compute", computeAmount: 3,
+      callerTableId: requesterTable,
     });
     await expect(
       convex.mutation(api.requests.respond, {
@@ -240,6 +242,7 @@ describe("edge: respond/cancel auth hardening", () => {
       actionId: "cancel-auth-check",
       actionText: "Please support my thing",
       requestType: "endorsement",
+      callerTableId: requesterTable,
     });
     await expect(
       convex.mutation(api.requests.cancel, {
@@ -313,6 +316,7 @@ describe("edge: cache invariant under mixed workload", () => {
       actionId: "ob-request",
       actionText: "Send me 3u",
       requestType: "compute", computeAmount: 3,
+      callerTableId: obTable._id,
     });
     // Accept.
     await convex.mutation(api.requests.respond, {

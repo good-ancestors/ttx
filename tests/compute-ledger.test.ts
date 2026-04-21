@@ -317,6 +317,7 @@ describe("computeLedger — concurrent respond-accept does not double-escrow", (
       actionText: "Ask for 3u of compute",
       requestType: "compute",
       computeAmount: 3,
+      callerTableId: requesterTableId,
     });
 
     // Fire two accepts in parallel; the second should be a no-op (already accepted).
@@ -450,6 +451,7 @@ describe("Authorization — requests.respond / requests.cancel / setActionInflue
       actionId: "auth-test-respond",
       actionText: "Auth test",
       requestType: "endorsement",
+      callerTableId: senderTableId,
     });
 
     await expect(
@@ -472,6 +474,7 @@ describe("Authorization — requests.respond / requests.cancel / setActionInflue
       actionId: "auth-test-cancel",
       actionText: "Auth test cancel",
       requestType: "endorsement",
+      callerTableId: senderTableId,
     });
 
     await expect(

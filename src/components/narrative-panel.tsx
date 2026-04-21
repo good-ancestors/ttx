@@ -28,7 +28,6 @@ interface Round {
     aiSystems: string[];
     facilitatorNotes?: string;
   };
-  fallbackNarrative?: string;
 }
 
 const SECTIONS: { key: keyof NonNullable<Round["summary"]>; label: string }[] = [
@@ -55,16 +54,16 @@ export function NarrativePanel({
     : false;
 
   useEffect(() => {
-    if (hasContent || round?.fallbackNarrative) return;
+    if (hasContent) return;
     const interval = setInterval(() => {
       setVerbIdx((prev) => (prev + 1) % LOADING_VERBS.length);
     }, 2000);
     return () => clearInterval(interval);
-  }, [hasContent, round?.fallbackNarrative]);
+  }, [hasContent]);
 
   if (!round) return null;
 
-  if (!hasContent && !round.fallbackNarrative) {
+  if (!hasContent) {
     return (
       <div className="bg-navy-dark rounded-xl border border-navy-light p-6">
         <div className="flex items-center gap-2 mb-4">
@@ -98,30 +97,26 @@ export function NarrativePanel({
           <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
         )}
       </button>
-      {expanded && (
+      {expanded && hasContent && summary && (
         <div className="mt-4 space-y-4">
-          {hasContent && summary ? (
-            SECTIONS.map(({ key, label }) => {
-              const lines = summary[key] as string[] | undefined;
-              if (!lines?.length) return null;
-              return (
-                <div key={key}>
-                  <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
-                    {label}
-                  </div>
-                  <ul className="space-y-1.5">
-                    {lines.map((line, i) => (
-                      <li key={i} className={`${textSize} text-[#E2E8F0] leading-relaxed`}>
-                        {line}
-                      </li>
-                    ))}
-                  </ul>
+          {SECTIONS.map(({ key, label }) => {
+            const lines = summary[key] as string[] | undefined;
+            if (!lines?.length) return null;
+            return (
+              <div key={key}>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
+                  {label}
                 </div>
-              );
-            })
-          ) : round.fallbackNarrative ? (
-            <p className={`${textSize} text-[#E2E8F0] leading-relaxed`}>{round.fallbackNarrative}</p>
-          ) : null}
+                <ul className="space-y-1.5">
+                  {lines.map((line, i) => (
+                    <li key={i} className={`${textSize} text-[#E2E8F0] leading-relaxed`}>
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

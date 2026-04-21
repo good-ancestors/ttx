@@ -44,7 +44,19 @@ export async function findOrUpsertRequest(
     });
     return match._id;
   }
-  return await ctx.db.insert("requests", { ...args, status: "pending" });
+  return await ctx.db.insert("requests", {
+    gameId: args.gameId,
+    roundNumber: args.roundNumber,
+    fromRoleId: args.fromRoleId,
+    fromRoleName: args.fromRoleName,
+    toRoleId: args.toRoleId,
+    toRoleName: args.toRoleName,
+    actionId: args.actionId,
+    actionText: args.actionText,
+    requestType: args.requestType,
+    computeAmount: args.computeAmount,
+    status: "pending",
+  });
 }
 
 export const directTransfer = mutation({
@@ -149,18 +161,21 @@ export const send = mutation({
       v.literal("compute")
     ),
     computeAmount: v.optional(v.number()),
+    callerTableId: v.id("tables"),
   },
   handler: async (ctx, args) => {
     const game = await assertPhase(ctx, args.gameId, ["submit"], "send request");
     assertSubmitWindowOpen(game);
 
-    // Verify the sender's table exists and is enabled
-    const senderTable = await ctx.db.query("tables")
-      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.fromRoleId))
-      .first();
-    if (!senderTable || !senderTable.enabled) {
-      throw new Error("Sender role not found or not enabled in this game");
+    // Authorize: caller must occupy the claimed sender role. Without this check
+    // any client could forge fromRoleId to send requests impersonating any role.
+    const callerTable = await ctx.db.get(args.callerTableId);
+    if (!callerTable) throw new Error("Caller table not found");
+    if (callerTable.gameId !== args.gameId) throw new Error("Caller table does not belong to this game");
+    if (callerTable.roleId !== args.fromRoleId) {
+      throw new Error("Only the sender role can send this request");
     }
+    if (!callerTable.enabled) throw new Error("Sender role is not enabled in this game");
 
     // Reject self-endorsement / self-requests
     if (args.fromRoleId === args.toRoleId) {

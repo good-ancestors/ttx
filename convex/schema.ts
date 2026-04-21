@@ -180,19 +180,6 @@ export default defineSchema({
     gameId: v.id("games"),
     number: v.number(),
     label: v.string(),
-    // Structured resolution output — what happened this round
-    resolvedEvents: v.optional(
-      v.array(
-        v.object({
-          id: v.string(),
-          description: v.string(),
-          visibility: v.union(v.literal("public"), v.literal("covert")),
-          actors: v.array(v.string()),
-          worldImpact: v.optional(v.string()),
-          sourceActions: v.optional(v.array(v.string())),
-        })
-      )
-    ),
     facilitatorNotes: v.optional(v.string()),
     summary: v.optional(
       v.object({
@@ -207,7 +194,6 @@ export default defineSchema({
       })
     ),
     labTrajectories: v.optional(v.array(labTrajectoryValidator)),
-    fallbackNarrative: v.optional(v.string()),
     aiMeta: v.optional(
       v.object({
         resolveModel: v.optional(v.string()),
@@ -225,17 +211,6 @@ export default defineSchema({
     labsAfter: v.optional(v.array(labSnapshotValidator)),
     // Pipeline nonce — prevents double-execution of resolve
     resolveNonce: v.optional(v.string()),
-    // Partial events written during streaming resolve (before final write)
-    partialEvents: v.optional(v.array(
-      v.object({
-        id: v.string(),
-        description: v.string(),
-        visibility: v.union(v.literal("public"), v.literal("covert")),
-        actors: v.array(v.string()),
-        worldImpact: v.optional(v.string()),
-        sourceActions: v.optional(v.array(v.string())),
-      })
-    )),
   }).index("by_game", ["gameId"])
     .index("by_game_and_number", ["gameId", "number"]),
 

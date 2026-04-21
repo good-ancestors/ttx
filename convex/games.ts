@@ -477,12 +477,17 @@ export const restoreSnapshot = mutation({
     if (!labsSnapshot) throw new Error(`No ${snapshotType} snapshot data for round ${args.roundNumber}`);
 
     // Restore round + phase; labs table rows are restored below from the snapshot.
+    // Clearing resolveNonce is critical — any in-flight rollAndNarrate that was
+    // started before this restore will otherwise pass its post-LLM nonce check
+    // (convex/pipelineApply.ts) and land structural mutations on top of the just-
+    // restored state. Mirror the clear on the target round below.
     await ctx.db.patch(args.gameId, {
       currentRound: args.roundNumber,
       phase: args.useBefore ? "submit" : "narrate",
       phaseEndsAt: undefined,
       resolving: false,
       pipelineStatus: undefined,
+      resolveNonce: undefined,
     });
 
     // Restore labs table: upsert from snapshot by labId; delete any current labs not in snapshot.
@@ -549,14 +554,17 @@ export const restoreSnapshot = mutation({
       }
     }
 
-    // Clear resolution data on this round if restoring to "before"
+    // Clear resolution data on this round if restoring to "before". Also clear
+    // resolveNonce unconditionally so any in-flight pipeline run tied to this
+    // round can't land post-restore (mirrors the game-level clear above).
     if (args.useBefore) {
       await ctx.db.patch(round._id, {
-        resolvedEvents: undefined,
         summary: undefined,
         labsAfter: undefined,
-        partialEvents: undefined,
+        resolveNonce: undefined,
       });
+    } else {
+      await ctx.db.patch(round._id, { resolveNonce: undefined });
     }
 
     // Rebuild ledger state to match the restored point-in-time.

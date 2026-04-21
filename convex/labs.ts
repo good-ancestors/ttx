@@ -6,7 +6,7 @@
 // and player actions call the *Internal variants so mutations can be composed.
 
 import { v } from "convex/values";
-import { query, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { query, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
 export type Lab = Doc<"labs">;
@@ -81,19 +81,6 @@ export async function getLabsWithCompute(
     colour: l.colour,
     status: l.status,
   }));
-}
-
-export async function getLabByName(
-  ctx: QueryCtx | MutationCtx,
-  gameId: Id<"games">,
-  name: string,
-  includeInactive = false,
-): Promise<Lab | null> {
-  const labs = await getAllLabs(ctx, gameId);
-  const match = labs.find((l) =>
-    l.name === name && (includeInactive || l.status === "active"),
-  );
-  return match ?? null;
 }
 
 // ─── Write helpers ────────────────────────────────────────────────────────────
@@ -181,22 +168,6 @@ export async function mergeLabsInternal(
   await decommissionLabInternal(ctx, args.absorbedLabId, { mergedIntoLabId: args.survivorLabId });
 }
 
-export async function updateLabAllocationInternal(
-  ctx: MutationCtx,
-  labId: Id<"labs">,
-  allocation: { deployment: number; research: number; safety: number },
-): Promise<void> {
-  await ctx.db.patch(labId, { allocation });
-}
-
-export async function updateLabSpecInternal(
-  ctx: MutationCtx,
-  labId: Id<"labs">,
-  spec: string,
-): Promise<void> {
-  await ctx.db.patch(labId, { spec });
-}
-
 export async function updateLabRdMultiplierInternal(
   ctx: MutationCtx,
   labId: Id<"labs">,
@@ -240,29 +211,3 @@ export const getLabsWithComputeInternal = internalQuery({
   },
 });
 
-// ─── Internal mutations for pipeline ──────────────────────────────────────────
-
-/** Update a lab's structural fields. Any subset; safe to call without all fields. */
-export const updateLabStructuralInternal = internalMutation({
-  args: {
-    labId: v.id("labs"),
-    name: v.optional(v.string()),
-    spec: v.optional(v.string()),
-    rdMultiplier: v.optional(v.number()),
-    allocation: v.optional(v.object({
-      deployment: v.number(), research: v.number(), safety: v.number(),
-    })),
-    ownerRoleId: v.optional(v.union(v.string(), v.null())),
-  },
-  handler: async (ctx, args) => {
-    const patch: Partial<Doc<"labs">> = {};
-    if (args.name !== undefined) patch.name = args.name;
-    if (args.spec !== undefined) patch.spec = args.spec;
-    if (args.rdMultiplier !== undefined) patch.rdMultiplier = args.rdMultiplier;
-    if (args.allocation !== undefined) patch.allocation = args.allocation;
-    if (args.ownerRoleId !== undefined) patch.ownerRoleId = args.ownerRoleId ?? undefined;
-    if (Object.keys(patch).length > 0) {
-      await ctx.db.patch(args.labId, patch);
-    }
-  },
-});

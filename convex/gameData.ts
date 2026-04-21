@@ -63,12 +63,17 @@ export const DEFAULT_LABS = [
 export const NEW_COMPUTE_PER_GAME_ROUND: Record<number, number> = { 1: 31, 2: 35, 3: 24, 4: 15 };
 
 // Default share (%) of new compute each entity receives per round.
-// 5 entities: 3 labs + 2 pools. Always sums to ~100%.
+// 5 entities: 3 labs + 2 pools. Sums close to 100% (rounds 3 and 4 sum to ~108%
+// rather than exactly 100% — pool shares are floored at 0 rather than allowed to
+// go negative, which would break the cache-ledger invariant patchTableStock's
+// Math.max(0, …) clamp enforces. The source spreadsheet modelled shrinking pools
+// as negative shares; we model the same intent by keeping shrinking pools at 0
+// (no new compute allocated) rather than reclaiming existing stock.
 export const DEFAULT_COMPUTE_SHARES: Record<number, Record<string, number>> = {
   1: { OpenBrain: 35.5, DeepCent: 19.4, Conscienta: 19.4, "Other US Labs": 12.9, "Rest of World": 12.9 },
   2: { OpenBrain: 45.7, DeepCent: 22.9, Conscienta: 20.0, "Other US Labs": 5.7, "Rest of World": 5.7 },
-  3: { OpenBrain: 62.5, DeepCent: 25.0, Conscienta: 20.8, "Other US Labs": -4.2, "Rest of World": -4.2 },
-  4: { OpenBrain: 65.0, DeepCent: 25.0, Conscienta: 15.0, "Other US Labs": -5.0, "Rest of World": -5.0 },
+  3: { OpenBrain: 62.5, DeepCent: 25.0, Conscienta: 20.8, "Other US Labs": 0, "Rest of World": 0 },
+  4: { OpenBrain: 65.0, DeepCent: 25.0, Conscienta: 15.0, "Other US Labs": 0, "Rest of World": 0 },
 };
 
 // Starting compute stock for non-lab pool entities (from source spreadsheet).

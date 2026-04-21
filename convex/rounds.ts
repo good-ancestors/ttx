@@ -116,42 +116,13 @@ export const applySummary = mutation({
   },
 });
 
-export const applyResolution = mutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    resolvedEvents: v.array(
-      v.object({
-        id: v.string(),
-        description: v.string(),
-        visibility: v.union(v.literal("public"), v.literal("covert")),
-        actors: v.array(v.string()),
-        worldImpact: v.optional(v.string()),
-        sourceActions: v.optional(v.array(v.string())),
-      })
-    ),
-    facilitatorNotes: v.optional(v.string()),
-    facilitatorToken: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    assertFacilitator(args.facilitatorToken);
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (!round) return;
-
-    await ctx.db.patch(round._id, {
-      resolvedEvents: args.resolvedEvents,
-      facilitatorNotes: args.facilitatorNotes,
-    });
-  },
-});
-
 export const clearResolution = mutation({
   args: { gameId: v.id("games"), roundNumber: v.number(), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
-    await ctx.db.patch(round._id, { resolvedEvents: [], summary: undefined });
+    await ctx.db.patch(round._id, { summary: undefined });
   },
 });
 
@@ -176,32 +147,7 @@ export const setAiMeta = internalMutation({
   },
 });
 
-export const updateFallbackNarrative = mutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    fallbackNarrative: v.string(),
-    facilitatorToken: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    assertFacilitator(args.facilitatorToken);
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (!round) return;
-
-    await ctx.db.patch(round._id, { fallbackNarrative: args.fallbackNarrative });
-  },
-});
-
 // ─── Pipeline internal mutations ──────────────────────────────────────────────
-
-const resolvedEventValidator = v.object({
-  id: v.string(),
-  description: v.string(),
-  visibility: v.union(v.literal("public"), v.literal("covert")),
-  actors: v.array(v.string()),
-  worldImpact: v.optional(v.string()),
-  sourceActions: v.optional(v.array(v.string())),
-});
 
 export const getForPipeline = internalQuery({
   args: { gameId: v.id("games"), roundNumber: v.number() },
@@ -222,36 +168,6 @@ export const setResolveNonce = internalMutation({
   handler: async (ctx, args) => {
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (round) await ctx.db.patch(round._id, { resolveNonce: args.nonce });
-  },
-});
-
-export const writePartialEvents = internalMutation({
-  args: { gameId: v.id("games"), roundNumber: v.number(), events: v.array(resolvedEventValidator) },
-  handler: async (ctx, args) => {
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (round) await ctx.db.patch(round._id, { partialEvents: args.events });
-  },
-});
-
-export const applyResolutionInternal = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    nonce: v.string(),
-    resolvedEvents: v.array(resolvedEventValidator),
-  },
-  handler: async (ctx, args) => {
-    // Check nonce to prevent double-execution
-    const game = await ctx.db.get(args.gameId);
-    if (game?.resolveNonce !== args.nonce) return;
-
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (!round) return;
-
-    await ctx.db.patch(round._id, {
-      resolvedEvents: args.resolvedEvents,
-      partialEvents: undefined,
-    });
   },
 });
 

@@ -503,7 +503,7 @@ export const rollAndNarrate = internalAction({
           publicAndMedia: string[];
           aiSystems: string[];
         };
-        labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; name?: string; computeStock?: number; rdMultiplier?: number; change?: number; newMultiplier?: number; oldName?: string; controllerRoleId?: string; spec?: string }[];
+        labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; change?: number; newMultiplier?: number; controllerRoleId?: string; spec?: string }[];
         shareChanges?: { roleId: string; sharePct: number; reason: string }[];
         labTrajectories: { labName: string; safetyAdequacy: "adequate" | "concerning" | "dangerous" | "catastrophic"; likelyFailureMode: "aligned" | "deceptive" | "spec-gaming" | "power-concentration" | "benevolent-override" | "loss-of-control" | "misuse"; reasoning: string; signalStrength: number }[];
       };

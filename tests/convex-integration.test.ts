@@ -456,6 +456,8 @@ describe("Proposals", () => {
   });
 
   it("should send a proposal", async () => {
+    const tables = await convex.query(api.tables.getByGame, { gameId });
+    const openbrainTableId = tables.find((t) => t.roleId === "openbrain-ceo")!._id;
     const proposalId = await convex.mutation(api.requests.send, {
       gameId,
       roundNumber: 1,
@@ -466,6 +468,7 @@ describe("Proposals", () => {
       actionId: "test-endorsement-1",
       actionText: "We propose sharing Agent-2 access with the government",
       requestType: "endorsement",
+      callerTableId: openbrainTableId,
     });
     expect(proposalId).toBeTruthy();
   });
@@ -510,6 +513,8 @@ describe("Proposals", () => {
   });
 
   it("should decline a proposal", async () => {
+    const tables2 = await convex.query(api.tables.getByGame, { gameId });
+    const chinaTableId = tables2.find((t) => t.roleId === "china-president")!._id;
     const proposalId = await convex.mutation(api.requests.send, {
       gameId,
       roundNumber: 1,
@@ -520,6 +525,7 @@ describe("Proposals", () => {
       actionId: "test-proposal-1",
       actionText: "Propose joint safety research",
       requestType: "endorsement",
+      callerTableId: chinaTableId,
     });
 
     const declinerTables = await convex.query(api.tables.getByGame, { gameId });
@@ -694,14 +700,16 @@ describe("Full resolve pipeline (LLM)", () => {
     // Phase should have advanced to narrate
     expect(game!.phase).toBe("narrate");
 
-    // Round should have narrative
+    // Round should have sectioned summary content.
     const rounds = await convex.query(api.rounds.getByGame, { gameId });
     const round1 = rounds.find((r) => r.number === 1)!;
     expect(round1.summary).toBeDefined();
-    expect(round1.summary!.narrative).toBeDefined();
-    expect(round1.summary!.narrative!.length).toBeGreaterThan(50);
-    // Should NOT be the fallback text
-    expect(round1.summary!.narrative).not.toContain("AI narrative generation failed");
+    const s = round1.summary!;
+    const totalLines = s.labs.length + s.geopolitics.length + s.publicAndMedia.length + s.aiSystems.length;
+    expect(totalLines).toBeGreaterThan(0);
+    // Should NOT contain the fallback marker
+    const flat = [...s.labs, ...s.geopolitics, ...s.publicAndMedia, ...s.aiSystems].join(" ");
+    expect(flat).not.toContain("AI narrative generation failed");
 
     // Compute holders are derived via getComputeHolderView (no longer stored on the round).
     const holderView = await convex.query(api.rounds.getComputeHolderView, {
@@ -1093,6 +1101,7 @@ describe("Compute Request Acceptance", () => {
       actionText: "Request compute from OpenBrain",
       requestType: "compute",
       computeAmount: 3,
+      callerTableId: requesterTableId,
     });
 
     // Accept the request — emits a pending escrow pair (not a settled transfer).
