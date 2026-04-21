@@ -925,25 +925,22 @@ describe("Compute Escrow", () => {
       computeTargets: [{ roleId: recipientRole, amount: 2 }],
     });
 
-    // Verify both deductions happened
+    // Pending escrows don't touch the settled cache. Stock unchanged on both sides.
     const senderAfter = await convex.query(api.tables.get, { tableId: senderTableId });
-    expect(senderAfter!.computeStock).toBe(available - 4);
+    expect(senderAfter!.computeStock).toBe(available);
 
-    // Try a third that would exceed remaining balance
-    const remaining = senderAfter!.computeStock ?? 0;
-    if (remaining < 999) {
-      await expect(
-        convex.mutation(api.submissions.saveAndSubmit, {
-          tableId: senderTableId,
-          gameId,
-          roundNumber: 1,
-          roleId: senderRole,
-          text: "Third that should fail",
-          priority: 1,
-          computeTargets: [{ roleId: recipientRole, amount: remaining + 1 }],
-        })
-      ).rejects.toThrow(/Insufficient compute/);
-    }
+    // Third send that exceeds (cache − pending) must fail — proves both escrows count.
+    await expect(
+      convex.mutation(api.submissions.saveAndSubmit, {
+        tableId: senderTableId,
+        gameId,
+        roundNumber: 1,
+        roleId: senderRole,
+        text: "Third that should fail",
+        priority: 1,
+        computeTargets: [{ roleId: recipientRole, amount: available - 4 + 1 }],
+      })
+    ).rejects.toThrow(/Insufficient compute/);
   });
 
   it("should refund escrow when action is edited back to draft", async () => {
@@ -962,15 +959,23 @@ describe("Compute Escrow", () => {
     expect(actionIdx).toBeGreaterThanOrEqual(0);
     const refundAmount = sub!.actions[actionIdx].computeTargets!.reduce((s, t) => s + t.amount, 0);
 
-    // Edit back to draft
+    // Edit back to draft — cancels the pending ledger row.
     await convex.mutation(api.submissions.editSubmitted, {
       submissionId: sub!._id,
       actionIndex: actionIdx,
     });
 
-    // Verify refund
+    // Cache is unchanged (was never deducted by the pending escrow).
     const senderAfter = await convex.query(api.tables.get, { tableId: senderTableId });
-    expect(senderAfter!.computeStock).toBe(stockBefore + refundAmount);
+    expect(senderAfter!.computeStock).toBe(stockBefore);
+
+    // Post-edit the action is a draft — no pending escrow row tied to it.
+    const subAfter = await convex.query(api.submissions.getForTable, {
+      tableId: senderTableId, roundNumber: 1,
+    });
+    expect(subAfter!.actions[actionIdx].actionStatus).toBe("draft");
+    // refundAmount variable kept for readability of the original intent.
+    void refundAmount;
   });
 });
 
@@ -1009,8 +1014,22 @@ describe("Compute Send Direction", () => {
       computeTargets: [{ roleId: recipientRole, amount: 2, direction: "send" }],
     });
 
+    // Pending send escrow — settled cache is unchanged.
     const after = await convex.query(api.tables.get, { tableId: senderTableId });
-    expect(after!.computeStock).toBe(startStock - 2);
+    expect(after!.computeStock).toBe(startStock);
+
+    // Proof of escrow: spending more than (cache − 2) is rejected.
+    await expect(
+      convex.mutation(api.submissions.saveAndSubmit, {
+        tableId: senderTableId,
+        gameId,
+        roundNumber: 1,
+        roleId: senderRole,
+        text: "Overspend past the escrow",
+        priority: 1,
+        computeTargets: [{ roleId: recipientRole, amount: startStock - 2 + 1 }],
+      })
+    ).rejects.toThrow(/Insufficient compute/);
   });
 
   it("request direction should NOT escrow from submitter", async () => {
@@ -1059,6 +1078,8 @@ describe("Compute Request Acceptance", () => {
   it("accepting a compute request should escrow from the target", async () => {
     const targetBefore = await convex.query(api.tables.get, { tableId: targetTableId });
     const targetStart = targetBefore!.computeStock ?? 0;
+    const requesterBefore = await convex.query(api.tables.get, { tableId: requesterTableId });
+    const requesterStart = requesterBefore!.computeStock ?? 0;
 
     // Create a compute request (as if submitter requested from target)
     const requestId = await convex.mutation(api.requests.send, {
@@ -1074,21 +1095,31 @@ describe("Compute Request Acceptance", () => {
       computeAmount: 3,
     });
 
-    // Accept the request
+    // Accept the request — emits a pending escrow pair (not a settled transfer).
     await convex.mutation(api.requests.respond, {
       proposalId: requestId,
       status: "accepted",
       callerTableId: targetTableId,
     });
 
-    // Target's compute should be escrowed (deducted)
+    // Pending escrow rows do NOT mutate either cache.
     const targetAfter = await convex.query(api.tables.get, { tableId: targetTableId });
-    expect(targetAfter!.computeStock).toBe(targetStart - 3);
-
-    // Requester should NOT have received the compute yet (happens on action success)
+    expect(targetAfter!.computeStock).toBe(targetStart);
     const requesterAfter = await convex.query(api.tables.get, { tableId: requesterTableId });
-    const requesterBefore = await convex.query(api.tables.get, { tableId: requesterTableId });
-    expect(requesterAfter!.computeStock).toBe(requesterBefore!.computeStock);
+    expect(requesterAfter!.computeStock).toBe(requesterStart);
+
+    // Proof the target's availableStock was reduced by 3u: overspending past (cache − 3) fails.
+    await expect(
+      convex.mutation(api.submissions.saveAndSubmit, {
+        tableId: targetTableId,
+        gameId,
+        roundNumber: 1,
+        roleId: targetRole,
+        text: "Target attempts to send past the accepted-request escrow",
+        priority: 1,
+        computeTargets: [{ roleId: requesterRole, amount: targetStart - 3 + 1 }],
+      }),
+    ).rejects.toThrow(/Insufficient compute/);
   });
 
   it("declining after accepting should refund the target", async () => {
@@ -1106,15 +1137,26 @@ describe("Compute Request Acceptance", () => {
     const targetBefore = await convex.query(api.tables.get, { tableId: targetTableId });
     const stockBefore = targetBefore!.computeStock ?? 0;
 
-    // Decline the previously accepted request
+    // Decline the previously accepted request — cancels the pending escrow pair.
     await convex.mutation(api.requests.respond, {
       proposalId: acceptedReq!._id,
       status: "declined",
       callerTableId: targetTableId,
     });
 
-    // Target should get refund
+    // Cache was never deducted by the pending escrow, so it stays the same.
     const targetAfter = await convex.query(api.tables.get, { tableId: targetTableId });
-    expect(targetAfter!.computeStock).toBe(stockBefore + (acceptedReq!.computeAmount ?? 0));
+    expect(targetAfter!.computeStock).toBe(stockBefore);
+
+    // Proof the escrow released: the full cache balance is spendable again.
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: targetTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: targetRole,
+      text: "Full-balance send after escrow refund",
+      priority: 1,
+      computeTargets: [{ roleId: requesterRole, amount: stockBefore, direction: "send" }],
+    });
   });
 });
