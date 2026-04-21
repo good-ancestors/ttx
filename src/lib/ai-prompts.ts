@@ -421,6 +421,7 @@ export function buildRoundNarrativePrompt(args: {
   previousRounds?: PreviousRoundSummary[];
   aiDisposition?: { label: string; description: string };
   previousTrajectories?: LabTrajectoryContext[];
+  interRoundChanges?: string[];
 }) {
   const sorted = [...args.resolvedActions].sort((a, b) => b.priority - a.priority);
   const publicSuccesses = sorted.filter((a) => !a.secret && a.success);
@@ -438,11 +439,15 @@ export function buildRoundNarrativePrompt(args: {
     if (secretFailures.length > 0) actionsSection += `\nFailed:\n${secretFailures.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
   }
 
+  const interRoundSection = args.interRoundChanges && args.interRoundChanges.length > 0
+    ? `\nSTRUCTURAL CHANGES SINCE LAST RESOLVE (not player-triggered this round — facilitator overrides or out-of-band events between rounds; treat as GROUND TRUTH):\n${args.interRoundChanges.map((c) => `- ${c}`).join("\n")}\n`
+    : "";
+
   return `You are resolving Round ${args.round}: ${args.roundLabel}.
 
 LAB STATUS:
 ${formatLabAllocations(args.labs)}
-${formatPreviousRounds(args.previousRounds ?? [])}
+${interRoundSection}${formatPreviousRounds(args.previousRounds ?? [])}
 
 ${actionsSection}
 ${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}` : ""}

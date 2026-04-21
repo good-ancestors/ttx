@@ -10,7 +10,6 @@ import { RdProgressChart } from "@/components/rd-progress-chart";
 import { LabTracker } from "@/components/lab-tracker";
 import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
-import { FacilitatorCopilot } from "@/components/manual-controls";
 import { DebugPanel } from "@/components/debug-panel";
 import {
   Loader2,
@@ -151,9 +150,8 @@ export default function FacilitatorPage({
     return () => clearTimeout(timer);
   }, [revealedCount, isRollingPhase, submissions]);
 
-  // Warm up API routes on facilitator page load (for copilot)
+  // Warm up serverless API routes on facilitator page load
   useEffect(() => {
-    // Fire-and-forget: warming up API route, failure is non-critical
     fetch("/api/warm").catch(() => {});
   }, []);
 
@@ -199,7 +197,7 @@ export default function FacilitatorPage({
   const currentRound = currentRoundFull ?? undefined;
   // rounds is guaranteed non-null after loading guard for playing/finished states
   const rounds = roundsLite ?? [];
-  // Previous-round summary text for copilot context (joined sectioned summary) or
+  // Previous-round summary text for display (joined sectioned summary) or
   // the fixed starting scenario for round 1.
   const prevRoundLite = rounds.find(r => r.number === game.currentRound - 1);
   const prevSummary = prevRoundLite?.summary;
@@ -493,16 +491,6 @@ export default function FacilitatorPage({
             />
           </div>
         </div>
-
-        {/* Facilitator copilot — always visible during gameplay */}
-        {!isProjector && (
-          <div className="sticky bottom-0 z-40 bg-navy-dark">
-            <FacilitatorCopilot
-              gameId={gameId}
-              currentLabs={labs}
-            />
-          </div>
-        )}
 
         {/* Debug panel — fetches its own data when expanded to avoid always-on subscriptions */}
         {!isProjector && (

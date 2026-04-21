@@ -12,9 +12,6 @@ import {
 } from "@convex/gameData";
 export { NEW_COMPUTE_PER_GAME_ROUND, DEFAULT_COMPUTE_SHARES, COMPUTE_POOL_ELIGIBLE, POOL_STARTING_STOCK };
 
-// Signal string sent by the copilot UI to confirm a proposed change
-export const COPILOT_APPLY_SIGNAL = "__APPLY_PROPOSED__";
-
 // ─── LAB TYPE ─────────────────────────────────────────────────────────────────
 // UI-side lab shape — matches the shape returned from api.labs.getActiveLabs enriched with
 // owner's compute stock (labs table + tables.computeStock).

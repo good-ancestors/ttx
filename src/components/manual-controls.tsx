@@ -5,8 +5,6 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAuthMutation } from "@/lib/hooks";
 import { Pencil, Save, AlertTriangle } from "lucide-react";
-import { CopilotChat } from "@/components/copilot-chat";
-import type { Snapshot } from "@/components/copilot-chat";
 
 type SectionedSummary = {
   labs: string[];
@@ -133,15 +131,3 @@ export function NarrativeEditor({
   );
 }
 
-/** Persistent copilot — always visible during gameplay */
-export function FacilitatorCopilot({
-  gameId,
-  currentLabs,
-}: {
-  gameId: Id<"games">;
-  currentLabs: Snapshot["labs"];
-}) {
-  return (
-    <CopilotChat gameId={gameId} currentLabs={currentLabs} variant="bar" />
-  );
-}

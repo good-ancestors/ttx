@@ -449,6 +449,31 @@ export const rollAndNarrate = internalAction({
       const previousTrajectories = prevRound?.labTrajectories as
         { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[] | undefined;
 
+      // Detect structural changes that happened BETWEEN last round's resolve and this
+      // one (facilitator overrides via games.mergeLabs / updateLabs, etc.). Diff the
+      // previous round's labsAfter against the current lab list at resolve start.
+      // The narrative LLM receives these as explicit "structural changes since last
+      // round" so it doesn't have to infer the transition from LAB STATUS deltas.
+      const interRoundChanges: string[] = [];
+      if (prevRound?.labsAfter) {
+        const prevByName = new Map(prevRound.labsAfter.map((l) => [l.name, l] as const));
+        const currentByName = new Map(labsAtResolve.map((l) => [l.name, l] as const));
+        for (const [name, prev] of prevByName) {
+          const curr = currentByName.get(name);
+          const wasActive = prev.status === "active";
+          if (wasActive && !curr) {
+            interRoundChanges.push(`${name} was decommissioned or merged away since last round (no longer in active labs).`);
+          } else if (wasActive && curr && prev.roleId !== curr.roleId) {
+            interRoundChanges.push(`${name} changed ownership: ${prev.roleId ?? "(unowned)"} → ${curr.roleId ?? "(unowned)"}.`);
+          }
+        }
+        for (const [name, curr] of currentByName) {
+          if (!prevByName.has(name) && curr.status === "active") {
+            interRoundChanges.push(`${name} appeared as a new active lab since last round.`);
+          }
+        }
+      }
+
       const prompt = buildRoundNarrativePrompt({
         round: roundNumber,
         roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
@@ -468,6 +493,7 @@ export const rollAndNarrate = internalAction({
             } : undefined,
           })),
         previousTrajectories,
+        interRoundChanges,
       });
 
       type NarrativeOutput = {

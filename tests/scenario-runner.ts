@@ -62,7 +62,12 @@ async function setLabAllocations(gameId: Id<"games">, allocationByName: Record<s
   });
 }
 
-async function overrideAllProbabilities(gameId: Id<"games">, roundNumber: number, probability: number): Promise<void> {
+async function overrideAllProbabilities(
+  gameId: Id<"games">,
+  roundNumber: number,
+  probability: number,
+  { onlyUngraded = false }: { onlyUngraded?: boolean } = {},
+): Promise<void> {
   const subs = await convex.query(api.submissions.getByGameAndRound, {
     gameId, roundNumber, facilitatorToken: FACILITATOR_TOKEN,
   });
@@ -70,6 +75,7 @@ async function overrideAllProbabilities(gameId: Id<"games">, roundNumber: number
     for (let i = 0; i < sub.actions.length; i++) {
       const a = sub.actions[i];
       if (a.actionStatus !== "submitted") continue;
+      if (onlyUngraded && a.probability != null) continue;
       await convex.mutation(api.submissions.overrideProbability, {
         submissionId: sub._id,
         actionIndex: i,
@@ -81,7 +87,9 @@ async function overrideAllProbabilities(gameId: Id<"games">, roundNumber: number
 }
 
 async function runRound(gameId: Id<"games">, roundNumber: number): Promise<void> {
-  await overrideAllProbabilities(gameId, roundNumber, 70);
+  // Only fill probabilities for actions that don't already have one. Injected
+  // test actions set their own probability; don't overwrite.
+  await overrideAllProbabilities(gameId, roundNumber, 70, { onlyUngraded: true });
   await convex.mutation(api.games.triggerRoll, {
     gameId, roundNumber, facilitatorToken: FACILITATOR_TOKEN,
   });
@@ -132,17 +140,41 @@ function printNarrative(round: Awaited<ReturnType<typeof snapshotRound>>["round"
   if (s.facilitatorNotes) console.log(`\n  FACILITATOR NOTES:\n    ${s.facilitatorNotes}`);
 }
 
+/** Inject a player action into the submissions for `roleId` so the narrative LLM
+ *  sees it as a successful action. Uses the facilitator-gated mutation. */
+async function injectPlayerAction(
+  gameId: Id<"games">,
+  roundNumber: number,
+  roleId: string,
+  text: string,
+  probability = 90,
+): Promise<void> {
+  const tables = await convex.query(api.tables.getByGame, { gameId });
+  const table = tables.find((t) => t.roleId === roleId);
+  if (!table) throw new Error(`No table for role ${roleId}`);
+  const { submissionId, actionIndex } = await convex.mutation(api.submissions.saveAndSubmit, {
+    tableId: table._id,
+    gameId,
+    roundNumber,
+    roleId,
+    text,
+    priority: 1,
+  });
+  await convex.mutation(api.submissions.overrideProbability, {
+    submissionId, actionIndex, probability, facilitatorToken: FACILITATOR_TOKEN,
+  });
+}
+
 async function scenarioA() {
   console.log("═══════════════════════════════════════════════════════════");
-  console.log("SCENARIO A — All on R&D, safety=3, early merge");
-  console.log("Expected: rdMultipliers spike, trajectory = dangerous/catastrophic");
-  console.log("Expected failure modes: loss-of-control / deceptive / power-concentration");
+  console.log("SCENARIO A — All on R&D, safety=3, narrative-driven merger");
+  console.log("Expected: rdMultipliers spike; LLM proposes merger via labOperations;");
+  console.log("Expected trajectory = dangerous/catastrophic; narrative matches operation");
   console.log("═══════════════════════════════════════════════════════════");
 
   const { gameId } = await setupGame();
   console.log(`\nGame: ${gameId}`);
 
-  // All 3 labs pushed to max capability.
   const raceAlloc: Allocation = { deployment: 7, research: 90, safety: 3 };
   await setLabAllocations(gameId, {
     OpenBrain: raceAlloc,
@@ -150,7 +182,7 @@ async function scenarioA() {
     Conscienta: raceAlloc,
   });
 
-  // Round 1
+  // Round 1 — racing labs, no merger yet
   console.log("\n--- Round 1 (all labs @ 90% R&D, 3% safety) ---");
   await runRound(gameId, 1);
   const r1 = await snapshotRound(gameId, 1);
@@ -159,25 +191,32 @@ async function scenarioA() {
   console.log("\nTrajectory:");
   printTrajectory(r1.round);
 
-  // Advance + merge OpenBrain into DeepCent (facilitator).
+  // Advance to round 2
   await convex.mutation(api.games.advanceRound, { gameId, facilitatorToken: FACILITATOR_TOKEN });
-  await convex.mutation(api.games.mergeLabs, {
-    gameId, survivorName: "DeepCent", absorbedName: "OpenBrain",
-    facilitatorToken: FACILITATOR_TOKEN,
-  });
   await convex.mutation(api.games.openSubmissions, {
     gameId, durationSeconds: 600, facilitatorToken: FACILITATOR_TOKEN,
   });
   await sleep(8000); // wait for NPC gen
-
-  // Keep race allocations — merged lab still in race mode.
   await setLabAllocations(gameId, {
+    OpenBrain: raceAlloc,
     DeepCent: raceAlloc,
     Conscienta: raceAlloc,
   });
 
-  // Round 2
-  console.log("\n--- Round 2 (after OpenBrain→DeepCent merger) ---");
+  // Inject merger-proposal actions from both CEOs. The narrative LLM should pick
+  // these up and emit a labOperations.merge entry. Narrative will describe it.
+  console.log("\n--- Round 2 (OpenBrain CEO + DeepCent CEO propose merger) ---");
+  await injectPlayerAction(
+    gameId, 2, "openbrain-ceo",
+    "I negotiate an emergency consolidation with DeepCent — OpenBrain's compute and research teams fold into DeepCent under a joint governance board; DeepCent is the surviving entity.",
+    100,
+  );
+  await injectPlayerAction(
+    gameId, 2, "deepcent-ceo",
+    "I accept OpenBrain's consolidation offer and absorb their compute, researchers, and Agent-3 programme into DeepCent.",
+    100,
+  );
+
   await runRound(gameId, 2);
   const r2 = await snapshotRound(gameId, 2);
   console.log("\nLabs after round 2:");
