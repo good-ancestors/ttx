@@ -98,7 +98,7 @@ describe("computeLedger — pending escrow lifecycle", () => {
     targetTableId = tables.find((t) => t.roleId === target)!._id;
   });
 
-  it("emit pending send → cache deducts immediately (escrow); settle on resolve credits counterparty once", async () => {
+  it("emit pending send → cache UNCHANGED (pending rows don't touch settled cache); availableStock decreases (proven via subsequent overspend rejection)", async () => {
     const senderBefore = await convex.query(api.tables.get, { tableId: senderTableId });
     const targetBefore = await convex.query(api.tables.get, { tableId: targetTableId });
     const senderStart = senderBefore!.computeStock ?? 0;
@@ -115,19 +115,18 @@ describe("computeLedger — pending escrow lifecycle", () => {
       computeTargets: [{ roleId: target, amount: 2, direction: "send" }],
     });
 
-    // Cache: sender debited once (pending -2 settled immediately via cache patch on the
-    // negative leg path — in the current implementation escrow deducts the cache).
-    // Target: NOT credited yet (escrow, counterparty leg is pending).
+    // Cache invariant: computeStock == sum(settled rows). Pending rows are NOT settled, so
+    // cache must be unchanged. availableStock = cache − pending — that's checked via the
+    // overspend test below, not via the cache directly.
     const senderMid = await convex.query(api.tables.get, { tableId: senderTableId });
     const targetMid = await convex.query(api.tables.get, { tableId: targetTableId });
-    expect(senderMid!.computeStock).toBe(senderStart - 2);
+    expect(senderMid!.computeStock).toBe(senderStart);
     expect(targetMid!.computeStock).toBe(targetStart);
 
-    // Invariant must hold after the debit.
     await assertCacheLedgerInvariant(gameId, 1);
   });
 
-  it("cancel path (deleteAction) deletes the pending row and refunds the cache", async () => {
+  it("cancel path (deleteAction) deletes the pending row (cache is already unchanged — no refund needed)", async () => {
     const senderBefore = await convex.query(api.tables.get, { tableId: senderTableId });
     const stockBefore = senderBefore!.computeStock ?? 0;
 
@@ -138,15 +137,40 @@ describe("computeLedger — pending escrow lifecycle", () => {
     expect(sub).toBeTruthy();
     const idx = sub!.actions.findIndex((a) => a.computeTargets && a.computeTargets.length > 0);
     expect(idx).toBeGreaterThanOrEqual(0);
-    const refund = sub!.actions[idx].computeTargets!.reduce((s, t) => s + t.amount, 0);
 
     await convex.mutation(api.submissions.deleteAction, {
       submissionId: sub!._id,
       actionIndex: idx,
     });
 
+    // Cache unchanged (was unchanged by escrow; deleteAction just removes the pending row
+    // so availableStock returns to full cache value).
     const after = await convex.query(api.tables.get, { tableId: senderTableId });
-    expect(after!.computeStock).toBe(stockBefore + refund);
+    expect(after!.computeStock).toBe(stockBefore);
+
+    // Proof that availableStock fully recovered: a fresh send of stockBefore must succeed
+    // (if the pending row had leaked, this would fail with Insufficient compute).
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: sender,
+      text: "Full-balance send after cancel",
+      priority: 1,
+      computeTargets: [{ roleId: target, amount: stockBefore, direction: "send" }],
+    });
+    // Clean up so subsequent tests have clear state.
+    const cleanupSub = await convex.query(api.submissions.getForTable, {
+      tableId: senderTableId, roundNumber: 1,
+    });
+    const fullIdx = cleanupSub!.actions.findIndex((a) =>
+      a.computeTargets?.some((t) => t.amount === stockBefore),
+    );
+    if (fullIdx >= 0) {
+      await convex.mutation(api.submissions.deleteAction, {
+        submissionId: cleanupSub!._id, actionIndex: fullIdx,
+      });
+    }
     await assertCacheLedgerInvariant(gameId, 1);
   });
 
@@ -199,28 +223,34 @@ describe("computeLedger — double-submit does not leak escrow (PR #14 bug #1)",
     senderTableId = tables.find((t) => t.roleId === sender)!._id;
   });
 
-  it("re-submitting the same action text does not stack escrows", async () => {
+  it("saveDraft → saveAndSubmit (same text) upgrades the draft in place with exactly one escrow", async () => {
     const before = await convex.query(api.tables.get, { tableId: senderTableId });
     const start = before!.computeStock ?? 0;
 
-    const submitOnce = () =>
-      convex.mutation(api.submissions.saveAndSubmit, {
-        tableId: senderTableId,
-        gameId,
-        roundNumber: 1,
-        roleId: sender,
-        text: "Same text, sent twice",
-        priority: 1,
-        computeTargets: [{ roleId: target, amount: 2, direction: "send" }],
-      });
+    // Create a draft first, then upgrade it via saveAndSubmit with matching text. This is
+    // the draft-upgrade branch (bug #1 from review): the action row must carry the new
+    // computeTargets, and the escrow must be written exactly once.
+    await convex.mutation(api.submissions.saveDraft, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: sender,
+      text: "Draft then upgrade",
+      priority: 1,
+    });
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: sender,
+      text: "Draft then upgrade",
+      priority: 1,
+      computeTargets: [{ roleId: target, amount: 2, direction: "send" }],
+    });
 
-    await submitOnce();
-    // Second submit goes through the draft-upgrade branch (same text, same actionId).
-    // Escrow should remain at exactly 2u, not 4u.
-    await submitOnce();
-
+    // Cache unchanged (pending rows don't touch cache).
     const after = await convex.query(api.tables.get, { tableId: senderTableId });
-    expect(after!.computeStock).toBe(start - 2);
+    expect(after!.computeStock).toBe(start);
 
     const sub = await convex.query(api.submissions.getForTable, {
       tableId: senderTableId,
@@ -229,6 +259,20 @@ describe("computeLedger — double-submit does not leak escrow (PR #14 bug #1)",
     // Exactly one action carries the compute target (draft-upgrade path).
     const withTargets = sub!.actions.filter((a) => a.computeTargets && a.computeTargets.length > 0);
     expect(withTargets).toHaveLength(1);
+
+    // Proof that availableStock shows only one 2u escrow (not 4): a send of (start − 3)
+    // must succeed. If escrow had stacked to 4, availableStock would be start−4 < start−3.
+    if (start >= 4) {
+      await convex.mutation(api.submissions.saveAndSubmit, {
+        tableId: senderTableId,
+        gameId,
+        roundNumber: 1,
+        roleId: sender,
+        text: "Probe that only 2u is escrowed, not 4u",
+        priority: 2,
+        computeTargets: [{ roleId: target, amount: start - 3, direction: "send" }],
+      });
+    }
 
     await assertCacheLedgerInvariant(gameId, 1);
   });
@@ -289,10 +333,25 @@ describe("computeLedger — concurrent respond-accept does not double-escrow", (
       }),
     ]);
 
-    // Target's cache should be deducted exactly once (3u), not 6u.
+    // Target's cache is unchanged (accept creates a PENDING pair — escrow, not settlement).
+    // What matters: the guard in respond prevents a second pending pair from being emitted.
+    // Proof: target's availableStock reflects exactly 3u escrowed, not 6u. We probe this
+    // by attempting a send of (stockStart − 4) — must succeed with 3u escrow, fail with 6u.
     const targetAfter = await convex.query(api.tables.get, { tableId: targetTableId });
-    expect(targetAfter!.computeStock).toBe(stockStart - 3);
+    expect(targetAfter!.computeStock).toBe(stockStart);
     await assertCacheLedgerInvariant(gameId, 1);
+
+    if (stockStart >= 5) {
+      await convex.mutation(api.submissions.saveAndSubmit, {
+        tableId: targetTableId,
+        gameId,
+        roundNumber: 1,
+        roleId: target,
+        text: "Probe that only 3u is escrowed, not 6u",
+        priority: 1,
+        computeTargets: [{ roleId: requester, amount: stockStart - 4, direction: "send" }],
+      });
+    }
   });
 });
 

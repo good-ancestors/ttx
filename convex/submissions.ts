@@ -11,6 +11,7 @@ import {
   getAvailableStock,
   emitPair,
 } from "./computeLedger";
+import { createLabInternal } from "./labs";
 
 const PRIORITY_HARD_CAP = 12;
 
@@ -1069,25 +1070,29 @@ export const getAllForRound = internalQuery({
   },
 });
 
-export const rollAllInternal = internalMutation({
-  args: { gameId: v.id("games"), roundNumber: v.number() },
-  handler: async (ctx, args) => {
-    const subs = await ctx.db
-      .query("submissions")
-      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
-      .collect();
-    for (const sub of subs) {
-      if (sub.status === "resolved") continue;
-      // Skip if already rolled (idempotent)
-      if (sub.actions.every((a) => a.rolled != null)) continue;
-      const actions = sub.actions.map((action) => {
-        if (action.actionStatus === "draft") return action;
-        const probability = action.probability ?? 50;
-        return { ...action, probability, ...rollDice(probability, action.aiInfluence) };
-      });
-      await ctx.db.patch(sub._id, { actions, status: "resolved" });
-      const rolled = actions.filter((a) => a.rolled != null);
-      await logEvent(ctx, args.gameId, "roll", sub.roleId, { round: args.roundNumber, total: rolled.length, successes: rolled.filter((a) => a.success).length });
+/** Shared dice + settlement logic. Called from both the internal pipeline path
+ *  (rollAllInternal) and the facilitator test-harness wrapper (rollAllFacilitator). */
+async function rollAllImpl(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roundNumber: number,
+): Promise<void> {
+  const subs = await ctx.db
+    .query("submissions")
+    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId).eq("roundNumber", roundNumber))
+    .collect();
+  for (const sub of subs) {
+    if (sub.status === "resolved") continue;
+    // Skip if already rolled (idempotent)
+    if (sub.actions.every((a) => a.rolled != null)) continue;
+    const actions = sub.actions.map((action) => {
+      if (action.actionStatus === "draft") return action;
+      const probability = action.probability ?? 50;
+      return { ...action, probability, ...rollDice(probability, action.aiInfluence) };
+    });
+    await ctx.db.patch(sub._id, { actions, status: "resolved" });
+    const rolled = actions.filter((a) => a.rolled != null);
+    await logEvent(ctx, gameId, "roll", sub.roleId, { round: roundNumber, total: rolled.length, successes: rolled.filter((a) => a.success).length });
 
       // ── Process compute transfers ──
       // Only process submitted+rolled actions — drafts were never escrowed.
@@ -1100,93 +1105,114 @@ export const rollAllInternal = internalMutation({
       //   Accepted + Failure → refund target.
       //   Not accepted + Success → take from target, clamped to available balance.
       //   Not accepted + Failure → nothing (no escrow to settle).
-      // Found-a-lab settlement: for each action with foundLab, success → create lab row +
-      // settle escrow; failure → cancel escrow. Does not require compute targets on the action.
-      for (const action of actions) {
-        if (!action.foundLab) continue;
-        if (action.rolled == null || !action.actionId) continue;
-        if (action.actionStatus !== "submitted") continue;
-        const success = !!action.success;
-        if (success) {
-          // Create the lab — owner is the submitter. Unique active name enforced inside helper.
-          try {
-            const { createLabInternal } = await import("./labs");
-            await createLabInternal(ctx, {
-              gameId: args.gameId,
-              name: action.foundLab.name,
-              spec: action.foundLab.spec,
-              rdMultiplier: 1,
-              allocation: { deployment: 33, research: 34, safety: 33 },
-              ownerRoleId: sub.roleId,
-              createdRound: args.roundNumber,
-            });
-            // Settle the founding-cost escrow (pending adjusted row → cache deducts)
-            await settlePendingForAction(ctx, args.gameId, action.actionId);
-          } catch (err) {
-            // Name collision or other failure → treat as failed founding, refund escrow
-            console.warn(`[rollAll] Lab founding failed for "${action.foundLab.name}":`, err);
-            await cancelPendingForAction(ctx, args.gameId, action.actionId);
-          }
-        } else {
-          await cancelPendingForAction(ctx, args.gameId, action.actionId);
+    // Found-a-lab settlement: for each action with foundLab, success → create lab row +
+    // settle escrow; failure → cancel escrow. Does not require compute targets on the action.
+    for (const action of actions) {
+      if (!action.foundLab) continue;
+      if (action.rolled == null || !action.actionId) continue;
+      if (action.actionStatus !== "submitted") continue;
+      const success = !!action.success;
+      if (success) {
+        // Create the lab — owner is the submitter. Unique active name enforced inside helper.
+        try {
+          await createLabInternal(ctx, {
+            gameId,
+            name: action.foundLab.name,
+            spec: action.foundLab.spec,
+            rdMultiplier: 1,
+            allocation: { deployment: 33, research: 34, safety: 33 },
+            ownerRoleId: sub.roleId,
+            createdRound: roundNumber,
+          });
+          // Settle the founding-cost escrow (pending adjusted row → cache deducts)
+          await settlePendingForAction(ctx, gameId, action.actionId);
+        } catch (err) {
+          // Name collision or other failure → treat as failed founding, refund escrow
+          console.warn(`[rollAll] Lab founding failed for "${action.foundLab.name}":`, err);
+          await cancelPendingForAction(ctx, gameId, action.actionId);
         }
-        await logEvent(ctx, args.gameId, success ? "lab_founded" : "lab_founding_failed", sub.roleId, {
-          labName: action.foundLab.name,
-          seedCompute: action.foundLab.seedCompute,
-        });
+      } else {
+        await cancelPendingForAction(ctx, gameId, action.actionId);
       }
-
-      for (const action of actions) {
-        if (!action.computeTargets || action.computeTargets.length === 0) continue;
-        if (action.rolled == null) continue;
-        if (!action.actionId) continue;
-
-        const success = !!action.success;
-        // Ledger settlement: success → settle all pending rows for this action (sends + accepted requests);
-        // failure → cancel (refunds automatic since pending rows never hit the cache).
-        if (success) {
-          await settlePendingForAction(ctx, args.gameId, action.actionId);
-          // Accepted request targets are already represented as pending rows from requests.respond.
-          // If a request target was NOT accepted, the ledger has no pending pair — the submitter
-          // takes compute from the target clamped to availability, per the "soft request" rule.
-          const requestTargets = action.computeTargets.filter((t) => t.direction === "request");
-          for (const target of requestTargets) {
-            const existing = await ctx.db
-              .query("requests")
-              .withIndex("by_from_role", (q) =>
-                q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber).eq("fromRoleId", sub.roleId))
-              .collect();
-            const match = existing.find((r) =>
-              r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId
-            );
-            if (match?.status === "accepted") continue; // already settled above
-            // Soft-take: clamp to target's available balance
-            const targetAvail = await getAvailableStock(ctx, args.gameId, target.roleId, args.roundNumber);
-            const take = Math.min(target.amount, targetAvail);
-            if (take > 0) {
-              await emitPair(ctx, {
-                gameId: args.gameId,
-                roundNumber: args.roundNumber,
-                type: "transferred",
-                status: "settled",
-                fromRoleId: target.roleId,
-                toRoleId: sub.roleId,
-                amount: take,
-                reason: `Soft-take on unaccepted request: ${action.text.slice(0, 80)}`,
-                actionId: action.actionId,
-              });
-            }
-          }
-        } else {
-          await cancelPendingForAction(ctx, args.gameId, action.actionId);
-        }
-
-        await logEvent(ctx, args.gameId, success ? "compute_transfer_success" : "compute_transfer_refund", sub.roleId, {
-          targets: action.computeTargets,
-          actionText: action.text,
-        });
-      }
+      await logEvent(ctx, gameId, success ? "lab_founded" : "lab_founding_failed", sub.roleId, {
+        labName: action.foundLab.name,
+        seedCompute: action.foundLab.seedCompute,
+      });
     }
+
+    for (const action of actions) {
+      if (!action.computeTargets || action.computeTargets.length === 0) continue;
+      if (action.rolled == null) continue;
+      if (!action.actionId) continue;
+
+      const success = !!action.success;
+      // Ledger settlement: success → settle all pending rows for this action (sends + accepted requests);
+      // failure → cancel (refunds automatic since pending rows never hit the cache).
+      if (success) {
+        await settlePendingForAction(ctx, gameId, action.actionId);
+        // Accepted request targets are already represented as pending rows from requests.respond.
+        // If a request target was NOT accepted, the ledger has no pending pair — the submitter
+        // takes compute from the target clamped to availability, per the "soft request" rule.
+        const requestTargets = action.computeTargets.filter((t) => t.direction === "request");
+        for (const target of requestTargets) {
+          const existing = await ctx.db
+            .query("requests")
+            .withIndex("by_from_role", (q) =>
+              q.eq("gameId", gameId).eq("roundNumber", roundNumber).eq("fromRoleId", sub.roleId))
+            .collect();
+          const match = existing.find((r) =>
+            r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId
+          );
+          if (match?.status === "accepted") continue; // already settled above
+          // Soft-take: clamp to target's available balance
+          const targetAvail = await getAvailableStock(ctx, gameId, target.roleId, roundNumber);
+          const take = Math.min(target.amount, targetAvail);
+          if (take > 0) {
+            await emitPair(ctx, {
+              gameId,
+              roundNumber,
+              type: "transferred",
+              status: "settled",
+              fromRoleId: target.roleId,
+              toRoleId: sub.roleId,
+              amount: take,
+              reason: `Soft-take on unaccepted request: ${action.text.slice(0, 80)}`,
+              actionId: action.actionId,
+            });
+          }
+        }
+      } else {
+        await cancelPendingForAction(ctx, gameId, action.actionId);
+      }
+
+      await logEvent(ctx, gameId, success ? "compute_transfer_success" : "compute_transfer_refund", sub.roleId, {
+        targets: action.computeTargets,
+        actionText: action.text,
+      });
+    }
+  }
+}
+
+export const rollAllInternal = internalMutation({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    await rollAllImpl(ctx, args.gameId, args.roundNumber);
+  },
+});
+
+/** Facilitator-triggered wrapper around rollAllImpl. Runs dice + foundLab + compute-target
+ *  settlement without the LLM narration pass. Exists so test harnesses can pin the
+ *  pending→settled/cancelled path on foundLab escrows without burning LLM cost, and so a
+ *  facilitator can advance a stuck round if narration fails. Guarded by facilitator token. */
+export const rollAllFacilitator = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    await rollAllImpl(ctx, args.gameId, args.roundNumber);
   },
 });
 

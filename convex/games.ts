@@ -9,6 +9,7 @@ import {
   createLabInternal,
   mergeLabsInternal,
 } from "./labs";
+import { emitPair } from "./computeLedger";
 
 const LOCK_TTL_MS = 3 * 60 * 1000; // 3 minutes
 
@@ -708,7 +709,6 @@ export const mergeLabs = mutation({
         .first();
       const absorbedStock = absorbedTable?.computeStock ?? 0;
       if (absorbedStock > 0) {
-        const { emitPair } = await import("./computeLedger");
         await emitPair(ctx, {
           gameId: args.gameId,
           roundNumber: game.currentRound,

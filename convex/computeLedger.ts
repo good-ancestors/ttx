@@ -6,8 +6,9 @@
 // stays consistent. Never patch table.computeStock directly.
 
 import { v } from "convex/values";
-import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { mutation, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { assertFacilitator } from "./events";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -294,6 +295,21 @@ export const auditStockInvariantInternal = internalQuery({
 export const clearRegenerableRowsInternal = internalMutation({
   args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
+    return await clearRegenerableRows(ctx, args.gameId, args.roundNumber);
+  },
+});
+
+/** Facilitator-triggered wrapper — used by the test harness to pin the regenerate
+ *  preserves-pending-escrow invariant without running the LLM pipeline. Also usable
+ *  by a facilitator to manually reset a round's narrative-driven compute moves. */
+export const clearRegenerableRowsFacilitator = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
     return await clearRegenerableRows(ctx, args.gameId, args.roundNumber);
   },
 });

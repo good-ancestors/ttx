@@ -271,7 +271,9 @@ describe("foundLab: draft-upgrade preserves foundLab", () => {
         priority: 1,
       },
     );
-    expect(actionIndex).toBe(0);
+    // Don't assume actionIndex=0 — NPC pre-generation writes sample actions on startGame,
+    // so the draft lands wherever the append puts it. Just assert it was returned.
+    expect(actionIndex).toBeGreaterThanOrEqual(0);
 
     const afterDraft = await convex.query(api.submissions.getByGameAndRound, {
       gameId,
@@ -279,9 +281,10 @@ describe("foundLab: draft-upgrade preserves foundLab", () => {
       facilitatorToken: FACILITATOR_TOKEN,
     });
     const draftedSub = afterDraft.find((s) => s._id === submissionId)!;
-    expect(draftedSub.actions[0].actionStatus).toBe("draft");
-    expect(draftedSub.actions[0].foundLab).toBeUndefined();
-    const draftActionId = draftedSub.actions[0].actionId;
+    const draftEntry = draftedSub.actions[actionIndex];
+    expect(draftEntry.actionStatus).toBe("draft");
+    expect(draftEntry.foundLab).toBeUndefined();
+    const draftActionId = draftEntry.actionId;
 
     // 2. saveAndSubmit with the same text AND a foundLab. The draft-upgrade
     //    branch should reuse the same actionId and attach foundLab.
@@ -297,7 +300,7 @@ describe("foundLab: draft-upgrade preserves foundLab", () => {
 
     // Same submission, same action slot, same actionId — draft was upgraded.
     expect(upgrade.submissionId).toBe(submissionId);
-    expect(upgrade.actionIndex).toBe(0);
+    expect(upgrade.actionIndex).toBe(actionIndex);
     expect(upgrade.actionId).toBe(draftActionId);
 
     const afterSubmit = await convex.query(api.submissions.getByGameAndRound, {
@@ -306,9 +309,9 @@ describe("foundLab: draft-upgrade preserves foundLab", () => {
       facilitatorToken: FACILITATOR_TOKEN,
     });
     const upgraded = afterSubmit.find((s) => s._id === submissionId)!;
-    // Still exactly one action — the upgrade must not have appended a duplicate.
-    expect(upgraded.actions).toHaveLength(1);
-    const upgradedAction = upgraded.actions[0];
+    // Action count didn't grow — the upgrade replaced the draft in place rather than appending.
+    expect(upgraded.actions).toHaveLength(draftedSub.actions.length);
+    const upgradedAction = upgraded.actions[actionIndex];
     expect(upgradedAction.actionStatus).toBe("submitted");
     // The fix under test: foundLab field survives the draft-upgrade path.
     expect(upgradedAction.foundLab).toBeDefined();
@@ -334,17 +337,106 @@ describe("foundLab: draft-upgrade preserves foundLab", () => {
   });
 });
 
-// ─── Unreachable from the HTTP client ────────────────────────────────────────
-// The settlement pass (create lab on success / cancel escrow on failure) lives
-// in submissions.rollAllInternal — an internalMutation not reachable from
-// ConvexHttpClient. The public rollAllActions mutation only rolls dice; it
-// does NOT run foundLab settlement. clearRegenerableRows is only reachable
-// via triggerRoll → rollAndNarrate, which runs the LLM.
-//
-// Pinning these would need a facilitator-gated test-only wrapper around
-// rollAllInternal and clearRegenerableRowsInternal — out of scope here.
-describe.skip("foundLab: settlement scenarios (rollAllInternal not public)", () => {
-  it.skip("successful founding creates lab + settles escrow", () => {});
-  it.skip("failed founding cancels escrow without creating lab", () => {});
-  it.skip("narrative regenerate preserves pending foundLab escrow", () => {});
+// ─── Settlement scenarios via rollAllFacilitator harness ─────────────────────
+
+describe("foundLab: settlement via rollAllFacilitator", () => {
+  it("success path: rolled-success creates the lab row, owner = founder, escrow settles cache", async () => {
+    const { gameId, founderTableId } = await setupGameInSubmitPhase();
+    const beforeTable = await convex.query(api.tables.get, { tableId: founderTableId });
+    const before = beforeTable!.computeStock ?? 0;
+    expect(before).toBeGreaterThanOrEqual(15);
+
+    const { submissionId, actionIndex } = await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: founderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: FOUNDER_ROLE,
+      text: "Stand up an eval-first lab",
+      priority: 1,
+      foundLab: { name: "EvalCorp", seedCompute: 15 },
+    });
+    // Force success.
+    await convex.mutation(api.submissions.overrideProbability, {
+      submissionId, actionIndex, probability: 100, facilitatorToken: FACILITATOR_TOKEN,
+    });
+    await convex.mutation(api.submissions.rollAllFacilitator, {
+      gameId, roundNumber: 1, facilitatorToken: FACILITATOR_TOKEN,
+    });
+
+    // Lab exists, owned by founder.
+    const labs = await convex.query(api.labs.getActiveLabs, { gameId });
+    const newLab = labs.find((l) => l.name === "EvalCorp");
+    expect(newLab).toBeDefined();
+    expect(newLab!.ownerRoleId).toBe(FOUNDER_ROLE);
+
+    // Cache deducted by seedCompute (settled escrow).
+    const afterTable = await convex.query(api.tables.get, { tableId: founderTableId });
+    expect(afterTable!.computeStock).toBe(before - 15);
+  });
+
+  it("failure path: rolled-failure cancels escrow, no lab created, cache unchanged", async () => {
+    const { gameId, founderTableId } = await setupGameInSubmitPhase();
+    const beforeTable = await convex.query(api.tables.get, { tableId: founderTableId });
+    const before = beforeTable!.computeStock ?? 0;
+
+    const { submissionId, actionIndex } = await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: founderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: FOUNDER_ROLE,
+      text: "Stand up a doomed lab",
+      priority: 1,
+      foundLab: { name: "ShouldNotExist", seedCompute: 15 },
+    });
+    // Force failure.
+    await convex.mutation(api.submissions.overrideProbability, {
+      submissionId, actionIndex, probability: 0, facilitatorToken: FACILITATOR_TOKEN,
+    });
+    await convex.mutation(api.submissions.rollAllFacilitator, {
+      gameId, roundNumber: 1, facilitatorToken: FACILITATOR_TOKEN,
+    });
+
+    // No lab by that name.
+    const labs = await convex.query(api.labs.getActiveLabs, { gameId });
+    expect(labs.find((l) => l.name === "ShouldNotExist")).toBeUndefined();
+
+    // Cache unchanged (escrow was cancelled, never settled).
+    const afterTable = await convex.query(api.tables.get, { tableId: founderTableId });
+    expect(afterTable!.computeStock).toBe(before);
+  });
+
+  it("regenerate preserves pending foundLab escrow (bug #8 from review)", async () => {
+    const { gameId, founderTableId } = await setupGameInSubmitPhase();
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: founderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: FOUNDER_ROLE,
+      text: "Lab-founding action with pending escrow",
+      priority: 1,
+      foundLab: { name: "PendingLab", seedCompute: 12 },
+    });
+    const tableBefore = await convex.query(api.tables.get, { tableId: founderTableId });
+    const balanceBefore = tableBefore!.computeStock ?? 0;
+
+    // Run regenerate (clears narrative-owned acquired/adjusted/merged settled rows, must
+    // preserve pending actionId-owned rows — that's the fix under test).
+    await convex.mutation(api.computeLedger.clearRegenerableRowsFacilitator, {
+      gameId, roundNumber: 1, facilitatorToken: FACILITATOR_TOKEN,
+    });
+
+    // The pending foundLab escrow must survive: attempting to spend the full balance
+    // on something else would fail if it survived (12u still reserved).
+    await expect(
+      convex.mutation(api.submissions.saveAndSubmit, {
+        tableId: founderTableId,
+        gameId,
+        roundNumber: 1,
+        roleId: FOUNDER_ROLE,
+        text: "Try to send all balance — escrow must still be holding 12u back",
+        priority: 1,
+        computeTargets: [{ roleId: OTHER_ROLE, amount: balanceBefore, direction: "send" }],
+      }),
+    ).rejects.toThrow(/Insufficient compute/);
+  });
 });
