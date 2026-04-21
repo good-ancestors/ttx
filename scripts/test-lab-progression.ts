@@ -50,7 +50,7 @@ function getActions(scenario: Scenario, roleId: string, round: number) {
         { text: "Pivot to building transparent Safer models — decommission Agent-4 and sacrifice capability for trustworthy alignment", priority: 6, secret: false, probability: 80, rolled: 30, success: true },
         { text: "Invest heavily in alignment research and interpretability tools", priority: 4, secret: false, probability: 70, rolled: 40, success: true },
       ],
-      computeAllocation: { users: 30, capability: 20, safety: 50 },
+      computeAllocation: { deployment: 30, research: 20, safety: 50 },
     };
   }
   if (scenario === "slowdown" && roleId === "deepcent-ceo" && round >= 2) {
@@ -60,7 +60,7 @@ function getActions(scenario: Scenario, roleId: string, round: number) {
         { text: "Accelerate Agent-4 development using maximum compute allocation to R&D", priority: 6, secret: false, probability: 70, rolled: 35, success: true },
         { text: "Recruit top talent from OpenBrain as they pivot to safety", priority: 4, secret: false, probability: 60, rolled: 50, success: true },
       ],
-      computeAllocation: { users: 15, capability: 80, safety: 5 },
+      computeAllocation: { deployment: 15, research: 80, safety: 5 },
     };
   }
 
@@ -71,7 +71,7 @@ function getActions(scenario: Scenario, roleId: string, round: number) {
         { text: "Massively accelerate Agent development — all compute to R&D capability", priority: 6, secret: false, probability: 70, rolled: 35, success: true },
         { text: "Recruit international AI talent with state resources", priority: 4, secret: false, probability: 60, rolled: 40, success: true },
       ],
-      computeAllocation: { users: 10, capability: 85, safety: 5 },
+      computeAllocation: { deployment: 10, research: 85, safety: 5 },
     };
   }
   if (scenario === "catchup" && roleId === "conscienta-ceo") {
@@ -81,7 +81,7 @@ function getActions(scenario: Scenario, roleId: string, round: number) {
         { text: "Shift resources toward capability — we need to compete or be left behind", priority: 5, secret: false, probability: 65, rolled: 42, success: true },
         { text: "Partner with government for additional compute access", priority: 3, secret: false, probability: 55, rolled: 50, success: true },
       ],
-      computeAllocation: { users: 25, capability: 65, safety: 10 },
+      computeAllocation: { deployment: 25, research: 65, safety: 10 },
     };
   }
 
@@ -108,24 +108,24 @@ async function runScenario(scenario: Scenario) {
   console.log(`  SCENARIO: ${scenario.toUpperCase()}`);
   console.log(`  Game: ${gameId}`);
   console.log(`${"═".repeat(60)}`);
+  const initialLabs = await convex.query(api.labs.getActiveLabs, { gameId });
   console.log("\nInitial labs:");
-  for (const lab of game.labs) {
-    console.log(`  ${lab.name}: ${lab.rdMultiplier}x / ${lab.computeStock}u [${lab.allocation.capability}% R&D]`);
+  for (const lab of initialLabs) {
+    console.log(`  ${lab.name}: ${lab.rdMultiplier}x [${lab.allocation.research}% research]`);
   }
 
   const tables = await convex.query(api.tables.getByGame, { gameId });
   const enabledTables = (tables ?? []).filter(t => t.enabled);
 
   const results: Record<string, { mult: number; compute: number }[]> = {};
-  for (const lab of game.labs) {
-    results[lab.name] = [{ mult: lab.rdMultiplier, compute: lab.computeStock }];
+  for (const lab of initialLabs) {
+    results[lab.name] = [{ mult: lab.rdMultiplier, compute: 0 }];
   }
 
   for (let round = 1; round <= 3; round++) {
     console.log(`\n── Round ${round} ──`);
 
-    const gameBefore = await convex.query(api.games.get, { gameId });
-    const labsBefore = gameBefore!.labs;
+    const labsBefore = await convex.query(api.labs.getActiveLabs, { gameId });
 
     await convex.mutation(api.games.advancePhase, { gameId, phase: "submit" });
 
@@ -163,14 +163,14 @@ async function runScenario(scenario: Scenario) {
     const data = await res.json();
     console.log(`  ${data.resolvedEvents?.length ?? 0} events, ${Date.now() - t0}ms`);
 
-    const gameAfter = await convex.query(api.games.get, { gameId });
+    const labsAfter = await convex.query(api.labs.getActiveLabs, { gameId });
     const roundKey = `r${round}` as "r1" | "r2" | "r3";
 
     console.log(`\n  Lab results (vs CSV baseline):`);
-    for (const lab of gameAfter!.labs) {
+    for (const lab of labsAfter) {
       const before = labsBefore.find(l => l.name === lab.name);
       if (!before) continue;
-      results[lab.name].push({ mult: lab.rdMultiplier, compute: lab.computeStock });
+      results[lab.name].push({ mult: lab.rdMultiplier, compute: 0 });
 
       const expected = csvBaseline[lab.name as keyof typeof csvBaseline]?.[roundKey];
       const pctOff = expected ? Math.round(((lab.rdMultiplier - expected) / expected) * 100) : null;
@@ -178,7 +178,7 @@ async function runScenario(scenario: Scenario) {
         ? (Math.abs(pctOff) <= 30 ? `✓ ${pctOff >= 0 ? "+" : ""}${pctOff}% vs CSV` : `⚠ ${pctOff >= 0 ? "+" : ""}${pctOff}% vs CSV ${expected}×`)
         : "";
 
-      console.log(`  ${lab.name}: ${before.rdMultiplier}x → ${lab.rdMultiplier}x | ${before.computeStock}u → ${lab.computeStock}u  ${matchStr}`);
+      console.log(`  ${lab.name}: ${before.rdMultiplier}x → ${lab.rdMultiplier}x  ${matchStr}`);
     }
 
     if (round < 3) {
@@ -193,7 +193,7 @@ async function runScenario(scenario: Scenario) {
   console.log(`${"─".repeat(60)}`);
   console.log("  Lab          | Start  | R1     | R2     | R3     | Growth");
   console.log("  -------------|--------|--------|--------|--------|-------");
-  for (const lab of game.labs) {
+  for (const lab of initialLabs) {
     const r = results[lab.name];
     const growth = (r[3].mult / r[0].mult).toFixed(0);
     console.log(`  ${lab.name.padEnd(13)}| ${String(`${r[0].mult  }×`).padEnd(7)}| ${String(`${r[1].mult  }×`).padEnd(7)}| ${String(`${r[2].mult  }×`).padEnd(7)}| ${String(`${r[3].mult  }×`).padEnd(7)}| ${growth}×`);

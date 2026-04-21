@@ -4,7 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO, type Lab } from "@/lib/game-data";
 import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { LabTracker } from "@/components/lab-tracker";
@@ -40,6 +40,22 @@ export default function FacilitatorPage({
 
   // games.get is always subscribed — lightweight, needed for phase detection even when hidden
   const game = useQuery(api.games.get, { gameId });
+  const activeLabsRaw = useQuery(api.labs.getActiveLabs, isVisible ? { gameId } : "skip");
+  const labTables = useQuery(api.tables.getByGame, isVisible ? { gameId } : "skip");
+  const labs: Lab[] = (activeLabsRaw ?? []).map((l) => {
+    const table = labTables?.find((t) => t.roleId === l.ownerRoleId);
+    return {
+      labId: l._id,
+      name: l.name,
+      roleId: l.ownerRoleId,
+      computeStock: table?.computeStock ?? 0,
+      rdMultiplier: l.rdMultiplier,
+      allocation: l.allocation,
+      spec: l.spec,
+      colour: l.colour,
+      status: l.status,
+    };
+  });
 
   // Full tables query — needed for lobby (all 17 tables, including disabled)
   const gamePhase = game?.phase;
@@ -284,7 +300,7 @@ export default function FacilitatorPage({
           </div>
           <GameTimeline
             rounds={roundsFull ?? []}
-            initialLabs={game.labs}
+            initialLabs={labs}
           />
         </div>
       </div>
@@ -406,9 +422,9 @@ export default function FacilitatorPage({
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
           {/* Left sidebar */}
           <div className="flex flex-col gap-4">
-            <RdProgressChart rounds={rounds} currentLabs={game.labs} currentRound={game.currentRound} />
+            <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={game.currentRound} />
             <LabTracker
-              labs={game.labs}
+              labs={labs}
               onMerge={isProjector ? undefined : async (survivor, absorbed) => {
                 await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
               }}
@@ -474,7 +490,7 @@ export default function FacilitatorPage({
           <div className="sticky bottom-0 z-40 bg-navy-dark">
             <FacilitatorCopilot
               gameId={gameId}
-              currentLabs={game.labs}
+              currentLabs={labs}
             />
           </div>
         )}

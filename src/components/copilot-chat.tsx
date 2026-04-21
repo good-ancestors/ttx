@@ -8,7 +8,7 @@ import { useAuthMutation } from "@/lib/hooks";
 import { Wand2, Loader2, Check, Undo2, Send } from "lucide-react";
 
 export interface Snapshot {
-  labs: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
+  labs: { name: string; roleId?: string; computeStock: number; rdMultiplier: number; allocation: { deployment: number; research: number; safety: number } }[];
 }
 
 interface CopilotMessage {

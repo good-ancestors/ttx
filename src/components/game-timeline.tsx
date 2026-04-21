@@ -9,9 +9,11 @@ import {
 
 interface LabSnapshot {
   name: string;
+  roleId?: string;
+  labId?: string;
   computeStock: number;
   rdMultiplier: number;
-  allocation?: { users: number; capability: number; safety: number };
+  allocation?: { deployment: number; research: number; safety: number };
 }
 
 interface RoundData {
@@ -108,33 +110,46 @@ export function GameTimeline({ rounds, initialLabs }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {initialLabs.map((lab) => (
-                  <tr key={lab.name} className="border-b border-navy-light/50">
-                    <td className="py-2 pr-4 text-white font-bold">{lab.name}</td>
-                    <td className="py-2 px-3 text-center">
-                      <span className="text-text-light font-mono">
-                        {lab.computeStock}u / {lab.rdMultiplier}x
-                      </span>
-                    </td>
-                    {labProgressionRounds.map((r) => {
-                      const labAfter = r.labsAfter?.find((l) => l.name === lab.name);
-                      if (!labAfter) {
+                {initialLabs.map((lab) => {
+                  // Follow the same lab through renames/merges by labId (preferred) or roleId.
+                  const identityKey = lab.labId ?? lab.roleId ?? lab.name;
+                  const matchLab = (l: LabSnapshot) => {
+                    if (lab.labId && l.labId) return l.labId === lab.labId;
+                    if (lab.roleId && l.roleId) return l.roleId === lab.roleId;
+                    return l.name === lab.name;
+                  };
+                  const latestName = [...labProgressionRounds]
+                    .reverse()
+                    .map((r) => r.labsAfter?.find(matchLab)?.name)
+                    .find((n): n is string => !!n);
+                  return (
+                    <tr key={identityKey} className="border-b border-navy-light/50">
+                      <td className="py-2 pr-4 text-white font-bold">{latestName ?? lab.name}</td>
+                      <td className="py-2 px-3 text-center">
+                        <span className="text-text-light font-mono">
+                          {lab.computeStock}u / {lab.rdMultiplier}x
+                        </span>
+                      </td>
+                      {labProgressionRounds.map((r) => {
+                        const labAfter = r.labsAfter?.find(matchLab);
+                        if (!labAfter) {
+                          return (
+                            <td key={r.number} className="py-2 px-3 text-center text-navy-muted">
+                              --
+                            </td>
+                          );
+                        }
                         return (
-                          <td key={r.number} className="py-2 px-3 text-center text-navy-muted">
-                            --
+                          <td key={r.number} className="py-2 px-3 text-center">
+                            <span className="text-white font-mono">
+                              {labAfter.computeStock}u / {labAfter.rdMultiplier}x
+                            </span>
                           </td>
                         );
-                      }
-                      return (
-                        <td key={r.number} className="py-2 px-3 text-center">
-                          <span className="text-white font-mono">
-                            {labAfter.computeStock}u / {labAfter.rdMultiplier}x
-                          </span>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

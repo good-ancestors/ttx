@@ -69,7 +69,7 @@ function LabGrid({
   return (
     <div className={fullScreen ? "grid grid-cols-3 gap-5" : "grid grid-cols-2 gap-3"}>
       {labs.map((lab) => {
-        const role = ROLE_MAP.get(lab.roleId);
+        const role = lab.roleId ? ROLE_MAP.get(lab.roleId) : undefined;
         const isMergeSource = mergeSource === lab.name;
         const isMergeTarget = mergeSource !== null && mergeSource !== lab.name;
         return (
@@ -137,10 +137,10 @@ function LabGrid({
                     className="inline-block w-1.5 h-1.5 rounded-[1px]"
                     style={{ backgroundColor: cat.color }}
                   />
-                  {cat.key === "users"
-                    ? "Users"
-                    : cat.key === "capability"
-                      ? "R&D"
+                  {cat.key === "deployment"
+                    ? "Deployment"
+                    : cat.key === "research"
+                      ? "Research"
                       : "Safety"}{" "}
                   {lab.allocation[cat.key]}%
                 </span>
@@ -157,7 +157,7 @@ export function ComputeDotsViz({
   allocation,
   computeStock,
 }: {
-  allocation: { users: number; capability: number; safety: number };
+  allocation: { deployment: number; research: number; safety: number };
   computeStock?: number;
 }) {
   // If computeStock provided: 1 block = 1 unit (proportional). Otherwise: 20 blocks (player preview)

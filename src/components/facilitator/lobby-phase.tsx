@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { api } from "@convex/_generated/api";
-import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, hasCompute, isLabCeo } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, hasCompute } from "@/lib/game-data";
 import { QRCode } from "@/components/qr-codes";
 import { Play, Lock, QrCode, Zap, X } from "lucide-react";
 import type { FacilitatorPhaseProps } from "./types";
@@ -33,7 +33,6 @@ export function LobbyPhase({
   const [pendingStart, setPendingStart] = useState(false);
   const [qrOverlay, setQrOverlay] = useState<string | null>(null);
   const updateTableCompute = useAuthMutation(api.games.updateTableCompute);
-  const updateLabs = useAuthMutation(api.games.updateLabs);
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const host = typeof window !== "undefined" ? window.location.host : "";
@@ -158,14 +157,9 @@ export function LobbyPhase({
                         <InlineComputeInput
                           value={getCompute(table)}
                           onChange={(val) => {
-                            if (role && isLabCeo(role)) {
-                              const updatedLabs = game.labs.map((l) =>
-                                l.roleId === table.roleId ? { ...l, computeStock: val } : l
-                              );
-                              void updateLabs({ gameId, labs: updatedLabs });
-                            } else {
-                              void updateTableCompute({ tableId: table._id, computeStock: val });
-                            }
+                            // All roles (including lab CEOs) update via updateTableCompute which
+                            // emits a ledger facilitator row and keeps labs table consistent.
+                            void updateTableCompute({ tableId: table._id, computeStock: val });
                           }}
                         />
                       ) : (

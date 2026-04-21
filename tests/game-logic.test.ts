@@ -77,7 +77,7 @@ describe("Roles", () => {
     for (const role of ROLES.filter(isLabCeo)) {
       expect(role.defaultCompute).toBeDefined();
       const compute = role.defaultCompute!;
-      const total = compute.users + compute.capability + compute.safety;
+      const total = compute.deployment + compute.research + compute.safety;
       expect(total).toBe(100);
     }
   });
@@ -220,10 +220,10 @@ describe("Compute Categories", () => {
     expect(COMPUTE_CATEGORIES).toHaveLength(3);
   });
 
-  it("keys should be users, capability, safety", () => {
+  it("keys should be deployment, research, safety", () => {
     expect(COMPUTE_CATEGORIES.map((c) => c.key)).toEqual([
-      "users",
-      "capability",
+      "deployment",
+      "research",
       "safety",
     ]);
   });
@@ -237,8 +237,8 @@ describe("Default Labs", () => {
   it("allocations should sum to 100", () => {
     for (const lab of DEFAULT_LABS) {
       const total =
-        lab.allocation.users +
-        lab.allocation.capability +
+        lab.allocation.deployment +
+        lab.allocation.research +
         lab.allocation.safety;
       expect(total).toBe(100);
     }
@@ -285,8 +285,8 @@ describe("Background Labs", () => {
   it("allocations should sum to ~100", () => {
     for (const lab of BACKGROUND_LABS) {
       const total =
-        lab.allocation.users +
-        lab.allocation.capability +
+        lab.allocation.deployment +
+        lab.allocation.research +
         lab.allocation.safety;
       expect(total).toBe(100);
     }
@@ -436,7 +436,7 @@ describe("Compute Distribution", () => {
 
 describe("computeLabGrowth", () => {
   const baseLabs = DEFAULT_LABS.map(l => ({ ...l }));
-  const emptyAllocations = new Map<string, { users: number; capability: number; safety: number }>();
+  const emptyAllocations = new Map<string, { deployment: number; research: number; safety: number }>();
 
   it("increases compute stock for all labs", () => {
     const result = computeLabGrowth(baseLabs, emptyAllocations, 1, 200);
@@ -462,8 +462,8 @@ describe("computeLabGrowth", () => {
   });
 
   it("higher capability allocation increases growth", () => {
-    const highCap = new Map([["OpenBrain", { users: 10, capability: 80, safety: 10 }]]);
-    const lowCap = new Map([["OpenBrain", { users: 80, capability: 10, safety: 10 }]]);
+    const highCap = new Map([["OpenBrain", { deployment: 10, research: 80, safety: 10 }]]);
+    const lowCap = new Map([["OpenBrain", { deployment: 80, research: 10, safety: 10 }]]);
     const highResult = computeLabGrowth(baseLabs, highCap, 1, 200);
     const lowResult = computeLabGrowth(baseLabs, lowCap, 1, 200);
     const highOB = highResult.find(l => l.name === "OpenBrain")!;
@@ -473,9 +473,9 @@ describe("computeLabGrowth", () => {
 
   it("zero capability allocation nearly stalls R&D growth", () => {
     const zeroCap = new Map([
-      ["OpenBrain", { users: 100, capability: 0, safety: 0 }],
-      ["DeepCent", { users: 100, capability: 0, safety: 0 }],
-      ["Conscienta", { users: 100, capability: 0, safety: 0 }],
+      ["OpenBrain", { deployment: 100, research: 0, safety: 0 }],
+      ["DeepCent", { deployment: 100, research: 0, safety: 0 }],
+      ["Conscienta", { deployment: 100, research: 0, safety: 0 }],
     ]);
     const result = computeLabGrowth(baseLabs, zeroCap, 2, 200);
     for (const lab of result) {
@@ -488,7 +488,7 @@ describe("computeLabGrowth", () => {
   it("uses proportional fallback for unknown labs", () => {
     const labsWithNew = [...baseLabs, {
       name: "NewLab", roleId: "custom-newlab", computeStock: 5, rdMultiplier: 1,
-      allocation: { users: 33, capability: 34, safety: 33 },
+      allocation: { deployment: 33, research: 34, safety: 33 },
     }];
     const result = computeLabGrowth(labsWithNew, emptyAllocations, 1, 200);
     const newLab = result.find(l => l.name === "NewLab")!;
@@ -507,13 +507,13 @@ describe("computeLabGrowth", () => {
 
 describe("stripLabForSnapshot", () => {
   it("preserves spec field", () => {
-    const lab = { name: "Test", roleId: "test", computeStock: 10, rdMultiplier: 3, allocation: { users: 50, capability: 40, safety: 10 }, spec: "Follow instructions" };
+    const lab = { name: "Test", roleId: "test", computeStock: 10, rdMultiplier: 3, allocation: { deployment: 50, research: 40, safety: 10 }, spec: "Follow instructions" };
     const stripped = stripLabForSnapshot(lab);
     expect(stripped.spec).toBe("Follow instructions");
   });
 
   it("handles undefined spec", () => {
-    const lab = { name: "Test", roleId: "test", computeStock: 10, rdMultiplier: 3, allocation: { users: 50, capability: 40, safety: 10 } };
+    const lab = { name: "Test", roleId: "test", computeStock: 10, rdMultiplier: 3, allocation: { deployment: 50, research: 40, safety: 10 } };
     const stripped = stripLabForSnapshot(lab);
     expect(stripped.spec).toBeUndefined();
   });

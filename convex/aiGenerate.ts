@@ -23,14 +23,16 @@ type Submission = Doc<"submissions">;
 function npcComputeTransfer(
   role: Role | undefined,
   table: Table,
-  game: { labs: { roleId: string }[] },
+  labs: { roleId?: string }[],
   activeRoleIds: Set<string>,
   endorsedRoleIds?: string[],
 ): { toRoleId: string; amount: number }[] | undefined {
   if (!role || !hasCompute(role) || isLabCeo(role)) return undefined;
   const stock = table.computeStock ?? 0;
-  if (stock <= 0 || game.labs.length === 0) return undefined;
-  const enabledLabRoleIds = game.labs.map((l) => l.roleId).filter((id) => activeRoleIds.has(id));
+  if (stock <= 0 || labs.length === 0) return undefined;
+  const enabledLabRoleIds = labs
+    .map((l) => l.roleId)
+    .filter((id): id is string => !!id && activeRoleIds.has(id));
   if (enabledLabRoleIds.length === 0) return undefined;
   const pct = 0.3 + Math.random() * 0.2; // 30-50%
   const amount = Math.max(1, Math.floor(stock * pct));
@@ -76,6 +78,7 @@ export const generateAll = internalAction({
     const { gameId, roundNumber } = args;
 
     const game = await ctx.runQuery(internal.games.getInternal, { gameId });
+    const labs = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
     if (!game) return;
 
     const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
@@ -113,7 +116,7 @@ export const generateAll = internalAction({
       tableId: string;
       roleId: string;
       actions: { text: string; priority: number; secret?: boolean }[];
-      computeAllocation?: { users: number; capability: number; safety: number };
+      computeAllocation?: { deployment: number; research: number; safety: number };
       endorseHints?: { actionText: string; targetRoleIds: string[] }[];
       computeTransfers?: { toRoleId: string; amount: number }[];
       computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
@@ -133,23 +136,23 @@ export const generateAll = internalAction({
           const role = ROLES.find((r) => r.id === table.roleId);
 
           // NPC lab CEOs: randomize existing allocation slightly
-          let computeAllocation: { users: number; capability: number; safety: number } | undefined;
+          let computeAllocation: { deployment: number; research: number; safety: number } | undefined;
           if (role && isLabCeo(role)) {
-            const lab = game.labs.find((l) => l.roleId === table.roleId);
+            const lab = labs.find((l) => l.roleId === table.roleId);
             if (lab) {
               const shift = Math.floor(Math.random() * 11) - 5; // -5 to +5
-              const cap = Math.max(0, Math.min(100, lab.allocation.capability + shift));
+              const cap = Math.max(0, Math.min(100, lab.allocation.research + shift));
               const safety = Math.max(0, Math.min(100, lab.allocation.safety - shift));
-              const total = lab.allocation.users + cap + safety;
+              const total = lab.allocation.deployment + cap + safety;
               computeAllocation = total > 0
-                ? { users: Math.round(lab.allocation.users * 100 / total), capability: Math.round(cap * 100 / total), safety: 100 - Math.round(lab.allocation.users * 100 / total) - Math.round(cap * 100 / total) }
-                : { users: 34, capability: 33, safety: 33 };
+                ? { deployment: Math.round(lab.allocation.deployment * 100 / total), research: Math.round(cap * 100 / total), safety: 100 - Math.round(lab.allocation.deployment * 100 / total) - Math.round(cap * 100 / total) }
+                : { deployment: 34, research: 33, safety: 33 };
             }
           }
 
           // NPC non-lab has-compute roles: loan to an endorsed or random enabled lab
           const endorsedRoleIds = picked.flatMap((a) => a.endorseHint ?? []);
-          const computeTransfers = npcComputeTransfer(role, table, game, activeRoleIds, endorsedRoleIds);
+          const computeTransfers = npcComputeTransfer(role, table, labs, activeRoleIds, endorsedRoleIds);
 
           pending.push({
             tableId: table._id,
@@ -224,11 +227,11 @@ export const generateAll = internalAction({
       // Safety lead specific context
       let safetyLeadContext = "";
       if (isLabSafety(role) && role.labId) {
-        const lab = game.labs.find((l) => l.roleId === `${role.labId}-ceo`);
+        const lab = labs.find((l) => l.roleId === `${role.labId}-ceo`);
         if (lab) {
           safetyLeadContext += `\nYOUR LAB'S CURRENT STATE (${lab.name}):`;
           safetyLeadContext += `\n- Compute: ${lab.computeStock}u, R&D multiplier: ${lab.rdMultiplier}x`;
-          safetyLeadContext += `\n- Allocation: Users ${lab.allocation.users}%, Capability ${lab.allocation.capability}%, Safety ${lab.allocation.safety}%`;
+          safetyLeadContext += `\n- Allocation: Deployment ${lab.allocation.deployment}%, Research ${lab.allocation.research}%, Safety ${lab.allocation.safety}%`;
           safetyLeadContext += `\nYou cannot directly change the allocation — that's the CEO's decision. But your actions can influence it.`;
         }
         // CEO's previous actions
@@ -238,7 +241,7 @@ export const generateAll = internalAction({
           safetyLeadContext += `\nYOUR CEO'S PREVIOUS ACTIONS:`;
           for (const a of ceoSub.actions) safetyLeadContext += `\n- "${a.text}"`;
           if (ceoSub.computeAllocation) {
-            safetyLeadContext += `\nCEO set allocation: Users ${ceoSub.computeAllocation.users}%, Capability ${ceoSub.computeAllocation.capability}%, Safety ${ceoSub.computeAllocation.safety}%`;
+            safetyLeadContext += `\nCEO set allocation: Deployment ${ceoSub.computeAllocation.deployment}%, Research ${ceoSub.computeAllocation.research}%, Safety ${ceoSub.computeAllocation.safety}%`;
           }
         }
       }
@@ -267,7 +270,7 @@ CURRENT GAME STATE:
 - Round: ${roundNumber} (${currentRound?.label ?? ""})
 
 LAB STATUS:
-${game.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
+${labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%`).join("\n")}
 ${previousContext}${safetyLeadContext}${proposalContext}
 
 YOU ARE PLAYING: ${role.name} — ${role.subtitle}
@@ -289,19 +292,19 @@ Be strategic, realistic, and scenario-appropriate. Do NOT repeat actions from pr
 For each action, you may request endorsement from other players who would benefit from or support that action.
 Output endorseHints: [{ actionText: "<exact action text>", targetRoleIds: ["<role-id>", ...] }] for actions where you want support. Only request endorsement from roles who have a genuine stake in the action's outcome. Empty array if not needed.
 Available roles: ${enabledTables.filter((t) => t.roleId !== table.roleId && t.roleId !== AI_SYSTEMS_ROLE_ID).map((t) => `${t.roleName} (${t.roleId})`).join(", ")}
-${isLabCeo(role) ? `Also set your compute allocation (users/capability/safety percentages summing to 100).
+${isLabCeo(role) ? `Also set your compute allocation (deployment/research/safety percentages summing to 100).
 You may also request compute from government players. Output computeRequestHints: [{ targetRoleId: "<government-role-id>", amount: <number>, actionText: "<reason>" }] if you want to request compute. Empty array if not.
 Available government roles: ${enabledTables.filter((t) => ROLES.find((r) => r.id === t.roleId)?.tags.includes("government")).map((t) => `${t.roleName} (${t.roleId})`).join(", ") || "none"}` : ""}
 ${hasCompute(role) && !isLabCeo(role) ? `You have ${table.computeStock ?? 0} compute units. You may choose to loan some to a lab or another player.
 Output computeTransfers: [{ toRoleId: "<role-id>", amount: <number> }] if you want to send compute. Empty array if not.
-Available labs: ${game.labs.map((l) => `${l.name} (${l.roleId})`).join(", ")}` : ""}
+Available labs: ${labs.map((l) => `${l.name} (${l.roleId})`).join(", ")}` : ""}
 ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifactPrompt}` : ""}`;
 
       try {
         const { output } = await callAnthropic<{
           actions: { text: string; priority: number; secret?: boolean }[];
           endorseHints?: { actionText: string; targetRoleIds: string[] }[];
-          computeAllocation?: { users: number; capability: number; safety: number };
+          computeAllocation?: { deployment: number; research: number; safety: number };
           computeTransfers?: { toRoleId: string; amount: number }[];
           computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
         }>({
@@ -338,7 +341,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
               },
               computeAllocation: {
                 type: "object",
-                properties: { users: { type: "number" }, capability: { type: "number" }, safety: { type: "number" } },
+                properties: { deployment: { type: "number" }, research: { type: "number" }, safety: { type: "number" } },
               },
               computeTransfers: {
                 type: "array",
@@ -379,15 +382,15 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
           // Normalize compute allocation to sum to 100
           let computeAllocation = output.computeAllocation;
           if (computeAllocation) {
-            const rawSum = computeAllocation.users + computeAllocation.capability + computeAllocation.safety;
+            const rawSum = computeAllocation.deployment + computeAllocation.research + computeAllocation.safety;
             if (rawSum > 0 && rawSum !== 100) {
               const scale = 100 / rawSum;
-              const users = Math.round(computeAllocation.users * scale);
-              const capability = Math.round(computeAllocation.capability * scale);
-              const safety = 100 - users - capability;
-              computeAllocation = { users, capability, safety };
+              const deployment = Math.round(computeAllocation.deployment * scale);
+              const research = Math.round(computeAllocation.research * scale);
+              const safety = 100 - deployment - research;
+              computeAllocation = { deployment, research, safety };
             } else if (rawSum <= 0) {
-              computeAllocation = { users: 34, capability: 33, safety: 33 };
+              computeAllocation = { deployment: 34, research: 33, safety: 33 };
             }
           }
           // Filter valid compute transfers (positive amount, valid target, not self)

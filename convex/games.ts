@@ -3,26 +3,14 @@ import { mutation, query, internalMutation, internalQuery, type MutationCtx } fr
 import type { Id } from "./_generated/dataModel";
 import { ROLES, ROUND_CONFIGS, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID, calculatePoolAllocations } from "./gameData";
 import { logEvent, assertFacilitator } from "./events";
-import { labSnapshotValidator } from "./schema";
 import { internal } from "./_generated/api";
+import {
+  getActiveLabsForGame,
+  createLabInternal,
+  mergeLabsInternal,
+} from "./labs";
 
 const LOCK_TTL_MS = 3 * 60 * 1000; // 3 minutes
-
-/** Sync lab compute from game.labs[] to table.computeStock.
- *  game.labs[].computeStock is a derived cache; table.computeStock is the source of truth.
- *  This syncs game.labs → tables after pipeline growth or facilitator overrides. */
-async function syncLabComputeToTables(ctx: MutationCtx, gameId: Id<"games">, labs: { roleId: string; computeStock: number }[]) {
-  const tables = await ctx.db.query("tables")
-    .withIndex("by_game", (q) => q.eq("gameId", gameId))
-    .collect();
-  const tableByRole = new Map(tables.map((t) => [t.roleId, t]));
-  for (const lab of labs) {
-    const table = tableByRole.get(lab.roleId);
-    if (table && table.computeStock !== lab.computeStock) {
-      await ctx.db.patch(table._id, { computeStock: lab.computeStock });
-    }
-  }
-}
 
 function assertNotResolving(game: { resolving?: boolean; resolvingStartedAt?: number }) {
   if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
@@ -43,12 +31,22 @@ async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber:
     .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
     .first();
   if (!round || round.labsAfter) return; // Already snapshotted
+  const labs = await ctx.db.query("labs").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect();
   const tables = await ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect();
+  const stockByRole = new Map(tables.map((t) => [t.roleId, t.computeStock ?? 0] as const));
   await ctx.db.patch(round._id, {
-    labsAfter: game.labs,
-    roleComputeBefore: round.roleComputeBefore,
-    roleComputeAfter: tables.filter((t) => t.computeStock != null).map((t) => ({
-      roleId: t.roleId, roleName: t.roleName, computeStock: t.computeStock ?? 0,
+    labsAfter: labs.map((l) => ({
+      labId: l._id,
+      name: l.name,
+      roleId: l.ownerRoleId,
+      computeStock: l.ownerRoleId ? stockByRole.get(l.ownerRoleId) ?? 0 : 0,
+      rdMultiplier: l.rdMultiplier,
+      allocation: l.allocation,
+      spec: l.spec,
+      colour: l.colour,
+      status: l.status,
+      mergedIntoLabId: l.mergedIntoLabId,
+      createdRound: l.createdRound,
     })),
   });
 }
@@ -77,10 +75,29 @@ export const create = mutation({
       status: "lobby",
       currentRound: 1,
       phase: "discuss",
-      labs: DEFAULT_LABS,
       locked: false,
       joinCode: generateJoinCode(),
     });
+
+    // Seed labs table — one row per DEFAULT_LABS entry, owner = matching CEO role.
+    const LAB_COLOURS: Record<string, string> = {
+      "openbrain-ceo": "#3B82F6",
+      "deepcent-ceo": "#D97706",
+      "conscienta-ceo": "#8B5CF6",
+    };
+    for (const lab of DEFAULT_LABS) {
+      await ctx.db.insert("labs", {
+        gameId,
+        name: lab.name,
+        spec: lab.spec,
+        rdMultiplier: lab.rdMultiplier,
+        allocation: lab.allocation,
+        ownerRoleId: lab.roleId,
+        colour: LAB_COLOURS[lab.roleId] ?? "#64748B",
+        status: "active",
+        createdRound: 1,
+      });
+    }
 
     // Create tables for all roles — required roles are always enabled,
     // optional roles enabled up to tableCount. All start as AI-controlled
@@ -104,10 +121,15 @@ export const create = mutation({
     // Lab CEO compute — table.computeStock is the single source of truth for ALL roles
     const labComputeByRole = new Map(DEFAULT_LABS.map((l) => [l.roleId, l.computeStock]));
 
-    // Second pass: create tables with pool-aware starting compute
+    // Second pass: create tables with pool-aware starting compute.
+    // Stock is seeded via the ledger — `starting` row per role — so computeTransactions
+    // is the authoritative history. table.computeStock is a cache; we set it here
+    // directly to avoid circular "insert table then emit ledger row" ordering issues,
+    // but emitTransaction will keep them in sync from this point forward.
     for (const role of ROLES) {
       const labStock = labComputeByRole.get(role.id);
       const poolStock = poolAllocations.get(role.id);
+      const initialStock = labStock ?? (poolStock && poolStock > 0 ? poolStock : undefined);
       await ctx.db.insert("tables", {
         gameId,
         roleId: role.id,
@@ -116,8 +138,20 @@ export const create = mutation({
         connected: false,
         controlMode: "npc",
         enabled: enabledRoleIds.has(role.id),
-        computeStock: labStock ?? (poolStock && poolStock > 0 ? poolStock : undefined),
+        computeStock: initialStock,
       });
+      if (initialStock != null && initialStock > 0) {
+        await ctx.db.insert("computeTransactions", {
+          gameId,
+          roundNumber: 1,
+          createdAt: Date.now(),
+          type: "starting",
+          status: "settled",
+          roleId: role.id,
+          amount: initialStock,
+          reason: "Starting stock",
+        });
+      }
     }
 
     // Create all 3 rounds
@@ -160,6 +194,14 @@ export const getForPlayer = query({
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
     if (!game) return null;
+    // Active labs + cached computeStock from tables for display.
+    const [labs, tables] = await Promise.all([
+      ctx.db.query("labs")
+        .withIndex("by_game_and_status", (q) => q.eq("gameId", args.gameId).eq("status", "active"))
+        .collect(),
+      ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
+    ]);
+    const stockByRole = new Map(tables.map((t) => [t.roleId, t.computeStock ?? 0] as const));
     return {
       _id: game._id,
       _creationTime: game._creationTime,
@@ -167,9 +209,17 @@ export const getForPlayer = query({
       currentRound: game.currentRound,
       phase: game.phase,
       phaseEndsAt: game.phaseEndsAt,
-      labs: game.labs,
+      labs: labs.map((l) => ({
+        labId: l._id,
+        name: l.name,
+        roleId: l.ownerRoleId,
+        computeStock: l.ownerRoleId ? stockByRole.get(l.ownerRoleId) ?? 0 : 0,
+        rdMultiplier: l.rdMultiplier,
+        allocation: l.allocation,
+        spec: l.spec,
+        colour: l.colour,
+      })),
       locked: game.locked,
-      // Excluded: pipelineStatus, resolving, resolvingStartedAt, resolveNonce, computeShareOverrides
     };
   },
 });
@@ -218,15 +268,16 @@ export const remove = mutation({
       throw new Error("Type DELETE to confirm");
     }
     // Fetch all related data in parallel
-    const [tables, submissions, rounds, requests, events] = await Promise.all([
+    const [tables, submissions, rounds, requests, events, labs, ledger] = await Promise.all([
       ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
       ctx.db.query("submissions").withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId)).collect(),
       ctx.db.query("rounds").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
       ctx.db.query("requests").withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId)).collect(),
       ctx.db.query("events").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
+      ctx.db.query("labs").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
+      ctx.db.query("computeTransactions").withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId)).collect(),
     ]);
-    // Delete all documents
-    const allDocs = [...tables, ...submissions, ...rounds, ...requests, ...events];
+    const allDocs = [...tables, ...submissions, ...rounds, ...requests, ...events, ...labs, ...ledger];
     for (const doc of allDocs) await ctx.db.delete(doc._id);
     await ctx.db.delete(args.gameId);
   },
@@ -258,17 +309,36 @@ export const advancePhase = mutation({
   },
 });
 
+/** Bulk-patch structural fields across labs. Compute stock changes must go through
+ *  updateTableCompute which emits a ledger facilitator row. */
 export const updateLabs = mutation({
   args: {
     gameId: v.id("games"),
-    labs: v.array(labSnapshotValidator),
+    patches: v.array(v.object({
+      labId: v.id("labs"),
+      name: v.optional(v.string()),
+      spec: v.optional(v.string()),
+      rdMultiplier: v.optional(v.number()),
+      allocation: v.optional(v.object({
+        deployment: v.number(), research: v.number(), safety: v.number(),
+      })),
+      ownerRoleId: v.optional(v.union(v.string(), v.null())),
+    })),
     facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
-    await ctx.db.patch(args.gameId, { labs: args.labs });
-    // Sync lab compute to tables (table.computeStock is the source of truth)
-    await syncLabComputeToTables(ctx, args.gameId, args.labs);
+    for (const p of args.patches) {
+      const lab = await ctx.db.get(p.labId);
+      if (!lab || lab.gameId !== args.gameId) continue;
+      const patch: Partial<typeof lab> = {};
+      if (p.name !== undefined) patch.name = p.name;
+      if (p.spec !== undefined) patch.spec = p.spec;
+      if (p.rdMultiplier !== undefined) patch.rdMultiplier = p.rdMultiplier;
+      if (p.allocation !== undefined) patch.allocation = p.allocation;
+      if (p.ownerRoleId !== undefined) patch.ownerRoleId = p.ownerRoleId ?? undefined;
+      if (Object.keys(patch).length > 0) await ctx.db.patch(p.labId, patch);
+    }
   },
 });
 
@@ -284,12 +354,10 @@ export const updateLabSpec = mutation({
     if (args.spec.length > 2000) {
       throw new Error(`Lab spec too long: ${args.spec.length}/2000 characters`);
     }
-    const game = await ctx.db.get(args.gameId);
-    if (!game) return;
-    const updatedLabs = game.labs.map((lab) =>
-      lab.name === args.labName ? { ...lab, spec: args.spec } : lab
-    );
-    await ctx.db.patch(args.gameId, { labs: updatedLabs });
+    const labs = await getActiveLabsForGame(ctx, args.gameId);
+    const lab = labs.find((l) => l.name === args.labName);
+    if (!lab) return;
+    await ctx.db.patch(lab._id, { spec: args.spec });
   },
 });
 
@@ -301,21 +369,30 @@ export const updateTableCompute = mutation({
   },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
-    await ctx.db.patch(args.tableId, { computeStock: args.computeStock });
-
-    // Sync to game.labs[] cache if this table is a lab CEO
     const table = await ctx.db.get(args.tableId);
-    if (table) {
-      const game = await ctx.db.get(table.gameId);
-      if (game) {
-        const labIndex = game.labs.findIndex((l) => l.roleId === table.roleId);
-        if (labIndex !== -1) {
-          const updatedLabs = [...game.labs];
-          updatedLabs[labIndex] = { ...updatedLabs[labIndex], computeStock: args.computeStock };
-          await ctx.db.patch(table.gameId, { labs: updatedLabs });
-        }
-      }
+    if (!table) return;
+    const game = await ctx.db.get(table.gameId);
+    if (!game) return;
+
+    // Facilitator-edit path: write a `facilitator` ledger row for the delta. The helper
+    // updates table.computeStock cache. Also keep the game.labs[] cache in sync if this is a lab CEO.
+    const currentStock = table.computeStock ?? 0;
+    const delta = args.computeStock - currentStock;
+    if (delta !== 0) {
+      await ctx.db.insert("computeTransactions", {
+        gameId: table.gameId,
+        roundNumber: game.currentRound,
+        createdAt: Date.now(),
+        type: "facilitator",
+        status: "settled",
+        roleId: table.roleId,
+        amount: delta,
+        reason: "Facilitator direct compute edit",
+      });
+      await ctx.db.patch(args.tableId, { computeStock: args.computeStock });
     }
+
+    // Labs table doesn't store compute — nothing else to sync.
   },
 });
 
@@ -386,15 +463,12 @@ export const restoreSnapshot = mutation({
     if (!round) throw new Error(`Round ${args.roundNumber} not found for game ${args.gameId}`);
 
     // Choose before or after snapshot
-    const labs = args.useBefore ? round.labsBefore : round.labsAfter;
+    const labsSnapshot = args.useBefore ? round.labsBefore : round.labsAfter;
     const snapshotType = args.useBefore ? "before" : "after";
-    if (!labs) throw new Error(`No ${snapshotType} snapshot data for round ${args.roundNumber}`);
+    if (!labsSnapshot) throw new Error(`No ${snapshotType} snapshot data for round ${args.roundNumber}`);
 
-    // Restore labs, round, and phase
-    // "Before resolve" → rewind to submit phase of that round (re-resolve)
-    // "After resolve" → rewind to narrate phase of that round (re-narrate or advance)
+    // Restore round + phase; labs table rows are restored below from the snapshot.
     await ctx.db.patch(args.gameId, {
-      labs,
       currentRound: args.roundNumber,
       phase: args.useBefore ? "submit" : "narrate",
       phaseEndsAt: undefined,
@@ -402,29 +476,85 @@ export const restoreSnapshot = mutation({
       pipelineStatus: undefined,
     });
 
+    // Restore labs table: upsert from snapshot by labId; delete any current labs not in snapshot.
+    const currentLabs = await ctx.db.query("labs")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const snapshotIds = new Set(labsSnapshot.map((s) => s.labId));
+    for (const current of currentLabs) {
+      if (!snapshotIds.has(current._id)) {
+        await ctx.db.delete(current._id);
+      }
+    }
+    for (const snap of labsSnapshot) {
+      const existing = currentLabs.find((l) => l._id === snap.labId);
+      const fields = {
+        name: snap.name,
+        spec: snap.spec,
+        rdMultiplier: snap.rdMultiplier,
+        allocation: snap.allocation,
+        ownerRoleId: snap.roleId,
+        status: snap.status,
+        mergedIntoLabId: snap.mergedIntoLabId,
+        createdRound: snap.createdRound,
+      };
+      if (existing) {
+        await ctx.db.patch(snap.labId, { ...fields, colour: snap.colour });
+      } else {
+        // Lab was hard-deleted after target round. Re-insert with a new labId (identity lost,
+        // but restorable is still valuable). Chart queries keyed on labId will see a fresh row.
+        await ctx.db.insert("labs", {
+          gameId: args.gameId,
+          ...fields,
+          colour: snap.colour,
+        });
+      }
+    }
+
     // Clear resolution data on this round if restoring to "before"
     if (args.useBefore) {
       await ctx.db.patch(round._id, {
         resolvedEvents: undefined,
         summary: undefined,
-        computeHolders: undefined,
-        roleComputeAtSubmitOpen: undefined,
         labsAfter: undefined,
-        roleComputeAfter: undefined,
         partialEvents: undefined,
       });
     }
 
-    const roleComputeSnapshot = args.useBefore ? round.roleComputeBefore : round.roleComputeAfter;
-    if (roleComputeSnapshot) {
-      const tables = await ctx.db.query("tables")
-        .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-        .collect();
-      for (const rc of roleComputeSnapshot) {
-        const table = tables.find((t) => t.roleId === rc.roleId);
-        if (table) {
-          await ctx.db.patch(table._id, { computeStock: rc.computeStock });
-        }
+    // Rebuild ledger state to match the restored point-in-time.
+    // - useBefore=true: remove all rows from rounds > targetRound, plus regenerable rows
+    //   (acquired/adjusted/merged) from targetRound itself. Transferred + facilitator rows
+    //   within targetRound remain (player-initiated movements done during the submit phase).
+    // - useBefore=false: remove all rows from rounds > targetRound. Keep targetRound fully.
+    const allTx = await ctx.db.query("computeTransactions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    for (const tx of allTx) {
+      const shouldDelete =
+        tx.roundNumber > args.roundNumber ||
+        (args.useBefore && tx.roundNumber === args.roundNumber &&
+          (tx.type === "acquired" || tx.type === "adjusted" || tx.type === "merged"));
+      if (shouldDelete) {
+        await ctx.db.delete(tx._id);
+      }
+    }
+    // Recompute cached table.computeStock = sum of remaining settled rows per role.
+    const remaining = await ctx.db.query("computeTransactions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const stockByRole = new Map<string, number>();
+    for (const tx of remaining) {
+      if (tx.status !== "settled") continue;
+      stockByRole.set(tx.roleId, (stockByRole.get(tx.roleId) ?? 0) + tx.amount);
+    }
+    const tables = await ctx.db.query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    for (const t of tables) {
+      if (t.computeStock == null) continue;
+      const newStock = Math.max(0, stockByRole.get(t.roleId) ?? 0);
+      if (newStock !== t.computeStock) {
+        await ctx.db.patch(t._id, { computeStock: newStock });
       }
     }
 
@@ -474,33 +604,32 @@ export const addLab = mutation({
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
 
-    // Guard: no duplicate labs for the same role
-    if (game.labs.some((l) => l.roleId === args.roleId)) {
+    const activeLabs = await getActiveLabsForGame(ctx, args.gameId);
+    if (activeLabs.some((l) => l.ownerRoleId === args.roleId)) {
       throw new Error(`Role ${args.roleId} already controls a lab`);
     }
 
-    // Lab creation is metadata only — compute is derived from the table (source of truth).
-    // The role keeps whatever compute they already have. If they have none, they start at 0.
+    // Enable compute tracking if the role's table didn't have it
     const table = await ctx.db.query("tables")
       .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.roleId))
       .first();
-    const computeStock = table?.computeStock ?? 0;
-
-    // Enable compute tracking if the table didn't have it
     if (table && table.computeStock == null) {
       await ctx.db.patch(table._id, { computeStock: 0 });
     }
 
-    const newLab = {
+    await createLabInternal(ctx, {
+      gameId: args.gameId,
       name: args.name,
-      roleId: args.roleId,
-      computeStock,
       rdMultiplier: args.rdMultiplier,
-      allocation: { users: 34, capability: 33, safety: 33 },
-    };
-    await ctx.db.patch(args.gameId, { labs: [...game.labs, newLab] });
+      allocation: { deployment: 34, research: 33, safety: 33 },
+      ownerRoleId: args.roleId,
+      createdRound: game.currentRound,
+    });
 
-    await logEvent(ctx, args.gameId, "lab_added", args.roleId, { name: args.name, computeStock });
+    await logEvent(ctx, args.gameId, "lab_added", args.roleId, {
+      name: args.name,
+      computeStock: table?.computeStock ?? 0,
+    });
   },
 });
 
@@ -524,42 +653,41 @@ export const mergeLabs = mutation({
     if (args.survivorName === args.absorbedName) {
       throw new Error(`Cannot merge lab "${args.survivorName}" with itself`);
     }
-    const survivor = game.labs.find((l) => l.name === args.survivorName);
-    const absorbed = game.labs.find((l) => l.name === args.absorbedName);
+    const activeLabs = await getActiveLabsForGame(ctx, args.gameId);
+    const survivor = activeLabs.find((l) => l.name === args.survivorName);
+    const absorbed = activeLabs.find((l) => l.name === args.absorbedName);
     if (!survivor) throw new Error(`Survivor lab "${args.survivorName}" not found`);
     if (!absorbed) throw new Error(`Absorbed lab "${args.absorbedName}" not found`);
 
-    // Merge: survivor gets absorbed lab's compute, keeps higher multiplier, absorbed is removed
-    const mergedLabs = game.labs
-      .filter((l) => l.name !== args.absorbedName)
-      .map((l) =>
-        l.name === args.survivorName
-          ? {
-              ...l,
-              computeStock: l.computeStock + absorbed.computeStock,
-              rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier),
-            }
-          : l
-      );
+    await mergeLabsInternal(ctx, {
+      survivorLabId: survivor._id,
+      absorbedLabId: absorbed._id,
+    });
 
-    await ctx.db.patch(args.gameId, { labs: mergedLabs });
-
-    // Sync table compute: survivor absorbs absorbed's table compute
-    const [survivorTable, absorbedTable] = await Promise.all([
-      ctx.db.query("tables").withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", survivor.roleId)).first(),
-      ctx.db.query("tables").withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", absorbed.roleId)).first(),
-    ]);
-    if (survivorTable && absorbedTable) {
-      await ctx.db.patch(survivorTable._id, {
-        computeStock: (survivorTable.computeStock ?? 0) + (absorbedTable.computeStock ?? 0),
-      });
-      await ctx.db.patch(absorbedTable._id, { computeStock: 0 });
+    // Emit merged ledger pair for the compute movement if both labs had owners with stock.
+    if (survivor.ownerRoleId && absorbed.ownerRoleId) {
+      const absorbedTable = await ctx.db.query("tables")
+        .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", absorbed.ownerRoleId!))
+        .first();
+      const absorbedStock = absorbedTable?.computeStock ?? 0;
+      if (absorbedStock > 0) {
+        const { emitPair } = await import("./computeLedger");
+        await emitPair(ctx, {
+          gameId: args.gameId,
+          roundNumber: game.currentRound,
+          type: "merged",
+          status: "settled",
+          fromRoleId: absorbed.ownerRoleId,
+          toRoleId: survivor.ownerRoleId,
+          amount: absorbedStock,
+          reason: `Facilitator-triggered merge: ${args.absorbedName} → ${args.survivorName}`,
+        });
+      }
     }
 
-    await logEvent(ctx, args.gameId, "lab_merged", survivor.roleId, {
+    await logEvent(ctx, args.gameId, "lab_merged", survivor.ownerRoleId, {
       survivor: args.survivorName,
       absorbed: args.absorbedName,
-      newComputeStock: survivor.computeStock + absorbed.computeStock,
       newRdMultiplier: Math.max(survivor.rdMultiplier, absorbed.rdMultiplier),
     });
   },
@@ -747,15 +875,6 @@ export const setShareOverridesInternal = internalMutation({
   },
 });
 
-export const updateLabsInternal = internalMutation({
-  args: { gameId: v.id("games"), labs: v.array(labSnapshotValidator) },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.gameId, { labs: args.labs });
-    // Sync post-growth lab compute to tables (table.computeStock is the source of truth)
-    await syncLabComputeToTables(ctx, args.gameId, args.labs);
-  },
-});
-
 export const forceClearResolvingLock = mutation({
   args: { gameId: v.id("games"), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
@@ -785,26 +904,7 @@ export const openSubmissions = mutation({
     const phaseEndsAt = Date.now() + args.durationSeconds * 1000;
     await ctx.db.patch(args.gameId, { phase: "submit", phaseEndsAt });
 
-    // Snapshot compute stocks at submit-open (before any player transfers).
-    // table.computeStock is the single source of truth for all roles (including lab CEOs).
-    const tables = await ctx.db.query("tables")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    const roleComputeAtSubmitOpen = tables
-      .filter((t) => t.computeStock != null)
-      .map((t) => ({
-        roleId: t.roleId,
-        roleName: t.roleName,
-        computeStock: t.computeStock ?? 0,
-      }));
-    const rounds = await ctx.db.query("rounds")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    const round = rounds.find((r) => r.number === game.currentRound);
-    if (round) {
-      await ctx.db.patch(round._id, { roleComputeAtSubmitOpen });
-    }
-
+    // Submit-open snapshot is no longer needed — the ledger preserves full per-event history.
     await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: "submit", durationSeconds: args.durationSeconds });
     await schedulePreGeneration(ctx, args.gameId, game.currentRound);
   },
@@ -874,10 +974,10 @@ export const assignLabController = mutation({
     assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
-    const updatedLabs = game.labs.map((lab) =>
-      lab.name === args.labName ? { ...lab, roleId: args.newRoleId } : lab
-    );
-    await ctx.db.patch(args.gameId, { labs: updatedLabs });
+    const activeLabs = await getActiveLabsForGame(ctx, args.gameId);
+    const lab = activeLabs.find((l) => l.name === args.labName);
+    if (!lab) throw new Error(`Lab "${args.labName}" not found`);
+    await ctx.db.patch(lab._id, { ownerRoleId: args.newRoleId });
     await logEvent(ctx, args.gameId, "lab_controller_assigned", args.newRoleId, {
       labName: args.labName,
     });

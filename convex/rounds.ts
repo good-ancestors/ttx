@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { labSnapshotValidator, labTrajectoryValidator } from "./schema";
+import { labTrajectoryValidator } from "./schema";
 import { assertFacilitator } from "./events";
 
 /** Find a single round by game + number using compound index (1 doc read). */
@@ -85,7 +85,6 @@ export const getForPlayer = query({
         geopoliticalEvents: round.summary.geopoliticalEvents,
         aiStateOfPlay: round.summary.aiStateOfPlay,
       } : undefined,
-      computeHolders: round.computeHolders,
     };
   },
 });
@@ -269,37 +268,45 @@ export const applySummaryInternal = internalMutation({
   },
 });
 
+/** Build a labSnapshotValidator-shaped array from the current labs table + tables cache. */
+async function buildLabSnapshot(ctx: MutationCtx, gameId: Id<"games">) {
+  const [labs, tables] = await Promise.all([
+    ctx.db.query("labs").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect(),
+    ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect(),
+  ]);
+  const stockByRole = new Map(tables.map((t) => [t.roleId, t.computeStock ?? 0] as const));
+  return labs.map((l) => ({
+    labId: l._id,
+    name: l.name,
+    roleId: l.ownerRoleId,
+    computeStock: l.ownerRoleId ? stockByRole.get(l.ownerRoleId) ?? 0 : 0,
+    rdMultiplier: l.rdMultiplier,
+    allocation: l.allocation,
+    spec: l.spec,
+    colour: l.colour,
+    status: l.status,
+    mergedIntoLabId: l.mergedIntoLabId,
+    createdRound: l.createdRound,
+  }));
+}
+
 export const snapshotBeforeInternal = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    labsBefore: v.array(labSnapshotValidator),
-    roleComputeBefore: v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() })),
-  },
+  args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round || round.labsBefore) return; // Already snapshotted
-    await ctx.db.patch(round._id, {
-      labsBefore: args.labsBefore,
-      roleComputeBefore: args.roleComputeBefore,
-    });
+    const labsBefore = await buildLabSnapshot(ctx, args.gameId);
+    await ctx.db.patch(round._id, { labsBefore });
   },
 });
 
 export const snapshotAfterInternal = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    labsAfter: v.array(labSnapshotValidator),
-    roleComputeAfter: v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() })),
-  },
+  args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
-    await ctx.db.patch(round._id, {
-      labsAfter: args.labsAfter,
-      roleComputeAfter: args.roleComputeAfter,
-    });
+    const labsAfter = await buildLabSnapshot(ctx, args.gameId);
+    await ctx.db.patch(round._id, { labsAfter });
   },
 });
 
@@ -339,28 +346,80 @@ export const setAiMetaInternal = internalMutation({
   },
 });
 
-export const setComputeHolders = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    holders: v.array(v.object({
-      roleId: v.string(),
-      name: v.string(),
-      stockBefore: v.number(),
-      produced: v.number(),
-      transferred: v.number(),
-      adjustment: v.number(),
-      adjustmentReason: v.optional(v.string()),
-      stockAfter: v.number(),
-      override: v.optional(v.number()),
-      overrideReason: v.optional(v.string()),
-      sharePct: v.number(),
-      status: v.optional(v.union(v.literal("merged"), v.literal("created"))),
-    })),
-  },
+/** Derived compute holder view for a round — aggregates computeTransactions into the
+ *  {stockBefore, acquired, transferred, adjusted, merged, facilitator, stockAfter} shape
+ *  the ComputeFlowPanel / ComputeDetailTable consume. Replaces the old stored
+ *  round.computeHolders which is now unnecessary. */
+export const getComputeHolderView = query({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (round) await ctx.db.patch(round._id, { computeHolders: args.holders });
+    // All settled rows up to and including this round, for stockAfter computation.
+    const allTx = await ctx.db
+      .query("computeTransactions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const priorRounds = allTx.filter((t) => t.status === "settled" && t.roundNumber < args.roundNumber);
+    const thisRound = allTx.filter((t) => t.roundNumber === args.roundNumber);
+
+    const stockBeforeByRole = new Map<string, number>();
+    for (const tx of priorRounds) {
+      stockBeforeByRole.set(tx.roleId, (stockBeforeByRole.get(tx.roleId) ?? 0) + tx.amount);
+    }
+
+    // Gather roleIds that appear either as holders before this round OR have activity this round.
+    const roleIds = new Set<string>([...stockBeforeByRole.keys(), ...thisRound.map((t) => t.roleId)]);
+
+    // Pull role names from tables (role metadata).
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const roleNameById = new Map(tables.map((t) => [t.roleId, t.roleName] as const));
+
+    const rows: {
+      roleId: string;
+      name: string;
+      stockBefore: number;
+      acquired: number;
+      transferred: number;
+      adjusted: number;
+      merged: number;
+      facilitator: number;
+      stockAfter: number;
+    }[] = [];
+
+    for (const roleId of roleIds) {
+      const stockBefore = Math.max(0, stockBeforeByRole.get(roleId) ?? 0);
+      let acquired = 0, transferred = 0, adjusted = 0, merged = 0, facilitator = 0;
+      for (const tx of thisRound) {
+        if (tx.roleId !== roleId) continue;
+        if (tx.status !== "settled") continue;
+        switch (tx.type) {
+          case "acquired": acquired += tx.amount; break;
+          case "transferred": transferred += tx.amount; break;
+          case "adjusted": adjusted += tx.amount; break;
+          case "merged": merged += tx.amount; break;
+          case "facilitator": facilitator += tx.amount; break;
+          case "starting": /* shown in stockBefore aggregate for round 1 */ break;
+        }
+      }
+      const delta = acquired + transferred + adjusted + merged + facilitator;
+      const stockAfter = Math.max(0, stockBefore + delta);
+      if (stockBefore === 0 && delta === 0) continue; // skip inert rows
+      rows.push({
+        roleId,
+        name: roleNameById.get(roleId) ?? roleId,
+        stockBefore,
+        acquired,
+        transferred,
+        adjusted,
+        merged,
+        facilitator,
+        stockAfter,
+      });
+    }
+
+    return rows.sort((a, b) => b.stockAfter - a.stockAfter);
   },
 });
 

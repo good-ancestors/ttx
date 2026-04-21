@@ -22,12 +22,12 @@ interface Lab {
   roleId: string;
   computeStock: number;
   rdMultiplier: number;
-  allocation: { users: number; capability: number; safety: number };
+  allocation: { deployment: number; research: number; safety: number };
 }
 
 function applyLabUpdates(
   currentLabs: Lab[],
-  updates: { name: string; newComputeStock: number; newRdMultiplier: number; newAllocation: { users: number; capability: number; safety: number } }[],
+  updates: { name: string; newComputeStock: number; newRdMultiplier: number; newAllocation: { deployment: number; research: number; safety: number } }[],
   roundNumber: number
 ): Lab[] {
   const maxMultiplier = roundNumber === 1 ? 15 : roundNumber === 2 ? 100 : 1000;
@@ -40,8 +40,7 @@ function applyLabUpdates(
       rdMultiplier: Math.min(maxMultiplier, Math.max(0, update.newRdMultiplier)),
       allocation: update.newAllocation
         ? {
-            users: Math.round(update.newAllocation.users),
-            capability: Math.round(update.newAllocation.capability),
+            deployment: Math.round(update.newAllocation.deployment), research: Math.round(update.newAllocation.research),
             safety: Math.round(update.newAllocation.safety),
           }
         : lab.allocation,
@@ -86,7 +85,7 @@ describe("Adversarial narrative: lab updates", () => {
 
   it("handles lab compute going extremely negative", () => {
     const adversarialLabs = [
-      { name: "OpenBrain", newComputeStock: -500, newRdMultiplier: 3, newAllocation: { users: 50, capability: 40, safety: 10 } },
+      { name: "OpenBrain", newComputeStock: -500, newRdMultiplier: 3, newAllocation: { deployment: 50, research: 40, safety: 10 } },
     ];
     const result = applyLabUpdates(labsBefore, adversarialLabs, 1);
     const ob = result.find(l => l.name === "OpenBrain")!;
@@ -95,7 +94,7 @@ describe("Adversarial narrative: lab updates", () => {
 
   it("handles lab multiplier exceeding round bounds", () => {
     const adversarialLabs = [
-      { name: "OpenBrain", newComputeStock: 30, newRdMultiplier: 9999, newAllocation: { users: 50, capability: 40, safety: 10 } },
+      { name: "OpenBrain", newComputeStock: 30, newRdMultiplier: 9999, newAllocation: { deployment: 50, research: 40, safety: 10 } },
     ];
     // Round 1: max 15x
     const r1Result = applyLabUpdates(labsBefore, adversarialLabs, 1);
@@ -107,17 +106,17 @@ describe("Adversarial narrative: lab updates", () => {
 
   it("handles allocation percentages that don't sum to 100", () => {
     const adversarialLabs = [
-      { name: "OpenBrain", newComputeStock: 30, newRdMultiplier: 5, newAllocation: { users: 80, capability: 80, safety: 80 } },
+      { name: "OpenBrain", newComputeStock: 30, newRdMultiplier: 5, newAllocation: { deployment: 80, research: 80, safety: 80 } },
     ];
     const result = applyLabUpdates(labsBefore, adversarialLabs, 1);
     const ob = result.find(l => l.name === "OpenBrain")!;
     // Current logic doesn't enforce sum=100 — it just rounds. This documents that.
-    expect(ob.allocation.users + ob.allocation.capability + ob.allocation.safety).toBe(240);
+    expect(ob.allocation.deployment + ob.allocation.research + ob.allocation.safety).toBe(240);
   });
 
   it("handles narrative updating a lab that doesn't exist", () => {
     const adversarialLabs = [
-      { name: "FakeLabInc", newComputeStock: 100, newRdMultiplier: 50, newAllocation: { users: 33, capability: 33, safety: 34 } },
+      { name: "FakeLabInc", newComputeStock: 100, newRdMultiplier: 50, newAllocation: { deployment: 33, research: 33, safety: 34 } },
     ];
     const result = applyLabUpdates(labsBefore, adversarialLabs, 1);
     // Should leave all existing labs unchanged
@@ -246,7 +245,7 @@ describe("Adversarial narrative: injection in output fields", () => {
   it("handles narrative with lab name that tries to match a different lab", () => {
     // What if the AI outputs an update for "OpenBrain" but with DeepCent's data?
     const adversarialLabs = [
-      { name: "OpenBrain", newComputeStock: 100, newRdMultiplier: 50, newAllocation: { users: 0, capability: 100, safety: 0 } },
+      { name: "OpenBrain", newComputeStock: 100, newRdMultiplier: 50, newAllocation: { deployment: 0, research: 100, safety: 0 } },
     ];
     const result = applyLabUpdates(labsBefore, adversarialLabs, 2);
     const ob = result.find(l => l.name === "OpenBrain")!;

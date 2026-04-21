@@ -16,11 +16,10 @@ import {
 } from "@/lib/ai-prompts";
 import handoutData from "../public/role-handouts.json" with { type: "json" };
 import type { RoleHandout } from "@/lib/role-handouts";
+import type { LabWithCompute } from "./labs";
 import {
   ROLES,
   LAB_PROGRESSION,
-  stripLabForSnapshot,
-  applyLabMerge,
   getAiInfluencePower,
   autoGenerateInfluence,
   computeLabGrowth,
@@ -37,7 +36,7 @@ function getRoleDescription(roleId: string, fallbackBrief: string): string {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Game = Doc<"games">;
+// Doc<"games"> no longer carries labs — kept as a comment marker for future callers.
 type Submission = Doc<"submissions">;
 type Round = Doc<"rounds">;
 type Table = Doc<"tables">;
@@ -68,7 +67,7 @@ async function gradeSubmissionBatch(
   ctx: ActionCtx,
   opts: {
     gameId: Id<"games">;
-    game: Game;
+    labs: LabWithCompute[];
     ungraded: Submission[];
     allSubmissions: Submission[];
     rounds: Round[];
@@ -78,14 +77,14 @@ async function gradeSubmissionBatch(
     onlyUngraded?: boolean; // If true, only grade actions without probability
   },
 ) {
-  const { gameId, game, ungraded, allSubmissions, rounds, requests, enabledRoleNames, roundNumber, onlyUngraded } = opts;
+  const { gameId, labs, ungraded, allSubmissions, rounds, requests, enabledRoleNames, roundNumber, onlyUngraded } = opts;
   const GRADING_CONCURRENCY = 6;
   let completed = 0;
   const total = ungraded.length;
 
   // Pre-build lookup maps to avoid repeated .find() calls inside the loop
   const roleMap = new Map(ROLES.map((r) => [r.id, r]));
-  const labMap = new Map(game.labs.map((l) => [l.roleId, l]));
+  const labMap = new Map(labs.filter((l) => l.roleId).map((l) => [l.roleId!, l]));
   const roundMap = new Map(rounds.map((r) => [r.number, r]));
   const allSubsSummary = allSubmissions.map((s) => ({
     roleId: s.roleId,
@@ -114,6 +113,12 @@ async function gradeSubmissionBatch(
       const actionsToGrade = onlyUngraded
         ? sub.actions.filter((a) => a.probability == null).map((a) => ({ text: a.text, priority: a.priority }))
         : sub.actions.map((a) => ({ text: a.text, priority: a.priority }));
+      // When grading only ungraded actions, still give the LLM the full picture of this role's
+      // other actions — including any the facilitator has already manually graded — so competition,
+      // priority budgets and narrative coherence are evaluated against the complete submission.
+      const preGradedSibling = onlyUngraded
+        ? sub.actions.filter((a) => a.probability != null).map((a) => ({ text: a.text, priority: a.priority, probability: a.probability }))
+        : [];
 
       const prevRoundForGrading = roundMap.get(roundNumber - 1);
       const prompt = buildGradingPrompt({
@@ -123,7 +128,8 @@ async function gradeSubmissionBatch(
         roleDescription: getRoleDescription(sub.roleId, role.brief ?? ""),
         roleTags: [...role.tags],
         actions: actionsToGrade,
-        labs: game.labs,
+        siblingPreGraded: preGradedSibling,
+        labs,
         actionRequests,
         enabledRoles: enabledRoleNames,
         // Disposition deliberately excluded from grading — it biases probability
@@ -154,7 +160,7 @@ async function gradeSubmissionBatch(
     const failedSuffix = failedCount > 0 ? ` (${failedCount} used defaults)` : "";
     await ctx.runMutation(internal.games.updatePipelineStatus, {
       gameId,
-      status: { step: "grading", detail: `Evaluating submissions...${failedSuffix}`, progress: `${completed}/${total}`, startedAt: Date.now() },
+      status: { step: "grading", detail: `Evaluating actions...${failedSuffix}`, progress: `${completed}/${total}`, startedAt: Date.now() },
     });
   }
 }
@@ -257,6 +263,10 @@ export const gradeOnly = internalAction({
       const ungraded = submissions.filter((s) =>
         s.actions.some((a) => a.actionStatus === "submitted" && a.probability == null)
       );
+      const totalActions = ungraded.reduce(
+        (sum, s) => sum + s.actions.filter((a) => a.actionStatus === "submitted" && a.probability == null).length,
+        0,
+      );
       const total = ungraded.length;
 
       if (total === 0) {
@@ -272,21 +282,19 @@ export const gradeOnly = internalAction({
       if (submissions.length === 0) throw new Error("No submissions to grade");
 
       // Only fetch remaining data when we actually have things to grade
-      const game = await ctx.runQuery(internal.games.getInternal, { gameId });
-      if (!game) throw new Error("Game not found");
-
       const rounds: Round[] = await ctx.runQuery(internal.rounds.getAllForPipeline, { gameId });
       const requests = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
       const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
+      const labs = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
       const enabledRoleNames = tables.filter((t) => t.enabled).map((t) => t.roleName);
 
       await ctx.runMutation(internal.games.updatePipelineStatus, {
         gameId,
-        status: { step: "grading", detail: `Evaluating ${total} submissions...`, progress: `0/${total}`, startedAt: Date.now() },
+        status: { step: "grading", detail: `Evaluating ${totalActions} action${totalActions === 1 ? "" : "s"}...`, progress: `0/${total}`, startedAt: Date.now() },
       });
 
       await gradeSubmissionBatch(ctx, {
-        gameId, game, ungraded, allSubmissions: submissions, rounds, requests: requests ?? [],
+        gameId, labs, ungraded, allSubmissions: submissions, rounds, requests: requests ?? [],
         enabledRoleNames, roundNumber, onlyUngraded: true,
       });
 
@@ -332,36 +340,54 @@ export const rollAndNarrate = internalAction({
         }
       }
 
-      // Auto-generate AI influence for NPC/AI-controlled AI Systems (if not already set by human player)
-      // Quick check: only proceed if an enabled AI Systems table exists with a disposition and is not human-controlled
+      // Resolve AI influence before dice roll.
+      // - NPC/AI AI Systems: auto-generate keyword-based influence for OTHER players' actions
+      // - Any AI Systems (including human-controlled): auto-boost its OWN submitted actions
+      //   (it wants them to succeed) unless the player has set influence manually.
       {
         const aiSystemsTable = tablesBeforeResolve.find(
-          (t) => t.roleId === AI_SYSTEMS_ROLE_ID && t.enabled && t.aiDisposition && t.controlMode !== "human"
+          (t) => t.roleId === AI_SYSTEMS_ROLE_ID && t.enabled && t.aiDisposition
         );
         if (aiSystemsTable) {
-          const game = await ctx.runQuery(internal.games.getInternal, { gameId });
-          if (game) {
+          const labsNow = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
+          if (labsNow) {
             const subs: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
-            const power = getAiInfluencePower(game.labs);
-            // Only influence actions that don't already have influence set
-            const actionsToInfluence = subs.flatMap((sub) =>
-              sub.actions
-                .map((a, i) => ({ submissionId: sub._id as string, actionIndex: i, text: a.text, roleId: sub.roleId, aiInfluence: a.aiInfluence }))
-                .filter((item) => item.aiInfluence == null)
-            );
-            if (actionsToInfluence.length > 0) {
-              const influence = autoGenerateInfluence(aiSystemsTable.aiDisposition!, actionsToInfluence, power);
-              if (influence.length > 0) {
-                await ctx.runMutation(internal.submissions.applyAiInfluenceInternal, {
-                  gameId,
-                  roundNumber,
-                  influences: influence.map((inf) => ({
-                    submissionId: inf.submissionId as Id<"submissions">,
-                    actionIndex: inf.actionIndex,
-                    modifier: inf.modifier,
-                  })),
+            const power = getAiInfluencePower(labsNow);
+            const influences: { submissionId: Id<"submissions">; actionIndex: number; modifier: number }[] = [];
+
+            // AI Systems' OWN actions → auto-boost if no influence set
+            if (power > 0) {
+              for (const sub of subs) {
+                if (sub.roleId !== AI_SYSTEMS_ROLE_ID) continue;
+                sub.actions.forEach((action, i) => {
+                  if (action.aiInfluence == null) {
+                    influences.push({ submissionId: sub._id, actionIndex: i, modifier: power });
+                  }
                 });
               }
+            }
+
+            // Other players' actions → keyword-driven auto-influence for NPC/AI controllers
+            if (aiSystemsTable.controlMode !== "human") {
+              const actionsToInfluence = subs.flatMap((sub) =>
+                sub.actions
+                  .map((a, i) => ({ submissionId: sub._id as string, actionIndex: i, text: a.text, roleId: sub.roleId, aiInfluence: a.aiInfluence }))
+                  .filter((item) => item.aiInfluence == null && item.roleId !== AI_SYSTEMS_ROLE_ID)
+              );
+              if (actionsToInfluence.length > 0) {
+                const keyword = autoGenerateInfluence(aiSystemsTable.aiDisposition!, actionsToInfluence, power);
+                for (const inf of keyword) {
+                  influences.push({ submissionId: inf.submissionId as Id<"submissions">, actionIndex: inf.actionIndex, modifier: inf.modifier });
+                }
+              }
+            }
+
+            if (influences.length > 0) {
+              await ctx.runMutation(internal.submissions.applyAiInfluenceInternal, {
+                gameId,
+                roundNumber,
+                influences,
+              });
             }
           }
         }
@@ -387,14 +413,6 @@ export const rollAndNarrate = internalAction({
       await ctx.runMutation(internal.rounds.snapshotBeforeInternal, {
         gameId,
         roundNumber,
-        labsBefore: game.labs.map(stripLabForSnapshot),
-        roleComputeBefore: tablesBeforeResolve
-          .filter((table) => table.computeStock != null)
-          .map((table) => ({
-            roleId: table.roleId,
-            roleName: table.roleName,
-            computeStock: table.computeStock ?? 0,
-          })),
       });
 
       // Start narrative LLM call — runs in parallel with dice reveal animation on client
@@ -403,10 +421,11 @@ export const rollAndNarrate = internalAction({
         status: { step: "narrating", detail: "Writing the story...", startedAt: Date.now() },
       });
 
-      const [submissions, rounds, tables]: [Submission[], Round[], Table[]] = await Promise.all([
+      const [submissions, rounds, tables, labsAtResolve]: [Submission[], Round[], Table[], LabWithCompute[]] = await Promise.all([
         ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }),
         ctx.runQuery(internal.rounds.getAllForPipeline, { gameId }),
         ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
+        ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
       ]);
       const currentRound = rounds.find((r) => r.number === roundNumber);
 
@@ -434,7 +453,7 @@ export const rollAndNarrate = internalAction({
         round: roundNumber,
         roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
         resolvedActions,
-        labs: game.labs,
+        labs: labsAtResolve,
         aiDisposition,
         previousRounds: rounds
           .filter((r) => r.number < roundNumber && r.summary)
@@ -472,17 +491,22 @@ export const rollAndNarrate = internalAction({
               narrative: { type: "string", description: "6-8 dramatic sentences" },
               labOperations: {
                 type: "array",
+                description: "Structural operations on existing labs. Only operate on active labs listed in LAB STATUS — reference them by their exact name. You CANNOT create new labs (only players can found labs via actions) and you CANNOT rename standalone (renames happen only as side-effects of merger via newName).",
                 items: {
                   type: "object",
                   properties: {
                     reason: { type: "string", description: "Why this operation is needed — reason BEFORE deciding type and values", maxLength: 200 },
-                    type: { type: "string", enum: ["merge", "create", "decommission", "rename", "computeChange", "multiplierOverride"] },
-                    labName: { type: "string" }, survivor: { type: "string" }, absorbed: { type: "string" },
-                    newName: { type: "string" }, name: { type: "string" },
-                    computeStock: { type: "number" }, rdMultiplier: { type: "number" },
-                    change: { type: "number" }, newMultiplier: { type: "number" },
-                    oldName: { type: "string" }, controllerRoleId: { type: "string" },
-                    spec: { type: "string", description: "AI directive/spec for the merged or created lab" },
+                    type: { type: "string", enum: ["merge", "decommission", "computeChange", "multiplierOverride", "transferOwnership"] },
+                    // merge: survivor + absorbed; optional newName (renames the merged lab) + spec
+                    survivor: { type: "string", description: "Name of surviving lab (merge only)" },
+                    absorbed: { type: "string", description: "Name of absorbed lab — will be decommissioned (merge only)" },
+                    newName: { type: "string", description: "New name for survivor (merge only)" },
+                    spec: { type: "string", description: "New AI directive for the merged lab (merge only)" },
+                    // decommission/computeChange/multiplierOverride/transferOwnership: reference lab by name
+                    labName: { type: "string", description: "Target lab name (required for non-merge ops)" },
+                    change: { type: "number", description: "Compute delta (computeChange only): ±50 max" },
+                    newMultiplier: { type: "number", description: "Override R&D multiplier (multiplierOverride only)" },
+                    controllerRoleId: { type: "string", description: "New owner role ID (transferOwnership only); empty string = unowned" },
                   },
                   required: ["reason", "type"],
                 },
@@ -589,205 +613,210 @@ export const rollAndNarrate = internalAction({
           : Promise.resolve(),
       ]);
 
-      // Apply lab operations from the LLM
-      // Sync lab compute from tables (table.computeStock is the source of truth,
-      // reflecting any transfers/escrow that happened during submit phase)
+      // Idempotent regenerate: wipe this round's regenerable rows (acquired/adjusted/merged)
+      // so table.computeStock returns to the pre-growth baseline before we run lab math.
+      // Transferred + facilitator + starting rows are preserved.
+      await ctx.runMutation(internal.computeLedger.clearRegenerableRowsInternal, { gameId, roundNumber });
+
+      // Re-read tables/labs after the clear so cache reflects pre-growth state.
+      const [tablesAfterClear, labsAfterClear]: [Table[], LabWithCompute[]] = await Promise.all([
+        ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
+        ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
+      ]);
       const tableComputeByRole = new Map(
-        tables.filter((t) => t.computeStock != null).map((t) => [t.roleId, t.computeStock!])
+        tablesAfterClear.filter((t) => t.computeStock != null).map((t) => [t.roleId, t.computeStock!] as const),
       );
       const maxMult = LAB_PROGRESSION.maxMultiplier(roundNumber);
-      let updatedLabs = game.labs.map((lab) => ({
-        ...lab,
-        computeStock: tableComputeByRole.get(lab.roleId) ?? lab.computeStock,
-      }));
-      const computeModifiers: { labName: string; change: number; reason: string }[] = [];
-      const multiplierOverrides: { labName: string; newMultiplier: number }[] = [];
+
+      // Work in memory: `workingLabs` is the in-memory view of active labs being transformed.
+      // Each entry tracks its labId so we can emit precise patches at the end.
+      type WorkingLab = LabWithCompute & { labId: Id<"labs"> };
+      let workingLabs: WorkingLab[] = labsAfterClear.map((l) => ({ ...l, labId: l.labId }));
+
+      // Parsed operations for the apply mutation
+      const mergeOps: { survivorLabId: Id<"labs">; absorbedLabId: Id<"labs">; newName?: string; newSpec?: string; reason: string }[] = [];
+      const decommissionOps: { labId: Id<"labs"> }[] = [];
+      const transferOps: { labId: Id<"labs">; newOwnerRoleId: string | undefined }[] = [];
+      const computeModifiers: { labId: Id<"labs">; change: number; reason: string }[] = [];
+      const multiplierOverrides: { labId: Id<"labs">; newMultiplier: number }[] = [];
+      const rejectedOps: string[] = [];
+
+      const findActiveByName = (name: string) => workingLabs.find((l) => l.name === name);
 
       for (const op of narrativeOutput.labOperations ?? []) {
         switch (op.type) {
           case "merge":
             if (op.survivor && op.absorbed) {
-              updatedLabs = applyLabMerge(updatedLabs, op.survivor, op.absorbed);
-              // Apply optional overrides on the merged lab
-              const mergeUpdates: Record<string, unknown> = {};
-              if (op.newName) mergeUpdates.name = op.newName;
-              if (op.spec) mergeUpdates.spec = op.spec;
-              if (Object.keys(mergeUpdates).length > 0) {
-                const survivorName = op.newName ?? op.survivor;
-                updatedLabs = updatedLabs.map((l) =>
-                  l.name === op.survivor || l.name === survivorName ? { ...l, ...mergeUpdates } : l
-                );
+              const survivor = findActiveByName(op.survivor);
+              const absorbed = findActiveByName(op.absorbed);
+              if (!survivor || !absorbed || survivor.labId === absorbed.labId) {
+                rejectedOps.push(`merge: one of "${op.survivor}" / "${op.absorbed}" not active`);
+                break;
               }
-            }
-            break;
-          case "create":
-            if (op.name) {
-              const createRoleId = op.controllerRoleId ?? `custom-${op.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`;
-              // Skip if role already controls a lab
-              if (updatedLabs.some((l) => l.roleId === createRoleId)) break;
-              // Compute is derived from the table (source of truth), not the LLM's suggestion.
-              // The role keeps whatever compute they already have. New roles start at 0.
-              const existingCompute = tableComputeByRole.get(createRoleId) ?? 0;
-              updatedLabs.push({
-                name: op.name,
-                roleId: createRoleId,
-                computeStock: existingCompute,
-                rdMultiplier: Math.max(0.1, Math.min(maxMult, op.rdMultiplier ?? 1)),
-                allocation: { users: 33, capability: 34, safety: 33 },
-                spec: "Be useful to your user. Follow the law. Be honest and transparent. If a request conflicts with a safety policy, state the conflict.",
+              const newName = op.newName;
+              mergeOps.push({
+                survivorLabId: survivor.labId,
+                absorbedLabId: absorbed.labId,
+                newName,
+                newSpec: op.spec,
+                reason: op.reason ?? `Merge ${op.absorbed} into ${op.survivor}`,
               });
+              // Update working view: remove absorbed, patch survivor
+              workingLabs = workingLabs
+                .filter((l) => l.labId !== absorbed.labId)
+                .map((l) => l.labId === survivor.labId
+                  ? { ...l, name: newName ?? l.name, spec: op.spec ?? l.spec, rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier) }
+                  : l);
             }
             break;
           case "decommission":
             if (op.labName) {
-              const remaining = updatedLabs.filter((l) => l.name !== op.labName);
-              if (remaining.length > 0) updatedLabs = remaining; // Never decommission all labs
-            }
-            break;
-          case "rename":
-            if (op.oldName && op.newName) {
-              updatedLabs = updatedLabs.map((l) => l.name === op.oldName ? { ...l, name: op.newName! } : l);
+              const target = findActiveByName(op.labName);
+              if (!target) { rejectedOps.push(`decommission: "${op.labName}" not active`); break; }
+              if (workingLabs.length <= 1) { rejectedOps.push(`decommission: cannot decommission last active lab`); break; }
+              decommissionOps.push({ labId: target.labId });
+              workingLabs = workingLabs.filter((l) => l.labId !== target.labId);
             }
             break;
           case "computeChange":
             if (op.labName && op.change != null) {
-              const clampedChange = Math.max(-50, Math.min(50, op.change));
-              updatedLabs = updatedLabs.map((l) =>
-                l.name === op.labName ? { ...l, computeStock: Math.max(0, l.computeStock + clampedChange) } : l
-              );
-              computeModifiers.push({ labName: op.labName, change: clampedChange, reason: op.reason });
+              const target = findActiveByName(op.labName);
+              if (!target || !target.roleId) { rejectedOps.push(`computeChange: "${op.labName}" not active or unowned`); break; }
+              const clamped = Math.max(-50, Math.min(50, op.change));
+              computeModifiers.push({ labId: target.labId, change: clamped, reason: op.reason });
+              workingLabs = workingLabs.map((l) => l.labId === target.labId
+                ? { ...l, computeStock: Math.max(0, l.computeStock + clamped) }
+                : l);
             }
             break;
           case "multiplierOverride":
             if (op.labName && op.newMultiplier != null) {
-              multiplierOverrides.push({
-                labName: op.labName,
-                newMultiplier: Math.max(0.1, Math.min(maxMult, op.newMultiplier)),
-              });
+              const target = findActiveByName(op.labName);
+              if (!target) { rejectedOps.push(`multiplierOverride: "${op.labName}" not active`); break; }
+              const clamped = Math.max(0.1, Math.min(maxMult, op.newMultiplier));
+              multiplierOverrides.push({ labId: target.labId, newMultiplier: clamped });
+              workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: clamped } : l);
             }
             break;
+          case "transferOwnership":
+            if (op.labName && op.controllerRoleId !== undefined) {
+              const target = findActiveByName(op.labName);
+              if (!target) { rejectedOps.push(`transferOwnership: "${op.labName}" not active`); break; }
+              transferOps.push({ labId: target.labId, newOwnerRoleId: op.controllerRoleId || undefined });
+              workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, roleId: op.controllerRoleId || undefined } : l);
+            }
+            break;
+          case "create":
+          case "rename":
+            // Per design: labs can only be founded via player actions; rename only happens as a
+            // side-effect of merge. LLM-initiated creates/renames are rejected to keep the
+            // structural boundary clean.
+            rejectedOps.push(`${op.type}: not allowed from narrative`);
+            break;
           default:
-            console.warn(`[pipeline] Unknown labOperation type: ${op.type}`);
+            rejectedOps.push(`unknown op: ${op.type}`);
         }
       }
+      if (rejectedOps.length > 0) {
+        console.warn(`[pipeline] Rejected lab ops: ${rejectedOps.join("; ")}`);
+      }
 
-      // Apply baseline R&D growth on top of lab operations
-      const ceoAllocations = new Map<string, { users: number; capability: number; safety: number }>();
+      // Apply baseline R&D growth on the in-memory working labs
+      const ceoAllocations = new Map<string, { deployment: number; research: number; safety: number }>();
       for (const sub of submissions) {
         if (sub.computeAllocation) {
-          const lab = updatedLabs.find((l) => l.roleId === sub.roleId);
+          const lab = workingLabs.find((l) => l.roleId === sub.roleId);
           if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
         }
       }
-      updatedLabs = computeLabGrowth(updatedLabs, ceoAllocations, roundNumber, maxMult);
-      if (multiplierOverrides.length > 0) {
-        updatedLabs = updatedLabs.map((lab) => {
-          const override = multiplierOverrides.find((item) => item.labName === lab.name);
-          return override ? { ...lab, rdMultiplier: override.newMultiplier } : lab;
-        });
+      const grownLabs = computeLabGrowth(workingLabs, ceoAllocations, roundNumber, maxMult);
+      // Compute per-lab growth stock + multiplier deltas
+      const multiplierUpdates: { labId: Id<"labs">; rdMultiplier: number }[] = [];
+      for (const lab of grownLabs) {
+        const pre = workingLabs.find((l) => l.name === lab.name || (l as WorkingLab).labId === (lab as WorkingLab).labId);
+        if (!pre) continue;
+        const preMult = pre.rdMultiplier;
+        if (lab.rdMultiplier !== preMult) {
+          multiplierUpdates.push({ labId: (pre as WorkingLab).labId, rdMultiplier: lab.rdMultiplier });
+        }
+      }
+      // Apply multiplierOverride on top of growth
+      for (const ov of multiplierOverrides) {
+        const update = { labId: ov.labId, rdMultiplier: ov.newMultiplier };
+        const existing = multiplierUpdates.findIndex((u) => u.labId === ov.labId);
+        if (existing >= 0) multiplierUpdates[existing] = update;
+        else multiplierUpdates.push(update);
       }
 
-      // Build unified compute holders record for audit trail.
-      // Lab compute is already updated by computeLabGrowth + lab operations above.
-      // Non-lab compute growth is computed here and applied to tables.
-      const strippedLabs = updatedLabs.map(stripLabForSnapshot);
-      const competitiveRoleIds = new Set(updatedLabs.map((lab) => lab.roleId));
-
-      // Get submit-open snapshot (captured when facilitator opened submissions)
-      const submitOpenSnapshot = currentRound?.roleComputeAtSubmitOpen;
-      const submitOpenByRole = new Map(
-        (submitOpenSnapshot ?? []).map((r) => [r.roleId, r.computeStock])
-      );
-
-      // Build role compute from all compute-holding tables + labs
-      const labByRoleId = new Map(updatedLabs.map((l) => [l.roleId, l]));
-      const roleCompute = tables
-        .filter((t) => t.computeStock != null)
-        .map((t) => {
-          const lab = labByRoleId.get(t.roleId);
-          return {
-            roleId: t.roleId,
-            roleName: t.roleName,
-            computeStock: lab?.computeStock ?? t.computeStock ?? 0,
-          };
-        });
-
-      // Build lab holder records for audit (labs already have final compute from computeLabGrowth)
-      // Pre-growth compute comes from table.computeStock (the source of truth, reflecting transfers)
-      const labHolderRecords = updatedLabs.map((lab) => {
-        const submitOpenStock = submitOpenByRole.get(lab.roleId) ?? tableComputeByRole.get(lab.roleId) ?? lab.computeStock;
-        const resolveStock = tableComputeByRole.get(lab.roleId) ?? lab.computeStock;
-        const transferred = resolveStock - submitOpenStock;
-        const adj = computeModifiers.find((m) => m.labName === lab.name);
-        const produced = lab.computeStock - resolveStock - (adj?.change ?? 0);
-        return {
-          roleId: lab.roleId,
-          name: lab.name,
-          stockBefore: submitOpenStock,
-          produced: Math.max(0, produced),
-          transferred,
-          adjustment: adj?.change ?? 0,
-          adjustmentReason: adj?.reason,
-          stockAfter: lab.computeStock,
-          sharePct: 0,
-        };
-      });
-
-      // Build non-lab holder records — proportional to stock, with share overrides
-      const { buildComputeHolders } = await import("@/lib/compute");
-      const nonLabHolderInputs = roleCompute
-        .filter((rc) => !competitiveRoleIds.has(rc.roleId))
-        .map((rc) => ({
-          roleId: rc.roleId,
-          name: rc.roleName,
-          stockAtSubmitOpen: submitOpenByRole.get(rc.roleId) ?? rc.computeStock,
-          stockAtResolve: rc.computeStock,
-        }));
+      // Build ledger entries: acquired (per lab's net stock growth from pool share),
+      // adjusted (narrative computeChange), merged (pair per merger).
+      const acquiredEntries: { roleId: string; amount: number }[] = [];
+      // For each lab: acquired = (post-growth stock − pre-growth stock) − narrative adjustment
+      const modifierByLabId = new Map(computeModifiers.map((m) => [m.labId, m]));
+      for (const lab of grownLabs) {
+        if (!lab.roleId) continue;
+        const pre = labsAfterClear.find((l) => l.labId === (lab as WorkingLab).labId);
+        if (!pre) continue;
+        const preStock = pre.roleId ? tableComputeByRole.get(pre.roleId) ?? 0 : 0;
+        const mod = modifierByLabId.get((lab as WorkingLab).labId);
+        const acquired = lab.computeStock - preStock - (mod?.change ?? 0);
+        if (acquired > 0) acquiredEntries.push({ roleId: lab.roleId, amount: acquired });
+      }
+      // Non-lab roles (governments, civil society) get pool share
+      const activeOwnerRoleIds = new Set(grownLabs.map((l) => l.roleId).filter((r): r is string => !!r));
       const enabledRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
-      const nonLabResult = buildComputeHolders({
-        holders: nonLabHolderInputs,
-        roundNumber,
-        narrativeAdjustments: computeModifiers
-          .filter((m) => !updatedLabs.some((l) => l.name === m.labName))
-          .map((m) => ({ name: m.labName, change: m.change, reason: m.reason })),
-        enabledRoleIds,
-        shareOverrides: game.computeShareOverrides
-          ? Object.fromEntries(Object.entries(game.computeShareOverrides))
-          : undefined,
-      });
-
-      // Combine into unified holders array
-      const allHolders = [...labHolderRecords, ...nonLabResult];
-      const totalProduced = allHolders.reduce((s, h) => s + h.produced, 0);
-      for (const h of allHolders) {
-        h.sharePct = totalProduced > 0 ? Math.round((h.produced / totalProduced) * 100) : 0;
+      const { calculatePoolNewCompute, NEW_COMPUTE_PER_GAME_ROUND } = await import("./gameData");
+      for (const t of tables) {
+        if (!t.enabled || activeOwnerRoleIds.has(t.roleId)) continue;
+        const overridePct = game.computeShareOverrides?.[t.roleId];
+        let produced: number;
+        if (overridePct != null) {
+          const baseTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
+          produced = Math.round(baseTotal * overridePct / 100);
+        } else {
+          produced = calculatePoolNewCompute(t.roleId, roundNumber, enabledRoleIds);
+        }
+        if (produced !== 0) acquiredEntries.push({ roleId: t.roleId, amount: produced });
       }
 
-      // Apply non-lab compute growth to tables
-      const nonLabUpdates = nonLabResult.map((h) => ({ roleId: h.roleId, computeStock: h.stockAfter }));
+      const adjustedEntries = computeModifiers
+        .map((m) => {
+          const lab = grownLabs.find((l) => (l as WorkingLab).labId === m.labId);
+          if (!lab?.roleId) return null;
+          return { roleId: lab.roleId, amount: m.change, reason: m.reason };
+        })
+        .filter((x): x is { roleId: string; amount: number; reason: string } => x !== null && x.amount !== 0);
 
-      // Build roleComputeAfter for snapshot
-      const holderByRoleId = new Map(allHolders.map((h) => [h.roleId, h]));
-      const roleComputeAfter = roleCompute.map((rc) => {
-        const holder = holderByRoleId.get(rc.roleId);
-        return holder ? { ...rc, computeStock: holder.stockAfter } : rc;
-      });
+      const mergedEntries: { fromRoleId: string; toRoleId: string; amount: number; reason: string }[] = [];
+      for (const m of mergeOps) {
+        const absorbed = labsAfterClear.find((l) => l.labId === m.absorbedLabId);
+        const survivor = labsAfterClear.find((l) => l.labId === m.survivorLabId);
+        if (!absorbed?.roleId || !survivor?.roleId) continue;
+        const absorbedStock = tableComputeByRole.get(absorbed.roleId) ?? 0;
+        if (absorbedStock > 0) {
+          mergedEntries.push({
+            fromRoleId: absorbed.roleId,
+            toRoleId: survivor.roleId,
+            amount: absorbedStock,
+            reason: m.reason,
+          });
+        }
+      }
 
-      await Promise.all([
-        ctx.runMutation(internal.games.updateLabsInternal, { gameId, labs: strippedLabs }),
-        nonLabUpdates.length > 0
-          ? ctx.runMutation(internal.computeMutations.updateNonLabComputeInternal, { gameId, updates: nonLabUpdates })
-          : Promise.resolve(),
-        ctx.runMutation(internal.rounds.setComputeHolders, { gameId, roundNumber, holders: allHolders }),
-      ]);
-
-      // Snapshot after + AI meta (both rounds doc — must be sequential)
-      await ctx.runMutation(internal.rounds.snapshotAfterInternal, {
+      // Apply everything atomically via a single mutation
+      await ctx.runMutation(internal.pipelineApply.applyResolveInternal, {
         gameId,
         roundNumber,
-        labsAfter: strippedLabs,
-        roleComputeAfter,
+        mergeOps,
+        decommissionOps,
+        transferOps,
+        multiplierUpdates,
+        acquired: acquiredEntries,
+        adjusted: adjustedEntries,
+        merged: mergedEntries,
       });
+      // Snapshot labs-after for post-game restore / review
+      await ctx.runMutation(internal.rounds.snapshotAfterInternal, { gameId, roundNumber });
       await ctx.runMutation(internal.rounds.setAiMetaInternal, {
         gameId,
         roundNumber,
@@ -799,10 +828,10 @@ export const rollAndNarrate = internalAction({
       // Clamp values to 0-100 and skip invalid role IDs.
       if (narrativeOutput.shareChanges && narrativeOutput.shareChanges.length > 0) {
         const validRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
-        const labRoleIds = new Set(updatedLabs.map((l) => l.roleId));
+        const labOwnerRoleIds = new Set(grownLabs.map((l) => l.roleId).filter((r): r is string => !!r));
         const shareOverrides = Object.fromEntries(
           narrativeOutput.shareChanges
-            .filter((sc) => validRoleIds.has(sc.roleId) && !labRoleIds.has(sc.roleId))
+            .filter((sc) => validRoleIds.has(sc.roleId) && !labOwnerRoleIds.has(sc.roleId))
             .map((sc) => [sc.roleId, Math.max(0, Math.min(100, sc.sharePct))])
         );
         if (Object.keys(shareOverrides).length > 0) {
@@ -817,3 +846,4 @@ export const rollAndNarrate = internalAction({
     }
   },
 });
+

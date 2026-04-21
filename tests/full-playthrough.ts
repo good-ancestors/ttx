@@ -46,7 +46,7 @@ function log(msg: string) {
 
 function logState(game: any) {
   for (const lab of game.labs) {
-    console.log(`  Lab ${lab.name}: ${lab.computeStock}u, ${lab.rdMultiplier}x, alloc=[U${lab.allocation.users}% C${lab.allocation.capability}% S${lab.allocation.safety}%]`);
+    console.log(`  Lab ${lab.name}: ${lab.computeStock}u, ${lab.rdMultiplier}x, alloc=[U${lab.allocation.deployment}% C${lab.allocation.research}% S${lab.allocation.safety}%]`);
   }
 }
 

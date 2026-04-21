@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY, suggestEndorsements } from "@/lib/game-data";
-import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send, Zap } from "lucide-react";
+import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY } from "@/lib/game-data";
+import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send, Zap, FlaskConical } from "lucide-react";
 
 
 export type PriorityLevel = "low" | "medium" | "high";
@@ -32,6 +32,9 @@ export interface ActionDraft {
   secret: boolean;
   endorseTargets: string[]; // roleIds
   computeTargets: ComputeTarget[];
+  /** If set, this action is a "Found a lab" attempt. On roll success the seedCompute is
+   *  consumed and a new lab row is created owned by the submitter. On failure the escrow refunds. */
+  foundLab?: { name: string; spec?: string; seedCompute: number };
 }
 
 /** Assign priorities using the auto-decay table based on position order. */
@@ -60,11 +63,12 @@ interface Props {
   enabledRoles?: { id: string; name: string }[];
   /** Roles that can send/receive compute (has-compute tag, excluding self) */
   computeRoles?: { id: string; name: string; computeStock?: number }[];
+  ownComputeStock?: number;
   isSubmitted: boolean;
   onSubmitAction?: (index: number) => void;
 }
 
-export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRoles, isSubmitted, onSubmitAction }: Props) {
+export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRoles, ownComputeStock, isSubmitted, onSubmitAction }: Props) {
   // Filter out own role and AI Systems (AI Systems uses influence, not endorsements)
   const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId))
     .filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId && r.id !== AI_SYSTEMS_ROLE_ID : true);
@@ -97,16 +101,20 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRo
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-bold text-text">
           Your Actions ({filledCount})
         </h3>
         {filledCount > 1 && (
-          <span className="text-[11px] text-text-muted">
-            Drag to reorder — top = highest priority
+          <span className="text-[11px] font-semibold text-text-muted">
+            Top = highest priority
           </span>
         )}
       </div>
+      <p className="text-[11px] text-text-muted mb-3">
+        List in priority order. Top action gets the biggest push — lower ones decay from there.
+        {filledCount > 1 ? " Use ↑ / ↓ to reorder." : ""}
+      </p>
 
       <div className="space-y-3">
         {actions.map((action, i) => (
@@ -115,7 +123,6 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRo
             action={action}
             index={i}
             totalActions={filledCount}
-            ownRoleId={roleId}
             onUpdate={(patch) => updateAction(i, patch)}
             onRemove={() => removeAction(i)}
             onMoveUp={i > 0 && !isSubmitted ? () => {
@@ -130,6 +137,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRo
             } : undefined}
             otherRoles={otherRoles}
             computeRoles={computeRoles}
+            ownComputeStock={ownComputeStock}
             isSubmitted={isSubmitted}
             canRemove={actions.length > 1 || action.text.trim() !== ""}
             onAddNext={actions.length < 5 && !isSubmitted ? addAction : undefined}
@@ -155,13 +163,13 @@ function ActionCard({
   action,
   index,
   totalActions,
-  ownRoleId,
   onUpdate,
   onRemove,
   onMoveUp,
   onMoveDown,
   otherRoles,
   computeRoles,
+  ownComputeStock,
   isSubmitted,
   canRemove,
   onAddNext,
@@ -170,13 +178,13 @@ function ActionCard({
   action: ActionDraft;
   index: number;
   totalActions: number;
-  ownRoleId?: string;
   onUpdate: (patch: Partial<ActionDraft>) => void;
   onRemove: () => void;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   otherRoles: { id: string; name: string }[];
-  computeRoles?: { id: string; name: string }[];
+  computeRoles?: { id: string; name: string; computeStock?: number }[];
+  ownComputeStock?: number;
   isSubmitted: boolean;
   canRemove: boolean;
   onAddNext?: () => void;
@@ -184,12 +192,6 @@ function ActionCard({
 }) {
   const [showEndorse, setShowEndorse] = useState(false);
   const [showComputeRequest, setShowComputeRequest] = useState(false);
-
-  // Suggest endorsement targets based on action text keywords
-  const activeRoleIds = otherRoles.map((r) => r.id);
-  const suggestions = action.text.trim().length > 20 && action.endorseTargets.length === 0 && !isSubmitted
-    ? suggestEndorsements(action.text, ownRoleId ?? "", activeRoleIds)
-    : [];
 
   return (
     <div className={`bg-white rounded-xl border p-4 ${action.secret ? "border-viz-warning/40" : action.endorseTargets.length > 0 ? "border-[#059669]/30" : "border-border"}`}>
@@ -261,6 +263,26 @@ function ActionCard({
             </span>
           </button>
 
+          {/* Found-a-lab toggle — only for has-compute roles (founders pay from their own stock) */}
+          {computeRoles && (
+            <button
+              onClick={() => onUpdate({ foundLab: action.foundLab ? undefined : { name: "", seedCompute: 10 } })}
+              disabled={isSubmitted}
+              aria-label="Found a new lab with this action"
+              aria-pressed={!!action.foundLab}
+              className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                action.foundLab
+                  ? "bg-[#EDE9FE] text-[#7C3AED]"
+                  : "text-text-light hover:text-text-muted hover:bg-warm-gray"
+              }`}
+            >
+              <FlaskConical className="w-4 h-4" />
+              <span className="text-xs font-medium">
+                Found lab{action.foundLab ? ` (${action.foundLab.seedCompute}u)` : ""}
+              </span>
+            </button>
+          )}
+
           {/* Compute request toggle — only for has-compute roles with targets */}
           {computeRoles && computeRoles.length > 0 && (
             <button
@@ -317,28 +339,49 @@ function ActionCard({
         <ComputeRequestPicker
           action={action}
           computeRoles={computeRoles}
+          ownComputeStock={ownComputeStock}
           onUpdate={onUpdate}
           onClose={() => setShowComputeRequest(false)}
         />
       )}
 
-      {suggestions.length > 0 && (
-        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-          <span className="text-[10px] text-text-muted">Ask for support?</span>
-          {suggestions.map((roleId) => {
-            const role = otherRoles.find((r) => r.id === roleId);
-            if (!role) return null;
-            return (
-              <button
-                key={roleId}
-                onClick={() => onUpdate({ endorseTargets: [...new Set([...action.endorseTargets, roleId])] })}
-                className="text-[11px] px-2 py-1 bg-[#ECFDF5] text-[#059669] rounded-full font-medium hover:bg-[#D1FAE5] transition-colors flex items-center gap-1"
-              >
-                <Handshake className="w-3 h-3" />
-                {role.name}
-              </button>
-            );
-          })}
+      {/* Found-a-lab inline form */}
+      {action.foundLab && !isSubmitted && (
+        <div className="mt-2 pt-2 border-t border-border">
+          <p className="text-[11px] text-text-muted mb-2 flex items-center gap-1">
+            <FlaskConical className="w-3 h-3 text-[#7C3AED]" />
+            Found a new lab: seed compute is consumed on success, refunded on failure.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={action.foundLab.name}
+              onChange={(e) => onUpdate({ foundLab: { ...action.foundLab!, name: e.target.value } })}
+              placeholder="Lab name"
+              maxLength={60}
+              className="flex-1 min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text"
+            />
+            <input
+              type="number"
+              min={10}
+              max={Math.max(10, ownComputeStock ?? 10)}
+              value={action.foundLab.seedCompute}
+              onChange={(e) => {
+                const n = Math.max(10, Math.min(ownComputeStock ?? 10000, parseInt(e.target.value) || 10));
+                onUpdate({ foundLab: { ...action.foundLab!, seedCompute: n } });
+              }}
+              className="w-20 min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text font-mono text-center"
+              placeholder="u"
+            />
+          </div>
+          <textarea
+            value={action.foundLab.spec ?? ""}
+            onChange={(e) => onUpdate({ foundLab: { ...action.foundLab!, spec: e.target.value || undefined } })}
+            placeholder="Lab spec / mission (optional)"
+            maxLength={500}
+            rows={2}
+            className="w-full mt-2 rounded-lg border border-border bg-warm-gray px-2 py-1 text-xs text-text resize-none"
+          />
         </div>
       )}
 
@@ -412,20 +455,30 @@ function ComputeRequestPicker({
   computeRoles,
   onUpdate,
   onClose,
+  ownComputeStock,
 }: {
   action: ActionDraft;
   computeRoles: { id: string; name: string; computeStock?: number }[];
   onUpdate: (patch: Partial<ActionDraft>) => void;
   onClose: () => void;
+  ownComputeStock?: number;
 }) {
   const [direction, setDirection] = useState<"send" | "request">("send");
   const [selectedRole, setSelectedRole] = useState("");
   const [amount, setAmount] = useState(1);
 
+  // Cap the input at what's actually available. For send: your own stock.
+  // For request: the source role's stock (clamped to the absolute hard-cap of 100u).
+  const sourceStock = direction === "send"
+    ? ownComputeStock
+    : computeRoles.find((r) => r.id === selectedRole)?.computeStock;
+  const maxAmount = Math.max(1, Math.min(100, sourceStock ?? 100));
+
   const addTarget = () => {
     if (!selectedRole || amount <= 0) return;
+    const capped = Math.min(amount, maxAmount);
     const existing = action.computeTargets.filter((t) => t.roleId !== selectedRole);
-    onUpdate({ computeTargets: [...existing, { roleId: selectedRole, amount, direction }] });
+    onUpdate({ computeTargets: [...existing, { roleId: selectedRole, amount: capped, direction }] });
     setSelectedRole("");
     setAmount(1);
   };
@@ -505,9 +558,9 @@ function ComputeRequestPicker({
         <input
           type="number"
           min={1}
-          max={10}
+          max={maxAmount}
           value={amount}
-          onChange={(e) => setAmount(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+          onChange={(e) => setAmount(Math.max(1, Math.min(maxAmount, parseInt(e.target.value) || 1)))}
           className="w-16 min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text font-mono text-center"
           placeholder="u"
         />

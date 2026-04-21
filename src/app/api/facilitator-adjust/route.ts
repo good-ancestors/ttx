@@ -23,8 +23,7 @@ const AdjustOutput = z.object({
         rdMultiplier: z.optional(z.number()),
         allocation: z.optional(
           z.object({
-            users: z.number(),
-            capability: z.number(),
+            deployment: z.number(), research: z.number(),
             safety: z.number(),
           })
         ),
@@ -66,9 +65,10 @@ export async function POST(request: Request) {
     }
 
     // Parallel context fetch — all depend on game.currentRound
-    const [allRounds, currentSubmissions] = await Promise.all([
+    const [allRounds, currentSubmissions, activeLabs] = await Promise.all([
       convex.query(api.rounds.getByGame, { gameId: gameId as Id<"games"> }),
       convex.query(api.submissions.getByGameAndRound, { gameId: gameId as Id<"games">, roundNumber: game.currentRound, facilitatorToken: process.env.FACILITATOR_SECRET }),
+      convex.query(api.labs.getActiveLabs, { gameId: gameId as Id<"games"> }),
     ]);
     const currentRound = allRounds?.find((r) => r.number === game.currentRound);
     const currentNarrative = currentRound?.summary?.narrative ?? "";
@@ -92,12 +92,12 @@ export async function POST(request: Request) {
 CURRENT GAME PHASE: ${game.phase} | Round ${game.currentRound}
 
 CURRENT LABS:
-${game.labs.map((l) => `- ${l.name} (${l.roleId}): ${l.computeStock}u compute, ${l.rdMultiplier}x R&D | Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
+${activeLabs.map((l) => `- ${l.name} (${l.ownerRoleId ?? "unowned"}): ${l.rdMultiplier}x R&D | Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%`).join("\n")}
 ${resolvedActions.length > 0 ? `\nTHIS ROUND'S RESOLVED ACTIONS:\n${resolvedActions.join("\n")}` : ""}
 ${currentNarrative ? `\nCURRENT NARRATIVE: "${currentNarrative}"` : ""}
 
 ENABLED ROLES:
-${ROLES.filter((r) => currentSubmissions?.some((s) => s.roleId === r.id) || game.labs.some((l) => l.roleId === r.id)).map((r) => `- ${r.name} (${r.id})`).join("\n")}
+${ROLES.filter((r) => currentSubmissions?.some((s) => s.roleId === r.id) || activeLabs.some((l) => l.ownerRoleId === r.id)).map((r) => `- ${r.name} (${r.id})`).join("\n")}
 ${historyText}
 ${isApply ? `THE FACILITATOR HAS CONFIRMED — apply the changes you proposed in your last message. Set intent to "proposal" and include the same changes.` : `THE FACILITATOR SAYS: "${instruction}"`}
 
@@ -138,7 +138,7 @@ YOUR BEHAVIOR:
     if (shouldApply) {
       // Apply lab changes
       if (output.labUpdates && output.labUpdates.length > 0) {
-        const existingNames = new Set(game.labs.map((l) => l.name));
+        const existingNames = new Set(activeLabs.map((l) => l.name));
         const newLabs = output.labUpdates.filter((u) => u.isNew && !existingNames.has(u.name));
         const existingUpdates = output.labUpdates.filter((u) => !u.isNew && existingNames.has(u.name));
 
@@ -153,27 +153,38 @@ YOUR BEHAVIOR:
         }
 
         if (existingUpdates.length > 0) {
-          const freshGame = newLabs.length > 0
-            ? await convex.query(api.games.get, { gameId: gameId as Id<"games"> })
-            : game;
-          if (freshGame) {
-            const updatedLabs = freshGame.labs.map((lab) => {
+          const freshLabs = newLabs.length > 0
+            ? await convex.query(api.labs.getActiveLabs, { gameId: gameId as Id<"games"> })
+            : activeLabs;
+          const patches = freshLabs
+            .map((lab) => {
               const update = existingUpdates.find((u) => u.name === lab.name);
-              if (!update) return lab;
+              if (!update) return null;
               return {
-                ...lab,
-                computeStock: update.computeStock !== undefined
-                  ? Math.max(0, Math.round(update.computeStock))
-                  : lab.computeStock,
-                rdMultiplier: update.rdMultiplier !== undefined
-                  ? Math.max(0, update.rdMultiplier)
-                  : lab.rdMultiplier,
-                allocation: update.allocation ?? lab.allocation,
+                labId: lab._id,
+                rdMultiplier: update.rdMultiplier !== undefined ? Math.max(0, update.rdMultiplier) : undefined,
+                allocation: update.allocation ?? undefined,
               };
-            });
+            })
+            .filter((p): p is NonNullable<typeof p> => p !== null);
+          if (patches.length > 0) {
             await convex.mutation(api.games.updateLabs, {
               gameId: gameId as Id<"games">,
-              labs: updatedLabs,
+              patches,
+              facilitatorToken,
+            });
+          }
+          // computeStock updates go through the per-role compute mutation (emits ledger row).
+          for (const update of existingUpdates) {
+            if (update.computeStock === undefined) continue;
+            const lab = freshLabs.find((l) => l.name === update.name);
+            if (!lab?.ownerRoleId) continue;
+            await convex.mutation(api.computeMutations.overrideHolderCompute, {
+              gameId: gameId as Id<"games">,
+              roundNumber: game.currentRound,
+              roleId: lab.ownerRoleId,
+              computeStock: Math.max(0, Math.round(update.computeStock)),
+              reason: "Facilitator copilot adjustment",
               facilitatorToken,
             });
           }

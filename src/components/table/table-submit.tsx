@@ -117,6 +117,7 @@ export function TableSubmit({
             roleName={role.name}
             enabledRoles={enabledRoles}
             computeRoles={hasCompute(role) && computeRecipients ? computeRecipients : undefined}
+            ownComputeStock={computeStock}
             isSubmitted={false}
             onSubmitAction={onSubmitAction}
           />

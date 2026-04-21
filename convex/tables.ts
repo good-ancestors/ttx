@@ -270,15 +270,35 @@ export const toggleEnabled = mutation({
         .map((t) => t.roleId)
     );
 
-    // Calculate pool allocations once, then update only affected roles
+    // Recompute pool allocations and reset each pool role's "starting" ledger row to match.
+    // Still lobby-only, so only "starting" rows should exist — delete the old, insert fresh.
     const poolAllocations = calculatePoolAllocations(enabledRoleIds);
     const poolAffectedRoles = new Set(Object.values(COMPUTE_POOL_ELIGIBLE).flatMap((w) => Object.keys(w)));
     for (const t of allTables) {
       if (!poolAffectedRoles.has(t.roleId)) continue;
-      const newStock = poolAllocations.get(t.roleId) ?? undefined;
-      if (newStock !== t.computeStock) {
-        await ctx.db.patch(t._id, { computeStock: newStock });
+      const targetStock = poolAllocations.get(t.roleId) ?? 0;
+      if (targetStock === (t.computeStock ?? 0)) continue;
+      // Wipe existing starting rows and reseed
+      const existingRows = await ctx.db
+        .query("computeTransactions")
+        .withIndex("by_game_and_role", (q) => q.eq("gameId", t.gameId).eq("roleId", t.roleId))
+        .collect();
+      for (const r of existingRows) {
+        if (r.type === "starting") await ctx.db.delete(r._id);
       }
+      if (targetStock > 0) {
+        await ctx.db.insert("computeTransactions", {
+          gameId: t.gameId,
+          roundNumber: 1,
+          createdAt: Date.now(),
+          type: "starting",
+          status: "settled",
+          roleId: t.roleId,
+          amount: targetStock,
+          reason: "Pool allocation (lobby reshuffle)",
+        });
+      }
+      await ctx.db.patch(t._id, { computeStock: targetStock > 0 ? targetStock : undefined });
     }
   },
 });

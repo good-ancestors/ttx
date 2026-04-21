@@ -5,8 +5,7 @@ import { ComputeDotsViz } from "./lab-tracker";
 import { Check, Minus, Plus, Save, AlertCircle } from "lucide-react";
 
 interface Allocation {
-  users: number;
-  capability: number;
+  deployment: number; research: number;
   safety: number;
 }
 

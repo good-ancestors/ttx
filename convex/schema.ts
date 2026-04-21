@@ -1,20 +1,25 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-/** Lab snapshot. computeStock is a DERIVED CACHE — the source of truth is table.computeStock.
- *  Synced from tables at: game creation, pipeline resolution (post-growth), facilitator overrides.
- *  May be slightly stale during submit phase (not reflecting in-flight escrow/transfers). */
-export const labSnapshotValidator = v.object({
+/** Lab snapshot captured on round resolve. The lab's canonical state lives in the labs table;
+ *  this snapshot is a point-in-time copy used for restoreSnapshot and post-game timeline views.
+ *  computeStock is a display convenience — authoritative stock is in the computeTransactions ledger. */
+const labSnapshotValidator = v.object({
+  labId: v.id("labs"),
   name: v.string(),
-  roleId: v.string(),
+  roleId: v.optional(v.string()),
   computeStock: v.number(),
   rdMultiplier: v.number(),
   allocation: v.object({
-    users: v.number(),
-    capability: v.number(),
+    deployment: v.number(),
+    research: v.number(),
     safety: v.number(),
   }),
   spec: v.optional(v.string()),
+  colour: v.string(),
+  status: v.union(v.literal("active"), v.literal("decommissioned")),
+  mergedIntoLabId: v.optional(v.id("labs")),
+  createdRound: v.number(),
 });
 
 export const labTrajectoryValidator = v.object({
@@ -33,6 +38,29 @@ export const labTrajectoryValidator = v.object({
 });
 
 export default defineSchema({
+  // Labs — first-class entities (split out from games.labs[] array).
+  // Ownership is attached here; compute lives on the owner's role (tables.computeStock).
+  // Mergers set status="decommissioned" and mergedIntoLabId pointing at the survivor.
+  labs: defineTable({
+    gameId: v.id("games"),
+    name: v.string(),
+    spec: v.optional(v.string()),
+    rdMultiplier: v.number(),
+    allocation: v.object({
+      deployment: v.number(),
+      research: v.number(),
+      safety: v.number(),
+    }),
+    ownerRoleId: v.optional(v.string()),          // null = unowned (e.g. post-merge, awaiting transfer)
+    colour: v.string(),                           // persisted on lab (stable across ownership transfer)
+    status: v.union(v.literal("active"), v.literal("decommissioned")),
+    mergedIntoLabId: v.optional(v.id("labs")),    // set when status=decommissioned via merger
+    createdRound: v.number(),                     // round at founding — for filtering chart history
+  })
+    .index("by_game", ["gameId"])
+    .index("by_game_and_owner", ["gameId", "ownerRoleId"])
+    .index("by_game_and_status", ["gameId", "status"]),
+
   games: defineTable({
     name: v.optional(v.string()),
     status: v.union(
@@ -48,7 +76,7 @@ export default defineSchema({
       v.literal("narrate")
     ),
     phaseEndsAt: v.optional(v.number()),
-    labs: v.array(labSnapshotValidator),
+    // Labs moved out to their own table. Active labs queried via labs table.
     locked: v.boolean(),
     // Resolve lock with TTL: auto-expires after 3 minutes if process dies
     resolving: v.optional(v.boolean()),
@@ -110,12 +138,21 @@ export default defineSchema({
           amount: v.number(),
           direction: v.optional(v.union(v.literal("send"), v.literal("request"))),
         }))),
+        /** Found-a-lab action metadata. If set, the action is a lab-founding attempt:
+         *  on submit, seedCompute is escrowed (pending adjusted row); on roll success a new
+         *  lab row is created with the submitter as owner and the escrow settles (cost consumed);
+         *  on roll failure the escrow is cancelled (founder keeps the compute). Minimum 10u. */
+        foundLab: v.optional(v.object({
+          name: v.string(),
+          spec: v.optional(v.string()),
+          seedCompute: v.number(),
+        })),
       })
     ),
     computeAllocation: v.optional(
       v.object({
-        users: v.number(),
-        capability: v.number(),
+        deployment: v.number(),
+        research: v.number(),
         safety: v.number(),
       })
     ),
@@ -178,47 +215,11 @@ export default defineSchema({
         narrativeTokens: v.optional(v.number()),
       })
     ),
-    // Pre-resolve snapshot — captured before resolve runs (safe revert point)
+    // Pre-resolve snapshot of lab structural state (multiplier, allocation, spec, name).
+    // Compute history lives in the computeTransactions ledger — not duplicated here.
     labsBefore: v.optional(v.array(labSnapshotValidator)),
-    roleComputeBefore: v.optional(
-      v.array(
-        v.object({
-          roleId: v.string(),
-          roleName: v.string(),
-          computeStock: v.number(),
-        })
-      )
-    ),
-    // Compute snapshot at submit-phase open (before player transfers)
-    roleComputeAtSubmitOpen: v.optional(
-      v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() }))
-    ),
-    // Unified compute record — all holders (labs + governments + civil society)
-    computeHolders: v.optional(v.array(v.object({
-      roleId: v.string(),
-      name: v.string(),
-      stockBefore: v.number(),
-      produced: v.number(),
-      transferred: v.number(),
-      adjustment: v.number(),
-      adjustmentReason: v.optional(v.string()),
-      stockAfter: v.number(),
-      override: v.optional(v.number()),
-      overrideReason: v.optional(v.string()),
-      sharePct: v.number(),
-      status: v.optional(v.union(v.literal("merged"), v.literal("created"))),
-    }))),
-    // Post-resolve snapshot — for post-game review and restore
+    // Post-resolve snapshot of lab structural state — for post-game review and restore.
     labsAfter: v.optional(v.array(labSnapshotValidator)),
-    roleComputeAfter: v.optional(
-      v.array(
-        v.object({
-          roleId: v.string(),
-          roleName: v.string(),
-          computeStock: v.number(),
-        })
-      )
-    ),
     // Pipeline nonce — prevents double-execution of resolve
     resolveNonce: v.optional(v.string()),
     // Partial events written during streaming resolve (before final write)
@@ -268,4 +269,31 @@ export default defineSchema({
     roleId: v.optional(v.string()),
     data: v.optional(v.string()),
   }).index("by_game", ["gameId"]),
+
+  // Ledger of compute movements — the single source of truth for stock over time.
+  // table.computeStock is a cache of settled rows (sum of amount where roleId=X, status=settled).
+  // Regenerate wipes acquired/adjusted/merged rows and re-emits; preserves starting/transferred/facilitator.
+  computeTransactions: defineTable({
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    createdAt: v.number(),
+    type: v.union(
+      v.literal("starting"),     // game creation: seed per role; never regenerated
+      v.literal("acquired"),     // pool share acquisition on resolve; regenerated
+      v.literal("transferred"),  // player send or settled accepted request; preserved across regens
+      v.literal("adjusted"),     // narrative LLM computeChange (reason required); regenerated
+      v.literal("merged"),       // structural merger pair (counterparty required); regenerated
+      v.literal("facilitator"),  // manual override with reason; never regenerated
+    ),
+    status: v.union(v.literal("pending"), v.literal("settled")),
+    roleId: v.string(),
+    counterpartyRoleId: v.optional(v.string()),
+    amount: v.number(),          // signed delta from roleId's perspective
+    reason: v.optional(v.string()),
+    actionId: v.optional(v.string()),
+    submissionId: v.optional(v.id("submissions")),
+  })
+    .index("by_game_and_round", ["gameId", "roundNumber"])
+    .index("by_game_and_role", ["gameId", "roleId"])
+    .index("by_action", ["gameId", "actionId"]),
 });

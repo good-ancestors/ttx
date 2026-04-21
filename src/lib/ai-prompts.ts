@@ -10,7 +10,15 @@ function escapeAction(text: string): string {
     .replace(/\n/g, " ");
 }
 
-import type { Lab } from "./game-data";
+/** Minimal shape the prompt needs. Deliberately loose so callers can pass either the old
+ *  game.labs[] entries or the new labs-table + cache shape. */
+type Lab = {
+  name: string;
+  computeStock: number;
+  rdMultiplier: number;
+  allocation: { deployment: number; research: number; safety: number };
+  spec?: string;
+};
 
 interface LabTrajectoryContext {
   labName: string;
@@ -174,7 +182,11 @@ export function buildGradingPrompt(args: {
   roleDescription: string;
   roleTags?: string[];
   actions: { text: string; priority: number }[];
-  labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
+  /** Other actions from the same role that already have a facilitator-set probability.
+   *  Shown to the LLM as context only — NOT to regrade — so priority budget and competition
+   *  are evaluated against the complete submission rather than a subset. */
+  siblingPreGraded?: { text: string; priority: number; probability?: number }[];
+  labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { deployment: number; research: number; safety: number } }[];
 
   actionRequests?: ActionRequest[];
   enabledRoles?: string[];
@@ -228,7 +240,7 @@ LAB STATUS:
 ${args.labs.map((l) => {
   const traj = args.previousTrajectories?.find((t) => t.labName === l.name);
   const trajSuffix = traj ? ` | Risk: safety=${traj.safetyAdequacy}, trajectory=${traj.likelyFailureMode} (signal ${traj.signalStrength}/10)` : "";
-  return `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%${trajSuffix}`;
+  return `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%${trajSuffix}`;
 }).join("\n")}
 ROLE BEING GRADED: ${args.roleName}${args.roleTags ? ` [${args.roleTags.join(", ")}]` : ""}
 ${args.roleDescription}${args.labSpec ? `\nLAB AI DIRECTIVE (set by CEO): "${args.labSpec}"` : ""}
@@ -236,7 +248,10 @@ ${requestSection}${incomingSection}
 
 SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resources/effort committed):
 ${args.actions.map((a, i) => `${i + 1}. <action>${escapeAction(a.text)}</action> [priority: ${a.priority}/10]`).join("\n")}
-${args.otherSubmissions && args.otherSubmissions.length > 0 ? `
+${args.siblingPreGraded && args.siblingPreGraded.length > 0 ? `
+THIS ROLE'S ALREADY-GRADED ACTIONS THIS ROUND (for context — do NOT regrade; factor into priority budget and coherence of the submission):
+${args.siblingPreGraded.map((a) => `- <action>${escapeAction(a.text)}</action> [P${a.priority}${a.probability != null ? `, already graded ${a.probability}%` : ""}]`).join("\n")}
+` : ""}${args.otherSubmissions && args.otherSubmissions.length > 0 ? `
 OTHER PLAYERS' ACTIONS THIS ROUND (grade with awareness of competition and context):
 ${args.otherSubmissions.map((s) => `${s.roleName}: ${s.actions.map((a) => `<action>${escapeAction(a.text)}</action> [P${a.priority}]`).join("; ")}`).join("\n")}
 ` : ""}
@@ -364,7 +379,7 @@ ${rounds.map((r) => {
 
 function formatLabAllocations(labs: Lab[]): string {
   return labs.map((l) =>
-    `- ${l.name} (${l.computeStock} stock, ${l.rdMultiplier}x): Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%${l.spec ? ` | Spec: "${l.spec}"` : ""}`
+    `- ${l.name} (${l.computeStock} stock, ${l.rdMultiplier}x): Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%${l.spec ? ` | Spec: "${l.spec}"` : ""}`
   ).join("\n");
 }
 

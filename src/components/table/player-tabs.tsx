@@ -22,7 +22,16 @@ export function PlayerTabBar({
   onTabChange: (tab: PlayerTab) => void;
 }) {
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border z-30 pb-[env(safe-area-inset-bottom)]">
+    <div
+      className="fixed bottom-0 left-0 right-0 bg-white border-t border-border z-30"
+      style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
+    >
+      {/* Extra bg strip below the safe-area padding to close any toolbar/dvh gap on iOS Chrome */}
+      <div
+        aria-hidden
+        className="absolute left-0 right-0 bg-white"
+        style={{ top: "100%", height: "env(safe-area-inset-bottom, 0px)" }}
+      />
       <div className="flex">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
