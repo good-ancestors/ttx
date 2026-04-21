@@ -24,7 +24,7 @@ const eslintConfig = defineConfig([
       parserOptions: {
         projectService: {
           defaultProject: "tsconfig.json",
-          allowDefaultProject: ["tests/*.ts", "tests/*.tsx", "tests/*.mjs", "scripts/*.mjs"],
+          allowDefaultProject: ["scripts/*.mjs"],
         },
         tsconfigRootDir: import.meta.dirname,
       },
