@@ -595,6 +595,24 @@ export const rollAndNarrate = internalAction({
         return;
       }
 
+      // Filter trajectories to labs that actually exist after this resolve.
+      // Two sources of stale entries:
+      //   1. LLM emits trajectories for labs about to be merged/decommissioned in THIS
+      //      round's labOperations (LAB STATUS still showed them at prompt time).
+      //   2. LLM pulls from previousTrajectories (last round's) and regurgitates entries
+      //      for labs that were decommissioned in an EARLIER round (including facilitator
+      //      merges that happened between rounds outside the narrative path).
+      // Both lead to ghost trajectories in the facilitator view with invented stats.
+      const willBeDecommissioned = new Set<string>();
+      for (const op of narrativeOutput.labOperations) {
+        if (op.type === "merge" && op.absorbed) willBeDecommissioned.add(op.absorbed);
+        if (op.type === "decommission" && op.labName) willBeDecommissioned.add(op.labName);
+      }
+      const activeLabNames = new Set(labsAtResolve.map((l) => l.name));
+      const survivingTrajectories = narrativeOutput.labTrajectories.filter(
+        (t) => activeLabNames.has(t.labName) && !willBeDecommissioned.has(t.labName),
+      );
+
       // Write narrative + lab trajectories in parallel
       await Promise.all([
         ctx.runMutation(internal.rounds.applySummaryInternal, {
@@ -608,8 +626,8 @@ export const rollAndNarrate = internalAction({
           },
         }),
         // Store lab risk trajectories (secret, facilitator-only)
-        narrativeOutput.labTrajectories.length > 0
-          ? ctx.runMutation(internal.rounds.setLabTrajectories, { gameId, roundNumber, trajectories: narrativeOutput.labTrajectories })
+        survivingTrajectories.length > 0
+          ? ctx.runMutation(internal.rounds.setLabTrajectories, { gameId, roundNumber, trajectories: survivingTrajectories })
           : Promise.resolve(),
       ]);
 

@@ -101,7 +101,7 @@ Default capability progression (can be accelerated or slowed by player actions):
 - Round 3 (Q3): Leading lab at 100-200x. Agent-4 territory. The alignment question becomes acute.
 - Round 4 (Q4): If race continues, leading lab approaches 1000x+. If slowdown, labs may deliberately cap at 10-30x for safer models.
 
-Default political escalation: DPA consolidation on the table, international summits demand a pause, China considers Taiwan as compute leverage, crisis point forces a fork between race and slowdown.
+Background pressures that COULD surface as events if a player action triggers them (do NOT narrate these as spontaneous occurrences — they only happen if a successful action this round causes them): DPA consolidation, international summit demands for a pause, China's Taiwan leverage play, talent-recruitment operations, intelligence exfiltration. These are the SHAPE of plausible escalations, not a schedule of events.
 
 TWO TRAJECTORY DIRECTIONS (how the game COULD end — determined by player actions, not pre-scripted):
 
@@ -434,12 +434,13 @@ YOUR TASK: Write a dramatic narrative AND determine game state changes.
 NARRATIVE RULES:
 1. STRICT LENGTH: 6-8 sentences. Read aloud in ~60-90 seconds.
 2. Weave the 4-5 most consequential outcomes into a coherent, dramatic briefing. Write like a thriller — tense, specific, vivid.
-3. GROUNDING: Every element must trace to a submitted action. Do NOT invent events no player caused. Failed actions didn't happen — don't narrate them.
-4. CONFLICTS: If contradictory actions both succeeded, narrate the clash — higher probability has upper hand but both sides engaged. Only pick a clean winner if probabilities are dramatically different (90% vs 10%).
-5. SECRET ACTIONS: Successful secrets appear as consequences without revealing who caused them. Failed secrets are invisible.
-6. ONLY fictional names (OpenBrain, DeepCent, Conscienta). NEVER real companies.
-7. No game mechanics (probabilities, dice, priority numbers).
-8. If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
+3. GROUNDING (strict): Every concrete event in the narrative MUST trace to either (a) a successful submitted action this round, or (b) a second-order consequence plausibly caused by such an action. Do NOT invent events no player caused. In particular: the SCENARIO CONTEXT in the system prompt lists "default political escalation" beats (Taiwan leverage, DPA consolidation, international summits, MSS recruitment, etc.) — those are BACKGROUND CANON, not licensed events. You may reference them as standing tensions if relevant, but do NOT narrate them as new occurrences unless a player action this round actually triggered one. Failed actions didn't happen — don't narrate them.
+4. USE LAB STATUS AS GROUND TRUTH: The LAB STATUS section below shows CURRENT allocations, compute, and multipliers. Role descriptions in the system prompt give historical defaults only — allocations and compute change every round based on player decisions. When you cite a safety %, compute number, or multiplier, it MUST match LAB STATUS, not any role description.
+5. CONFLICTS: If contradictory actions both succeeded, narrate the clash — higher probability has upper hand but both sides engaged. Only pick a clean winner if probabilities are dramatically different (90% vs 10%).
+6. SECRET ACTIONS: Successful secrets appear as consequences without revealing who caused them. Failed secrets are invisible.
+7. ONLY fictional names (OpenBrain, DeepCent, Conscienta). NEVER real companies.
+8. No game mechanics (probabilities, dice, priority numbers).
+9. If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
 
 LAB OPERATIONS — output any that apply:
 - "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).
@@ -455,11 +456,15 @@ ${args.previousTrajectories && args.previousTrajectories.length > 0 ? `
 PREVIOUS RISK ASSESSMENT (from last round — use this to inform your trajectory update):
 ${args.previousTrajectories.map((t) => `- ${t.labName}: ${t.safetyAdequacy} safety, trajectory=${t.likelyFailureMode} (signal ${t.signalStrength}/10) — ${t.reasoning}`).join("\n")}
 ` : ""}
-LAB TRAJECTORIES — assess each lab's risk profile based on their spec, safety allocation (%), R&D multiplier, and what happened this round. Consider:
+LAB TRAJECTORIES — assess each CURRENTLY ACTIVE lab's risk profile based on their spec, safety allocation (%), R&D multiplier, and what happened this round. Consider:
 - Is safety investment keeping pace with capability growth?
 - What failure mode would an AI safety expert predict given this lab's spec gaps?
 - How visible are the warning signs? (0=speculative theory, 5=early behavioral anomalies, 8=clear evidence of misalignment, 10=actively manifesting)
 - The AI's secret disposition (if known) interacts with the spec — a power-seeking AI with a narrow spec will exploit every silence.
+
+CRITICAL — use LAB STATUS numbers. When your reasoning cites a safety %, capability multiplier, or compute number, it MUST match the value in LAB STATUS. Do NOT cite historical or role-description defaults (e.g. "7% safety" from role briefs) if LAB STATUS shows a different current value. If a lab's safety was changed this round, that's the new ground truth.
+
+Only output trajectories for labs that appear in LAB STATUS. If this round's labOperations will merge or decommission a lab, DO NOT include a trajectory entry for it — it won't exist after this round.
 
 BASELINE TRAJECTORY (for context, not for you to narrate):
 ${formatRoundExpectations(args.round)}`;
