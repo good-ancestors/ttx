@@ -406,7 +406,7 @@ function AiRespondTab({
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <Inbox className="w-10 h-10 text-border mb-3" />
         <p className="text-sm text-text-muted max-w-xs">
-          Dice are already rolling. Influence is locked for actions once they have rolled.
+          No actions available to influence.
         </p>
       </div>
     );

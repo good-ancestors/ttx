@@ -377,7 +377,7 @@ describe("AiRespondTab (via RespondTab)", () => {
       />,
     );
 
-    expect(screen.getByText("Dice are already rolling. Influence is locked for actions once they have rolled.")).toBeInTheDocument();
+    expect(screen.getByText("No actions available to influence.")).toBeInTheDocument();
     expect(screen.queryByText("Launch a new model")).not.toBeInTheDocument();
   });
 });
