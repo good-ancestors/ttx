@@ -102,7 +102,26 @@
 
 Each scenario is a small JSON fixture + a 10-15 line test. The harness should support probability/dice overrides as first-class args so tests never depend on randomness.
 
-8. **Unify `adjustHolderCompute` vs `overrideHolderCompute`** (2026-04-23, flagged in simplify review #S4) — `convex/computeMutations.ts` now has two facilitator-edit mutations that both emit a `facilitator` ledger row via `emitTransaction`:
+8. **Significantly narrow the decide-LLM scope + back prompt rules with validator rejections** (2026-04-23, priority — affects game balance). User feedback after R4 playtest: R&D multipliers ended at 46× / 28× rather than the intended 100×–1000×+ range, and the LLM is emitting ops that feel more like narrative color than mechanical effects (0u computeChange entries, arbitrary multiplierOverrides that may be suppressing natural growth). Two concrete problems:
+
+   **(a) Prompt is advisory; validator doesn't enforce.** The prompt tells the LLM "never emit 0u computeChange", "reserve multiplierOverride for narrative-discontinuous events", "never orphan labs via transferOwnership with empty controllerRoleId". Some of these are backed by `rejectedOps.push(...)` in `convex/pipeline.ts` (transferOwnership empty controllerRoleId is rejected); others are silently filtered (0u computeChange is filtered at `pipeline.ts:742` in `nonZero = args.acquired.filter(r => r.amount !== 0)` — the design review noted this). **Every prompt rule must also be a validator rule**, and unless explicitly advisory, the rule should surface the violation as a `precondition_failure` rejection in the P7 list. That way we see LLM behaviour instead of silently swallowing it.
+
+   **(b) Scope is too wide.** The decide LLM currently can emit: `merge`, `decommission`, `transferOwnership`, `computeChange`, `multiplierOverride`. The last two are effectively "rewrite the economy knobs" — the LLM can arbitrarily set compute or R&D multiplier without constraint to narrative cause. User feedback: "the prompt might need significant refining to make sure it's very narrowly doing the job of resolving effects". Ideas to consider:
+   - **Narrow multiplierOverride to discrete narrative events**: only allowed when the decide pass observes a successful action with specific kinds (merger / decommission / infrastructure shock / sabotage). Outside those, emit nothing and let natural growth apply.
+   - **Require computeChange to cite a source/sink**: either `{type: "transfer", fromRole, toRole, amount}` (conservation) or `{type: "destruction", reason}` with a hard cap on amount. Not arbitrary adjustment.
+   - **Cap multiplierOverride magnitudes**: currently clamped to [0.1, maxMult]. Cap to a fraction of the pre-override value unless narrative-discontinuous (e.g., merger can ≤3x the multiplier; sabotage can halve; otherwise ≤±20%).
+   - **Tighten the JSON schema**: reject `computeChange.change === 0` at the validator level; reject `transferOwnership.controllerRoleId === ""` at the validator level; refuse `multiplierOverride` outside a narrow value band without a tagged narrative trigger.
+
+   **Action plan for this task**:
+   1. Read `temp-investigate-rd.md` (the R&D investigation agent's report) to confirm which LLM ops are actually suppressing growth
+   2. Read the current decide prompt at `src/lib/ai-prompts.ts#buildResolveDecidePrompt`
+   3. Propose concrete prompt + validator changes in a short design note
+   4. Land prompt + validator changes together in one PR so every rule is doubly-enforced
+   5. Re-run the 4-round playtest and confirm R&D progression lands in the 3→10→100→1000 range
+
+   Hook points: `src/lib/ai-prompts.ts` (prompt), `convex/pipeline.ts:~620-720` (per-op validation switch + rejection tracking), JSON schema definition for the decide output.
+
+9. **Unify `adjustHolderCompute` vs `overrideHolderCompute`** (2026-04-23, flagged in simplify review #S4) — `convex/computeMutations.ts` now has two facilitator-edit mutations that both emit a `facilitator` ledger row via `emitTransaction`:
    - `overrideHolderCompute({gameId, roundNumber, roleId, computeStock, reason})` — takes an **absolute** target stock; computes delta server-side from current `table.computeStock`.
    - `adjustHolderCompute({gameId, roundNumber, roleId, delta, reason})` — takes a **delta** directly; no server-side read.
 
