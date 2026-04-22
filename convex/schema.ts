@@ -147,6 +147,17 @@ export default defineSchema({
           spec: v.optional(v.string()),
           seedCompute: v.number(),
         })),
+        /** Merge-lab action metadata. Submitter must own either absorbed or survivor.
+         *  On roll success: mergeLabsInternal runs (absorbed decommissioned, survivor updated
+         *  with optional newName/newSpec and max rdMultiplier), and absorbed owner's full
+         *  compute stock transfers to survivor owner via a merged ledger pair.
+         *  On failure or if either lab is already decommissioned at roll time: no-op. */
+        mergeLab: v.optional(v.object({
+          absorbedLabId: v.id("labs"),
+          survivorLabId: v.id("labs"),
+          newName: v.optional(v.string()),
+          newSpec: v.optional(v.string()),
+        })),
       })
     ),
     computeAllocation: v.optional(

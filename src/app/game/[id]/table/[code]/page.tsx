@@ -480,6 +480,7 @@ export default function TablePlayerPage({
         computeTargets: draft.computeTargets.length > 0 ? draft.computeTargets : undefined,
         endorseTargets: draft.endorseTargets.length > 0 ? [...new Set(draft.endorseTargets)] : undefined,
         foundLab: draft.foundLab,
+        mergeLab: draft.mergeLab,
       });
       // Remove from local drafts
       setActionDrafts((prev) => {

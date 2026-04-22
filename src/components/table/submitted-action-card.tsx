@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Send, Pencil, Trash2, EyeOff, Lock, Handshake, Zap } from "lucide-react";
+import { Send, Pencil, Trash2, EyeOff, Lock, Handshake, Zap, GitMerge } from "lucide-react";
 
 export interface SentRequest {
   toRoleName: string;
@@ -18,7 +18,7 @@ export function SubmittedActionCard({
   onDelete,
   sentRequests,
 }: {
-  action: { text: string; priority: number; secret?: boolean; probability?: number; rolled?: number };
+  action: { text: string; priority: number; secret?: boolean; probability?: number; rolled?: number; mergeLab?: { absorbedLabId: string; survivorLabId: string; newName?: string } };
   index: number;
   canEdit: boolean;
   onEdit: () => void;
@@ -52,6 +52,15 @@ export function SubmittedActionCard({
         )}
       </div>
       <p className="text-sm text-text mb-3">{action.text}</p>
+      {action.mergeLab && (
+        <div className="mb-3 text-[11px] text-[#0369A1] bg-[#E0F2FE] rounded-lg px-2.5 py-1.5 flex items-center gap-1.5">
+          <GitMerge className="w-3.5 h-3.5 shrink-0" />
+          <span className="font-semibold">Merger attempt</span>
+          {action.mergeLab.newName && (
+            <span className="text-text-muted">→ &ldquo;{action.mergeLab.newName}&rdquo;</span>
+          )}
+        </div>
+      )}
       {sentRequests && sentRequests.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-3">
           {sentRequests.map((req, i) => {
