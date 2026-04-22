@@ -355,7 +355,11 @@ export const getComputeHolderView = query({
       let acquired = 0, transferred = 0, adjusted = 0, merged = 0, facilitator = 0;
       for (const tx of thisRound) {
         if (tx.roleId !== roleId) continue;
-        if (tx.status !== "settled") continue;
+        // Include pending `transferred` rows so planned/soft-take transfers are visible
+        // in the detail table and reflected in stockAfter. Other types only count when
+        // settled (pending escrow for foundings, etc. hasn't actually moved compute).
+        const include = tx.status === "settled" || (tx.type === "transferred" && tx.status === "pending");
+        if (!include) continue;
         switch (tx.type) {
           case "acquired": acquired += tx.amount; break;
           case "transferred": transferred += tx.amount; break;

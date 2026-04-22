@@ -808,8 +808,16 @@ export const rollAndNarrate = internalAction({
             if (op.labName && op.controllerRoleId !== undefined) {
               const target = findActiveByName(op.labName);
               if (!target) { rejectedOps.push(`transferOwnership: "${op.labName}" not active`); break; }
-              transferOps.push({ labId: target.labId, newOwnerRoleId: op.controllerRoleId || undefined });
-              workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, roleId: op.controllerRoleId || undefined } : l);
+              // Validate controllerRoleId is a real role ID (LLM sometimes emits role *name*
+              // instead of ID — e.g. "Australian PM" vs "australia-pm" — which would silently
+              // leave the lab unowned). Empty string is allowed and means "unowned".
+              const newOwner = op.controllerRoleId || undefined;
+              if (newOwner && !tablesAfterClear.some((t) => t.roleId === newOwner)) {
+                rejectedOps.push(`transferOwnership: invalid roleId "${newOwner}" for "${op.labName}"`);
+                break;
+              }
+              transferOps.push({ labId: target.labId, newOwnerRoleId: newOwner });
+              workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, roleId: newOwner } : l);
             }
             break;
           case "create":

@@ -4,7 +4,7 @@ import { use, useState, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO, type Lab } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, type Lab } from "@/lib/game-data";
 import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { LabTracker } from "@/components/lab-tracker";
@@ -197,18 +197,6 @@ export default function FacilitatorPage({
   const currentRound = currentRoundFull ?? undefined;
   // rounds is guaranteed non-null after loading guard for playing/finished states
   const rounds = roundsLite ?? [];
-  // Previous-round summary text for display (joined sectioned summary) or
-  // the fixed starting scenario for round 1.
-  const prevRoundLite = rounds.find(r => r.number === game.currentRound - 1);
-  const prevSummary = prevRoundLite?.summary;
-  const previousNarrative = prevSummary
-    ? [
-        ...prevSummary.labs.map((l) => `[Labs] ${l}`),
-        ...prevSummary.geopolitics.map((l) => `[Geopolitics] ${l}`),
-        ...prevSummary.publicAndMedia.map((l) => `[Media] ${l}`),
-        ...prevSummary.aiSystems.map((l) => `[AI] ${l}`),
-      ].join("\n") || undefined
-    : (game.currentRound === 1 ? STARTING_SCENARIO : undefined);
   const phase = game.phase;
   const connectedCount = tables.filter((t) => t.connected).length;
   const snapshotOptions = isProjector ? [] : rounds.flatMap(r => {
@@ -459,7 +447,6 @@ export default function FacilitatorPage({
               submissions={submissions ?? []}
               proposals={proposals ?? []}
               currentRound={currentRound}
-              previousNarrative={previousNarrative}
               resolving={resolving}
               resolveStep={resolveStep}
               revealedCount={revealedCount}

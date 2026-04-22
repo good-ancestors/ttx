@@ -28,7 +28,6 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   submissions: Submission[];
   proposals: Proposal[];
   currentRound: Round | undefined;
-  previousNarrative: string | undefined;
   resolving: boolean;
   resolveStep: string;
   revealedCount: number;
@@ -70,7 +69,6 @@ export function RoundPhase({
   submissions,
   proposals,
   currentRound,
-  previousNarrative,
   resolving,
   resolveStep,
   revealedCount,
@@ -118,16 +116,7 @@ export function RoundPhase({
 
   return (
     <div className="space-y-4">
-      {/* ─── 1. WHERE THINGS START — expandable narrative (open by default) ─── */}
-      {previousNarrative && (
-        <div className="bg-navy rounded-xl border border-navy-light p-5">
-          <ExpandableSection title="Where Things Start" defaultOpen>
-            <p className={`${isProjector ? "text-lg" : "text-sm"} text-text-light leading-relaxed`}>{previousNarrative}</p>
-          </ExpandableSection>
-        </div>
-      )}
-
-      {/* ─── 2. DISCUSS phase controls ─── */}
+      {/* ─── DISCUSS phase controls ─── */}
       {phase === "discuss" && (
         <div className="bg-navy rounded-xl border border-navy-light p-5">
         <div className="text-center py-8">

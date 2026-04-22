@@ -376,7 +376,7 @@ function ProbabilityDropdown({
   ungradeAction,
   allowUngrade = true,
 }: {
-  current: number;
+  current: number | null;
   submissionId: Id<"submissions">;
   actionIndex: number;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
@@ -388,7 +388,7 @@ function ProbabilityDropdown({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
-  const card = PROBABILITY_CARDS.find((p) => p.pct === current) ?? PROBABILITY_CARDS[2];
+  const card = current == null ? null : (PROBABILITY_CARDS.find((p) => p.pct === current) ?? PROBABILITY_CARDS[2]);
 
   useEffect(() => {
     if (!open) return;
@@ -416,15 +416,25 @@ function ProbabilityDropdown({
 
   return (
     <div className="relative shrink-0">
-      <button
-        ref={triggerRef}
-        onClick={() => setOpen(!open)}
-        className="text-[11px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1"
-        style={{ backgroundColor: card.bgColor, color: card.color }}
-      >
-        {card.label} ({card.pct}%)
-        <ChevronDown className="w-3 h-3" />
-      </button>
+      {card ? (
+        <button
+          ref={triggerRef}
+          onClick={() => setOpen(!open)}
+          className="text-[11px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1"
+          style={{ backgroundColor: card.bgColor, color: card.color }}
+        >
+          {card.label} ({card.pct}%)
+          <ChevronDown className="w-3 h-3" />
+        </button>
+      ) : (
+        <button
+          ref={triggerRef}
+          onClick={() => setOpen(!open)}
+          className="shrink-0 rounded-full bg-[#FEF3C7] px-2 py-0.5 text-xs font-semibold text-[#92400E] hover:bg-[#FDE68A] transition-colors flex items-center gap-1"
+        >
+          <ChevronRight className="w-3 h-3" /> Grade
+        </button>
+      )}
       {open && menuPos && typeof document !== "undefined" && createPortal(
         <div
           ref={menuRef}
@@ -457,7 +467,7 @@ function ProbabilityDropdown({
                 }}
                 className="w-full text-left px-3 py-1.5 text-xs text-text-light hover:bg-navy-light transition-colors"
               >
-                Ungrade
+                Ungraded
               </button>
             </>
           )}
@@ -534,16 +544,14 @@ function ActionOutcome({
 
   if (allowPregrade) {
     return (
-      <button
-        onClick={() => void overrideProbability({
-          submissionId,
-          actionIndex,
-          probability: 50,
-        })}
-        className="shrink-0 rounded-full bg-[#FEF3C7] px-2 py-0.5 text-xs font-semibold text-[#92400E] hover:bg-[#FDE68A] transition-colors flex items-center gap-1"
-      >
-        <ChevronRight className="w-3 h-3" /> Grade
-      </button>
+      <ProbabilityDropdown
+        current={null}
+        submissionId={submissionId}
+        actionIndex={actionIndex}
+        overrideProbability={overrideProbability}
+        ungradeAction={ungradeAction}
+        allowUngrade={false}
+      />
     );
   }
 
