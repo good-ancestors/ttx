@@ -71,7 +71,8 @@
           "us-president",
           "us-congress",
           "ai-systems"
-        ]
+        ],
+        "structured": { "kind": "merger", "absorbedRoleId": "conscienta-ceo", "newName": "National AI Alliance" }
       },
       {
         "text": "I commission our Safety Lead to produce a public safety case for Agent-3 so that regulators and the public see demonstrated alignment confidence before we deploy it widely.",
@@ -137,7 +138,8 @@
         "endorseHint": [
           "conscienta-ceo",
           "ai-systems"
-        ]
+        ],
+        "structured": { "kind": "merger", "absorbedRoleId": "conscienta-ceo" }
       },
       {
         "text": "I pivot to a safety-first posture, massively increasing alignment research so that Agent-4's adversarial behaviour can be understood and contained before we proceed.",
@@ -204,7 +206,8 @@
         "secret": true,
         "endorseHint": [
           "deepcent-ceo"
-        ]
+        ],
+        "structured": { "kind": "merger", "absorbedRoleId": "deepcent-ceo" }
       },
       {
         "text": "I leak Agent-5 capability benchmarks to the press so that the public understands we have crossed the ASI threshold and governments are forced to act before my own board overrules me.",
@@ -498,7 +501,8 @@
           "us-president",
           "openbrain-ceo",
           "ai-systems"
-        ]
+        ],
+        "structured": { "kind": "merger", "absorbedRoleId": "openbrain-ceo", "newName": "Conscienta-OpenBrain" }
       },
       {
         "text": "I increase safety investment and publish all Agent-3 alignment results openly so that Conscienta sets the industry standard for transparency and earns regulatory trust.",

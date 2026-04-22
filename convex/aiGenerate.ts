@@ -3,7 +3,7 @@
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS } from "./aiModels";
 import { type Role, ROLES, PRIORITY_DECAY, isLabCeo, isLabSafety, hasCompute, getDisposition } from "@/lib/game-data";
@@ -115,7 +115,14 @@ export const generateAll = internalAction({
     interface PendingAction {
       tableId: string;
       roleId: string;
-      actions: { text: string; priority: number; secret?: boolean }[];
+      actions: {
+        text: string;
+        priority: number;
+        secret?: boolean;
+        mergeLab?: { absorbedLabId: Id<"labs">; survivorLabId: Id<"labs">; newName?: string };
+        foundLab?: { name: string; seedCompute: number; allocation?: { deployment: number; research: number; safety: number } };
+        computeTargets?: { roleId: string; amount: number; direction?: "send" | "request" }[];
+      }[];
       computeAllocation?: { deployment: number; research: number; safety: number };
       endorseHints?: { actionText: string; targetRoleIds: string[] }[];
       computeTransfers?: { toRoleId: string; amount: number }[];
@@ -154,10 +161,56 @@ export const generateAll = internalAction({
           const endorsedRoleIds = picked.flatMap((a) => a.endorseHint ?? []);
           const computeTransfers = npcComputeTransfer(role, table, labs, activeRoleIds, endorsedRoleIds);
 
+          // Resolve structured intents (merger, foundLab, computeTransfer) per action.
+          // Skip attachment silently if prerequisites are missing (lab already merged, etc.).
+          const ownLab = role && isLabCeo(role) ? labs.find((l) => l.roleId === table.roleId) : undefined;
+          const resolvedActions = picked.map((a, i) => {
+            const base = { text: a.text, priority: decay[i] ?? 1, secret: a.secret || undefined };
+            if (!a.structured) return base;
+            const s = a.structured;
+            if (s.kind === "merger") {
+              // Need own lab (survivor) and absorbed role's lab — both must be active.
+              if (!ownLab) return base;
+              const absorbedLab = labs.find((l) => l.roleId === s.absorbedRoleId);
+              if (!absorbedLab) return base; // absorbed lab doesn't exist or already merged
+              return {
+                ...base,
+                mergeLab: {
+                  absorbedLabId: absorbedLab.labId,
+                  survivorLabId: ownLab.labId,
+                  newName: s.newName,
+                },
+              };
+            }
+            if (s.kind === "foundLab") {
+              const stock = table.computeStock ?? 0;
+              const seedCompute = Math.round(stock * s.seedComputePct / 100);
+              if (seedCompute < 10) return base; // below minimum gate
+              return {
+                ...base,
+                foundLab: {
+                  name: s.name,
+                  seedCompute,
+                  allocation: { deployment: 33, research: 34, safety: 33 },
+                },
+              };
+            }
+            if (s.kind === "computeTransfer") {
+              const stock = table.computeStock ?? 0;
+              const amount = Math.min(s.amount, stock);
+              if (amount <= 0) return base;
+              return {
+                ...base,
+                computeTargets: [{ roleId: s.toRoleId, amount, direction: "send" as const }],
+              };
+            }
+            return base;
+          });
+
           pending.push({
             tableId: table._id,
             roleId: table.roleId,
-            actions: picked.map((a, i) => ({ text: a.text, priority: decay[i] ?? 1, secret: a.secret || undefined })),
+            actions: resolvedActions,
             endorseHints: picked
               .filter((a) => a.endorseHint?.length)
               .map((a) => ({

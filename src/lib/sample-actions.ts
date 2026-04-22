@@ -1,10 +1,16 @@
 // Sample actions are loaded from public/sample-actions.json (306 actions, 17 roles × 3 rounds × 6 each)
 
+export type StructuredIntent =
+  | { kind: "merger"; absorbedRoleId: string; newName?: string }
+  | { kind: "foundLab"; name: string; seedComputePct: number }
+  | { kind: "computeTransfer"; toRoleId: string; amount: number };
+
 export interface SampleAction {
   text: string;
   priority: "low" | "medium" | "high";
   secret: boolean;
   endorseHint: string[];
+  structured?: StructuredIntent;
 }
 
 export type SampleActionsData = Record<string, Record<number, SampleAction[]>>;
