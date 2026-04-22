@@ -244,6 +244,7 @@ export function RoundPhase({
         hasNarrative={hasNarrative}
         narrativeStale={narrativeStale}
         onDiceChanged={onDiceChanged}
+        isTimerExpired={!!isTimerExpired}
       />
 
       {/* ─── Grade/Roll buttons (submit phase, timer expired) ─── */}

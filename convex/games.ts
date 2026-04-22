@@ -434,6 +434,12 @@ export const advanceRound = mutation({
     const game = await ctx.db.get(args.gameId);
     if (!game || game.currentRound >= 4) return;
 
+    // Materialise any deferred acquisition for the round we're leaving — this is the
+    // moment the new compute arrives in players' tables. Writes `acquired` ledger rows
+    // keyed to the round being left + patches table.computeStock. The snapshot taken
+    // next line captures the post-materialisation state.
+    await materializePendingAcquired(ctx, args.gameId, game.currentRound);
+
     await snapshotRound(ctx, args.gameId, game.currentRound);
 
     const nextRound = game.currentRound + 1;
@@ -446,6 +452,33 @@ export const advanceRound = mutation({
     await schedulePreGeneration(ctx, args.gameId, nextRound);
   },
 });
+
+/** Materialise `round.pendingAcquired` into `acquired` ledger rows. Emits one settled
+ *  row per role with non-zero amount, then clears the field so re-runs don't double-apply. */
+async function materializePendingAcquired(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roundNumber: number,
+): Promise<void> {
+  const round = await ctx.db.query("rounds")
+    .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
+    .first();
+  if (!round || !round.pendingAcquired || round.pendingAcquired.length === 0) return;
+
+  for (const row of round.pendingAcquired) {
+    if (row.amount === 0) continue;
+    await emitTransaction(ctx, {
+      gameId,
+      roundNumber,
+      type: "acquired",
+      status: "settled",
+      roleId: row.roleId,
+      amount: row.amount,
+      reason: "Round pool share (materialised at Advance)",
+    });
+  }
+  await ctx.db.patch(round._id, { pendingAcquired: undefined });
+}
 
 export const restoreSnapshot = mutation({
   args: {

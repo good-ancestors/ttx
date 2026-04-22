@@ -88,7 +88,21 @@
 
    Non-trivial because several components assume acquisition already landed by narrate. Do this as its own PR with clear smoke-test through 2 rounds showing the compute arriving at the advance click, not earlier.
 
-7. **Write event-driven pipeline tests covering consequential actions** (2026-04-23) — we have unit tests for grader/narrate diff and a few game-logic primitives, but no integration test exercises the full resolve pipeline through a round with genuinely consequential, LLM-decided effects. Add fixtures + tests for:
+7. **Reusable event-driven test harness + NPC scenario library** (2026-04-23) — instead of bespoke tests for each event, build:
+
+   (a) A **fixture harness** in `tests/` that seeds a game, injects submissions with forced probabilities + dice rolls (so the outcome is deterministic — no flakes from the grader / RNG), runs the pipeline, and exposes assertion helpers (`expectLedger(...)`, `expectAppliedOps(...)`, `expectLabState(...)`). Probability override already exists as `api.submissions.overrideProbability`; the harness can also `ctx.db.patch(action.rolled = X)` directly since tests run with the Convex test client.
+
+   (b) A **reusable NPC scenario library** — structured sample actions purpose-built to force the conflicts we want to test. Extend `public/sample-actions.json` with tagged scenarios (e.g. `scenario: "tsmc-bombed"` on an action) so a test can spin up a game with a specific scenario set + assert expected downstream state. Candidates:
+   - **Compute destruction**: Taiwan bombed / TSMC offline → forced large `computeChange` negative across all labs; subsequent rounds' baseline drops.
+   - **Data-centre attacks**: cyber attack forces compute transfer (attacker absorbs target's stock) OR destruction (pure negative).
+   - **Forced mergers under duress**: one lab nationalised, another absorbed; assert the `acquired` ledger at advance reflects reduced-pool-size in later rounds.
+   - **Lab splits**: successful `foundLab` action after a spec divergence; test seed-compute debit + new lab appears.
+   - **Decommissions**: LLM-decided decommission of a lab mid-round; assert no ownership orphan, no stranded compute.
+   - **Chained consequences**: cyber attack succeeds → retaliation LLM-decided → merger forced → multiplier override — all in one round, ordered correctly.
+
+Each scenario is a small JSON fixture + a 10-15 line test. The harness should support probability/dice overrides as first-class args so tests never depend on randomness.
+
+8. **Write event-driven pipeline tests covering consequential actions** (2026-04-23) — we have unit tests for grader/narrate diff and a few game-logic primitives, but no integration test exercises the full resolve pipeline through a round with genuinely consequential, LLM-decided effects. Add fixtures + tests for:
    - **Compute destruction**: Taiwan bombed → TSMC offline → large `computeChange` negative ops across all labs, then subsequent rounds' new-compute totals drop. Assert ledger entries, lab stocks, and that R&D growth slows as expected given reduced stock.
    - **Data-centre cyber attacks**: compute stolen or disabled — either pure `computeChange` negative (destruction) or `computeTransfer`-style (taken over by attacker role). Assert source/sink conservation for transfers, non-conservation for destruction.
    - **Structural actions**: mergers (player + LLM-decided), splits (new-lab founding after spec divergence), decommissions, ownership transfers to real roles (never empty). Assert lab table state, `mergedIntoLabId` pointers, and that `appliedOps` summaries carry the correct role + intent text.

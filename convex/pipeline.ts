@@ -785,7 +785,6 @@ export const rollAndApplyEffects = internalAction({
       // this summary (rollAllImpl settled the merge before the pipeline kicked off).
       const allLabsForNames = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId, includeInactive: true });
       const labNameById = new Map(allLabsForNames.map((l) => [l.labId, l.name] as const));
-      const { ROLES } = await import("./gameData");
       const roleNameById = new Map<string, string>(ROLES.map((r) => [r.id, r.name]));
       const appliedOps: { type: string; status: "applied" | "rejected"; summary: string; reason?: string; category?: string; opType?: string }[] = [];
 

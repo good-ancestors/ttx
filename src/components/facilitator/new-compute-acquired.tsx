@@ -8,10 +8,17 @@ import type { Id } from "@convex/_generated/dataModel";
 import { TrendingUp, Pencil, Save, X } from "lucide-react";
 
 /**
- * New Compute Acquired — shows each role's acquired compute for this round.
- * Labelled "Applied at start of next round" because players gain access at the
- * round-transition (advance) click. Editable: facilitator can tweak total and
- * per-role % — edits write a `facilitator` ledger row per role for the delta.
+ * New Compute Acquired — previews each role's acquired compute for this round.
+ *
+ * Reads `round.pendingAcquired` (via `api.rounds.getPendingAcquired`) — the amounts
+ * computed at `continueFromEffectReview` time but not yet materialised into the ledger.
+ * The compute actually arrives in players' tables when the facilitator clicks Advance
+ * (see `games.advanceRound` → materialisePendingAcquired). During narrate the
+ * facilitator can edit the amounts; edits overwrite `pendingAcquired` directly, so
+ * whatever is shown is exactly what lands at Advance.
+ *
+ * Falls back to committed `acquired` ledger rows for legacy rounds resolved before
+ * the deferral landed — that fallback is transparent to the UI.
  */
 export function NewComputeAcquired({
   gameId,
@@ -21,17 +28,16 @@ export function NewComputeAcquired({
   roundNumber: number;
 }) {
   const [editing, setEditing] = useState(false);
-  const view = useQuery(api.rounds.getComputeHolderView, { gameId, roundNumber });
+  const rows = useQuery(api.rounds.getPendingAcquired, { gameId, roundNumber });
 
-  if (!view) return null;
-
-  const acquired = view
-    .filter((e) => e.acquired > 0)
-    .sort((a, b) => b.acquired - a.acquired);
-
+  if (!rows) return null;
+  const acquired = rows
+    .filter((r) => r.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
   if (acquired.length === 0) return null;
 
-  const total = acquired.reduce((s, e) => s + e.acquired, 0);
+  const total = acquired.reduce((s, e) => s + e.amount, 0);
+  const isPending = rows.some((r) => r.pending);
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
@@ -43,7 +49,7 @@ export function NewComputeAcquired({
         <span className="ml-auto text-xs font-mono text-text-light">
           {total}u total
         </span>
-        {!editing && (
+        {!editing && isPending && (
           <button
             onClick={() => setEditing(true)}
             className="text-[10px] p-1 rounded bg-navy-light text-text-light hover:bg-navy-muted"
@@ -54,7 +60,9 @@ export function NewComputeAcquired({
         )}
       </div>
       <div className="text-[11px] text-text-light/70 mb-3">
-        Applied at start of next round — players gain access when the facilitator advances.
+        {isPending
+          ? "Applied at start of next round — players gain access when the facilitator advances."
+          : "Already applied this round (legacy — pre-deferral)."}
       </div>
 
       {editing ? (
@@ -67,7 +75,7 @@ export function NewComputeAcquired({
       ) : (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
           {acquired.map((e) => {
-            const sharePct = total > 0 ? Math.round((e.acquired / total) * 100) : 0;
+            const sharePct = total > 0 ? Math.round((e.amount / total) * 100) : 0;
             return (
               <div
                 key={e.roleId}
@@ -77,7 +85,7 @@ export function NewComputeAcquired({
                   {e.name}
                 </div>
                 <div className="text-xl font-black font-mono text-viz-safety">
-                  +{e.acquired}u
+                  +{e.amount}u
                 </div>
                 <div className="text-[10px] text-text-light mt-0.5">
                   {sharePct}% of new
@@ -94,7 +102,7 @@ export function NewComputeAcquired({
 interface AcquiredEntry {
   roleId: string;
   name: string;
-  acquired: number;
+  amount: number;
 }
 
 function AcquiredEditor({
@@ -108,18 +116,18 @@ function AcquiredEditor({
   acquired: AcquiredEntry[];
   onClose: () => void;
 }) {
-  const currentTotal = acquired.reduce((s, e) => s + e.acquired, 0);
+  const currentTotal = acquired.reduce((s, e) => s + e.amount, 0);
   const [totalTarget, setTotalTarget] = useState(currentTotal);
   const [sharePcts, setSharePcts] = useState<Record<string, number>>(() => {
     const pcts: Record<string, number> = {};
     for (const e of acquired) {
-      pcts[e.roleId] = currentTotal > 0 ? (e.acquired / currentTotal) * 100 : 0;
+      pcts[e.roleId] = currentTotal > 0 ? (e.amount / currentTotal) * 100 : 0;
     }
     return pcts;
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const adjustCompute = useAuthMutation(api.computeMutations.adjustHolderCompute);
+  const updatePending = useAuthMutation(api.rounds.updatePendingAcquired);
 
   const totalPct = Object.values(sharePcts).reduce((s, p) => s + p, 0);
   const pctOK = Math.abs(totalPct - 100) < 0.5;
@@ -134,17 +142,11 @@ function AcquiredEditor({
     setSaving(true);
     setError(null);
     try {
-      await Promise.all(previewAmounts.map((p) => {
-        const delta = p.newAmount - p.acquired;
-        if (delta === 0) return Promise.resolve();
-        return adjustCompute({
-          gameId,
-          roundNumber,
-          roleId: p.roleId,
-          delta,
-          reason: "Facilitator adjusted new-compute acquisition",
-        });
-      }));
+      await updatePending({
+        gameId,
+        roundNumber,
+        amounts: previewAmounts.map((p) => ({ roleId: p.roleId, amount: p.newAmount })),
+      });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -192,10 +194,6 @@ function AcquiredEditor({
       {error && (
         <div className="text-[11px] text-viz-danger">{error}</div>
       )}
-      <div className="text-[10px] text-text-light/60 italic">
-        Note: editing adjusts this round&apos;s facilitator override. Full acquisition-deferral
-        (so edits apply at the next advance click) is a follow-up — see NEXT-SESSION.md #6.
-      </div>
       <div className="flex gap-1.5">
         <button
           onClick={() => void save()}

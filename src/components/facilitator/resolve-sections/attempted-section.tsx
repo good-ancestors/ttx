@@ -28,6 +28,7 @@ export function AttemptedSection(props: {
   hasNarrative: boolean;
   narrativeStale: boolean;
   onDiceChanged: () => void;
+  isTimerExpired: boolean;
 }) {
   if (props.phase === "discuss") return null;
 
@@ -53,6 +54,7 @@ export function AttemptedSection(props: {
       narrativeStale={props.narrativeStale}
       onDiceChanged={props.onDiceChanged}
       currentRound={props.currentRound}
+      isTimerExpired={props.isTimerExpired}
     />
   );
 }

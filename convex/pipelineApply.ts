@@ -133,6 +133,8 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
     // Multiplier updates from deterministic R&D growth (computeLabGrowth).
     multiplierUpdates: v.array(v.object({ labId: v.id("labs"), rdMultiplier: v.number() })),
     // New compute acquired this round — labs get growth stock, non-lab roles get pool share.
+    // Stashed on round.pendingAcquired, not yet written to the ledger: acquisition
+    // materialises when the facilitator clicks Advance (see games.advanceRound).
     acquired: v.array(v.object({ roleId: v.string(), amount: v.number() })),
   },
   handler: async (ctx, args) => {
@@ -151,7 +153,33 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
       }
       await updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier);
     }
-    for (const row of args.acquired) {
+
+    // Stash acquired amounts on the round doc for materialisation at Advance.
+    const round = await ctx.db.query("rounds")
+      .withIndex("by_game_and_number", (q) => q.eq("gameId", args.gameId).eq("number", args.roundNumber))
+      .first();
+    if (round) {
+      const nonZero = args.acquired.filter((r) => r.amount !== 0);
+      await ctx.db.patch(round._id, { pendingAcquired: nonZero });
+    }
+  },
+});
+
+/** Materialise `round.pendingAcquired` into settled `acquired` ledger rows.
+ *  Called by advanceRound at round-transition time. Idempotent: clearing the field
+ *  after emission prevents double-apply if something re-runs. */
+export const materializePendingAcquiredInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const round = await ctx.db.query("rounds")
+      .withIndex("by_game_and_number", (q) => q.eq("gameId", args.gameId).eq("number", args.roundNumber))
+      .first();
+    if (!round || !round.pendingAcquired || round.pendingAcquired.length === 0) return;
+
+    for (const row of round.pendingAcquired) {
       if (row.amount === 0) continue;
       await emitTransaction(ctx, {
         gameId: args.gameId,
@@ -160,8 +188,9 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
         status: "settled",
         roleId: row.roleId,
         amount: row.amount,
-        reason: "Round pool share",
+        reason: "Round pool share (materialised at Advance)",
       });
     }
+    await ctx.db.patch(round._id, { pendingAcquired: undefined });
   },
 });

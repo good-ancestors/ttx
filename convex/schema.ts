@@ -267,6 +267,16 @@ export default defineSchema({
       labId: v.id("labs"),
       rdMultiplier: v.number(),
     }))),
+    // Compute acquired this round, deferred until the facilitator clicks Advance.
+    // continueFromEffectReview computes the amounts (from lab-growth delta + pool shares)
+    // and stashes them here. advanceRound materialises these into `acquired` ledger rows
+    // + patches table.computeStock, then clears the field. This preserves the reveal:
+    // "this is what's coming at Q2 start" during narrate, then the compute actually
+    // arrives in players' tables only on the Advance click.
+    pendingAcquired: v.optional(v.array(v.object({
+      roleId: v.string(),
+      amount: v.number(),
+    }))),
     // Pre-resolve snapshot of lab structural state (multiplier, allocation, spec, name).
     // Compute history lives in the computeTransactions ledger — not duplicated here.
     labsBefore: v.optional(v.array(labSnapshotValidator)),

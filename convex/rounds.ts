@@ -322,6 +322,60 @@ export const clearPendingMultiplierOverridesInternal = internalMutation({
   },
 });
 
+/** Read the pending (not-yet-materialised) acquisition amounts for a round, joined with
+ *  role display names. Shown in the "New Compute Acquired" panel during narrate — the
+ *  facilitator sees what will land at Advance. Falls back to settled `acquired` ledger
+ *  rows for legacy rounds that were resolved before the deferral landed. */
+export const getPendingAcquired = query({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
+    if (!round) return [];
+
+    const tables = await ctx.db.query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const nameByRole = new Map(tables.map((t) => [t.roleId, t.roleName] as const));
+
+    if (round.pendingAcquired && round.pendingAcquired.length > 0) {
+      return round.pendingAcquired
+        .filter((r) => r.amount !== 0)
+        .map((r) => ({ roleId: r.roleId, name: nameByRole.get(r.roleId) ?? r.roleId, amount: r.amount, pending: true as const }));
+    }
+
+    // Fallback: legacy rounds resolved pre-deferral have acquired rows in the ledger.
+    const acquired = await ctx.db.query("computeTransactions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
+      .filter((q) => q.eq(q.field("type"), "acquired"))
+      .collect();
+    const byRole = new Map<string, number>();
+    for (const row of acquired) {
+      byRole.set(row.roleId, (byRole.get(row.roleId) ?? 0) + row.amount);
+    }
+    return [...byRole.entries()]
+      .filter(([, amount]) => amount !== 0)
+      .map(([roleId, amount]) => ({ roleId, name: nameByRole.get(roleId) ?? roleId, amount, pending: false as const }));
+  },
+});
+
+/** Facilitator-edit path for pending acquisition: overwrite the full `pendingAcquired`
+ *  array with new per-role amounts. Used by the editable "New Compute Acquired" panel. */
+export const updatePendingAcquired = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    amounts: v.array(v.object({ roleId: v.string(), amount: v.number() })),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
+    if (!round) throw new Error(`Round ${args.roundNumber} not found`);
+    const nonZero = args.amounts.filter((r) => r.amount !== 0);
+    await ctx.db.patch(round._id, { pendingAcquired: nonZero });
+  },
+});
+
 export const setResolveDebugInternal = internalMutation({
   args: {
     gameId: v.id("games"),

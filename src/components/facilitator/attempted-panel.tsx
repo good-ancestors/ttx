@@ -60,6 +60,7 @@ export function AttemptedPanel({
   narrativeStale,
   onDiceChanged,
   currentRound,
+  isTimerExpired,
 }: {
   gameId: Id<"games">;
   roundNumber: number;
@@ -81,6 +82,7 @@ export function AttemptedPanel({
   narrativeStale: boolean;
   onDiceChanged: () => void;
   currentRound: Round | undefined;
+  isTimerExpired: boolean;
 }) {
   // Tri-state: null = follow default (open during rolling/narrate, closed otherwise);
   // boolean = user's explicit choice for the current resolving cycle.
@@ -141,8 +143,11 @@ export function AttemptedPanel({
   const effectiveRevealedCount = isSplitPhase ? allActions.length : revealedCount;
   const allRevealed = isRollingOrNarrate && effectiveRevealedCount >= allActions.length;
 
-  // Default open during rolling/narrate with submissions; user's explicit toggle overrides.
-  const defaultExpanded = isRollingOrNarrate && hasSubmissions;
+  // Default open during rolling/narrate/effect-review with submissions, OR when the submit
+  // timer has expired (so the facilitator can scan submitted actions before grading).
+  // User's explicit toggle still overrides via userExpanded tri-state.
+  const defaultExpanded = (isRollingOrNarrate && hasSubmissions)
+    || (phase === "submit" && isTimerExpired && hasSubmissions);
   const isExpanded = userExpanded ?? defaultExpanded;
   const setExpanded = (next: boolean) => setUserExpanded(next === defaultExpanded ? null : next);
 
