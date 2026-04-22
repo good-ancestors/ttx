@@ -75,6 +75,8 @@
 
    Only after this polish pass should the PR be marked ready.
 
+4. **Auto-expand "What Was Attempted" when the submit timer expires** (2026-04-23) — today the panel stays collapsed (its default closed state) once the submit timer runs out, forcing the facilitator to click to see what the tables submitted. Auto-expand when `isTimerExpired` becomes true so the facilitator can immediately scan actions before grading. Hook point: `src/components/facilitator/attempted-panel.tsx` — `defaultExpanded` currently keys on `isRollingOrNarrate && hasSubmissions`; extend to also expand when `phase === "submit" && isTimerExpired` (phase prop already passed in; need to thread `isTimerExpired` through `AttemptedSection` or derive from `phaseEndsAt` inside the component). Preserve the existing `userExpanded` tri-state override so manual collapse still works.
+
 ### P1 — Follow-ups explicitly deferred from the resolve-pipeline.md plan
 
 3. **Richer P7 flag surface** — current `appliedOps[].type === "rejected"` uses freeform strings. Replace with typed categories: `conflict`, `precondition_failure`, `invalid_reference`, `low_confidence_extraction`. Severity-ordered display. Hook points: `convex/pipeline.ts` rejection sites (merge/decommission/transfer/compute/multiplier validators), `src/components/facilitator/effect-review-panel.tsx`.

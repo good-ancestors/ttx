@@ -780,7 +780,11 @@ export const rollAndApplyEffects = internalAction({
       //       resolve cycle (mergers + lab foundings attached to player actions) —
       //       fetched from the event log since game.resolvingStartedAt.
       //   (c) Rejected LLM ops (validation failures, flagged for review).
-      const labNameById = new Map(labsAfterClear.map((l) => [l.labId, l.name] as const));
+      // Name lookup must include decommissioned labs — the absorbed lab of a player-
+      // originated merger is already `status: "decommissioned"` by the time we build
+      // this summary (rollAllImpl settled the merge before the pipeline kicked off).
+      const allLabsForNames = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId, includeInactive: true });
+      const labNameById = new Map(allLabsForNames.map((l) => [l.labId, l.name] as const));
       const appliedOps: { type: string; status: "applied" | "rejected"; summary: string; reason?: string; category?: string; opType?: string }[] = [];
 
       // (b) Player-originated structural ops. rollAllImpl settles player mergers and

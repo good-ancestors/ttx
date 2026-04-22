@@ -85,16 +85,19 @@ export function HappenedSection({
         </button>
       )}
 
+      {/* Applied effects first — these are the mechanical changes the narrate LLM
+       *  consumes to produce the prose. Showing them before the narrative matches
+       *  the causal order: decide → apply → narrate. */}
+      {appliedOps.length > 0 && (
+        <AppliedOpsPanel applied={applied} rejected={rejected} />
+      )}
+
       {(resolving || currentRound?.summary) && (
         <NarrativePanel
           round={currentRound}
           isProjector={isProjector}
           debugContext={!isProjector ? { gameId } : undefined}
         />
-      )}
-
-      {appliedOps.length > 0 && (
-        <AppliedOpsPanel applied={applied} rejected={rejected} />
       )}
     </>
   );
