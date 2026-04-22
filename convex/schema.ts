@@ -204,6 +204,15 @@ export default defineSchema({
         narrativeTokens: v.optional(v.number()),
       })
     ),
+    // Raw LLM prompt + response for the narrative resolve call, for facilitator debugging.
+    resolveDebug: v.optional(
+      v.object({
+        prompt: v.string(),
+        responseJson: v.string(),
+        error: v.optional(v.string()),
+        capturedAt: v.number(),
+      })
+    ),
     // Pre-resolve snapshot of lab structural state (multiplier, allocation, spec, name).
     // Compute history lives in the computeTransactions ledger — not duplicated here.
     labsBefore: v.optional(v.array(labSnapshotValidator)),

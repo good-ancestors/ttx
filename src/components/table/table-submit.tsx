@@ -33,6 +33,7 @@ interface TableSubmitProps {
   }[];
   isExpired?: boolean;
   computeStock?: number;
+  ownsLab?: boolean;
   computeRecipients?: { id: string; name: string; computeStock?: number }[];
   // Form state (local drafts — not yet submitted)
   actionDrafts: ActionDraft[];
@@ -59,6 +60,7 @@ export function TableSubmit({
   onActionDraftsChange,
   isExpired,
   computeStock,
+  ownsLab,
   computeRecipients,
   enabledRoles,
   onSubmitAction,
@@ -118,6 +120,7 @@ export function TableSubmit({
             enabledRoles={enabledRoles}
             computeRoles={hasCompute(role) && computeRecipients ? computeRecipients : undefined}
             ownComputeStock={computeStock}
+            ownsLab={ownsLab}
             isSubmitted={false}
             onSubmitAction={onSubmitAction}
           />

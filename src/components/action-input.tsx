@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY } from "@/lib/game-data";
 import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send, Zap, FlaskConical } from "lucide-react";
 
@@ -64,11 +64,13 @@ interface Props {
   /** Roles that can send/receive compute (has-compute tag, excluding self) */
   computeRoles?: { id: string; name: string; computeStock?: number }[];
   ownComputeStock?: number;
+  /** True if this player already owns an active lab — hides the Found-lab button. */
+  ownsLab?: boolean;
   isSubmitted: boolean;
   onSubmitAction?: (index: number) => void;
 }
 
-export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRoles, ownComputeStock, isSubmitted, onSubmitAction }: Props) {
+export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRoles, ownComputeStock, ownsLab, isSubmitted, onSubmitAction }: Props) {
   // Filter out own role and AI Systems (AI Systems uses influence, not endorsements)
   const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId))
     .filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId && r.id !== AI_SYSTEMS_ROLE_ID : true);
@@ -138,6 +140,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRo
             otherRoles={otherRoles}
             computeRoles={computeRoles}
             ownComputeStock={ownComputeStock}
+            ownsLab={ownsLab}
             isSubmitted={isSubmitted}
             canRemove={actions.length > 1 || action.text.trim() !== ""}
             onAddNext={actions.length < 5 && !isSubmitted ? addAction : undefined}
@@ -170,6 +173,7 @@ function ActionCard({
   otherRoles,
   computeRoles,
   ownComputeStock,
+  ownsLab,
   isSubmitted,
   canRemove,
   onAddNext,
@@ -185,6 +189,7 @@ function ActionCard({
   otherRoles: { id: string; name: string }[];
   computeRoles?: { id: string; name: string; computeStock?: number }[];
   ownComputeStock?: number;
+  ownsLab?: boolean;
   isSubmitted: boolean;
   canRemove: boolean;
   onAddNext?: () => void;
@@ -192,6 +197,13 @@ function ActionCard({
 }) {
   const [showEndorse, setShowEndorse] = useState(false);
   const [showComputeRequest, setShowComputeRequest] = useState(false);
+
+  const [idleNudge, setIdleNudge] = useState(false);
+  useEffect(() => {
+    if (isSubmitted || !action.text.trim()) return;
+    const t = setTimeout(() => setIdleNudge(true), 15_000);
+    return () => clearTimeout(t);
+  }, [action.text, isSubmitted]);
 
   return (
     <div className={`bg-white rounded-xl border p-4 ${action.secret ? "border-viz-warning/40" : action.endorseTargets.length > 0 ? "border-[#059669]/30" : "border-border"}`}>
@@ -201,7 +213,7 @@ function ActionCard({
 
       <textarea
         value={action.text}
-        onChange={(e) => onUpdate({ text: e.target.value })}
+        onChange={(e) => { onUpdate({ text: e.target.value }); setIdleNudge(false); }}
         onFocus={(e) => {
           setTimeout(() => {
             (e.target as HTMLElement).closest('.rounded-xl')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -263,8 +275,9 @@ function ActionCard({
             </span>
           </button>
 
-          {/* Found-a-lab toggle — only for has-compute roles (founders pay from their own stock) */}
-          {computeRoles && (
+          {/* Found-a-lab toggle — only for has-compute roles without an existing lab
+              and with enough compute to meet the 10u minimum seed. */}
+          {computeRoles && !ownsLab && (ownComputeStock ?? 0) >= 10 && (
             <button
               onClick={() => onUpdate({ foundLab: action.foundLab ? undefined : { name: "", seedCompute: 10 } })}
               disabled={isSubmitted}
@@ -309,7 +322,7 @@ function ActionCard({
             <button
               onClick={onSubmit}
               aria-label="Submit this action"
-              className="min-h-[44px] px-3 rounded-lg text-xs font-bold text-white bg-navy hover:bg-navy-light transition-colors flex items-center gap-1.5"
+              className={`min-h-[44px] px-3 rounded-lg text-xs font-bold text-white bg-navy hover:bg-navy-light transition-colors flex items-center gap-1.5 ${idleNudge ? "animate-submit-nudge" : ""}`}
             >
               <Send className="w-3.5 h-3.5" /> Submit
             </button>

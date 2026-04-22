@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, PROBABILITY_CARDS, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { ProbabilityBadge } from "@/components/action-card";
@@ -383,21 +384,40 @@ function ProbabilityDropdown({
   allowUngrade?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  // Portalled so the menu escapes ancestor stacking contexts / overflow clipping.
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
   const card = PROBABILITY_CARDS.find((p) => p.pct === current) ?? PROBABILITY_CARDS[2];
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    const update = () => {
+      const r = triggerRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setMenuPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
     };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    update();
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
   }, [open]);
 
   return (
-    <div ref={ref} className={`relative shrink-0 ${open ? "z-[100]" : ""}`}>
+    <div className="relative shrink-0">
       <button
+        ref={triggerRef}
         onClick={() => setOpen(!open)}
         className="text-[11px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1"
         style={{ backgroundColor: card.bgColor, color: card.color }}
@@ -405,8 +425,12 @@ function ProbabilityDropdown({
         {card.label} ({card.pct}%)
         <ChevronDown className="w-3 h-3" />
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 bg-navy-dark border border-navy-light rounded-lg shadow-xl py-1 min-w-[160px]">
+      {open && menuPos && typeof document !== "undefined" && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[1000] bg-navy-dark border border-navy-light rounded-lg shadow-xl py-1 min-w-[160px]"
+          style={{ top: menuPos.top, right: menuPos.right }}
+        >
           {PROBABILITY_CARDS.map((p) => (
             <button
               key={p.pct}
@@ -437,7 +461,8 @@ function ProbabilityDropdown({
               </button>
             </>
           )}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );

@@ -128,9 +128,10 @@ function buildChartData(
     return padLeft + (i / Math.max(1, xCount - 1)) * chartW;
   }
 
-  // Build per-lab point series, keyed on labId (preferred) or roleId for backwards compat.
+  // Key on roleId first: DEFAULT_LABS carries static string labIds ("openbrain") that
+  // never match Convex labIds on the live doc. roleId is stable across both.
   const identityKey = (l: { labId?: string; roleId?: string; name: string }) =>
-    l.labId ?? l.roleId ?? l.name;
+    l.roleId ?? l.labId ?? l.name;
   const currentByKey = new Map(currentLabs.map((l) => [identityKey(l), l]));
   const series: LabSeries[] = [];
 

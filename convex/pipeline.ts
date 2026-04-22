@@ -117,7 +117,7 @@ async function gradeSubmissionBatch(
       // other actions — including any the facilitator has already manually graded — so competition,
       // priority budgets and narrative coherence are evaluated against the complete submission.
       const preGradedSibling = onlyUngraded
-        ? sub.actions.filter((a) => a.probability != null).map((a) => ({ text: a.text, priority: a.priority, probability: a.probability }))
+        ? sub.actions.filter((a) => a.probability != null).map((a) => ({ text: a.text, priority: a.priority }))
         : [];
 
       const prevRoundForGrading = roundMap.get(roundNumber - 1);
@@ -617,12 +617,26 @@ export const rollAndNarrate = internalAction({
         usedModel = result.model;
         timeMs = result.timeMs;
         tokens = result.tokens;
+
+        await ctx.runMutation(internal.rounds.setResolveDebugInternal, {
+          gameId,
+          roundNumber,
+          prompt,
+          responseJson: JSON.stringify(result.output, null, 2),
+        });
       } catch (narrativeErr) {
         const errMsg = narrativeErr instanceof Error ? narrativeErr.message : String(narrativeErr);
         console.error("[pipeline] Narrative LLM failed, using fallback:", narrativeErr);
         await ctx.runMutation(internal.games.updatePipelineStatus, {
           gameId,
           status: { step: "narrating", detail: `Narrative generation failed: ${errMsg.slice(0, 100)}. Using fallback.`, startedAt: Date.now() },
+        });
+        await ctx.runMutation(internal.rounds.setResolveDebugInternal, {
+          gameId,
+          roundNumber,
+          prompt,
+          responseJson: "",
+          error: errMsg,
         });
 
         // Build a basic factual summary so the facilitator has something to work with
