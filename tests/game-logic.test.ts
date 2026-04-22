@@ -503,6 +503,60 @@ describe("computeLabGrowth", () => {
   });
 });
 
+describe("computeLabGrowth deployment scaling", () => {
+  // Fixed isolated-lab scenario: 1 lab so proportional fallback wouldn't kick in anyway;
+  // use OpenBrain which has a known Round 1 share of 35.5% of 31u = 11.005 ≈ 11u baseline.
+  const makeLab = (deploymentPct: number, otherPct = (100 - deploymentPct) / 2) => ({
+    name: "OpenBrain" as const,
+    roleId: "openbrain-ceo",
+    computeStock: 22,
+    rdMultiplier: 3,
+    allocation: { deployment: deploymentPct, research: otherPct, safety: otherPct },
+    spec: "test",
+  });
+
+  // Helper: pull the newCompute delta out of the growth result
+  const computeDelta = (deploymentPct: number): number => {
+    const lab = makeLab(deploymentPct);
+    const [out] = computeLabGrowth([lab], new Map(), 1, 200);
+    return out.computeStock - lab.computeStock;
+  };
+
+  it("yields ≈baseline compute at deployment=50", () => {
+    // At 50% deployment the revenue multiplier is exactly 1.0 → structural + revenue = baseShare
+    // Round 1 OpenBrain baseShare = 31 × 35.5% = 11.005 → 11 after rounding
+    expect(computeDelta(50)).toBe(11);
+  });
+
+  it("yields ≈0.80× baseline at deployment=0", () => {
+    // 60% structural + 40% × 0.5 = 60% + 20% = 80% of 11.005 ≈ 8.8 → 9
+    expect(computeDelta(0)).toBe(9);
+  });
+
+  it("yields ≈1.20× baseline at deployment=100", () => {
+    // 60% structural + 40% × 1.5 = 60% + 60% = 120% of 11.005 ≈ 13.2 → 13
+    expect(computeDelta(100)).toBe(13);
+  });
+
+  it("matches authored scenario at OpenBrain's default allocation (47%)", () => {
+    // At default deployment=47 the revenue multiplier is 0.97, total factor ≈ 0.988
+    // 0.988 × 11.005 ≈ 10.87 → 11 after rounding (preserves the authored baseline)
+    expect(computeDelta(47)).toBe(11);
+  });
+
+  it("preserves baseline compute monotonically with deployment%", () => {
+    // Monotonicity check: no weird hump/dip across the 0..100 range
+    let prev = -1;
+    for (let d = 0; d <= 100; d += 10) {
+      const delta = computeDelta(d);
+      expect(delta).toBeGreaterThanOrEqual(prev);
+      prev = delta;
+    }
+  });
+
+});
+
+
 // ─── SAMPLE ACTIONS ─────────────────────────────────────────────────────────
 
 describe("Sample Actions", () => {

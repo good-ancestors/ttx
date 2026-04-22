@@ -479,19 +479,19 @@ export const COMPUTE_CATEGORIES = [
     key: "deployment" as const,
     label: "Deployment",
     color: "#F59E0B",
-    desc: "Serving user products, scientific deployments, commercial revenue",
+    desc: "Serving user products, scientific deployments, commercial revenue. Revenue slightly scales next round's compute (±20% at extremes); governments and investors provide the bulk regardless.",
   },
   {
     key: "research" as const,
     label: "Research",
     color: "#06B6D4",
-    desc: "Pushing the capability frontier — training the next model",
+    desc: "Pushing the capability frontier — training the next model. Drives R&D multiplier growth relative to peers.",
   },
   {
     key: "safety" as const,
     label: "Safety",
     color: "#22C55E",
-    desc: "Alignment research, interpretability, eval suites",
+    desc: "Alignment research, interpretability, eval suites. Reduces trajectory risk.",
   },
 ];
 
@@ -606,6 +606,22 @@ export const BASELINE_RD_TARGETS: Record<string, Record<number, number>> = {
 };
 
 
+/** Compute acquisition tuning — how deployment% affects a lab's round-over-round
+ *  pool-share. Split-bucket model: a structural fraction of the baseline share flows
+ *  regardless (chip supply chains, govt allocations, investor capital), and a revenue
+ *  fraction scales linearly with deployment% via a 0.5–1.5 multiplier.
+ *
+ *  At the authored CEO defaults (deployment ≈ 42–50%) this yields ≈1.0× baseline so the
+ *  scenario's compute curve is preserved. Extremes: deployment=0 → 0.80× baseline,
+ *  deployment=100 → 1.20× baseline. */
+export const COMPUTE_ACQUISITION = {
+  /** Fraction of baseline share that flows regardless of deployment%. */
+  STRUCTURAL_RATIO: 0.60,
+  /** Floor on the revenue multiplier — at deployment=0 the revenue bucket is still
+   *  half-active (existing products, API traffic that doesn't need new allocation). */
+  REVENUE_FLOOR: 0.5,
+};
+
 // Lab progression tuning constants
 export const LAB_PROGRESSION = {
   /** Converts effective R&D advantage into faster/slower growth around the baseline curve.
@@ -660,13 +676,23 @@ export function computeLabGrowth<T extends {
   const newComputeTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 3;
   const shares = DEFAULT_COMPUTE_SHARES[roundNumber] ?? {};
 
+  // Total stock for the proportional fallback (labs outside DEFAULT_COMPUTE_SHARES,
+  // e.g. player-founded). Hoisted so we compute once per round, not once per lab.
+  const totalCurrentStock = currentLabs.reduce((s, l) => s + l.computeStock, 0);
+  const { STRUCTURAL_RATIO, REVENUE_FLOOR } = COMPUTE_ACQUISITION;
+
   const labs = currentLabs.map(lab => {
     const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
-    // Use per-lab share percentage if available, otherwise proportional fallback
     const sharePct = shares[lab.name];
-    const newCompute = sharePct !== undefined
-      ? Math.round(newComputeTotal * sharePct / 100)
-      : Math.round(newComputeTotal * lab.computeStock / Math.max(1, currentLabs.reduce((s, l) => s + l.computeStock, 0)));
+    // Baseline share of this round's new compute: authored per-round DEFAULT_COMPUTE_SHARES
+    // when present, else proportional to current stock.
+    const baseShare = sharePct !== undefined
+      ? newComputeTotal * sharePct / 100
+      : newComputeTotal * lab.computeStock / Math.max(1, totalCurrentStock);
+    // Split-bucket: STRUCTURAL_RATIO of baseShare flows regardless of deployment%;
+    // the remainder scales 0.5–1.5× with deployment% (REVENUE_FLOOR at D=0 → 1.0+ at D=50).
+    const revenueMult = REVENUE_FLOOR + 0.01 * allocation.deployment;
+    const newCompute = Math.round(baseShare * (STRUCTURAL_RATIO + (1 - STRUCTURAL_RATIO) * revenueMult));
     const computeStock = Math.max(0, lab.computeStock + newCompute);
     return { ...lab, allocation, computeStock };
   });
