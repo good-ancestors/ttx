@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { mutation, query, internalQuery, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
 /** Validate facilitator token against env var. Throws if invalid, or if the secret
@@ -65,6 +65,26 @@ export async function logEvent(
     data: data ? JSON.stringify(data) : undefined,
   });
 }
+
+/** Internal query for the resolve pipeline: fetch events logged since a timestamp,
+ *  filtered by type. Used by rollAndApplyEffects to surface player-originated
+ *  structural ops (lab_founded / lab_merged / lab_merge_failed) that landed during
+ *  the roll phase, for inclusion in the P7 appliedOps review list. */
+export const getSinceForRound = internalQuery({
+  args: {
+    gameId: v.id("games"),
+    sinceTimestamp: v.number(),
+    types: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const typeSet = new Set(args.types);
+    const events = await ctx.db
+      .query("events")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    return events.filter((e) => e.timestamp >= args.sinceTimestamp && typeSet.has(e.type));
+  },
+});
 
 // Query for facilitator debug panel — returns latest events for a game
 export const getByGame = query({

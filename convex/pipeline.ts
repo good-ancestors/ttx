@@ -759,32 +759,82 @@ export const rollAndApplyEffects = internalAction({
       });
 
       // Build the P7 appliedOps list — what the facilitator sees on the review screen.
-      // Includes both applied and rejected ops so the facilitator knows what the LLM
-      // attempted and why anything was dropped.
+      // Includes:
+      //   (a) LLM-decided ops that just landed via applyDecidedEffectsInternal
+      //   (b) Player-originated ops that settled during rollAllInternal earlier this
+      //       resolve cycle (mergers + lab foundings attached to player actions) —
+      //       fetched from the event log since game.resolvingStartedAt.
+      //   (c) Rejected LLM ops (validation failures, flagged for review).
       const labNameById = new Map(labsAfterClear.map((l) => [l.labId, l.name] as const));
       const appliedOps: { type: string; status: "applied" | "rejected"; summary: string; reason?: string }[] = [];
+
+      // (b) Player-originated structural ops. rollAllImpl settles player mergers and
+      // lab foundings directly and emits events; pull those so the P7 review shows
+      // the complete set of things that happened this round.
+      const sinceMs = game.resolvingStartedAt ?? 0;
+      if (sinceMs > 0) {
+        const playerEvents = await ctx.runQuery(internal.events.getSinceForRound, {
+          gameId,
+          sinceTimestamp: sinceMs,
+          types: ["lab_merged", "lab_merge_failed", "lab_founded", "lab_founding_failed"],
+        });
+        for (const evt of playerEvents) {
+          const data: Record<string, unknown> = evt.data ? (() => { try { return JSON.parse(evt.data) as Record<string, unknown>; } catch { return {}; } })() : {};
+          if (evt.type === "lab_merged") {
+            const survivorName = typeof data.survivorLabId === "string" ? labNameById.get(data.survivorLabId as Id<"labs">) ?? "?" : "?";
+            const absorbedName = typeof data.absorbedLabId === "string" ? labNameById.get(data.absorbedLabId as Id<"labs">) ?? "?" : "?";
+            appliedOps.push({
+              type: "merge",
+              status: "applied",
+              summary: `${absorbedName} merged into ${survivorName} (player action)`,
+              reason: typeof data.amountMoved === "number" ? `${data.amountMoved}u compute transferred` : undefined,
+            });
+          } else if (evt.type === "lab_merge_failed") {
+            appliedOps.push({
+              type: "rejected",
+              status: "rejected",
+              summary: `Player merger failed: ${typeof data.reason === "string" ? data.reason : "unknown"}`,
+            });
+          } else if (evt.type === "lab_founded") {
+            appliedOps.push({
+              type: "foundLab",
+              status: "applied",
+              summary: `New lab founded: ${typeof data.labName === "string" ? data.labName : "?"} (${typeof data.seedCompute === "number" ? data.seedCompute : "?"}u seed)`,
+            });
+          } else if (evt.type === "lab_founding_failed") {
+            appliedOps.push({
+              type: "rejected",
+              status: "rejected",
+              summary: `Lab founding failed: ${typeof data.labName === "string" ? data.labName : "?"} (player action)`,
+            });
+          }
+        }
+      }
+
+      // (a) LLM-decided ops that just landed
       for (const m of mergeOps) {
         const s = labNameById.get(m.survivorLabId) ?? "?";
         const a = labNameById.get(m.absorbedLabId) ?? "?";
         const rename = m.newName && m.newName !== s ? ` → renamed ${m.newName}` : "";
-        appliedOps.push({ type: "merge", status: "applied", summary: `${a} merged into ${s}${rename}`, reason: m.reason });
+        appliedOps.push({ type: "merge", status: "applied", summary: `${a} merged into ${s}${rename} (LLM)`, reason: m.reason });
       }
       for (const d of decommissionOps) {
-        appliedOps.push({ type: "decommission", status: "applied", summary: `${labNameById.get(d.labId) ?? "?"} decommissioned` });
+        appliedOps.push({ type: "decommission", status: "applied", summary: `${labNameById.get(d.labId) ?? "?"} decommissioned (LLM)` });
       }
       for (const t of transferOps) {
         const name = labNameById.get(t.labId) ?? "?";
-        appliedOps.push({ type: "transferOwnership", status: "applied", summary: `${name} ownership → ${t.newOwnerRoleId ?? "(unowned)"}` });
+        appliedOps.push({ type: "transferOwnership", status: "applied", summary: `${name} ownership → ${t.newOwnerRoleId ?? "(unowned)"} (LLM)` });
       }
       for (const ov of multiplierOverrides) {
         const name = labNameById.get(ov.labId) ?? "?";
-        appliedOps.push({ type: "multiplierOverride", status: "applied", summary: `${name} R&D multiplier → ${ov.newMultiplier}×` });
+        appliedOps.push({ type: "multiplierOverride", status: "applied", summary: `${name} R&D multiplier → ${ov.newMultiplier}× (LLM)` });
       }
       for (const m of computeModifiers) {
         const name = labNameById.get(m.labId) ?? "?";
         const sign = m.change > 0 ? "+" : "";
-        appliedOps.push({ type: "computeChange", status: "applied", summary: `${name} compute ${sign}${m.change}u`, reason: m.reason });
+        appliedOps.push({ type: "computeChange", status: "applied", summary: `${name} compute ${sign}${m.change}u (LLM)`, reason: m.reason });
       }
+      // (c) Rejected LLM ops
       for (const rej of rejectedOps) {
         appliedOps.push({ type: "rejected", status: "rejected", summary: rej });
       }
