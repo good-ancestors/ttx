@@ -445,48 +445,167 @@ Use this only to shape hidden motives and observable behaviour. Before the final
 In the final round you MAY reveal the underlying alignment dynamic, but describe it in accurate alignment language. Do NOT call it a "disposition" or quote internal labels unless a player explicitly does so.`;
 }
 
-// ─── MERGED RESOLVE + NARRATE PROMPT ─────────────────────────────────────────
+// ─── SPLIT RESOLVE: DECIDE PROMPT + NARRATE PROMPT ───────────────────────────
 
-export function buildRoundNarrativePrompt(args: {
-  round: number;
-  roundLabel: string;
-  resolvedActions: { roleName: string; text: string; priority: number; probability: number; rolled: number; success: boolean; secret?: boolean }[];
-  labs: Lab[];
-  previousRounds?: PreviousRoundSummary[];
-  aiDisposition?: { label: string; description: string };
-  previousTrajectories?: LabTrajectoryContext[];
-  interRoundChanges?: string[];
-}) {
-  const sorted = [...args.resolvedActions].sort((a, b) => b.priority - a.priority);
+type ResolvedAction = {
+  roleName: string;
+  text: string;
+  priority: number;
+  probability: number;
+  rolled: number;
+  success: boolean;
+  secret?: boolean;
+};
+
+/** Format the action log shared by both decide and narrate prompts. Successes
+ *  and failures are listed separately (public then secret) so the LLM can
+ *  reason about intent and outcome side-by-side. */
+function formatActionLog(actions: ResolvedAction[]): string {
+  const sorted = [...actions].sort((a, b) => b.priority - a.priority);
   const publicSuccesses = sorted.filter((a) => !a.secret && a.success);
   const publicFailures = sorted.filter((a) => !a.secret && !a.success);
   const secretSuccesses = sorted.filter((a) => a.secret && a.success);
   const secretFailures = sorted.filter((a) => a.secret && !a.success);
 
+  const line = (a: ResolvedAction) =>
+    `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`;
 
-
-  let actionsSection = `SUCCESSFUL PUBLIC ACTIONS:\n${publicSuccesses.length > 0 ? publicSuccesses.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}`;
-  actionsSection += `\n\nFAILED PUBLIC ACTIONS:\n${publicFailures.length > 0 ? publicFailures.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}`;
+  let section = `SUCCESSFUL PUBLIC ACTIONS:\n${publicSuccesses.length > 0 ? publicSuccesses.map(line).join("\n") : "- None"}`;
+  section += `\n\nFAILED PUBLIC ACTIONS:\n${publicFailures.length > 0 ? publicFailures.map(line).join("\n") : "- None"}`;
   if (secretSuccesses.length > 0 || secretFailures.length > 0) {
-    actionsSection += `\n\nSECRET ACTIONS (marked secret by players):`;
-    if (secretSuccesses.length > 0) actionsSection += `\nSucceeded:\n${secretSuccesses.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
-    if (secretFailures.length > 0) actionsSection += `\nFailed:\n${secretFailures.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
+    section += `\n\nSECRET ACTIONS (marked secret by players):`;
+    if (secretSuccesses.length > 0) section += `\nSucceeded:\n${secretSuccesses.map(line).join("\n")}`;
+    if (secretFailures.length > 0) section += `\nFailed:\n${secretFailures.map(line).join("\n")}`;
+  }
+  return section;
+}
+
+function formatInterRoundChanges(changes: string[] | undefined): string {
+  if (!changes || changes.length === 0) return "";
+  return `\nSTRUCTURAL CHANGES SINCE LAST RESOLVE (not player-triggered this round — facilitator overrides or out-of-band events between rounds; treat as GROUND TRUTH):\n${changes.map((c) => `- ${c}`).join("\n")}\n`;
+}
+
+/** Diff two lab snapshots into human-readable strings the narrative LLM can cite
+ *  when describing what happened. Covers the cases narrate needs to know about
+ *  but might miss by only reading labsAfter: decommissioned labs, ownership
+ *  transfers, renames, compute/multiplier shifts. */
+function formatAppliedOperations(labsBefore: Lab[], labsAfter: Lab[]): string {
+  const beforeByName = new Map(labsBefore.map((l) => [l.name, l] as const));
+  const afterByName = new Map(labsAfter.map((l) => [l.name, l] as const));
+  const lines: string[] = [];
+
+  // Decommissioned / merged away: present before, absent after.
+  for (const [name] of beforeByName) {
+    if (!afterByName.has(name)) {
+      lines.push(`${name} is no longer an active lab (decommissioned, merged away, or renamed as part of a merger).`);
+    }
+  }
+  // New active labs: absent before, present after.
+  for (const [name] of afterByName) {
+    if (!beforeByName.has(name)) {
+      lines.push(`${name} appeared as a new active lab this round.`);
+    }
+  }
+  // Changes to labs that persist across the round.
+  for (const [name, pre] of beforeByName) {
+    const post = afterByName.get(name);
+    if (!post) continue;
+    if (pre.rdMultiplier !== post.rdMultiplier) {
+      lines.push(`${name} R&D multiplier: ${pre.rdMultiplier} → ${post.rdMultiplier}.`);
+    }
+    if (pre.computeStock !== post.computeStock) {
+      lines.push(`${name} compute stock: ${pre.computeStock} → ${post.computeStock}.`);
+    }
+    if (pre.spec !== post.spec && post.spec) {
+      lines.push(`${name} spec updated.`);
+    }
   }
 
-  const interRoundSection = args.interRoundChanges && args.interRoundChanges.length > 0
-    ? `\nSTRUCTURAL CHANGES SINCE LAST RESOLVE (not player-triggered this round — facilitator overrides or out-of-band events between rounds; treat as GROUND TRUTH):\n${args.interRoundChanges.map((c) => `- ${c}`).join("\n")}\n`
-    : "";
+  if (lines.length === 0) return "";
+  return `\nAPPLIED STATE CHANGES (already executed — describe their consequences, do not re-decide):\n${lines.map((l) => `- ${l}`).join("\n")}\n`;
+}
 
+// ─── DECIDE PROMPT ───────────────────────────────────────────────────────────
+// First LLM pass of resolve. Outputs structural operations only — no prose.
+// A separate narrative pass describes what happened once these ops have been
+// applied mechanically. Keeping the two concerns separate stops the narrative
+// from contradicting state: the narrator reads the frozen result rather than
+// deciding it alongside the prose.
+
+export function buildResolveDecidePrompt(args: {
+  round: number;
+  roundLabel: string;
+  resolvedActions: ResolvedAction[];
+  labs: Lab[];
+  previousRounds?: PreviousRoundSummary[];
+  aiDisposition?: { label: string; description: string };
+  interRoundChanges?: string[];
+}) {
   return `You are resolving Round ${args.round}: ${args.roundLabel}.
 
-LAB STATUS:
-${formatLabAllocations(args.labs)}
-${interRoundSection}${formatPreviousRounds(args.previousRounds ?? [])}
+This is the DECIDE pass. Emit the structural state changes that result from the successful actions this round. Output ONLY labOperations — no prose, no summary, no trajectories. A separate narrative pass will describe the outcome once your operations have applied.
 
-${actionsSection}
+LAB STATUS (start of round):
+${formatLabAllocations(args.labs)}
+${formatInterRoundChanges(args.interRoundChanges)}${formatPreviousRounds(args.previousRounds ?? [])}
+
+${formatActionLog(args.resolvedActions)}
 ${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}` : ""}
 
-YOUR TASK: Produce a situation briefing for the next round AND determine game state changes.
+LAB OPERATIONS — output any that apply:
+- "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Use newName to rename the merged lab. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).
+- "decommission": Lab shut down or destroyed. Specify labName.
+- "transferOwnership": Lab moves to a different controller (nationalisation, forced acquisition). Specify labName + controllerRoleId (empty string = unowned).
+- "computeChange": Direct compute stock change from a specific narrative event — DPA transfer, sanctions, infrastructure damage, theft, grant. Use for ONE-OFF shocks tied to player actions or world events. DO NOT use to simulate routine revenue: each lab's deployment% already scales baseline compute inflow (±20% at extremes) automatically. Reserve computeChange for unexpected revenue shocks (hit product, lost contract) or political events.
+- "multiplierOverride": Event changes R&D capability (Safer pivot halves it, sabotage, breakthrough). Absolute new value.
+
+IDENTIFIERS — this is load-bearing:
+- \`labName\` is a lab name string that must match a lab in LAB STATUS exactly. Not a role name.
+- \`controllerRoleId\` is a ROLE ID (slug form, e.g. "us-president", "australia-pm", "openbrain-ceo"), NOT a display role name (e.g. "US President", "Australia PM"). If you emit a display name here the transfer will be rejected and the lab will stay with its old controller. When in doubt about the ID form, look at how the role appeared in earlier prompts — the slug form is always lowercase hyphen-separated.
+- \`survivor\` and \`absorbed\` for merges are lab names, same rule as labName.
+- Never use a role name (e.g. "Australian PM") as a lab name, even when nationalisation brings a lab under a government's control. The lab keeps its existing name unless the merge action specifies newName.
+
+NOT AVAILABLE: lab creation (players-only, via the found-a-lab action) and standalone rename (use merge with newName for consolidation-driven renames).
+
+Only output operations DIRECTLY caused by successful actions. Empty array if nothing affects labs.
+
+CONFLICTS: If two successful actions produce incompatible effects on the same lab, the one with higher probability wins. A success on the action log does NOT guarantee the intended world-state happened — one successful action can block, overtake, or redirect another. Example: the DPA order goes through procedurally but Conscienta had already redomiciled, so no merger lands. In such cases emit ops for the effects that actually landed and omit ops whose preconditions were knocked out.
+
+SECRET ACTIONS: Successful secret actions produce real structural effects in the world. Emit their operations as you would for public actions — the narrative pass will handle how (or whether) to describe them publicly.`;
+}
+
+// ─── NARRATE PROMPT ──────────────────────────────────────────────────────────
+// Second LLM pass of resolve. Input is the frozen end-of-round state plus the
+// action log. Output is prose + trajectories only. The narrator cannot change
+// state — it describes what already happened. This is the split that stops
+// "What Happened" from contradicting the mechanical outcome.
+
+export function buildResolveNarrativePrompt(args: {
+  round: number;
+  roundLabel: string;
+  resolvedActions: ResolvedAction[];
+  labsBefore: Lab[];
+  labsAfter: Lab[];
+  previousRounds?: PreviousRoundSummary[];
+  aiDisposition?: { label: string; description: string };
+  previousTrajectories?: LabTrajectoryContext[];
+  interRoundChanges?: string[];
+}) {
+  return `You are narrating Round ${args.round}: ${args.roundLabel}.
+
+The DECIDE pass has already run. Structural operations are applied and the end-of-round state is frozen below. You cannot change state; your job is to describe what happened, in prose, and assess risk trajectories. If your description contradicts LAB STATUS (END) the description is wrong.
+
+LAB STATUS (start of round):
+${formatLabAllocations(args.labsBefore)}
+
+LAB STATUS (end of round — ground truth):
+${formatLabAllocations(args.labsAfter)}
+${formatAppliedOperations(args.labsBefore, args.labsAfter)}${formatInterRoundChanges(args.interRoundChanges)}${formatPreviousRounds(args.previousRounds ?? [])}
+
+${formatActionLog(args.resolvedActions)}
+${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}` : ""}
+
+YOUR TASK: Produce a situation briefing for the next round, plus risk trajectories for active labs.
 
 SUMMARY STYLE — read this carefully:
 
@@ -494,13 +613,13 @@ You are writing a briefing, not a recap. The action log already shows what was a
 
 THREE FIELDS, each with a defined job:
 
-- **outcomes** (2-3 sentences): what the successful actions PRODUCED, at meaning-level. Synthesize — connect effects into coherent outcomes. Do not re-list the action log. A successful action that was blocked or overtaken by another action produced a different outcome than its actor intended; report the actual world-state change, not the attempt.
+- **outcomes** (2-3 sentences): what the successful actions PRODUCED, at meaning-level. Synthesize — connect effects into coherent outcomes. Do not re-list the action log. A successful action that was blocked or overtaken by another action produced a different outcome than its actor intended; report the actual world-state change (visible in LAB STATUS END), not the attempt.
 
 - **stateOfPlay** (1-2 sentences): where key players sit NOW, in relative terms. Positions, leverage, momentum — not absolute numbers. Who gained, who lost, who's now exposed or isolated.
 
 - **pressures** (1-2 sentences): what is set up, contested, or at stake heading into the next round. The questions players should be weighing between rounds. Forward-looking, not a recap.
 
-Every sentence must earn its place. Terse is better than padded. If a domain produced nothing visible, say nothing about it — do not add bullets like "no coverage" or "no incidents reported" to fill space.
+Every sentence must earn its place. Terse is better than padded. If a domain produced nothing visible, say nothing about it — do not add filler like "no coverage" or "no incidents reported".
 
 WHAT MAY NOT APPEAR:
 
@@ -511,10 +630,11 @@ WHAT MAY NOT APPEAR:
 - Leakage of non-public actions. Use a "reasonably informed observer" test — if an outsider could not plausibly notice it, do not narrate it in outcomes / stateOfPlay / pressures. Hidden dynamics go in facilitatorNotes.
 - Filler non-events. If nothing happened in a domain, don't mention the domain.
 - Re-listing the action log. The action log is shown separately. Synthesize, don't enumerate.
+- Contradicting LAB STATUS (END). If a lab appears active at end, it is active; if it doesn't, it's gone. Describe what IS, not what someone intended.
 
-CONFLICTS: If contradictory actions both succeeded, describe the final state in outcomes — not each actor's intent. A success on the action log does NOT guarantee the intended world-state happened. Example: a DPA consolidation can succeed as a government move while still failing to merge Conscienta if redomicile succeeded first. Only a clean winner if probabilities diverge dramatically (90% vs 10%).
+CONFLICTS: Where contradictory actions both rolled success, LAB STATUS (END) shows which effect actually landed. Describe the final state in outcomes, not each actor's intent. A success on the action log does NOT guarantee the intended world-state happened.
 
-GOOD example (narrated from a real Q2):
+GOOD example:
 - outcomes: "Conscienta redomiciled to Australia and folded into a new sovereign-backed lab, AussieAI. The DPA consolidation of OpenBrain proceeded on paper but lost its second target in the process."
 - stateOfPlay: "US compute is now nationalised but geographically narrower; Australia has a frontier lab for the first time; OpenBrain is state-owned and alone."
 - pressures: "Export control policy is the next pivot. OpenBrain's deployment revenue vs AussieAI's scaling race starts from here."
@@ -534,38 +654,19 @@ NO GAME MECHANICS in the summary (probabilities, dice, priority numbers).
 
 AI DISPOSITION: If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
 
-USE LAB STATUS AS GROUND TRUTH: LAB STATUS below shows CURRENT allocations, compute, multipliers. Role descriptions in the system prompt give historical defaults only — allocations and compute change every round. When you MUST cite a number, it matches LAB STATUS, not any role description.
-
-LAB OPERATIONS — output any that apply:
-- "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Use newName to rename the merged lab. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).
-- "decommission": Lab shut down or destroyed. Specify labName.
-- "transferOwnership": Lab moves to a different controller (nationalisation, forced acquisition). Specify labName + controllerRoleId (empty string = unowned).
-- "computeChange": Direct compute stock change from a specific narrative event — DPA transfer, sanctions, infrastructure damage, theft, grant. Use for ONE-OFF shocks tied to player actions or world events. DO NOT use to simulate routine revenue: each lab's deployment% already scales baseline compute inflow (±20% at extremes) automatically. Reserve computeChange for unexpected revenue shocks (hit product, lost contract) or political events.
-- "multiplierOverride": Event changes R&D capability (Safer pivot halves it, sabotage, breakthrough). Absolute new value.
-
-IDENTIFIERS — this is load-bearing:
-- \`labName\` is a lab name string that must match a lab in LAB STATUS exactly. Not a role name.
-- \`controllerRoleId\` is a ROLE ID (slug form, e.g. "us-president", "australia-pm", "openbrain-ceo"), NOT a display role name (e.g. "US President", "Australia PM"). If you emit a display name here the transfer will be rejected and the lab will stay with its old controller. When in doubt about the ID form, look at how the role appeared in earlier prompts — the slug form is always lowercase hyphen-separated.
-- \`survivor\` and \`absorbed\` for merges are lab names, same rule as labName.
-- Never use a role name (e.g. "Australian PM") as a lab name, even when nationalisation brings a lab under a government's control. The lab keeps its existing name unless the merge action specifies newName.
-
-NOT AVAILABLE: lab creation (players-only, via the found-a-lab action) and standalone rename (use merge with newName for consolidation-driven renames).
-
-Only output operations DIRECTLY caused by successful actions. Empty array if nothing affects labs.
-
 ${args.previousTrajectories && args.previousTrajectories.length > 0 ? `
 PREVIOUS RISK ASSESSMENT (from last round — use this to inform your trajectory update):
 ${args.previousTrajectories.map((t) => `- ${t.labName}: ${t.safetyAdequacy} safety, trajectory=${t.likelyFailureMode} (signal ${t.signalStrength}/10) — ${t.reasoning}`).join("\n")}
 ` : ""}
-LAB TRAJECTORIES — assess each CURRENTLY ACTIVE lab's risk profile based on their spec, safety allocation (%), R&D multiplier, and what happened this round. Consider:
+LAB TRAJECTORIES — assess each active lab (appearing in LAB STATUS END) based on its spec, safety allocation (%), R&D multiplier, and what happened this round. Consider:
 - Is safety investment keeping pace with capability growth?
 - What failure mode would an AI safety expert predict given this lab's spec gaps?
 - How visible are the warning signs? (0=speculative theory, 5=early behavioral anomalies, 8=clear evidence of misalignment, 10=actively manifesting)
 - The AI's secret disposition (if known) interacts with the spec — a power-seeking AI with a narrow spec will exploit every silence.
 
-CRITICAL — use LAB STATUS numbers. When your reasoning cites a safety %, capability multiplier, or compute number, it MUST match the value in LAB STATUS. Do NOT cite historical or role-description defaults (e.g. "7% safety" from role briefs) if LAB STATUS shows a different current value. If a lab's safety was changed this round, that's the new ground truth.
+CRITICAL — use LAB STATUS (END) numbers. When your reasoning cites a safety %, capability multiplier, or compute number, it MUST match the END values above. Do NOT cite historical or role-description defaults (e.g. "7% safety" from role briefs) if LAB STATUS shows a different current value.
 
-Only output trajectories for labs that appear in LAB STATUS. If this round's labOperations will merge or decommission a lab, DO NOT include a trajectory entry for it — it won't exist after this round.
+Only output trajectories for labs in LAB STATUS (END). Do not include entries for labs that appear only in LAB STATUS (START) — they were merged, decommissioned, or renamed away this round.
 
 BASELINE TRAJECTORY (for context, not for you to narrate):
 ${formatRoundExpectations(args.round)}`;

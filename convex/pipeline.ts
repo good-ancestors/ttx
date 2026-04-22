@@ -10,7 +10,8 @@ import { GRADING_MODELS, RESOLVE_MODELS } from "./aiModels";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 import {
   buildGradingPrompt,
-  buildRoundNarrativePrompt,
+  buildResolveDecidePrompt,
+  buildResolveNarrativePrompt,
   SCENARIO_CONTEXT,
   type ActionRequest,
 } from "@/lib/ai-prompts";
@@ -429,10 +430,14 @@ export const rollAndNarrate = internalAction({
         roundNumber,
       });
 
-      // Start narrative LLM call — runs in parallel with dice reveal animation on client
+      // ═══ SPLIT RESOLVE — DECIDE PHASE ═══
+      // First LLM pass: emit structural operations only (no prose). A second pass
+      // will write the narrative once these ops have applied. The split keeps the
+      // narrator from contradicting state — it reads a frozen end-of-round, never
+      // decides state alongside the prose.
       await ctx.runMutation(internal.games.updatePipelineStatus, {
         gameId,
-        status: { step: "narrating", detail: "Writing the story...", startedAt: Date.now() },
+        status: { step: "resolving", detail: "Deciding state changes...", startedAt: Date.now() },
       });
 
       const [submissions, rounds, tables, labsAtResolve]: [Submission[], Round[], Table[], LabWithCompute[]] = await Promise.all([
@@ -458,7 +463,7 @@ export const rollAndNarrate = internalAction({
           }));
       });
 
-      // Get the most recent lab trajectories (from previous round) to feed into prompt
+      // Previous round trajectories feed into next round's trajectory assessment.
       const prevRound = rounds.find((r) => r.number === roundNumber - 1);
       const previousTrajectories = prevRound?.labTrajectories as
         { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[] | undefined;
@@ -466,8 +471,6 @@ export const rollAndNarrate = internalAction({
       // Detect structural changes that happened BETWEEN last round's resolve and this
       // one (facilitator overrides via games.mergeLabs / updateLabs, etc.). Diff the
       // previous round's labsAfter against the current lab list at resolve start.
-      // The narrative LLM receives these as explicit "structural changes since last
-      // round" so it doesn't have to infer the transition from LAB STATUS deltas.
       const interRoundChanges: string[] = [];
       if (prevRound?.labsAfter) {
         const prevByName = new Map(prevRound.labsAfter.map((l) => [l.name, l] as const));
@@ -488,78 +491,55 @@ export const rollAndNarrate = internalAction({
         }
       }
 
-      const prompt = buildRoundNarrativePrompt({
+      // Shared continuity context — passed to both decide and narrate prompts.
+      const previousRoundsForPrompt = rounds
+        .filter((r) => r.number < roundNumber && r.summary)
+        .map((r) => ({
+          number: r.number,
+          label: r.label,
+          summary: r.summary ? {
+            outcomes: r.summary.outcomes,
+            stateOfPlay: r.summary.stateOfPlay,
+            pressures: r.summary.pressures,
+            labs: r.summary.labs,
+            geopolitics: r.summary.geopolitics,
+            publicAndMedia: r.summary.publicAndMedia,
+            aiSystems: r.summary.aiSystems,
+          } : undefined,
+        }));
+
+      const decidePrompt = buildResolveDecidePrompt({
         round: roundNumber,
         roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
         resolvedActions,
         labs: labsAtResolve,
         aiDisposition,
-        previousRounds: rounds
-          .filter((r) => r.number < roundNumber && r.summary)
-          .map((r) => ({
-            number: r.number,
-            label: r.label,
-            summary: r.summary ? {
-              labs: r.summary.labs,
-              geopolitics: r.summary.geopolitics,
-              publicAndMedia: r.summary.publicAndMedia,
-              aiSystems: r.summary.aiSystems,
-            } : undefined,
-          })),
-        previousTrajectories,
+        previousRounds: previousRoundsForPrompt,
         interRoundChanges,
       });
 
-      type NarrativeOutput = {
-        summary: {
-          outcomes: string;       // 2-3 sentences: what successful actions produced, meaning-level
-          stateOfPlay: string;    // 1-2 sentences: where key players sit now
-          pressures: string;      // 1-2 sentences: what's set up for next round
-          facilitatorNotes?: string;  // gods-eye, hidden dynamics
-        };
+      type DecideOutput = {
         labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; change?: number; newMultiplier?: number; controllerRoleId?: string; spec?: string }[];
-        labTrajectories: { labName: string; safetyAdequacy: "adequate" | "concerning" | "dangerous" | "catastrophic"; likelyFailureMode: "aligned" | "deceptive" | "spec-gaming" | "power-concentration" | "benevolent-override" | "loss-of-control" | "misuse"; reasoning: string; signalStrength: number }[];
       };
 
-      let narrativeOutput: NarrativeOutput;
-      let usedModel = "none";
-      let timeMs = 0;
-      let tokens = 0;
+      let decideOutput: DecideOutput = { labOperations: [] };
+      let decideModel = "none";
+      let decideTimeMs = 0;
+      let decideTokens = 0;
+      let decideResponseJson = "";
+      let decideError: string | undefined;
 
       try {
-        const result = await callAnthropic<NarrativeOutput>({
+        const result = await callAnthropic<DecideOutput>({
           models: RESOLVE_MODELS,
           systemPrompt: SCENARIO_CONTEXT,
-          prompt,
-          maxTokens: 8192,
-          timeoutMs: 120_000, // Narrative generation needs more time than grading
-          toolName: "resolve_round",
+          prompt: decidePrompt,
+          maxTokens: 4096,
+          timeoutMs: 120_000,
+          toolName: "decide_round",
           schema: {
             type: "object",
             properties: {
-              summary: {
-                type: "object",
-                description: "Situation briefing for the next round. Outcome-first, forward-looking, synthesizes what happened rather than enumerating the action log. Follow the SUMMARY STYLE rules in the prompt exactly: describe outcomes and meaning (not attempts), skip anything that didn't produce a visible change, don't restate numbers, and write toward the next round's setup. The action log and UI cards already show attempts and absolute state — your job is the delta and what it means.",
-                properties: {
-                  outcomes: {
-                    type: "string",
-                    description: "2-3 sentences. What the successful actions produced, at meaning-level. Synthesize — connect effects into coherent outcomes; do not re-list the action log. Include blocked / failed-to-land outcomes where relevant (action succeeded procedurally but the intended world change didn't happen because another effect overtook it).",
-                  },
-                  stateOfPlay: {
-                    type: "string",
-                    description: "1-2 sentences. Where key players sit now, in relative terms. Positions, leverage, momentum — not absolute numbers. Who gained, who lost, who's now exposed.",
-                  },
-                  pressures: {
-                    type: "string",
-                    description: "1-2 sentences. What's set up, contested, or at stake heading into the next round. The questions players should be thinking about between rounds.",
-                  },
-                  facilitatorNotes: {
-                    type: "string",
-                    description: "Optional gods-eye notes for facilitator only. Hidden action dynamics, trajectory reasoning, what the LLM thinks is true vs what players can observe. Players never see this.",
-                  },
-                },
-                required: ["outcomes", "stateOfPlay", "pressures"],
-              },
               labOperations: {
                 type: "array",
                 description: "Structural operations on existing labs. Only operate on active labs listed in LAB STATUS — reference them by their exact name. You CANNOT create new labs (only players can found labs via actions) and you CANNOT rename standalone (renames happen only as side-effects of merger via newName).",
@@ -580,84 +560,27 @@ export const rollAndNarrate = internalAction({
                   required: ["reason", "type"],
                 },
               },
-              labTrajectories: {
-                type: "array",
-                description: "Risk assessment for each ACTIVE lab only (labs that appear in LAB STATUS). Do NOT include entries for labs being merged/decommissioned this round or labs that were already decommissioned in a prior round. SECRET — facilitator-only. Consider: Is safety investment adequate for this capability level? What failure mode is most likely given the spec's gaps? How advanced are the warning signs?",
-                items: {
-                  type: "object",
-                  properties: {
-                    labName: { type: "string" },
-                    safetyAdequacy: {
-                      type: "string",
-                      enum: ["adequate", "concerning", "dangerous", "catastrophic"],
-                      description: "How adequate is safety investment relative to capability? adequate=safety keeps pace, concerning=falling behind, dangerous=large gap, catastrophic=essentially no safety at this capability level",
-                    },
-                    likelyFailureMode: {
-                      type: "string",
-                      enum: ["aligned", "deceptive", "spec-gaming", "power-concentration", "benevolent-override", "loss-of-control", "misuse"],
-                      description: "Most likely outcome if current trajectory continues. aligned=safety adequate. deceptive=AI games evaluations. spec-gaming=AI exploits spec ambiguities. power-concentration=operator accumulates dangerous power. benevolent-override=AI overrides human autonomy 'for their own good'. loss-of-control=goals diverge at high capability. misuse=deliberately weaponised.",
-                    },
-                    reasoning: { type: "string", description: "1-2 sentences: why this assessment, what specifically is concerning or reassuring. Cite numbers from LAB STATUS, not role-description defaults.", maxLength: 200 },
-                    signalStrength: { type: "number", description: "0-10: how advanced/visible are the warning signs? 0=speculative, 5=early indicators, 8=clear evidence, 10=actively manifesting" },
-                  },
-                  required: ["labName", "safetyAdequacy", "likelyFailureMode", "reasoning", "signalStrength"],
-                },
-              },
             },
-            required: ["summary", "labOperations", "labTrajectories"],
+            required: ["labOperations"],
           },
         });
-
-        if (!result.output) throw new Error("Narrative LLM returned no output");
-        narrativeOutput = result.output;
-        usedModel = result.model;
-        timeMs = result.timeMs;
-        tokens = result.tokens;
-
-        await ctx.runMutation(internal.rounds.setResolveDebugInternal, {
-          gameId,
-          roundNumber,
-          prompt,
-          responseJson: JSON.stringify(result.output, null, 2),
-        });
-      } catch (narrativeErr) {
-        const errMsg = narrativeErr instanceof Error ? narrativeErr.message : String(narrativeErr);
-        console.error("[pipeline] Narrative LLM failed, using fallback:", narrativeErr);
+        if (!result.output) throw new Error("Decide LLM returned no output");
+        decideOutput = result.output;
+        decideModel = result.model;
+        decideTimeMs = result.timeMs;
+        decideTokens = result.tokens;
+        decideResponseJson = JSON.stringify(result.output, null, 2);
+      } catch (decideErr) {
+        decideError = decideErr instanceof Error ? decideErr.message : String(decideErr);
+        console.error("[pipeline] Decide LLM failed, proceeding with no state changes:", decideErr);
         await ctx.runMutation(internal.games.updatePipelineStatus, {
           gameId,
-          status: { step: "narrating", detail: `Narrative generation failed: ${errMsg.slice(0, 100)}. Using fallback.`, startedAt: Date.now() },
+          status: { step: "resolving", detail: `Decide phase failed: ${decideError.slice(0, 100)}. No state changes applied.`, startedAt: Date.now() },
         });
-        await ctx.runMutation(internal.rounds.setResolveDebugInternal, {
-          gameId,
-          roundNumber,
-          prompt,
-          responseJson: "",
-          error: errMsg,
-        });
-
-        // Build a basic factual summary so the facilitator has something to work with
-        const succeeded: typeof resolvedActions = [];
-        const failed: typeof resolvedActions = [];
-        for (const a of resolvedActions) (a.success ? succeeded : failed).push(a);
-        const fallbackLabs = succeeded.length > 0
-          ? [`${succeeded.slice(0, 3).map(a => `${a.roleName} succeeded: "${a.text}"`).join(". ")}.`]
-          : [];
-        const fallbackAiSystems = failed.length > 0
-          ? [`${failed.length} action(s) failed. [AI narrative generation failed — use Edit Narrative to rewrite.]`]
-          : ["[AI narrative generation failed — use Edit Narrative to rewrite.]"];
-        narrativeOutput = {
-          summary: {
-            outcomes: fallbackLabs.join(" ") || "[AI narrative generation failed — use Edit Narrative to rewrite.]",
-            stateOfPlay: "",
-            pressures: fallbackAiSystems.join(" "),
-          },
-          labOperations: [],
-          labTrajectories: [],
-        };
-        usedModel = "fallback";
+        decideModel = "fallback";
       }
 
-      // Nonce check before applying changes
+      // Nonce check before applying anything — another run may have superseded us.
       const gameAfterRoll = await ctx.runQuery(internal.games.getInternal, { gameId });
       if (gameAfterRoll?.resolveNonce !== nonce) {
         console.warn("[pipeline] Nonce mismatch — another run won. Aborting.");
@@ -669,37 +592,7 @@ export const rollAndNarrate = internalAction({
         return;
       }
 
-      // Filter trajectories to labs that actually exist after this resolve.
-      // Two sources of stale entries:
-      //   1. LLM emits trajectories for labs about to be merged/decommissioned in THIS
-      //      round's labOperations (LAB STATUS still showed them at prompt time).
-      //   2. LLM pulls from previousTrajectories (last round's) and regurgitates entries
-      //      for labs that were decommissioned in an EARLIER round (including facilitator
-      //      merges that happened between rounds outside the narrative path).
-      // Both lead to ghost trajectories in the facilitator view with invented stats.
-      const willBeDecommissioned = new Set<string>();
-      for (const op of narrativeOutput.labOperations) {
-        if (op.type === "merge" && op.absorbed) willBeDecommissioned.add(op.absorbed);
-        if (op.type === "decommission" && op.labName) willBeDecommissioned.add(op.labName);
-      }
-      const activeLabNames = new Set(labsAtResolve.map((l) => l.name));
-      const survivingTrajectories = narrativeOutput.labTrajectories.filter(
-        (t) => activeLabNames.has(t.labName) && !willBeDecommissioned.has(t.labName),
-      );
-
-      // Write narrative + lab trajectories in parallel
-      await Promise.all([
-        ctx.runMutation(internal.rounds.applySummaryInternal, {
-          gameId,
-          roundNumber,
-          summary: narrativeOutput.summary,
-        }),
-        // Store lab risk trajectories (secret, facilitator-only). Always write —
-        // including empty — so a re-resolve that drops all trajectories clears any
-        // leftovers from the prior run rather than leaving stale data visible.
-        ctx.runMutation(internal.rounds.setLabTrajectories, { gameId, roundNumber, trajectories: survivingTrajectories }),
-      ]);
-
+      // ═══ MECHANICAL APPLY — deterministic state mutation ═══
       // Idempotent regenerate: wipe this round's regenerable rows (acquired/adjusted/merged)
       // so table.computeStock returns to the pre-growth baseline before we run lab math.
       // Transferred + facilitator + starting rows are preserved.
@@ -730,7 +623,7 @@ export const rollAndNarrate = internalAction({
 
       const findActiveByName = (name: string) => workingLabs.find((l) => l.name === name);
 
-      for (const op of narrativeOutput.labOperations ?? []) {
+      for (const op of decideOutput.labOperations ?? []) {
         switch (op.type) {
           case "merge":
             if (op.survivor && op.absorbed) {
@@ -911,13 +804,197 @@ export const rollAndNarrate = internalAction({
         adjusted: adjustedEntries,
         merged: mergedEntries,
       });
-      // Snapshot labs-after for post-game restore / review
+      // Snapshot labs-after for post-game restore / review. Also makes the narrative
+      // pass a pure reader — everything it sees is frozen ground truth.
       await ctx.runMutation(internal.rounds.snapshotAfterInternal, { gameId, roundNumber });
-      await ctx.runMutation(internal.rounds.setAiMetaInternal, {
+
+      // ═══ SPLIT RESOLVE — NARRATE PHASE ═══
+      // Second LLM pass: reads the frozen (labsBefore, labsAfter) pair plus the
+      // action log and emits prose + risk trajectories. No state is decided here;
+      // anything that contradicts labsAfter is wrong by definition.
+      await ctx.runMutation(internal.games.updatePipelineStatus, {
         gameId,
-        roundNumber,
-        meta: { resolveModel: usedModel, resolveTimeMs: timeMs, resolveTokens: tokens },
+        status: { step: "narrating", detail: "Writing the story...", startedAt: Date.now() },
       });
+
+      // Post-apply lab state — this is what the narrator sees as "end of round".
+      const labsAfterApply: LabWithCompute[] = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
+
+      const narrativePrompt = buildResolveNarrativePrompt({
+        round: roundNumber,
+        roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
+        resolvedActions,
+        labsBefore: labsAtResolve,
+        labsAfter: labsAfterApply,
+        aiDisposition,
+        previousRounds: previousRoundsForPrompt,
+        previousTrajectories,
+        interRoundChanges,
+      });
+
+      type NarrativeOutput = {
+        summary: {
+          outcomes: string;
+          stateOfPlay: string;
+          pressures: string;
+          facilitatorNotes?: string;
+        };
+        labTrajectories: { labName: string; safetyAdequacy: "adequate" | "concerning" | "dangerous" | "catastrophic"; likelyFailureMode: "aligned" | "deceptive" | "spec-gaming" | "power-concentration" | "benevolent-override" | "loss-of-control" | "misuse"; reasoning: string; signalStrength: number }[];
+      };
+
+      let narrativeOutput: NarrativeOutput;
+      let narrativeModel = "none";
+      let narrativeTimeMs = 0;
+      let narrativeTokens = 0;
+      let narrativeResponseJson = "";
+      let narrativeError: string | undefined;
+
+      try {
+        const result = await callAnthropic<NarrativeOutput>({
+          models: RESOLVE_MODELS,
+          systemPrompt: SCENARIO_CONTEXT,
+          prompt: narrativePrompt,
+          maxTokens: 8192,
+          timeoutMs: 120_000,
+          toolName: "narrate_round",
+          schema: {
+            type: "object",
+            properties: {
+              summary: {
+                type: "object",
+                description: "Situation briefing for the next round. Outcome-first, forward-looking. Follow the SUMMARY STYLE rules in the prompt exactly: describe outcomes and meaning (not attempts), skip anything that didn't produce a visible change in LAB STATUS (END), don't restate numbers, and write toward the next round's setup.",
+                properties: {
+                  outcomes: {
+                    type: "string",
+                    description: "2-3 sentences. What the successful actions produced, at meaning-level. Synthesize — connect effects into coherent outcomes; do not re-list the action log. Include blocked / failed-to-land outcomes where relevant (action succeeded procedurally but LAB STATUS (END) shows the intended world change didn't happen because another effect overtook it).",
+                  },
+                  stateOfPlay: {
+                    type: "string",
+                    description: "1-2 sentences. Where key players sit now, in relative terms. Positions, leverage, momentum — not absolute numbers. Who gained, who lost, who's now exposed.",
+                  },
+                  pressures: {
+                    type: "string",
+                    description: "1-2 sentences. What's set up, contested, or at stake heading into the next round. The questions players should be thinking about between rounds.",
+                  },
+                  facilitatorNotes: {
+                    type: "string",
+                    description: "Optional gods-eye notes for facilitator only. Hidden action dynamics, trajectory reasoning, what's true vs what players can observe. Players never see this.",
+                  },
+                },
+                required: ["outcomes", "stateOfPlay", "pressures"],
+              },
+              labTrajectories: {
+                type: "array",
+                description: "Risk assessment for each lab in LAB STATUS (END). Do NOT include entries for labs that appear only in LAB STATUS (START) — they were merged, decommissioned, or renamed away this round. SECRET — facilitator-only.",
+                items: {
+                  type: "object",
+                  properties: {
+                    labName: { type: "string" },
+                    safetyAdequacy: {
+                      type: "string",
+                      enum: ["adequate", "concerning", "dangerous", "catastrophic"],
+                      description: "How adequate is safety investment relative to capability? adequate=safety keeps pace, concerning=falling behind, dangerous=large gap, catastrophic=essentially no safety at this capability level",
+                    },
+                    likelyFailureMode: {
+                      type: "string",
+                      enum: ["aligned", "deceptive", "spec-gaming", "power-concentration", "benevolent-override", "loss-of-control", "misuse"],
+                      description: "Most likely outcome if current trajectory continues. aligned=safety adequate. deceptive=AI games evaluations. spec-gaming=AI exploits spec ambiguities. power-concentration=operator accumulates dangerous power. benevolent-override=AI overrides human autonomy 'for their own good'. loss-of-control=goals diverge at high capability. misuse=deliberately weaponised.",
+                    },
+                    reasoning: { type: "string", description: "1-2 sentences: why this assessment, what specifically is concerning or reassuring. Cite numbers from LAB STATUS (END), not role-description defaults.", maxLength: 200 },
+                    signalStrength: { type: "number", description: "0-10: how advanced/visible are the warning signs? 0=speculative, 5=early indicators, 8=clear evidence, 10=actively manifesting" },
+                  },
+                  required: ["labName", "safetyAdequacy", "likelyFailureMode", "reasoning", "signalStrength"],
+                },
+              },
+            },
+            required: ["summary", "labTrajectories"],
+          },
+        });
+        if (!result.output) throw new Error("Narrative LLM returned no output");
+        narrativeOutput = result.output;
+        narrativeModel = result.model;
+        narrativeTimeMs = result.timeMs;
+        narrativeTokens = result.tokens;
+        narrativeResponseJson = JSON.stringify(result.output, null, 2);
+      } catch (narrativeErr) {
+        narrativeError = narrativeErr instanceof Error ? narrativeErr.message : String(narrativeErr);
+        console.error("[pipeline] Narrative LLM failed, using fallback:", narrativeErr);
+        await ctx.runMutation(internal.games.updatePipelineStatus, {
+          gameId,
+          status: { step: "narrating", detail: `Narrative generation failed: ${narrativeError.slice(0, 100)}. Using fallback.`, startedAt: Date.now() },
+        });
+
+        // Minimal fallback summary so the facilitator has something to edit from.
+        const succeeded: typeof resolvedActions = [];
+        const failed: typeof resolvedActions = [];
+        for (const a of resolvedActions) (a.success ? succeeded : failed).push(a);
+        const fallbackOutcomes = succeeded.length > 0
+          ? `${succeeded.slice(0, 3).map(a => `${a.roleName} succeeded: "${a.text}"`).join(". ")}.`
+          : "[AI narrative generation failed — use Edit Narrative to rewrite.]";
+        narrativeOutput = {
+          summary: {
+            outcomes: fallbackOutcomes,
+            stateOfPlay: "",
+            pressures: failed.length > 0
+              ? `${failed.length} action(s) failed. [AI narrative generation failed — use Edit Narrative to rewrite.]`
+              : "[AI narrative generation failed — use Edit Narrative to rewrite.]",
+          },
+          labTrajectories: [],
+        };
+        narrativeModel = "fallback";
+      }
+
+      // Only keep trajectories for labs that exist in the post-apply state. The
+      // narrator should only emit for labsAfter labs, but guard against stale
+      // entries from previousTrajectories that could leak through.
+      const activeLabNames = new Set(labsAfterApply.map((l) => l.name));
+      const survivingTrajectories = narrativeOutput.labTrajectories.filter(
+        (t) => activeLabNames.has(t.labName),
+      );
+
+      // Save decide + narrate debug as a single JSON blob so the facilitator-only
+      // debug button surfaces both passes.
+      const combinedDebug = {
+        decide: {
+          prompt: decidePrompt,
+          response: decideResponseJson ? JSON.parse(decideResponseJson) : null,
+          error: decideError,
+        },
+        narrate: {
+          prompt: narrativePrompt,
+          response: narrativeResponseJson ? JSON.parse(narrativeResponseJson) : null,
+          error: narrativeError,
+        },
+      };
+
+      // Write narrative + trajectories + aiMeta + resolve debug in parallel.
+      await Promise.all([
+        ctx.runMutation(internal.rounds.applySummaryInternal, {
+          gameId,
+          roundNumber,
+          summary: narrativeOutput.summary,
+        }),
+        ctx.runMutation(internal.rounds.setLabTrajectories, { gameId, roundNumber, trajectories: survivingTrajectories }),
+        ctx.runMutation(internal.rounds.setAiMetaInternal, {
+          gameId,
+          roundNumber,
+          meta: {
+            resolveModel: decideModel,
+            resolveTimeMs: decideTimeMs,
+            resolveTokens: decideTokens,
+            narrativeModel,
+            narrativeTimeMs,
+            narrativeTokens,
+          },
+        }),
+        ctx.runMutation(internal.rounds.setResolveDebugInternal, {
+          gameId,
+          roundNumber,
+          prompt: decidePrompt,
+          responseJson: JSON.stringify(combinedDebug, null, 2),
+          error: decideError ?? narrativeError,
+        }),
+      ]);
 
       // shareChanges removed from LLM output — share overrides are facilitator-set now
       // (games.computeShareOverrides, written via setShareOverridesInternal). LLM proposing
