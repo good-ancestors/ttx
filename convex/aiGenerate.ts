@@ -203,15 +203,22 @@ export const generateAll = internalAction({
       const currentRound = rounds.find((r) => r.number === roundNumber);
       const prevRound = rounds.find((r) => r.number === roundNumber - 1);
 
-      // Build rich previous round context
+      // Build rich previous round context. Prefer the new outcomes/stateOfPlay/pressures
+      // shape; fall back to legacy 4-domain buckets for older rounds.
       let previousContext = "";
       if (roundNumber > 1 && prevRound?.summary) {
         previousContext += `\nPREVIOUS ROUND (${prevRound.label}) — WHAT HAPPENED:`;
         const s = prevRound.summary;
-        if (s.labs.length > 0) previousContext += `\nLabs: ${s.labs.join(" | ")}`;
-        if (s.geopolitics.length > 0) previousContext += `\nGeopolitics: ${s.geopolitics.join(" | ")}`;
-        if (s.publicAndMedia.length > 0) previousContext += `\nPublic & media: ${s.publicAndMedia.join(" | ")}`;
-        if (s.aiSystems.length > 0) previousContext += `\nAI systems: ${s.aiSystems.join(" | ")}`;
+        if (s.outcomes || s.stateOfPlay || s.pressures) {
+          if (s.outcomes) previousContext += `\nOutcomes: ${s.outcomes}`;
+          if (s.stateOfPlay) previousContext += `\nState of play: ${s.stateOfPlay}`;
+          if (s.pressures) previousContext += `\nPressures: ${s.pressures}`;
+        } else {
+          if (s.labs && s.labs.length > 0) previousContext += `\nLabs: ${s.labs.join(" | ")}`;
+          if (s.geopolitics && s.geopolitics.length > 0) previousContext += `\nGeopolitics: ${s.geopolitics.join(" | ")}`;
+          if (s.publicAndMedia && s.publicAndMedia.length > 0) previousContext += `\nPublic & media: ${s.publicAndMedia.join(" | ")}`;
+          if (s.aiSystems && s.aiSystems.length > 0) previousContext += `\nAI systems: ${s.aiSystems.join(" | ")}`;
+        }
       }
 
       // Own previous actions and outcomes

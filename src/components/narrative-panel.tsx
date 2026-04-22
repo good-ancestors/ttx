@@ -29,15 +29,26 @@ interface Round {
   number: number;
   label: string;
   summary?: {
-    labs: string[];
-    geopolitics: string[];
-    publicAndMedia: string[];
-    aiSystems: string[];
+    // Current shape — three paragraphs
+    outcomes?: string;
+    stateOfPlay?: string;
+    pressures?: string;
     facilitatorNotes?: string;
+    // Legacy shape (older rounds) — four bucketed bullet arrays
+    labs?: string[];
+    geopolitics?: string[];
+    publicAndMedia?: string[];
+    aiSystems?: string[];
   };
 }
 
-const SECTIONS: { key: keyof NonNullable<Round["summary"]>; label: string }[] = [
+const PROSE_SECTIONS: { key: "outcomes" | "stateOfPlay" | "pressures"; label: string }[] = [
+  { key: "outcomes", label: "Outcomes" },
+  { key: "stateOfPlay", label: "State of Play" },
+  { key: "pressures", label: "Pressures" },
+];
+
+const LEGACY_SECTIONS: { key: "labs" | "geopolitics" | "publicAndMedia" | "aiSystems"; label: string }[] = [
   { key: "labs", label: "Labs" },
   { key: "geopolitics", label: "Geopolitics" },
   { key: "publicAndMedia", label: "Public & Media" },
@@ -61,9 +72,9 @@ export function NarrativePanel({
   const [verbIdx, setVerbIdx] = useState(0);
   const [expanded, setExpanded] = useState(defaultExpanded);
   const summary = round?.summary;
-  const hasContent = summary
-    ? SECTIONS.some(({ key }) => (summary[key] as string[] | undefined)?.length)
-    : false;
+  const hasProse = !!(summary?.outcomes || summary?.stateOfPlay || summary?.pressures);
+  const hasLegacy = !!summary && LEGACY_SECTIONS.some(({ key }) => (summary[key] ?? []).length > 0);
+  const hasContent = hasProse || hasLegacy;
 
   useEffect(() => {
     if (hasContent) return;
@@ -114,25 +125,38 @@ export function NarrativePanel({
       )}
       {expanded && hasContent && summary && (
         <div className="mt-4 space-y-4">
-          {SECTIONS.map(({ key, label }) => {
-            const lines = summary[key] as string[] | undefined;
-            if (!lines?.length) return null;
-            return (
-              <div key={key}>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
-                  {label}
-                </div>
-                <ul className="space-y-1.5">
-                  {lines.map((line, i) => (
-                    <li key={i} className={`${textSize} text-[#E2E8F0] leading-relaxed flex gap-2`}>
-                      <span aria-hidden className="text-text-muted shrink-0 select-none">•</span>
-                      <span className="flex-1">{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
+          {hasProse
+            ? PROSE_SECTIONS.map(({ key, label }) => {
+                const text = summary[key];
+                if (!text) return null;
+                return (
+                  <div key={key}>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
+                      {label}
+                    </div>
+                    <p className={`${textSize} text-[#E2E8F0] leading-relaxed`}>{text}</p>
+                  </div>
+                );
+              })
+            : LEGACY_SECTIONS.map(({ key, label }) => {
+                const lines = summary[key];
+                if (!lines?.length) return null;
+                return (
+                  <div key={key}>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
+                      {label}
+                    </div>
+                    <ul className="space-y-1.5">
+                      {lines.map((line, i) => (
+                        <li key={i} className={`${textSize} text-[#E2E8F0] leading-relaxed flex gap-2`}>
+                          <span aria-hidden className="text-text-muted shrink-0 select-none">•</span>
+                          <span className="flex-1">{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
         </div>
       )}
     </div>

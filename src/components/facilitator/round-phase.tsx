@@ -221,6 +221,9 @@ export function RoundPhase({
           ungradeAction={ungradeAction}
           phase={phase}
           hasNarrative={!!currentRound?.summary && (
+            !!currentRound.summary.outcomes ||
+            !!currentRound.summary.stateOfPlay ||
+            !!currentRound.summary.pressures ||
             (currentRound.summary.labs?.length ?? 0) > 0 ||
             (currentRound.summary.geopolitics?.length ?? 0) > 0 ||
             (currentRound.summary.publicAndMedia?.length ?? 0) > 0 ||

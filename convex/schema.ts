@@ -196,14 +196,18 @@ export default defineSchema({
     facilitatorNotes: v.optional(v.string()),
     summary: v.optional(
       v.object({
-        // Sectioned news-style summary. Each section: 1–3 short sentences.
-        // Outcomes and framing only — do NOT restate mechanical state (multipliers,
-        // compute stocks, safety %) that players can already see on their dashboard.
-        labs: v.array(v.string()),
-        geopolitics: v.array(v.string()),
-        publicAndMedia: v.array(v.string()),
-        aiSystems: v.array(v.string()),
+        // Current shape — function-driven fields. The LLM writes these reading a
+        // frozen end-of-round state; cannot contradict mechanics.
+        outcomes: v.optional(v.string()),       // 2-3 sentences: what successful actions produced
+        stateOfPlay: v.optional(v.string()),    // 1-2 sentences: where key players sit now
+        pressures: v.optional(v.string()),      // 1-2 sentences: what's set up for next round
         facilitatorNotes: v.optional(v.string()),
+        // Legacy shape (pre-narrative-reframe): 4-domain buckets. Older rounds retain
+        // these; readers fall back to joined old buckets when the new fields are absent.
+        labs: v.optional(v.array(v.string())),
+        geopolitics: v.optional(v.array(v.string())),
+        publicAndMedia: v.optional(v.array(v.string())),
+        aiSystems: v.optional(v.array(v.string())),
       })
     ),
     labTrajectories: v.optional(v.array(labTrajectoryValidator)),

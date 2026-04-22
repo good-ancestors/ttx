@@ -512,10 +512,10 @@ export const rollAndNarrate = internalAction({
 
       type NarrativeOutput = {
         summary: {
-          labs: string[];
-          geopolitics: string[];
-          publicAndMedia: string[];
-          aiSystems: string[];
+          outcomes: string;       // 2-3 sentences: what successful actions produced, meaning-level
+          stateOfPlay: string;    // 1-2 sentences: where key players sit now
+          pressures: string;      // 1-2 sentences: what's set up for next round
+          facilitatorNotes?: string;  // gods-eye, hidden dynamics
         };
         labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; change?: number; newMultiplier?: number; controllerRoleId?: string; spec?: string }[];
         labTrajectories: { labName: string; safetyAdequacy: "adequate" | "concerning" | "dangerous" | "catastrophic"; likelyFailureMode: "aligned" | "deceptive" | "spec-gaming" | "power-concentration" | "benevolent-override" | "loss-of-control" | "misuse"; reasoning: string; signalStrength: number }[];
@@ -539,30 +539,26 @@ export const rollAndNarrate = internalAction({
             properties: {
               summary: {
                 type: "object",
-                description: "Sectioned round summary. Each section is 1–3 short declarative sentences in news-desk voice. Follow the SUMMARY STYLE rules from the prompt precisely: outcomes and consequences, not mechanical state restated; failures are news; reactions from unrepresented actors are licensed but must use epistemic hedges. Empty arrays are allowed for sections with nothing licensed to say (or write a single terse 'nothing happened' line — that is also news).",
+                description: "Situation briefing for the next round. Outcome-first, forward-looking, synthesizes what happened rather than enumerating the action log. Follow the SUMMARY STYLE rules in the prompt exactly: describe outcomes and meaning (not attempts), skip anything that didn't produce a visible change, don't restate numbers, and write toward the next round's setup. The action log and UI cards already show attempts and absolute state — your job is the delta and what it means.",
                 properties: {
-                  labs: {
-                    type: "array",
-                    description: "Lab-level outcomes — mergers, failed deals, safety investments or lack of them, revenue announcements, safety findings going public.",
-                    items: { type: "string" },
+                  outcomes: {
+                    type: "string",
+                    description: "2-3 sentences. What the successful actions produced, at meaning-level. Synthesize — connect effects into coherent outcomes; do not re-list the action log. Include blocked / failed-to-land outcomes where relevant (action succeeded procedurally but the intended world change didn't happen because another effect overtook it).",
                   },
-                  geopolitics: {
-                    type: "array",
-                    description: "Government, diplomatic, regulatory, intelligence moves. Successes AND failures count.",
-                    items: { type: "string" },
+                  stateOfPlay: {
+                    type: "string",
+                    description: "1-2 sentences. Where key players sit now, in relative terms. Positions, leverage, momentum — not absolute numbers. Who gained, who lost, who's now exposed.",
                   },
-                  publicAndMedia: {
-                    type: "array",
-                    description: "Press framing, public sentiment, NGO positions, coverage patterns. 'No coverage' can itself be news.",
-                    items: { type: "string" },
+                  pressures: {
+                    type: "string",
+                    description: "1-2 sentences. What's set up, contested, or at stake heading into the next round. The questions players should be thinking about between rounds.",
                   },
-                  aiSystems: {
-                    type: "array",
-                    description: "Observable AI behaviour only — red-teams, disclosed incidents, deployment pauses. NOT the hidden alignment frame. If nothing visible, say so tersely.",
-                    items: { type: "string" },
+                  facilitatorNotes: {
+                    type: "string",
+                    description: "Optional gods-eye notes for facilitator only. Hidden action dynamics, trajectory reasoning, what the LLM thinks is true vs what players can observe. Players never see this.",
                   },
                 },
-                required: ["labs", "geopolitics", "publicAndMedia", "aiSystems"],
+                required: ["outcomes", "stateOfPlay", "pressures"],
               },
               labOperations: {
                 type: "array",
@@ -651,10 +647,9 @@ export const rollAndNarrate = internalAction({
           : ["[AI narrative generation failed — use Edit Narrative to rewrite.]"];
         narrativeOutput = {
           summary: {
-            labs: fallbackLabs,
-            geopolitics: [],
-            publicAndMedia: [],
-            aiSystems: fallbackAiSystems,
+            outcomes: fallbackLabs.join(" ") || "[AI narrative generation failed — use Edit Narrative to rewrite.]",
+            stateOfPlay: "",
+            pressures: fallbackAiSystems.join(" "),
           },
           labOperations: [],
           labTrajectories: [],

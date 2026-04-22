@@ -7,10 +7,15 @@ interface TableResolvingProps {
   round: {
     label: string;
     summary?: {
-      labs: string[];
-      geopolitics: string[];
-      publicAndMedia: string[];
-      aiSystems: string[];
+      // Current shape
+      outcomes?: string;
+      stateOfPlay?: string;
+      pressures?: string;
+      // Legacy shape (older rounds)
+      labs?: string[];
+      geopolitics?: string[];
+      publicAndMedia?: string[];
+      aiSystems?: string[];
     };
   };
   sortedResultActions: ResultAction[];
@@ -18,7 +23,13 @@ interface TableResolvingProps {
   showResults?: boolean;
 }
 
-const SECTIONS: { key: "labs" | "geopolitics" | "publicAndMedia" | "aiSystems"; label: string }[] = [
+const PROSE_SECTIONS: { key: "outcomes" | "stateOfPlay" | "pressures"; label: string }[] = [
+  { key: "outcomes", label: "Outcomes" },
+  { key: "stateOfPlay", label: "State of Play" },
+  { key: "pressures", label: "Pressures" },
+];
+
+const LEGACY_SECTIONS: { key: "labs" | "geopolitics" | "publicAndMedia" | "aiSystems"; label: string }[] = [
   { key: "labs", label: "Labs" },
   { key: "geopolitics", label: "Geopolitics" },
   { key: "publicAndMedia", label: "Public & Media" },
@@ -32,22 +43,38 @@ export function TableResolving({
   showNarrative = true,
   showResults = true,
 }: TableResolvingProps) {
-  const hasSummary = round?.summary && SECTIONS.some(({ key }) => round.summary![key].length > 0);
+  const summary = round?.summary;
+  const hasProse = !!(summary?.outcomes || summary?.stateOfPlay || summary?.pressures);
+  const hasLegacy = !!summary && LEGACY_SECTIONS.some(({ key }) => (summary[key] ?? []).length > 0);
+  const hasSummary = hasProse || hasLegacy;
   return (
     <div>
       {/* Sectioned summary */}
-      {showNarrative && phase === "narrate" && hasSummary && round.summary && (
+      {showNarrative && phase === "narrate" && hasSummary && summary && (
         <div className="bg-navy rounded-xl p-4 border border-navy-light mb-4 text-white break-words overflow-hidden">
           <h3 className="text-base font-bold mb-3">{round.label} — What Happened</h3>
           <div className="space-y-3">
-            {SECTIONS.map(({ key, label }) => {
-              const lines = round.summary![key];
-              if (!lines.length) return null;
-              return (
-                <div key={key}>
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1">
-                    {label}
-                  </div>
+            {hasProse
+              ? PROSE_SECTIONS.map(({ key, label }) => {
+                  const text = summary[key];
+                  if (!text) return null;
+                  return (
+                    <div key={key}>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1">
+                        {label}
+                      </div>
+                      <p className="text-sm text-[#E2E8F0] leading-relaxed">{text}</p>
+                    </div>
+                  );
+                })
+              : LEGACY_SECTIONS.map(({ key, label }) => {
+                  const lines = summary[key] ?? [];
+                  if (!lines.length) return null;
+                  return (
+                    <div key={key}>
+                      <div className="text-[10px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1">
+                        {label}
+                      </div>
                   <ul className="space-y-1">
                     {lines.map((line, i) => (
                       <li key={i} className="text-sm text-[#E2E8F0] leading-relaxed">

@@ -39,8 +39,12 @@ export const getByGameLightweight = query({
       number: r.number,
       label: r.label,
       labsAfter: r.labsAfter,
-      // Sectioned summary — four short section arrays
+      // Narrative summary — outcomes/stateOfPlay/pressures for new rounds, legacy
+      // 4-domain buckets for older rounds. Both shapes passed through; UI prefers new.
       summary: r.summary ? {
+        outcomes: r.summary.outcomes,
+        stateOfPlay: r.summary.stateOfPlay,
+        pressures: r.summary.pressures,
         labs: r.summary.labs,
         geopolitics: r.summary.geopolitics,
         publicAndMedia: r.summary.publicAndMedia,
@@ -97,6 +101,9 @@ export const getForPlayer = query({
       number: round.number,
       label: round.label,
       summary: round.summary ? {
+        outcomes: round.summary.outcomes,
+        stateOfPlay: round.summary.stateOfPlay,
+        pressures: round.summary.pressures,
         labs: round.summary.labs,
         geopolitics: round.summary.geopolitics,
         publicAndMedia: round.summary.publicAndMedia,
@@ -111,11 +118,15 @@ export const applySummary = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     summary: v.object({
-      labs: v.array(v.string()),
-      geopolitics: v.array(v.string()),
-      publicAndMedia: v.array(v.string()),
-      aiSystems: v.array(v.string()),
+      outcomes: v.optional(v.string()),
+      stateOfPlay: v.optional(v.string()),
+      pressures: v.optional(v.string()),
       facilitatorNotes: v.optional(v.string()),
+      // Legacy 4-domain fields (older rounds) — accepted for compat during edit.
+      labs: v.optional(v.array(v.string())),
+      geopolitics: v.optional(v.array(v.string())),
+      publicAndMedia: v.optional(v.array(v.string())),
+      aiSystems: v.optional(v.array(v.string())),
     }),
     facilitatorToken: v.optional(v.string()),
   },
@@ -188,11 +199,14 @@ export const applySummaryInternal = internalMutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     summary: v.object({
-      labs: v.array(v.string()),
-      geopolitics: v.array(v.string()),
-      publicAndMedia: v.array(v.string()),
-      aiSystems: v.array(v.string()),
+      outcomes: v.optional(v.string()),
+      stateOfPlay: v.optional(v.string()),
+      pressures: v.optional(v.string()),
       facilitatorNotes: v.optional(v.string()),
+      labs: v.optional(v.array(v.string())),
+      geopolitics: v.optional(v.array(v.string())),
+      publicAndMedia: v.optional(v.array(v.string())),
+      aiSystems: v.optional(v.array(v.string())),
     }),
   },
   handler: async (ctx, args) => {

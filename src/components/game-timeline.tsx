@@ -20,10 +20,15 @@ interface RoundData {
   number: number;
   label: string;
   summary?: {
-    labs: string[];
-    geopolitics: string[];
-    publicAndMedia: string[];
-    aiSystems: string[];
+    // Current shape
+    outcomes?: string;
+    stateOfPlay?: string;
+    pressures?: string;
+    // Legacy shape (older rounds)
+    labs?: string[];
+    geopolitics?: string[];
+    publicAndMedia?: string[];
+    aiSystems?: string[];
   };
   labsAfter?: LabSnapshot[];
   aiMeta?: {
@@ -33,10 +38,12 @@ interface RoundData {
   };
 }
 
-/** First non-empty line across sections, in priority order — for a timeline headline. */
+/** Headline for the timeline: prefer outcomes (new shape); fall back to first non-empty
+ *  bucket (legacy shape). */
 function leadLine(summary: RoundData["summary"]): string | undefined {
   if (!summary) return undefined;
-  return summary.labs[0] ?? summary.geopolitics[0] ?? summary.publicAndMedia[0] ?? summary.aiSystems[0];
+  if (summary.outcomes) return summary.outcomes;
+  return summary.labs?.[0] ?? summary.geopolitics?.[0] ?? summary.publicAndMedia?.[0] ?? summary.aiSystems?.[0];
 }
 
 interface Props {

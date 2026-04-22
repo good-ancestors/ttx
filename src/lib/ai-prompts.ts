@@ -392,10 +392,15 @@ interface PreviousRoundSummary {
   number: number;
   label: string;
   summary?: {
-    labs: string[];
-    geopolitics: string[];
-    publicAndMedia: string[];
-    aiSystems: string[];
+    // Current shape
+    outcomes?: string;
+    stateOfPlay?: string;
+    pressures?: string;
+    // Legacy 4-domain shape (older rounds)
+    labs?: string[];
+    geopolitics?: string[];
+    publicAndMedia?: string[];
+    aiSystems?: string[];
   };
 }
 
@@ -406,10 +411,17 @@ ${rounds.map((r) => {
   let s = `Round ${r.number} (${r.label}):`;
   if (r.summary) {
     const parts: string[] = [];
-    if (r.summary.labs.length > 0) parts.push(`Labs: ${r.summary.labs.join(" ")}`);
-    if (r.summary.geopolitics.length > 0) parts.push(`Geopolitics: ${r.summary.geopolitics.join(" ")}`);
-    if (r.summary.publicAndMedia.length > 0) parts.push(`Media: ${r.summary.publicAndMedia.join(" ")}`);
-    if (r.summary.aiSystems.length > 0) parts.push(`AI: ${r.summary.aiSystems.join(" ")}`);
+    // Prefer the new shape when present
+    if (r.summary.outcomes) parts.push(`Outcomes: ${r.summary.outcomes}`);
+    if (r.summary.stateOfPlay) parts.push(`State of play: ${r.summary.stateOfPlay}`);
+    if (r.summary.pressures) parts.push(`Pressures: ${r.summary.pressures}`);
+    // Fall back to legacy 4-domain buckets for older rounds
+    if (parts.length === 0) {
+      if (r.summary.labs && r.summary.labs.length > 0) parts.push(`Labs: ${r.summary.labs.join(" ")}`);
+      if (r.summary.geopolitics && r.summary.geopolitics.length > 0) parts.push(`Geopolitics: ${r.summary.geopolitics.join(" ")}`);
+      if (r.summary.publicAndMedia && r.summary.publicAndMedia.length > 0) parts.push(`Media: ${r.summary.publicAndMedia.join(" ")}`);
+      if (r.summary.aiSystems && r.summary.aiSystems.length > 0) parts.push(`AI: ${r.summary.aiSystems.join(" ")}`);
+    }
     if (parts.length > 0) s += `\n  ${parts.join("\n  ")}`;
   }
   return s;
@@ -474,97 +486,45 @@ ${interRoundSection}${formatPreviousRounds(args.previousRounds ?? [])}
 ${actionsSection}
 ${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}` : ""}
 
-YOUR TASK: Produce a sectioned round summary AND determine game state changes.
+YOUR TASK: Produce a situation briefing for the next round AND determine game state changes.
 
 SUMMARY STYLE — read this carefully:
 
-You are writing "What Happened", not "What Was Attempted".
+You are writing a briefing, not a recap. The action log already shows what was attempted and whether it rolled successfully. The UI cards already show absolute state (multipliers, compute stocks, safety %, allocations). Your job is the synthesis between those two — the delta, and what it means for the round ahead.
 
-- "What Was Attempted" already lists who tried what, and whether it succeeded or failed.
-- "What Happened" should therefore list the resulting world state or non-result.
-- Write facts only. Easy to scan. No flourish, no scene-setting, no interpretation unless it is needed to clarify the outcome.
-- Prefer one concrete outcome per bullet.
-- Use very short sentences or sentence fragments. Aim for 4-10 words when possible. Above 14 words is usually too long.
-- One sentence max per bullet. No semicolons. No chained clauses. If you need two facts, use two bullets.
-- Never explain why an outcome matters unless that explanation is itself the outcome.
+THREE FIELDS, each with a defined job:
 
-STRICT FORMAT RULES:
-- Each bullet should usually be a single sentence or fragment.
-- Keep wording plain. Subject + verb + object.
-- If a bullet starts sounding like analysis, shorten it.
-- If you are choosing between completeness and scanability, choose scanability.
-- Total bullets should usually be 4-8 across the whole summary.
-- If the round is genuinely crowded, you may go above 8, but only for clearly distinct outcomes worth reporting.
-- Do not force every section to have bullets. Sparse sections are fine.
+- **outcomes** (2-3 sentences): what the successful actions PRODUCED, at meaning-level. Synthesize — connect effects into coherent outcomes. Do not re-list the action log. A successful action that was blocked or overtaken by another action produced a different outcome than its actor intended; report the actual world-state change, not the attempt.
 
-OUTCOMES AND STATE CHANGES ONLY — do NOT restate mechanical state players can see on their dashboard: R&D multipliers, compute stocks, safety %, allocation sliders, lab names. Those are already visible. Your job is to state the outcome players could not infer at a glance: what changed, what did not change, and whether the result matched the actor's intent.
+- **stateOfPlay** (1-2 sentences): where key players sit NOW, in relative terms. Positions, leverage, momentum — not absolute numbers. Who gained, who lost, who's now exposed or isolated.
 
-WHAT CAN APPEAR IN THE SUMMARY:
+- **pressures** (1-2 sentences): what is set up, contested, or at stake heading into the next round. The questions players should be weighing between rounds. Forward-looking, not a recap.
 
-1. **Primary events (licensed):**
-   - Successful player actions this round — state the concrete outcome.
-   - Failed player actions this round — state that the intended outcome did not happen.
-   - A successful action can still fail to achieve its intended result because another successful action blocked, limited, or redirected it. In that case, report the actual outcome, not the actor's intended one.
-   - \`labOperations\` entries you are emitting this round (merge, decommission, ownership transfer, etc.) — describe the resulting state.
-   - Mechanical state changes driven by ops (a lab being decommissioned, ownership transferred).
-
-2. **Reactions (licensed, keep short, use epistemic hedges):**
-   - Include only when they materially change the outcome or clarify whether the move landed.
-   - Must be paraphrasable as "in response to [primary event], [actor] did/said Z". If the reaction stands alone without a primary cause above, it's invented.
-   - Use hedges: "signalled support", "drew criticism", "was read as", "didn't gain traction". Never a hard fact ("Wall Street lost $40B").
-   - Reaction bullets must still be short factual outcomes, not analysis.
-   - Do NOT write "no coverage" for an action that was never publicly visible in the first place.
-
-3. **Inaction as news:**
-   - When a section has nothing to report, you may leave it empty.
-   - Only mention absence ("No public AI incident.") when that absence is itself informative.
-   - A deliberate non-choice by a player is valid to name. "Safety spending stayed flat."
+Every sentence must earn its place. Terse is better than padded. If a domain produced nothing visible, say nothing about it — do not add bullets like "no coverage" or "no incidents reported" to fill space.
 
 WHAT MAY NOT APPEAR:
 
 - Primary events nobody tried. No invented compute transfers, merger offers, specific hearings, procurement decisions, blockades, recruitment drives, or treaties unless a player action this round caused them. The SCENARIO CONTEXT's "background pressures" list (DPA, Taiwan leverage, MSS, summits) is the SHAPE of plausible escalations — do NOT narrate them as new occurrences without a player action behind them.
-- Restated mechanical state. Don't say "OpenBrain reached 9x" — players see it. You MAY reference a number if it's characterising a decision ("a 3% safety allocation tells its own story") rather than reporting the slider.
-- Adjectival or flowery writing, metaphors, rhetorical flourishes, "in the shadows", "silent substrate", "weights hum", etc.
-- Hard factual claims attributed to unrepresented actors. Use hedges.
-- Leakage of non-public actions. Do not reveal a failed or successful move unless it would be observable to a reasonably informed outsider.
-- Filler non-events. Do not use bullets like "No anomalies reported" or "no coverage" unless the absence is genuinely meaningful.
+- Restated mechanical state. Don't say "OpenBrain reached 9x" — players see it. You MAY reference a number if it characterises a decision ("a 3% safety allocation tells its own story") rather than reporting the slider.
+- Flowery writing, metaphors, rhetorical flourishes, "in the shadows", "silent substrate", "weights hum", etc.
+- Hard factual claims attributed to unrepresented actors. Use hedges ("signalled support", "drew criticism", "was read as").
+- Leakage of non-public actions. Use a "reasonably informed observer" test — if an outsider could not plausibly notice it, do not narrate it in outcomes / stateOfPlay / pressures. Hidden dynamics go in facilitatorNotes.
+- Filler non-events. If nothing happened in a domain, don't mention the domain.
+- Re-listing the action log. The action log is shown separately. Synthesize, don't enumerate.
 
-SECTIONS — output each as an array of 1–3 short sentences. Empty sections are allowed when nothing licensed fits.
+CONFLICTS: If contradictory actions both succeeded, describe the final state in outcomes — not each actor's intent. A success on the action log does NOT guarantee the intended world-state happened. Example: a DPA consolidation can succeed as a government move while still failing to merge Conscienta if redomicile succeeded first. Only a clean winner if probabilities diverge dramatically (90% vs 10%).
 
-- **labs**: lab-level outcomes — mergers, ownership transfers, failed commercial deals, safety investments or the lack of them, revenue-relevant announcements, internal safety findings that became public.
-- **geopolitics**: government actions, diplomatic moves, regulatory responses, intelligence operations, treaty work. Both successes and failures count when they were externally visible or inferable.
-- **publicAndMedia**: press framing, public sentiment, NGO positions, media coverage patterns. Only include coverage outcomes for things that were public enough to be covered.
-- **aiSystems**: observable AI behaviour, red-team findings, disclosed incidents, deployment pauses, evaluation results. Describes what's SEEN, not the hidden alignment frame. Leave empty if nothing visible.
+GOOD example (narrated from a real Q2):
+- outcomes: "Conscienta redomiciled to Australia and folded into a new sovereign-backed lab, AussieAI. The DPA consolidation of OpenBrain proceeded on paper but lost its second target in the process."
+- stateOfPlay: "US compute is now nationalised but geographically narrower; Australia has a frontier lab for the first time; OpenBrain is state-owned and alone."
+- pressures: "Export control policy is the next pivot. OpenBrain's deployment revenue vs AussieAI's scaling race starts from here."
 
-IMPORTANT DISTINCTION:
-- "What Was Attempted" = actions and their success/failure.
-- "What Happened" = outcome bullets. Did the action achieve its aim? What changed as a result? If it failed, the outcome may simply be that nothing changed.
-- If an action succeeded procedurally but was overtaken by another successful action, report the real end state. Example: the DPA order went through, but Conscienta had already redomiciled, so there was no merger.
-- Do not write "This is a significant structural shift" or similar analysis. Write the shift itself.
-- Use a "reasonably informed observer" test. If an outsider could not plausibly notice it, do not narrate it as a public/media outcome.
-
-GOOD:
-- "Conscienta redomiciled to Australia."
-- "Australia nationalised Conscienta."
-- "Congress did not take up the merger proposal."
-- "OpenBrain and Conscienta merged."
-- "The DPA order succeeded. No merger followed."
-- "OpenBrain got the US compute. Conscienta stayed out."
-- "The leak became public."
-- "No visible AI incident."
-
-BAD:
-- "Australia now controls the only safety-focused frontier AI lab outside the US-China axis."
-- "This is a significant structural shift."
-- "OpenBrain's private acceleration push got no coverage."
-- "No anomalies reported."
-- "The DPA merger succeeded."
-- "The merger failed, so the DPA failed."
-- "Washington signalled a new era of muscular industrial policy."
-- "The failed pitch exposed the brittleness of the coalition."
-- "A tense media cycle kept the issue alive."
-
-CONFLICTS: If contradictory actions both succeeded, name the clash in the appropriate section and describe the final state, not each actor's intent. A success on the action log does NOT guarantee the intended world-state happened. Example: a DPA consolidation can succeed as a government move while still failing to merge Conscienta if redomiciliation succeeded first. Only a clean winner if probabilities diverge dramatically (90% vs 10%).
+BAD examples — do not write these:
+- "This is a significant structural shift." (analysis without content)
+- "OpenBrain's private acceleration push got no coverage." (non-public action being negated just to fill space)
+- "No anomalies reported." (non-event as filler)
+- "A tense media cycle kept the issue alive." (flourish)
+- "Washington signalled a new era of muscular industrial policy." (flourish attributed to unrepresented actor)
 
 SECRET ACTIONS: Successful secrets appear as outcomes without revealing the actor. Failed secrets are invisible.
 
