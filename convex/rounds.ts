@@ -283,6 +283,8 @@ export const setAppliedOpsInternal = internalMutation({
       status: v.union(v.literal("applied"), v.literal("rejected")),
       summary: v.string(),
       reason: v.optional(v.string()),
+      category: v.optional(v.string()),
+      opType: v.optional(v.string()),
     })),
   },
   handler: async (ctx, args) => {

@@ -247,10 +247,16 @@ export default defineSchema({
     // before the deterministic R&D growth + compute acquisition runs. Written at the end of
     // the effect-application phase; cleared on re-resolve.
     appliedOps: v.optional(v.array(v.object({
-      type: v.string(),              // merge | decommission | transferOwnership | computeChange | multiplierOverride
+      type: v.string(),              // merge | decommission | transferOwnership | computeChange | multiplierOverride | foundLab | rejected
       status: v.union(v.literal("applied"), v.literal("rejected")),
       summary: v.string(),           // human-readable one-line description of what happened
       reason: v.optional(v.string()),// LLM's reason for the op (applied ops) or why it was rejected
+      // Rejection metadata. Populated on status === "rejected" entries. category is
+      // "invalid_reference" (target doesn't exist / wrong state) or
+      // "precondition_failure" (op-specific rule violated). Used by the P7 panel to
+      // group + style flags by severity. opType is the original op type that was rejected.
+      category: v.optional(v.string()),
+      opType: v.optional(v.string()),
     }))),
     // LLM multiplier overrides from this round's decide pass, carried across the P7
     // pause. Applied in phase 5 for facilitator review visibility, then RE-applied

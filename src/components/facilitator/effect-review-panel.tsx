@@ -41,7 +41,21 @@ const TYPE_COLOURS: Record<string, string> = {
   transferOwnership: "bg-viz-safety/15 text-viz-safety",
   multiplierOverride: "bg-viz-capability/15 text-viz-capability",
   computeChange: "bg-viz-capability/15 text-viz-capability",
+  foundLab: "bg-viz-safety/15 text-viz-safety",
   rejected: "bg-viz-danger/20 text-viz-danger",
+};
+
+/** Severity order for rejected ops — higher = render first. invalid_reference
+ *  (LLM emitted a target that doesn't exist) is scarier than precondition_failure
+ *  (rule violation, often benign). */
+const CATEGORY_SEVERITY: Record<string, number> = {
+  invalid_reference: 2,
+  precondition_failure: 1,
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  invalid_reference: "invalid ref",
+  precondition_failure: "precondition",
 };
 
 export function EffectReviewPanel({ gameId, round, roundNumber, isProjector }: Props) {
@@ -51,7 +65,10 @@ export function EffectReviewPanel({ gameId, round, roundNumber, isProjector }: P
 
   const appliedOps = round?.appliedOps ?? [];
   const applied = appliedOps.filter((op) => op.status === "applied");
-  const rejected = appliedOps.filter((op) => op.status === "rejected");
+  // Sort rejections by severity — invalid_reference first (LLM error, could land on
+  // wrong lab if re-resolved), then precondition_failure (rule violation).
+  const rejected = [...appliedOps.filter((op) => op.status === "rejected")]
+    .sort((a, b) => (CATEGORY_SEVERITY[b.category ?? ""] ?? 0) - (CATEGORY_SEVERITY[a.category ?? ""] ?? 0));
 
   const handleContinue = async () => {
     setSubmitting(true);
@@ -114,9 +131,16 @@ export function EffectReviewPanel({ gameId, round, roundNumber, isProjector }: P
             {rejected.map((op, i) => (
               <li key={`rejected-${i}`} className="flex items-start gap-2 text-sm">
                 <span className={`inline-block text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 mt-[3px] shrink-0 ${TYPE_COLOURS.rejected}`}>
-                  Flag
+                  {op.opType ?? "Flag"}
                 </span>
-                <div className="flex-1 min-w-0 text-navy-muted">{op.summary}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-navy-muted">{op.summary}</div>
+                  {op.category && (
+                    <div className="text-[11px] text-viz-danger/80 mt-0.5 uppercase tracking-wider">
+                      {CATEGORY_LABELS[op.category] ?? op.category}
+                    </div>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

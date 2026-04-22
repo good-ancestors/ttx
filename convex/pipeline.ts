@@ -845,9 +845,15 @@ export const rollAndApplyEffects = internalAction({
         const sign = m.change > 0 ? "+" : "";
         appliedOps.push({ type: "computeChange", status: "applied", summary: `${name} compute ${sign}${m.change}u (LLM)`, reason: m.reason });
       }
-      // (c) Rejected LLM ops
+      // (c) Rejected LLM ops — carry the category + opType so the UI can group by severity.
       for (const rej of rejectedOps) {
-        appliedOps.push({ type: "rejected", status: "rejected", summary: rej.message });
+        appliedOps.push({
+          type: "rejected",
+          status: "rejected",
+          summary: rej.message,
+          category: rej.category,
+          opType: rej.opType,
+        });
       }
 
       // Save decide metadata + applied ops + decide-half debug blob.
