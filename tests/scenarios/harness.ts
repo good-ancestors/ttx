@@ -87,6 +87,12 @@ export async function runScenario(scenario: Scenario): Promise<void> {
     // Inject submissions. Uses the same `saveAndSubmit` mutation as the UI but
     // with forced probability + dice resolution later.
     const tables = await client.query(api.tables.getByGame, { gameId });
+    const activeLabs = await client.query(api.labs.getActiveLabs, { gameId });
+    const labIdByRole = new Map<string, Id<"labs">>(
+      activeLabs
+        .filter((l): l is typeof l & { ownerRoleId: string } => !!l.ownerRoleId)
+        .map((l) => [l.ownerRoleId, l._id]),
+    );
     for (const [roleId, actions] of Object.entries(round.submissions)) {
       const table = tables.find((t) => t.roleId === roleId);
       if (!table) throw new Error(`Role ${roleId} has no table`);
@@ -97,10 +103,10 @@ export async function runScenario(scenario: Scenario): Promise<void> {
         secret: false,
         mergeLab: a.mergeLab
           ? {
-              absorbedLabId: resolveLabIdByRole(tables, a.mergeLab.absorbedRoleId) ?? (() => {
+              absorbedLabId: labIdByRole.get(a.mergeLab.absorbedRoleId) ?? (() => {
                 throw new Error(`absorbedRoleId ${a.mergeLab.absorbedRoleId} has no active lab`);
               })(),
-              survivorLabId: resolveLabIdByRole(tables, roleId) ?? (() => {
+              survivorLabId: labIdByRole.get(roleId) ?? (() => {
                 throw new Error(`survivor roleId ${roleId} has no active lab`);
               })(),
               newName: a.mergeLab.newName,
@@ -193,18 +199,6 @@ export async function runScenario(scenario: Scenario): Promise<void> {
   if (scenario.expect) await scenario.expect(client, gameId);
 
   console.log(`✓ ${scenario.name} passed`);
-}
-
-function resolveLabIdByRole(
-  tables: Awaited<ReturnType<ConvexHttpClient["query"]>>,
-  _roleId: string,
-): Id<"labs"> | undefined {
-  void tables;
-  // Placeholder — a real implementation would query labs and match ownerRoleId.
-  // The existing `submissions.saveAndSubmit` validates labIds against active labs,
-  // so resolution needs to be done via api.labs.getActiveLabs rather than tables.
-  // Left as a TODO for the first scenario author to thread through.
-  return undefined;
 }
 
 // CLI entrypoint

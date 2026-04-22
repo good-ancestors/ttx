@@ -165,32 +165,3 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
   },
 });
 
-/** Materialise `round.pendingAcquired` into settled `acquired` ledger rows.
- *  Called by advanceRound at round-transition time. Idempotent: clearing the field
- *  after emission prevents double-apply if something re-runs. */
-export const materializePendingAcquiredInternal = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-  },
-  handler: async (ctx, args) => {
-    const round = await ctx.db.query("rounds")
-      .withIndex("by_game_and_number", (q) => q.eq("gameId", args.gameId).eq("number", args.roundNumber))
-      .first();
-    if (!round || !round.pendingAcquired || round.pendingAcquired.length === 0) return;
-
-    for (const row of round.pendingAcquired) {
-      if (row.amount === 0) continue;
-      await emitTransaction(ctx, {
-        gameId: args.gameId,
-        roundNumber: args.roundNumber,
-        type: "acquired",
-        status: "settled",
-        roleId: row.roleId,
-        amount: row.amount,
-        reason: "Round pool share (materialised at Advance)",
-      });
-    }
-    await ctx.db.patch(round._id, { pendingAcquired: undefined });
-  },
-});
