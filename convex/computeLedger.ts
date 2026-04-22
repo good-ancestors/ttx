@@ -8,7 +8,7 @@
 import { v } from "convex/values";
 import { mutation, internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { assertFacilitator } from "./events";
+import { assertFacilitator, assertNotResolving } from "./events";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -89,6 +89,9 @@ export async function emitPair(ctx: MutationCtx, args: {
   actionId?: string;
   submissionId?: Id<"submissions">;
 }): Promise<{ fromId: Id<"computeTransactions">; toId: Id<"computeTransactions"> }> {
+  if (args.amount <= 0) {
+    throw new Error(`emitPair requires positive amount, got ${args.amount}`);
+  }
   const base = {
     gameId: args.gameId,
     roundNumber: args.roundNumber,
@@ -290,6 +293,9 @@ export const clearRegenerableRowsFacilitator = mutation({
   },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    assertNotResolving(game);
     return await clearRegenerableRows(ctx, args.gameId, args.roundNumber);
   },
 });

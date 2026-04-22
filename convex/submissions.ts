@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator } from "./events";
+import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator, assertNotResolving } from "./events";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
 import {
@@ -534,11 +534,14 @@ export const saveAndSubmit = mutation({
     const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
 
     // Priority is assigned by rank order — 1st submitted gets highest priority.
-    // Calculated server-side during grading, not enforced on submit.
+    // Intentionally bypasses PRIORITY_HARD_CAP: rank-based auto-assignment (1..5)
+    // sums to 15 for a full 5-action submission, exceeding the 12 cap. The cap
+    // applies to user-set priorities on other paths (submit / submitAction /
+    // updatePriority); saveAndSubmit treats priority as a rank not a budget.
     const submittedCount = existing
       ? existing.actions.filter((a) => a.actionStatus === "submitted").length
       : 0;
-    const rank = submittedCount + 1; // 1-based rank
+    const rank = submittedCount + 1;
 
     // If we're upgrading an existing draft with the same text, preserve its actionId so
     // ledger rows tied to that action (if any) stay linked. Otherwise generate a new one.
@@ -559,6 +562,20 @@ export const saveAndSubmit = mutation({
       }
       if (!args.foundLab.name.trim()) {
         throw new Error("Lab name required");
+      }
+      // Dedup: reject if this role already has a submitted foundLab action with the
+      // same name this round. Roll-time name-collision is self-correcting but leaves
+      // two actions + two pending escrows visible until resolve. Same-name is the
+      // relevant key — text may differ between the two click attempts.
+      if (existing) {
+        const dup = existing.actions.find((a) =>
+          a.actionStatus === "submitted" &&
+          a.foundLab?.name.trim() === args.foundLab!.name.trim() &&
+          a.actionId !== actionId,
+        );
+        if (dup) {
+          throw new Error(`You already have a submitted foundLab action for "${args.foundLab.name}" this round`);
+        }
       }
     }
 
@@ -1212,6 +1229,9 @@ export const rollAllFacilitator = mutation({
   },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    assertNotResolving(game);
     await rollAllImpl(ctx, args.gameId, args.roundNumber);
   },
 });

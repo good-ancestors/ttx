@@ -685,10 +685,10 @@ export const rollAndNarrate = internalAction({
           roundNumber,
           summary: narrativeOutput.summary,
         }),
-        // Store lab risk trajectories (secret, facilitator-only)
-        survivingTrajectories.length > 0
-          ? ctx.runMutation(internal.rounds.setLabTrajectories, { gameId, roundNumber, trajectories: survivingTrajectories })
-          : Promise.resolve(),
+        // Store lab risk trajectories (secret, facilitator-only). Always write —
+        // including empty — so a re-resolve that drops all trajectories clears any
+        // leftovers from the prior run rather than leaving stale data visible.
+        ctx.runMutation(internal.rounds.setLabTrajectories, { gameId, roundNumber, trajectories: survivingTrajectories }),
       ]);
 
       // Idempotent regenerate: wipe this round's regenerable rows (acquired/adjusted/merged)

@@ -2,22 +2,15 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { ROLES, ROUND_CONFIGS, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID, calculatePoolAllocations } from "./gameData";
-import { logEvent, assertFacilitator } from "./events";
+import { logEvent, assertFacilitator, assertNotResolving } from "./events";
 import { internal } from "./_generated/api";
 import {
   getActiveLabsForGame,
   createLabInternal,
   mergeLabsInternal,
 } from "./labs";
-import { emitPair } from "./computeLedger";
+import { emitPair, emitTransaction } from "./computeLedger";
 
-const LOCK_TTL_MS = 3 * 60 * 1000; // 3 minutes
-
-function assertNotResolving(game: { resolving?: boolean; resolvingStartedAt?: number }) {
-  if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < LOCK_TTL_MS) {
-    throw new Error("Resolution already in progress");
-  }
-}
 
 /** Pre-generate AI/NPC actions so they're ready before submissions open. */
 async function schedulePreGeneration(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
@@ -383,25 +376,23 @@ export const updateTableCompute = mutation({
     const game = await ctx.db.get(table.gameId);
     if (!game) return;
 
-    // Facilitator-edit path: write a `facilitator` ledger row for the delta. The helper
-    // updates table.computeStock cache. Also keep the game.labs[] cache in sync if this is a lab CEO.
+    // Route through emitTransaction so the cache-ledger invariant is enforced
+    // centrally (patchTableStock updates the cache as a side-effect). Duplicate
+    // of computeMutations.overrideHolderCompute with tableId-based lookup —
+    // retained because the lobby UI passes tableId rather than roleId.
     const currentStock = table.computeStock ?? 0;
     const delta = args.computeStock - currentStock;
     if (delta !== 0) {
-      await ctx.db.insert("computeTransactions", {
+      await emitTransaction(ctx, {
         gameId: table.gameId,
         roundNumber: game.currentRound,
-        createdAt: Date.now(),
         type: "facilitator",
         status: "settled",
         roleId: table.roleId,
         amount: delta,
         reason: "Facilitator direct compute edit",
       });
-      await ctx.db.patch(args.tableId, { computeStock: args.computeStock });
     }
-
-    // Labs table doesn't store compute — nothing else to sync.
   },
 });
 

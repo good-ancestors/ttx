@@ -16,6 +16,16 @@ export function assertFacilitator(token: string | undefined) {
   }
 }
 
+/** Assert the game isn't currently resolving. 3-minute TTL on the lock so a
+ *  crashed pipeline doesn't permanently block subsequent actions. Shared helper
+ *  to avoid circular imports between games / computeLedger / submissions. */
+const RESOLVE_LOCK_TTL_MS = 3 * 60 * 1000;
+export function assertNotResolving(game: { resolving?: boolean; resolvingStartedAt?: number }) {
+  if (game.resolving && game.resolvingStartedAt && Date.now() - game.resolvingStartedAt < RESOLVE_LOCK_TTL_MS) {
+    throw new Error("Resolution already in progress");
+  }
+}
+
 /** Assert the submission window hasn't closed (5s grace for clock drift). */
 export function assertSubmitWindowOpen(game: { phase: string; phaseEndsAt?: number | null }) {
   if (game.phase !== "submit") return;
