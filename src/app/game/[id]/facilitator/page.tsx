@@ -21,6 +21,8 @@ import { LobbyPhase } from "@/components/facilitator/lobby-phase";
 import { RoundPhase } from "@/components/facilitator/round-phase";
 import { TimerDisplay } from "@/components/facilitator/timer-display";
 import { AddLabForm } from "@/components/facilitator/add-lab-form";
+import { NewComputeAcquired } from "@/components/facilitator/new-compute-acquired";
+import { isResolvingPhase } from "@/lib/game-data";
 
 export default function FacilitatorPage({
   params,
@@ -303,6 +305,9 @@ export default function FacilitatorPage({
   }
 
   // ─── PLAYING ────────────────────────────────────────────────────────────────
+  const isResolvingNow = isResolvingPhase(phase);
+  const hasNarrativeData = isResolvingNow && !!currentRound?.summary;
+
   return (
     <div className="min-h-screen bg-navy-dark text-white">
       <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
@@ -413,71 +418,76 @@ export default function FacilitatorPage({
         </div>
       )}
 
-      <div className="p-6 max-w-[1400px] mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-          {/* Left sidebar */}
-          <div className="flex flex-col gap-4">
-            <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={game.currentRound} />
-            <LabTracker
-              labs={labs}
-              onMerge={isProjector ? undefined : async (survivor, absorbed) => {
-                await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
-              }}
-              onAddLab={isProjector ? undefined : () => setAddLabOpen(true)}
-            />
-          </div>
+      {/* Full-width sequential layout — designed for 1920×1080 projection */}
+      <div className="px-6 py-6 space-y-4">
+        {/* Add Lab modal */}
+        {addLabOpen && !isProjector && (
+          <AddLabModal
+            gameId={gameId}
+            tables={tables}
+            addLab={addLab}
+            onClose={() => setAddLabOpen(false)}
+          />
+        )}
 
-      {/* Add Lab modal (triggered from sidebar + button) */}
-      {addLabOpen && !isProjector && (
-        <AddLabModal
+        {/* ── Sections 1–5: phase controls, AttemptedPanel, NarrativePanel, lab cards, compute flow ── */}
+        <RoundPhase
           gameId={gameId}
+          game={game}
           tables={tables}
+          isProjector={isProjector}
+          submissions={submissions ?? []}
+          proposals={proposals ?? []}
+          currentRound={currentRound}
+          resolving={resolving}
+          resolveStep={resolveStep}
+          revealedCount={revealedCount}
+          revealedSecrets={revealedSecrets}
+          toggleReveal={toggleReveal}
+          revealAllSecrets={revealAllSecrets}
+          hideAllSecrets={hideAllSecrets}
+          handleGradeRemaining={handleGradeRemaining}
+          handleRollDice={handleRollDice}
+          handleReResolve={handleReResolve}
+          safeAction={safeAction}
+          submitDuration={submitDuration}
+          setSubmitDuration={setSubmitDuration}
+          openSubmissions={openSubmissions}
+          skipTimer={skipTimer}
+          overrideProbability={overrideProbability}
+          ungradeAction={ungradeAction}
+          rerollAction={rerollAction}
+          narrativeStale={narrativeStale}
+          onDiceChanged={() => setNarrativeStale(true)}
+          advanceRound={advanceRound}
+          finishGame={finishGame}
           addLab={addLab}
-          onClose={() => setAddLabOpen(false)}
+          forceClearLock={forceClearLock}
+          isTimerExpired={isExpired}
+          timerDisplay={timerDisplay}
+          isUrgent={isUrgent}
+          adjustTimer={adjustTimer}
         />
-      )}
 
-          {/* Main content area — single progressive view for all phases */}
-          <div className="min-w-0 overflow-hidden">
-            <RoundPhase
-              gameId={gameId}
-              game={game}
-              tables={tables}
-              isProjector={isProjector}
-              submissions={submissions ?? []}
-              proposals={proposals ?? []}
-              currentRound={currentRound}
-              resolving={resolving}
-              resolveStep={resolveStep}
-              revealedCount={revealedCount}
-              revealedSecrets={revealedSecrets}
-              toggleReveal={toggleReveal}
-              revealAllSecrets={revealAllSecrets}
-              hideAllSecrets={hideAllSecrets}
-              handleGradeRemaining={handleGradeRemaining}
-              handleRollDice={handleRollDice}
-              handleReResolve={handleReResolve}
-              safeAction={safeAction}
-              submitDuration={submitDuration}
-              setSubmitDuration={setSubmitDuration}
-              openSubmissions={openSubmissions}
-              skipTimer={skipTimer}
-              overrideProbability={overrideProbability}
-              ungradeAction={ungradeAction}
-              rerollAction={rerollAction}
-              narrativeStale={narrativeStale}
-              onDiceChanged={() => setNarrativeStale(true)}
-              advanceRound={advanceRound}
-              finishGame={finishGame}
-              addLab={addLab}
-              forceClearLock={forceClearLock}
-              isTimerExpired={isExpired}
-              timerDisplay={timerDisplay}
-              isUrgent={isUrgent}
-              adjustTimer={adjustTimer}
-            />
-          </div>
-        </div>
+        {/* ── Section 6: Lab Allocations (always visible, full-width) ── */}
+        <LabTracker
+          labs={labs}
+          onMerge={isProjector ? undefined : async (survivor, absorbed) => {
+            await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
+          }}
+          onAddLab={isProjector ? undefined : () => setAddLabOpen(true)}
+        />
+
+        {/* ── Section 7: R&D Progress chart (always visible, full-width) ── */}
+        <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={game.currentRound} />
+
+        {/* ── Section 8: New Compute Acquired — only during rolling/narrate after narrative lands ── */}
+        {hasNarrativeData && (
+          <NewComputeAcquired
+            gameId={gameId}
+            roundNumber={game.currentRound}
+          />
+        )}
 
         {/* Debug panel — fetches its own data when expanded to avoid always-on subscriptions */}
         {!isProjector && (

@@ -621,7 +621,13 @@ export const rollAndApplyEffects = internalAction({
       const transferOps: { labId: Id<"labs">; newOwnerRoleId: string | undefined }[] = [];
       const computeModifiers: { labId: Id<"labs">; change: number; reason: string }[] = [];
       const multiplierOverrides: { labId: Id<"labs">; newMultiplier: number }[] = [];
-      const rejectedOps: string[] = [];
+      // Structured rejection tracking: each rejection carries a category so the P7
+      // panel can group + style by severity. Categories:
+      //   invalid_reference    — op targets a lab / roleId that doesn't exist or
+      //                          isn't in the required state (most common).
+      //   precondition_failure — op violates a rule (last-active-lab guard,
+      //                          self-merge, unowned lab op, unknown op type).
+      const rejectedOps: { category: "invalid_reference" | "precondition_failure"; opType: string; message: string }[] = [];
 
       const findActiveByName = (name: string) => workingLabs.find((l) => l.name === name);
 
@@ -631,8 +637,12 @@ export const rollAndApplyEffects = internalAction({
             if (op.survivor && op.absorbed) {
               const survivor = findActiveByName(op.survivor);
               const absorbed = findActiveByName(op.absorbed);
-              if (!survivor || !absorbed || survivor.labId === absorbed.labId) {
-                rejectedOps.push(`merge: one of "${op.survivor}" / "${op.absorbed}" not active`);
+              if (!survivor || !absorbed) {
+                rejectedOps.push({ category: "invalid_reference", opType: "merge", message: `merge: one of "${op.survivor}" / "${op.absorbed}" is not an active lab` });
+                break;
+              }
+              if (survivor.labId === absorbed.labId) {
+                rejectedOps.push({ category: "precondition_failure", opType: "merge", message: `merge: cannot merge "${op.survivor}" with itself` });
                 break;
               }
               const newName = op.newName;
@@ -654,8 +664,8 @@ export const rollAndApplyEffects = internalAction({
           case "decommission":
             if (op.labName) {
               const target = findActiveByName(op.labName);
-              if (!target) { rejectedOps.push(`decommission: "${op.labName}" not active`); break; }
-              if (workingLabs.length <= 1) { rejectedOps.push(`decommission: cannot decommission last active lab`); break; }
+              if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "decommission", message: `decommission: "${op.labName}" is not an active lab` }); break; }
+              if (workingLabs.length <= 1) { rejectedOps.push({ category: "precondition_failure", opType: "decommission", message: `decommission: cannot decommission the last active lab` }); break; }
               decommissionOps.push({ labId: target.labId });
               workingLabs = workingLabs.filter((l) => l.labId !== target.labId);
             }
@@ -663,7 +673,8 @@ export const rollAndApplyEffects = internalAction({
           case "computeChange":
             if (op.labName && op.change != null) {
               const target = findActiveByName(op.labName);
-              if (!target || !target.roleId) { rejectedOps.push(`computeChange: "${op.labName}" not active or unowned`); break; }
+              if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "computeChange", message: `computeChange: "${op.labName}" is not an active lab` }); break; }
+              if (!target.roleId) { rejectedOps.push({ category: "precondition_failure", opType: "computeChange", message: `computeChange: "${op.labName}" is unowned — no compute pool to adjust` }); break; }
               const clamped = Math.max(-50, Math.min(50, op.change));
               computeModifiers.push({ labId: target.labId, change: clamped, reason: op.reason });
               workingLabs = workingLabs.map((l) => l.labId === target.labId
@@ -674,7 +685,7 @@ export const rollAndApplyEffects = internalAction({
           case "multiplierOverride":
             if (op.labName && op.newMultiplier != null) {
               const target = findActiveByName(op.labName);
-              if (!target) { rejectedOps.push(`multiplierOverride: "${op.labName}" not active`); break; }
+              if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "multiplierOverride", message: `multiplierOverride: "${op.labName}" is not an active lab` }); break; }
               const clamped = Math.max(0.1, Math.min(maxMult, op.newMultiplier));
               multiplierOverrides.push({ labId: target.labId, newMultiplier: clamped });
               workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: clamped } : l);
@@ -683,13 +694,13 @@ export const rollAndApplyEffects = internalAction({
           case "transferOwnership":
             if (op.labName && op.controllerRoleId !== undefined) {
               const target = findActiveByName(op.labName);
-              if (!target) { rejectedOps.push(`transferOwnership: "${op.labName}" not active`); break; }
+              if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${op.labName}" is not an active lab` }); break; }
               // Validate controllerRoleId is a real role ID (LLM sometimes emits role *name*
               // instead of ID — e.g. "Australian PM" vs "australia-pm" — which would silently
               // leave the lab unowned). Empty string is allowed and means "unowned".
               const newOwner = op.controllerRoleId || undefined;
               if (newOwner && !tablesAfterClear.some((t) => t.roleId === newOwner)) {
-                rejectedOps.push(`transferOwnership: invalid roleId "${newOwner}" for "${op.labName}"`);
+                rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${newOwner}" is not a valid role id (LLM may have emitted a display name)` });
                 break;
               }
               transferOps.push({ labId: target.labId, newOwnerRoleId: newOwner });
@@ -701,14 +712,14 @@ export const rollAndApplyEffects = internalAction({
             // Per design: labs can only be founded via player actions; rename only happens as a
             // side-effect of merge. LLM-initiated creates/renames are rejected to keep the
             // structural boundary clean.
-            rejectedOps.push(`${op.type}: not allowed from narrative`);
+            rejectedOps.push({ category: "precondition_failure", opType: op.type, message: `${op.type}: not allowed from narrative — labs can only be founded via player actions, renames happen only via merger` });
             break;
           default:
-            rejectedOps.push(`unknown op: ${op.type}`);
+            rejectedOps.push({ category: "precondition_failure", opType: op.type ?? "unknown", message: `unknown op type: "${op.type}"` });
         }
       }
       if (rejectedOps.length > 0) {
-        console.warn(`[pipeline] Rejected lab ops: ${rejectedOps.join("; ")}`);
+        console.warn(`[pipeline] Rejected lab ops: ${rejectedOps.map((r) => `[${r.category}] ${r.message}`).join("; ")}`);
       }
 
       // ═══ PHASE 5 APPLY — structural effects only ═══
@@ -766,7 +777,7 @@ export const rollAndApplyEffects = internalAction({
       //       fetched from the event log since game.resolvingStartedAt.
       //   (c) Rejected LLM ops (validation failures, flagged for review).
       const labNameById = new Map(labsAfterClear.map((l) => [l.labId, l.name] as const));
-      const appliedOps: { type: string; status: "applied" | "rejected"; summary: string; reason?: string }[] = [];
+      const appliedOps: { type: string; status: "applied" | "rejected"; summary: string; reason?: string; category?: string; opType?: string }[] = [];
 
       // (b) Player-originated structural ops. rollAllImpl settles player mergers and
       // lab foundings directly and emits events; pull those so the P7 review shows
@@ -836,7 +847,7 @@ export const rollAndApplyEffects = internalAction({
       }
       // (c) Rejected LLM ops
       for (const rej of rejectedOps) {
-        appliedOps.push({ type: "rejected", status: "rejected", summary: rej });
+        appliedOps.push({ type: "rejected", status: "rejected", summary: rej.message });
       }
 
       // Save decide metadata + applied ops + decide-half debug blob.
