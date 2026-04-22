@@ -819,13 +819,19 @@ export const rollAndApplyEffects = internalAction({
               reason: typeof data.amountMoved === "number" ? `${data.amountMoved}u compute transferred` : undefined,
             });
           } else if (evt.type === "lab_merge_failed") {
+            const reason = typeof data.reason === "string" ? data.reason : "unknown";
+            // Dice-roll failures (rolled_failure) are already visible in Section 1's Succeeded/Failed split.
+            // Only surface precondition failures (e.g. lab_already_decommissioned) in the P7 review.
+            if (reason === "rolled_failure") {
+              continue;
+            }
             const survivorName = typeof data.survivorLabId === "string" ? labNameById.get(data.survivorLabId as Id<"labs">) ?? "?" : "?";
             const absorbedName = typeof data.absorbedLabId === "string" ? labNameById.get(data.absorbedLabId as Id<"labs">) ?? "?" : "?";
-            const reason = typeof data.reason === "string" ? plainReason(data.reason) : "unknown reason";
+            const plainReason_text = plainReason(reason);
             appliedOps.push({
               type: "rejected",
               status: "rejected",
-              summary: `${actorName} tried to merge ${absorbedName} into ${survivorName} — ${reason}`,
+              summary: `${actorName} tried to merge ${absorbedName} into ${survivorName} — ${plainReason_text}`,
               category: "precondition_failure",
               opType: "merge",
             });
@@ -838,14 +844,11 @@ export const rollAndApplyEffects = internalAction({
               summary: `${actorName} founded ${labName} with ${seed}u seed compute`,
             });
           } else if (evt.type === "lab_founding_failed") {
-            const labName = typeof data.labName === "string" ? data.labName : "?";
-            appliedOps.push({
-              type: "rejected",
-              status: "rejected",
-              summary: `${actorName} tried to found ${labName} — action failed`,
-              category: "precondition_failure",
-              opType: "foundLab",
-            });
+            // Founding failures without a reason field are all dice-roll failures and are
+            // already visible in Section 1's Succeeded/Failed split. Precondition failures
+            // (name collision, escrow) are caught and refunded in submissions.ts before
+            // emitting this event, so we don't see them here.
+            continue;
           }
         }
       }
