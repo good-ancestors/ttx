@@ -695,11 +695,15 @@ export const rollAndApplyEffects = internalAction({
             if (op.labName && op.controllerRoleId !== undefined) {
               const target = findActiveByName(op.labName);
               if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${op.labName}" is not an active lab` }); break; }
-              // Validate controllerRoleId is a real role ID (LLM sometimes emits role *name*
-              // instead of ID — e.g. "Australian PM" vs "australia-pm" — which would silently
-              // leave the lab unowned). Empty string is allowed and means "unowned".
-              const newOwner = op.controllerRoleId || undefined;
-              if (newOwner && !tablesAfterClear.some((t) => t.roleId === newOwner)) {
+              // Disallow unowning a lab — it strands the lab's compute on the previous
+              // owner and leaves the lab displaying 0u. If the narrative is that a lab
+              // dissolves, the LLM should emit `decommission` instead.
+              const newOwner = op.controllerRoleId;
+              if (!newOwner) {
+                rejectedOps.push({ category: "precondition_failure", opType: "transferOwnership", message: `transferOwnership: cannot unown "${op.labName}" — use decommission to end a lab's existence` });
+                break;
+              }
+              if (!tablesAfterClear.some((t) => t.roleId === newOwner)) {
                 rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${newOwner}" is not a valid role id (LLM may have emitted a display name)` });
                 break;
               }
