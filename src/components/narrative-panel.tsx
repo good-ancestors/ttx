@@ -129,12 +129,27 @@ export function NarrativePanel({
             ? PROSE_SECTIONS.map(({ key, label }) => {
                 const text = summary[key];
                 if (!text) return null;
+                // New format: bullets separated by newlines, each line starting with "- ".
+                // Old format: a single prose paragraph. Detect and render appropriately.
+                const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+                const isBulletList = lines.length > 1 && lines.every((l) => /^[-•*]\s/.test(l));
                 return (
                   <div key={key}>
                     <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
                       {label}
                     </div>
-                    <p className={`${textSize} text-[#E2E8F0] leading-relaxed`}>{text}</p>
+                    {isBulletList ? (
+                      <ul className="space-y-1.5">
+                        {lines.map((line, i) => (
+                          <li key={i} className={`${textSize} text-[#E2E8F0] leading-relaxed flex gap-2`}>
+                            <span aria-hidden className="text-text-muted shrink-0 select-none">•</span>
+                            <span className="flex-1">{line.replace(/^[-•*]\s+/, "")}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className={`${textSize} text-[#E2E8F0] leading-relaxed`}>{text}</p>
+                    )}
                   </div>
                 );
               })

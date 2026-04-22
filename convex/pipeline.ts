@@ -600,6 +600,23 @@ export const rollAndApplyEffects = internalAction({
       // Transferred + facilitator + starting rows are preserved.
       await ctx.runMutation(internal.computeLedger.clearRegenerableRowsInternal, { gameId, roundNumber });
 
+      // Also reset lab structural state to the pre-round snapshot so a re-resolve doesn't
+      // carry forward LLM-decided multiplierOverrides / allocation edits from an earlier
+      // run of this same round. Without this, `labs.rdMultiplier` still reflects the
+      // previous resolve's overridden value and the new decide pass either piles another
+      // override on top or suppresses natural growth.
+      const labsBefore = currentRound?.labsBefore;
+      if (labsBefore && labsBefore.length > 0) {
+        await ctx.runMutation(internal.labs.resetLabsToSnapshotInternal, {
+          gameId,
+          snapshot: labsBefore.map((s) => ({
+            labId: s.labId,
+            rdMultiplier: s.rdMultiplier,
+            allocation: s.allocation,
+          })),
+        });
+      }
+
       // Re-read tables/labs after the clear so cache reflects pre-growth state.
       const [tablesAfterClear, labsAfterClear]: [Table[], LabWithCompute[]] = await Promise.all([
         ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
@@ -675,6 +692,13 @@ export const rollAndApplyEffects = internalAction({
               const target = findActiveByName(op.labName);
               if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "computeChange", message: `computeChange: "${op.labName}" is not an active lab` }); break; }
               if (!target.roleId) { rejectedOps.push({ category: "precondition_failure", opType: "computeChange", message: `computeChange: "${op.labName}" is unowned — no compute pool to adjust` }); break; }
+              // Zero deltas are no-ops — surface them as rejections rather than silently
+              // filtering so the facilitator sees the LLM emitting narrative-color-disguised-
+              // as-mechanics and can adjust the prompt if needed.
+              if (op.change === 0) {
+                rejectedOps.push({ category: "precondition_failure", opType: "computeChange", message: `computeChange: 0u is not a real op — use narrative prose for effects that don't change compute` });
+                break;
+              }
               const clamped = Math.max(-50, Math.min(50, op.change));
               computeModifiers.push({ labId: target.labId, change: clamped, reason: op.reason });
               workingLabs = workingLabs.map((l) => l.labId === target.labId

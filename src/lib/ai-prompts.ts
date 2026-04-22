@@ -621,17 +621,27 @@ YOUR TASK: Produce a situation briefing for the next round, plus risk trajectori
 
 SUMMARY STYLE — read this carefully:
 
-You are writing a briefing, not a recap. The action log already shows what was attempted and whether it rolled successfully. The UI cards already show absolute state (multipliers, compute stocks, safety %, allocations). Your job is the synthesis between those two — the delta, and what it means for the round ahead.
+You are writing a briefing, not a recap. Write terse, scannable bullets. A facilitator should be able to read the whole narrative in under 30 seconds and know what changed. No paragraphs, no flourish, no mood-setting.
+
+FORMAT: each field is a string containing newline-separated short clauses. Each clause starts with "- " (a dash and a space) so the UI renders it as a bullet. Every bullet is one fact or one implication — no compound sentences.
 
 THREE FIELDS, each with a defined job:
 
-- **outcomes** (2-3 sentences): what the successful actions PRODUCED, at meaning-level. Synthesize — connect effects into coherent outcomes. Do not re-list the action log. A successful action that was blocked or overtaken by another action produced a different outcome than its actor intended; report the actual world-state change (visible in LAB STATUS END), not the attempt.
+- **outcomes** — 3 to 5 bullets of what the successful actions produced, at meaning-level. One bullet per coherent consequence. Do not re-list the action log. A successful action blocked or overtaken by another action produced a different outcome than its actor intended; report the actual world-state change (visible in LAB STATUS END), not the attempt.
 
-- **stateOfPlay** (1-2 sentences): where key players sit NOW, in relative terms. Positions, leverage, momentum — not absolute numbers. Who gained, who lost, who's now exposed or isolated.
+- **stateOfPlay** — 2 to 4 bullets naming where key actors sit NOW. One bullet per actor/relationship shift. Positions, leverage, momentum — not absolute numbers.
 
-- **pressures** (1-2 sentences): what is set up, contested, or at stake heading into the next round. The questions players should be weighing between rounds. Forward-looking, not a recap.
+- **pressures** — 2 to 3 bullets naming what is contested or at stake heading into the next round. One bullet per open question the players should be weighing.
 
-Every sentence must earn its place. Terse is better than padded. If a domain produced nothing visible, say nothing about it — do not add filler like "no coverage" or "no incidents reported".
+Every bullet must earn its place. If a domain produced nothing visible, say nothing about it — do not pad. Better to have 3 bullets that are sharp than 6 that hedge. Never write a connecting sentence between bullets.
+
+EXAMPLE — good formatting:
+outcomes:
+- Conscienta redomiciled to Australia, now operating as AussieAI under sovereign backing.
+- The DPA consolidation of OpenBrain proceeded on paper but lost its second target.
+- DeepCent's capability push fizzled at the loyalty-certification precondition.
+
+BAD: "Conscienta redomiciled to Australia, folding into AussieAI, while the DPA consolidation of OpenBrain lost its second target and DeepCent's capability push fizzled." (this is a paragraph, not bullets).
 
 WHAT MAY NOT APPEAR:
 

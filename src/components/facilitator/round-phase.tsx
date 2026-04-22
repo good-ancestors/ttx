@@ -293,6 +293,7 @@ export function RoundPhase({
         resolveStep={resolveStep}
         isProjector={isProjector}
         forceClearLock={forceClearLock}
+        onEditNarrative={isProjector ? undefined : () => setEditModal("narrative")}
       />
 
       {/* ─── Section 3: Where Things Are At (narrate phase only) ─── */}
@@ -304,7 +305,6 @@ export function RoundPhase({
         isProjector={isProjector}
         labs={labs}
         rounds={rounds}
-        onEditNarrative={() => setEditModal("narrative")}
         onMerge={isProjector ? undefined : async (survivor, absorbed) => {
           await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
         }}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { CheckCircle, Pencil, Plus } from "lucide-react";
+import { CheckCircle, Plus } from "lucide-react";
 import { getCapabilityDescription, type Lab } from "@/lib/game-data";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { ExpandableSection } from "../expandable-section";
@@ -35,7 +35,6 @@ export function StateSection({
   isProjector,
   labs,
   rounds,
-  onEditNarrative,
   onMerge,
   onAddLab,
 }: {
@@ -46,7 +45,6 @@ export function StateSection({
   isProjector: boolean;
   labs: Lab[];
   rounds: RoundLite[];
-  onEditNarrative: () => void;
   onMerge?: (survivorName: string, absorbedName: string) => Promise<void>;
   onAddLab?: () => void;
 }) {
@@ -64,7 +62,6 @@ export function StateSection({
         labs={labs}
         onMerge={onMerge}
         onAddLab={onAddLab}
-        onEditNarrative={onEditNarrative}
       />
 
       <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={currentRoundNumber} />
@@ -82,7 +79,6 @@ function LabStateAndAllocations({
   labs,
   onMerge,
   onAddLab,
-  onEditNarrative,
 }: {
   gameId: Id<"games">;
   currentRound: Round;
@@ -91,7 +87,6 @@ function LabStateAndAllocations({
   labs: Lab[];
   onMerge?: (survivorName: string, absorbedName: string) => Promise<void>;
   onAddLab?: () => void;
-  onEditNarrative: () => void;
 }) {
   const [mergeSourceRaw, setMergeSource] = useState<string | null>(null);
   const mergeSource = mergeSourceRaw && labs.some((l) => l.name === mergeSourceRaw) ? mergeSourceRaw : null;
@@ -112,13 +107,13 @@ function LabStateAndAllocations({
         defaultOpen
         badge={<CheckCircle className="w-3.5 h-3.5 text-viz-safety" />}
       >
-        <div className="flex items-center justify-end gap-1 mb-2 -mt-1">
-          {onAddLab && (
+        {onAddLab && (
+          <div className="flex items-center justify-end gap-1 mb-2 -mt-1">
             <button onClick={onAddLab} className="text-text-light hover:text-white p-0.5 transition-colors" title="Add lab">
               <Plus className="w-3.5 h-3.5" />
             </button>
-          )}
-        </div>
+          </div>
+        )}
 
         <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           {activeLabs.map((lab) => {
@@ -161,18 +156,10 @@ function LabStateAndAllocations({
                 <span className="text-base font-bold text-white">{cap.timeCompression}</span>
               </div>
             </div>
-            <div className="bg-navy rounded-lg p-3 border border-navy-light mb-3">
+            <div className="bg-navy rounded-lg p-3 border border-navy-light">
               <p className={`${isProjector ? "text-base" : "text-sm"} text-[#E2E8F0]`}>{cap.implication}</p>
             </div>
           </>
-        )}
-
-        {!isProjector && (
-          <div className="flex gap-2 mt-3">
-            <button onClick={onEditNarrative} className="text-[10px] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors flex items-center gap-1">
-              <Pencil className="w-3 h-3" /> Edit narrative
-            </button>
-          </div>
         )}
       </ExpandableSection>
     </div>

@@ -18,13 +18,22 @@ async function schedulePreGeneration(ctx: MutationCtx, gameId: Id<"games">, roun
 }
 
 /** Auto-snapshot a round's final state (labs, role compute). */
-async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber: number) {
+async function snapshotRound(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roundNumber: number,
+  opts?: { force?: boolean },
+) {
   const game = await ctx.db.get(gameId);
   if (!game) return;
   const round = await ctx.db.query("rounds")
     .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
     .first();
-  if (!round || round.labsAfter) return; // Already snapshotted
+  if (!round) return;
+  // Default: idempotent — keep existing snapshot.
+  // force=true: overwrite (used by advanceRound post-materialisation to capture the
+  // post-acquisition compute stocks; the narrate-phase snapshot is pre-acquisition).
+  if (round.labsAfter && !opts?.force) return;
   const labs = await ctx.db.query("labs").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect();
   const tables = await ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect();
   const stockByRole = new Map(tables.map((t) => [t.roleId, t.computeStock ?? 0] as const));
@@ -458,11 +467,12 @@ export const advanceRound = mutation({
 
     // Materialise any deferred acquisition for the round we're leaving — this is the
     // moment the new compute arrives in players' tables. Writes `acquired` ledger rows
-    // keyed to the round being left + patches table.computeStock. The snapshot taken
-    // next line captures the post-materialisation state.
+    // keyed to the round being left + patches table.computeStock. The snapshot is then
+    // re-taken with `force: true` so labsAfter captures the post-acquisition stocks
+    // (narrative phase earlier wrote a pre-acquisition snapshot; we overwrite).
     await materializePendingAcquired(ctx, args.gameId, game.currentRound);
 
-    await snapshotRound(ctx, args.gameId, game.currentRound);
+    await snapshotRound(ctx, args.gameId, game.currentRound, { force: true });
 
     const nextRound = game.currentRound + 1;
     await ctx.db.patch(args.gameId, {
@@ -1013,12 +1023,42 @@ export const forceClearResolvingLock = mutation({
     assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
+
+    // Rewind phase to the last stable state so retry makes sense. Otherwise a failed
+    // resolve leaves the game stuck in phase "rolling" and re-triggering grade/roll
+    // refuses because the phase guard doesn't recognise it. Also clear resolveNonce
+    // on the current round — without it, any retry will fail the nonce check inside
+    // applyDecidedEffectsInternal.
+    const stablePhase =
+      game.phase === "rolling" ? "submit" :
+      game.phase === "effect-review" ? "submit" :
+      game.phase === "narrate" ? "narrate" :
+      game.phase; // discuss / submit stay as-is
+
     await ctx.db.patch(args.gameId, {
       resolving: false,
       resolvingStartedAt: undefined,
       pipelineStatus: undefined,
+      phase: stablePhase,
     });
-    await logEvent(ctx, args.gameId, "force_unlock", undefined, {});
+
+    // Also clear the current round's resolveNonce + any pending stash, so a retry rolls
+    // from a clean slate.
+    const round = await ctx.db.query("rounds")
+      .withIndex("by_game_and_number", (q) => q.eq("gameId", args.gameId).eq("number", game.currentRound))
+      .first();
+    if (round) {
+      await ctx.db.patch(round._id, {
+        resolveNonce: undefined,
+        pendingMultiplierOverrides: undefined,
+        pendingAcquired: undefined,
+      });
+    }
+
+    await logEvent(ctx, args.gameId, "force_unlock", undefined, {
+      previousPhase: game.phase,
+      restoredPhase: stablePhase,
+    });
   },
 });
 

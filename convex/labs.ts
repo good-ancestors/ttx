@@ -6,7 +6,7 @@
 // and player actions call the *Internal variants so mutations can be composed.
 
 import { v } from "convex/values";
-import { query, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { query, internalQuery, internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { emitPair } from "./computeLedger";
 
@@ -121,17 +121,23 @@ export async function createLabInternal(
   });
 }
 
-/** Decommission a lab (soft-delete). Never removes the row — restore still needs it. */
+/** Decommission a lab (soft-delete). Never removes the row — restore still needs it.
+ *  `mergedIntoLabId` is only patched when the caller explicitly passes it — otherwise a
+ *  bare "just decommission" call would clobber an existing merger pointer from a previous
+ *  structural event. */
 export async function decommissionLabInternal(
   ctx: MutationCtx,
   labId: Id<"labs">,
   opts?: { mergedIntoLabId?: Id<"labs"> },
 ): Promise<void> {
-  await ctx.db.patch(labId, {
+  const patch: { status: "decommissioned"; ownerRoleId: undefined; mergedIntoLabId?: Id<"labs"> } = {
     status: "decommissioned",
-    mergedIntoLabId: opts?.mergedIntoLabId,
     ownerRoleId: undefined,
-  });
+  };
+  if (opts && "mergedIntoLabId" in opts) {
+    patch.mergedIntoLabId = opts.mergedIntoLabId;
+  }
+  await ctx.db.patch(labId, patch);
 }
 
 /** Merge two labs. Survivor absorbs structural fields as specified; absorbed goes
@@ -269,6 +275,36 @@ export const getLabs = query({
   handler: async (ctx, args) => {
     const all = await getAllLabs(ctx, args.gameId);
     return args.includeInactive ? all : all.filter((l) => l.status === "active");
+  },
+});
+
+/** Reset each lab's rdMultiplier + allocation to a supplied pre-round snapshot. Used by
+ *  the pipeline on re-resolve to undo any LLM-decided overrides from the previous run
+ *  of the same round before the decide pass runs again. Only touches fields that might
+ *  have been mutated mid-round — NOT name, spec, ownerRoleId, or status (structural
+ *  events like mergers should be idempotently re-applied from the cleared-ledger state). */
+export const resetLabsToSnapshotInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    snapshot: v.array(v.object({
+      labId: v.id("labs"),
+      rdMultiplier: v.number(),
+      allocation: v.object({
+        deployment: v.number(),
+        research: v.number(),
+        safety: v.number(),
+      }),
+    })),
+  },
+  handler: async (ctx, args) => {
+    for (const s of args.snapshot) {
+      const lab = await ctx.db.get(s.labId);
+      if (!lab || lab.gameId !== args.gameId) continue;
+      await ctx.db.patch(s.labId, {
+        rdMultiplier: s.rdMultiplier,
+        allocation: s.allocation,
+      });
+    }
   },
 });
 

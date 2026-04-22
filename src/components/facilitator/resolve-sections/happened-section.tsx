@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { AlertTriangle, Loader2, Pencil } from "lucide-react";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { isResolvingPhase } from "@/lib/game-data";
 import type { Round } from "../types";
@@ -46,6 +46,7 @@ export function HappenedSection({
   resolveStep,
   isProjector,
   forceClearLock,
+  onEditNarrative,
 }: {
   gameId: Id<"games">;
   currentRound: Round | undefined;
@@ -54,6 +55,7 @@ export function HappenedSection({
   resolveStep: string;
   isProjector: boolean;
   forceClearLock: (args: { gameId: Id<"games"> }) => Promise<unknown>;
+  onEditNarrative?: () => void;
 }) {
   const inResolvingPhase = isResolvingPhase(phase);
   if (!inResolvingPhase) return null;
@@ -93,11 +95,23 @@ export function HappenedSection({
       )}
 
       {(resolving || currentRound?.summary) && (
-        <NarrativePanel
-          round={currentRound}
-          isProjector={isProjector}
-          debugContext={!isProjector ? { gameId } : undefined}
-        />
+        <div>
+          <NarrativePanel
+            round={currentRound}
+            isProjector={isProjector}
+            debugContext={!isProjector ? { gameId } : undefined}
+          />
+          {onEditNarrative && !isProjector && currentRound?.summary && (
+            <div className="flex justify-end mt-2">
+              <button
+                onClick={onEditNarrative}
+                className="text-[10px] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors flex items-center gap-1"
+              >
+                <Pencil className="w-3 h-3" /> Edit narrative
+              </button>
+            </div>
+          )}
+        </div>
       )}
     </>
   );
