@@ -61,8 +61,9 @@ export function AttemptedPanel({
   narrativeStale: boolean;
   onDiceChanged: () => void;
 }) {
-  // Collapsed by default — opens when there's content to show
-  const [expanded, setExpanded] = useState(false);
+  // Tri-state: null = follow default (open during rolling/narrate, closed otherwise);
+  // boolean = user's explicit choice for the current resolving cycle.
+  const [userExpanded, setUserExpanded] = useState<boolean | null>(null);
 
   const hasRolled = submissions.some((s) => s.actions.some((a) => a.rolled != null));
   const hasGraded = submissions.some((s) => s.actions.some((a) => a.probability != null));
@@ -104,7 +105,10 @@ export function AttemptedPanel({
   const effectiveRevealedCount = phase === "narrate" ? allActions.length : revealedCount;
   const allRevealed = isRollingOrNarrate && effectiveRevealedCount >= allActions.length;
 
-  const isExpanded = isRollingOrNarrate && hasSubmissions ? true : expanded;
+  // Default open during rolling/narrate with submissions; user's explicit toggle overrides.
+  const defaultExpanded = isRollingOrNarrate && hasSubmissions;
+  const isExpanded = userExpanded ?? defaultExpanded;
+  const setExpanded = (next: boolean) => setUserExpanded(next === defaultExpanded ? null : next);
 
   // Flag narrative as stale when dice/probability change after narrative is generated
   const wrappedReroll: typeof rerollAction = useCallback(async (args) => {
@@ -392,7 +396,7 @@ function ProbabilityDropdown({
   }, [open]);
 
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div ref={ref} className={`relative shrink-0 ${open ? "z-[100]" : ""}`}>
       <button
         onClick={() => setOpen(!open)}
         className="text-[11px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1"
@@ -402,7 +406,7 @@ function ProbabilityDropdown({
         <ChevronDown className="w-3 h-3" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 bg-navy-dark border border-navy-light rounded-lg shadow-xl py-1 min-w-[160px]">
+        <div className="absolute right-0 top-full mt-1 bg-navy-dark border border-navy-light rounded-lg shadow-xl py-1 min-w-[160px]">
           {PROBABILITY_CARDS.map((p) => (
             <button
               key={p.pct}

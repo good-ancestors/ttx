@@ -23,6 +23,7 @@ export const respond = internalAction({
     const { gameId, roundNumber, roleId } = args;
 
     const game: Game | null = await ctx.runQuery(internal.games.getInternal, { gameId });
+    const labs = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
     if (!game) return;
 
     const role = ROLES.find((r) => r.id === roleId);
@@ -45,7 +46,7 @@ export const respond = internalAction({
 - Round: ${roundNumber}
 
 LAB STATUS:
-${game.labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%`).join("\n")}
+${labs.map((l) => `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%`).join("\n")}
 
 YOU ARE PLAYING: ${role.name} — ${role.subtitle}
 ${role.brief}

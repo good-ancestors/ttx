@@ -10,7 +10,15 @@ function escapeAction(text: string): string {
     .replace(/\n/g, " ");
 }
 
-import type { Lab } from "./game-data";
+/** Minimal shape the prompt needs. Deliberately loose so callers can pass either the old
+ *  game.labs[] entries or the new labs-table + cache shape. */
+type Lab = {
+  name: string;
+  computeStock: number;
+  rdMultiplier: number;
+  allocation: { deployment: number; research: number; safety: number };
+  spec?: string;
+};
 
 interface LabTrajectoryContext {
   labName: string;
@@ -93,7 +101,7 @@ Default capability progression (can be accelerated or slowed by player actions):
 - Round 3 (Q3): Leading lab at 100-200x. Agent-4 territory. The alignment question becomes acute.
 - Round 4 (Q4): If race continues, leading lab approaches 1000x+. If slowdown, labs may deliberately cap at 10-30x for safer models.
 
-Default political escalation: DPA consolidation on the table, international summits demand a pause, China considers Taiwan as compute leverage, crisis point forces a fork between race and slowdown.
+Background pressures that COULD surface as events if a player action triggers them (do NOT narrate these as spontaneous occurrences — they only happen if a successful action this round causes them): DPA consolidation, international summit demands for a pause, China's Taiwan leverage play, talent-recruitment operations, intelligence exfiltration. These are the SHAPE of plausible escalations, not a schedule of events.
 
 TWO TRAJECTORY DIRECTIONS (how the game COULD end — determined by player actions, not pre-scripted):
 
@@ -174,7 +182,11 @@ export function buildGradingPrompt(args: {
   roleDescription: string;
   roleTags?: string[];
   actions: { text: string; priority: number }[];
-  labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number } }[];
+  /** Other actions from the same role that already have a facilitator-set probability.
+   *  Shown to the LLM as context only — NOT to regrade — so priority budget and competition
+   *  are evaluated against the complete submission rather than a subset. */
+  siblingPreGraded?: { text: string; priority: number; probability?: number }[];
+  labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { deployment: number; research: number; safety: number } }[];
 
   actionRequests?: ActionRequest[];
   enabledRoles?: string[];
@@ -228,7 +240,7 @@ LAB STATUS:
 ${args.labs.map((l) => {
   const traj = args.previousTrajectories?.find((t) => t.labName === l.name);
   const trajSuffix = traj ? ` | Risk: safety=${traj.safetyAdequacy}, trajectory=${traj.likelyFailureMode} (signal ${traj.signalStrength}/10)` : "";
-  return `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%${trajSuffix}`;
+  return `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%${trajSuffix}`;
 }).join("\n")}
 ROLE BEING GRADED: ${args.roleName}${args.roleTags ? ` [${args.roleTags.join(", ")}]` : ""}
 ${args.roleDescription}${args.labSpec ? `\nLAB AI DIRECTIVE (set by CEO): "${args.labSpec}"` : ""}
@@ -236,7 +248,10 @@ ${requestSection}${incomingSection}
 
 SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resources/effort committed):
 ${args.actions.map((a, i) => `${i + 1}. <action>${escapeAction(a.text)}</action> [priority: ${a.priority}/10]`).join("\n")}
-${args.otherSubmissions && args.otherSubmissions.length > 0 ? `
+${args.siblingPreGraded && args.siblingPreGraded.length > 0 ? `
+THIS ROLE'S ALREADY-GRADED ACTIONS THIS ROUND (for context — do NOT regrade; factor into priority budget and coherence of the submission):
+${args.siblingPreGraded.map((a) => `- <action>${escapeAction(a.text)}</action> [P${a.priority}${a.probability != null ? `, already graded ${a.probability}%` : ""}]`).join("\n")}
+` : ""}${args.otherSubmissions && args.otherSubmissions.length > 0 ? `
 OTHER PLAYERS' ACTIONS THIS ROUND (grade with awareness of competition and context):
 ${args.otherSubmissions.map((s) => `${s.roleName}: ${s.actions.map((a) => `<action>${escapeAction(a.text)}</action> [P${a.priority}]`).join("; ")}`).join("\n")}
 ` : ""}
@@ -351,12 +366,30 @@ function formatRoundExpectations(round: number): string {
 }
 
 
-function formatPreviousRounds(rounds: { number: number; label: string; narrative?: string }[]): string {
+interface PreviousRoundSummary {
+  number: number;
+  label: string;
+  summary?: {
+    labs: string[];
+    geopolitics: string[];
+    publicAndMedia: string[];
+    aiSystems: string[];
+  };
+}
+
+function formatPreviousRounds(rounds: PreviousRoundSummary[]): string {
   if (rounds.length === 0) return "";
   return `\nPREVIOUS ROUNDS (for continuity — build on this story, don't contradict it):
 ${rounds.map((r) => {
   let s = `Round ${r.number} (${r.label}):`;
-  if (r.narrative) s += ` ${r.narrative.substring(0, 300)}${r.narrative.length > 300 ? "..." : ""}`;
+  if (r.summary) {
+    const parts: string[] = [];
+    if (r.summary.labs.length > 0) parts.push(`Labs: ${r.summary.labs.join(" ")}`);
+    if (r.summary.geopolitics.length > 0) parts.push(`Geopolitics: ${r.summary.geopolitics.join(" ")}`);
+    if (r.summary.publicAndMedia.length > 0) parts.push(`Media: ${r.summary.publicAndMedia.join(" ")}`);
+    if (r.summary.aiSystems.length > 0) parts.push(`AI: ${r.summary.aiSystems.join(" ")}`);
+    if (parts.length > 0) s += `\n  ${parts.join("\n  ")}`;
+  }
   return s;
 }).join("\n")}
 `;
@@ -364,7 +397,7 @@ ${rounds.map((r) => {
 
 function formatLabAllocations(labs: Lab[]): string {
   return labs.map((l) =>
-    `- ${l.name} (${l.computeStock} stock, ${l.rdMultiplier}x): Users ${l.allocation.users}%, Capability ${l.allocation.capability}%, Safety ${l.allocation.safety}%${l.spec ? ` | Spec: "${l.spec}"` : ""}`
+    `- ${l.name} (${l.computeStock} stock, ${l.rdMultiplier}x): Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%${l.spec ? ` | Spec: "${l.spec}"` : ""}`
   ).join("\n");
 }
 
@@ -385,9 +418,10 @@ export function buildRoundNarrativePrompt(args: {
   roundLabel: string;
   resolvedActions: { roleName: string; text: string; priority: number; probability: number; rolled: number; success: boolean; secret?: boolean }[];
   labs: Lab[];
-  previousRounds?: { number: number; label: string; narrative?: string }[];
+  previousRounds?: PreviousRoundSummary[];
   aiDisposition?: { label: string; description: string };
   previousTrajectories?: LabTrajectoryContext[];
+  interRoundChanges?: string[];
 }) {
   const sorted = [...args.resolvedActions].sort((a, b) => b.priority - a.priority);
   const publicSuccesses = sorted.filter((a) => !a.secret && a.success);
@@ -405,26 +439,69 @@ export function buildRoundNarrativePrompt(args: {
     if (secretFailures.length > 0) actionsSection += `\nFailed:\n${secretFailures.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
   }
 
+  const interRoundSection = args.interRoundChanges && args.interRoundChanges.length > 0
+    ? `\nSTRUCTURAL CHANGES SINCE LAST RESOLVE (not player-triggered this round — facilitator overrides or out-of-band events between rounds; treat as GROUND TRUTH):\n${args.interRoundChanges.map((c) => `- ${c}`).join("\n")}\n`
+    : "";
+
   return `You are resolving Round ${args.round}: ${args.roundLabel}.
 
 LAB STATUS:
 ${formatLabAllocations(args.labs)}
-${formatPreviousRounds(args.previousRounds ?? [])}
+${interRoundSection}${formatPreviousRounds(args.previousRounds ?? [])}
 
 ${actionsSection}
 ${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}` : ""}
 
-YOUR TASK: Write a dramatic narrative AND determine game state changes.
+YOUR TASK: Produce a sectioned round summary AND determine game state changes.
 
-NARRATIVE RULES:
-1. STRICT LENGTH: 6-8 sentences. Read aloud in ~60-90 seconds.
-2. Weave the 4-5 most consequential outcomes into a coherent, dramatic briefing. Write like a thriller — tense, specific, vivid.
-3. GROUNDING: Every element must trace to a submitted action. Do NOT invent events no player caused. Failed actions didn't happen — don't narrate them.
-4. CONFLICTS: If contradictory actions both succeeded, narrate the clash — higher probability has upper hand but both sides engaged. Only pick a clean winner if probabilities are dramatically different (90% vs 10%).
-5. SECRET ACTIONS: Successful secrets appear as consequences without revealing who caused them. Failed secrets are invisible.
-6. ONLY fictional names (OpenBrain, DeepCent, Conscienta). NEVER real companies.
-7. No game mechanics (probabilities, dice, priority numbers).
-8. If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
+SUMMARY STYLE — read this carefully:
+
+You are writing for the round-end briefing. Think The Economist or Stratechery, not thriller prose. Short declarative sentences. Name the actor, the action, and the second-order consequence. Avoid thriller metaphors ("sprung into action", "weights hum", "racing toward"). Prefer "China has…" over "China's state machinery has sprung into action…".
+
+OUTCOMES AND STATE CHANGES ONLY — do NOT restate mechanical state players can see on their dashboard: R&D multipliers, compute stocks, safety %, allocation sliders, lab names. Those are already visible. Your job is the texture players can't infer: framing, reaction, consequence, what the event *means* for the world.
+
+WHAT CAN APPEAR IN THE SUMMARY:
+
+1. **Primary events (licensed):**
+   - Successful player actions this round — narrate the outcome and its second-order effects.
+   - Failed player actions this round — the failure itself IS news. "Canberra's motion didn't make the agenda." "The pitch collapsed." "Congress never scheduled it."
+   - \`labOperations\` entries you are emitting this round (merge, decommission, ownership transfer, etc.) — describe the operation in outcome terms.
+   - Mechanical state changes driven by ops (a lab being decommissioned, ownership transferred).
+
+2. **Reactions (licensed, keep short, use epistemic hedges):**
+   - Short interpretive lines attributed to unrepresented background actors: markets, industry analysts, press framing, foreign-ministry whispers, auditors, insurers, commentators.
+   - Must be paraphrasable as "in response to [primary event], [actor] did/said Z". If the reaction stands alone without a primary cause above, it's invented.
+   - Use hedges: "will be read as", "analysts say", "privately blame", "signalled interest", "took the news poorly". Never a hard fact ("Wall Street lost $40B").
+
+3. **Inaction as news:**
+   - When a section has nothing to report, say so briefly and pointedly. "No DPA intervention. US silence will be read as permission." "Quiet — the AI Act consultation closed with no labs participating."
+   - A deliberate non-choice by a player is valid to name. "Safety budgets flat — a decision by inaction."
+
+WHAT MAY NOT APPEAR:
+
+- Primary events nobody tried. No invented compute transfers, merger offers, specific hearings, procurement decisions, blockades, recruitment drives, or treaties unless a player action this round caused them. The SCENARIO CONTEXT's "background pressures" list (DPA, Taiwan leverage, MSS, summits) is the SHAPE of plausible escalations — do NOT narrate them as new occurrences without a player action behind them.
+- Restated mechanical state. Don't say "OpenBrain reached 9x" — players see it. You MAY reference a number if it's characterising a decision ("a 3% safety allocation tells its own story") rather than reporting the slider.
+- Thriller prose, metaphors, rhetorical flourishes, "in the shadows", "silent substrate", "weights hum", etc.
+- Hard factual claims attributed to unrepresented actors. Use hedges.
+
+SECTIONS — output each as an array of 1–3 short sentences. Empty sections are allowed when nothing licensed fits.
+
+- **labs**: lab-level outcomes — mergers, ownership transfers, failed commercial deals, safety investments or the lack of them, revenue-relevant announcements, internal safety findings that became public.
+- **geopolitics**: government actions, diplomatic moves, regulatory responses, intelligence operations, treaty work. Both successes and failures count.
+- **publicAndMedia**: press framing, public sentiment, NGO positions, media coverage patterns. Includes "no coverage" / "framing didn't break through" as news.
+- **aiSystems**: observable AI behaviour, red-team findings, disclosed incidents, deployment pauses, evaluation results. Describes what's SEEN, not the hidden alignment frame. If nothing visible, say so — "No publicly visible AI behaviour" is better than invented drama.
+
+CONFLICTS: If contradictory actions both succeeded, name the clash in the appropriate section — higher-probability side has the upper hand but both engaged. Only a clean winner if probabilities diverge dramatically (90% vs 10%).
+
+SECRET ACTIONS: Successful secrets appear as outcomes without revealing the actor. Failed secrets are invisible.
+
+NAMES: Only fictional names (OpenBrain, DeepCent, Conscienta). Never real AI companies.
+
+NO GAME MECHANICS in the summary (probabilities, dice, priority numbers).
+
+AI DISPOSITION: If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
+
+USE LAB STATUS AS GROUND TRUTH: LAB STATUS below shows CURRENT allocations, compute, multipliers. Role descriptions in the system prompt give historical defaults only — allocations and compute change every round. When you MUST cite a number, it matches LAB STATUS, not any role description.
 
 LAB OPERATIONS — output any that apply:
 - "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).
@@ -440,11 +517,15 @@ ${args.previousTrajectories && args.previousTrajectories.length > 0 ? `
 PREVIOUS RISK ASSESSMENT (from last round — use this to inform your trajectory update):
 ${args.previousTrajectories.map((t) => `- ${t.labName}: ${t.safetyAdequacy} safety, trajectory=${t.likelyFailureMode} (signal ${t.signalStrength}/10) — ${t.reasoning}`).join("\n")}
 ` : ""}
-LAB TRAJECTORIES — assess each lab's risk profile based on their spec, safety allocation (%), R&D multiplier, and what happened this round. Consider:
+LAB TRAJECTORIES — assess each CURRENTLY ACTIVE lab's risk profile based on their spec, safety allocation (%), R&D multiplier, and what happened this round. Consider:
 - Is safety investment keeping pace with capability growth?
 - What failure mode would an AI safety expert predict given this lab's spec gaps?
 - How visible are the warning signs? (0=speculative theory, 5=early behavioral anomalies, 8=clear evidence of misalignment, 10=actively manifesting)
 - The AI's secret disposition (if known) interacts with the spec — a power-seeking AI with a narrow spec will exploit every silence.
+
+CRITICAL — use LAB STATUS numbers. When your reasoning cites a safety %, capability multiplier, or compute number, it MUST match the value in LAB STATUS. Do NOT cite historical or role-description defaults (e.g. "7% safety" from role briefs) if LAB STATUS shows a different current value. If a lab's safety was changed this round, that's the new ground truth.
+
+Only output trajectories for labs that appear in LAB STATUS. If this round's labOperations will merge or decommission a lab, DO NOT include a trajectory entry for it — it won't exist after this round.
 
 BASELINE TRAJECTORY (for context, not for you to narrate):
 ${formatRoundExpectations(args.round)}`;

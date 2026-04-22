@@ -69,8 +69,8 @@ interface LabProps {
   specSaved: boolean;
   specUnsaved: boolean;
   onSaveSpec: () => Promise<void> | void;
-  computeAllocation: { users: number; capability: number; safety: number };
-  onComputeAllocationChange: (alloc: { users: number; capability: number; safety: number }) => void;
+  computeAllocation: { deployment: number; research: number; safety: number };
+  onComputeAllocationChange: (alloc: { deployment: number; research: number; safety: number }) => void;
   allocationSaved: boolean;
   allocationUnsaved: boolean;
   onSaveAllocation: () => Promise<void> | void;
@@ -111,7 +111,7 @@ function LabComputeSummary({ lab, startingStock }: { lab: Lab; startingStock: nu
       <div className="flex items-center gap-3 text-xs text-text-muted">
         <span>R&D {lab.rdMultiplier}x</span>
         <span className="text-border">|</span>
-        <span>Cap {lab.allocation.capability}% / Safety {lab.allocation.safety}% / Users {lab.allocation.users}%</span>
+        <span>Research {lab.allocation.research}% / Safety {lab.allocation.safety}% / Deployment {lab.allocation.deployment}%</span>
       </div>
     </div>
   );
@@ -235,6 +235,7 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
           gameId={common.gameId}
           roundNumber={submit.currentRound}
           roleId={common.role.id}
+          tableId={common.tableId}
           isAiSystem={common.isAiSystem}
           aiInfluencePower={getAiInfluencePower(labs)}
           allRequests={submit.allRequests}
@@ -288,12 +289,16 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
 
 // ─── Resolve phase ───────────────────────────────────────────────────────────
 
-function ResolveContent({ common, resolve, submit, lab }: {
+function ResolveContent({ common, resolve, submit, lab, labs }: {
   common: CommonProps;
   resolve: ResolveProps & { phase: "rolling" | "narrate" };
   submit: Pick<SubmitProps, "currentRound" | "allRequests">;
   lab: Pick<LabProps, "currentLab" | "startingStock">;
+  labs: Lab[];
 }) {
+  // AI Systems: keep influence tab interactive during the rolling phase so the
+  // player can still boost/sabotage up until dice are actually rolled on a given action.
+  const aiInfluenceStillEditable = common.isAiSystem && resolve.phase === "rolling";
   return (
     <>
       {common.activeTab === "brief" && resolve.round && (
@@ -303,13 +308,26 @@ function ResolveContent({ common, resolve, submit, lab }: {
         <TableResolving phase={resolve.phase} round={resolve.round} sortedResultActions={resolve.sortedResultActions} showNarrative={false} />
       )}
       {common.activeTab === "respond" && (
-        <RespondResultsTab
-          gameId={common.gameId}
-          roundNumber={submit.currentRound}
-          roleId={common.role.id}
-          isAiSystem={common.isAiSystem}
-          allRequests={submit.allRequests ?? []}
-        />
+        aiInfluenceStillEditable ? (
+          <RespondTab
+            gameId={common.gameId}
+            roundNumber={submit.currentRound}
+            roleId={common.role.id}
+            tableId={common.tableId}
+            isAiSystem
+            aiInfluencePower={getAiInfluencePower(labs)}
+            allRequests={submit.allRequests}
+            allowEdits
+          />
+        ) : (
+          <RespondResultsTab
+            gameId={common.gameId}
+            roundNumber={submit.currentRound}
+            roleId={common.role.id}
+            isAiSystem={common.isAiSystem}
+            allRequests={submit.allRequests ?? []}
+          />
+        )
       )}
       {common.activeTab === "lab" && common.hasLabAccess && lab.currentLab && (
         <>
@@ -353,6 +371,7 @@ export function PhaseContent({ common, submit, lab, resolve, labs, phase, player
         resolve={{ ...resolve, round: resolve.round, phase }}
         submit={{ currentRound: submit.currentRound, allRequests: submit.allRequests }}
         lab={{ currentLab: lab.currentLab, startingStock: lab.startingStock }}
+        labs={labs}
       />
     );
   }

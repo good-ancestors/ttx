@@ -1,35 +1,10 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
-import type { DatabaseWriter, MutationCtx } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import { logEvent, assertPhase, assertSubmitWindowOpen } from "./events";
-
-/** Transfer compute between two roles via table.computeStock (single source of truth).
- *  Used for direct transfers only (not escrow). game.labs[].computeStock is a derived
- *  cache synced at pipeline resolution time. */
-async function transferCompute(
-  db: DatabaseWriter,
-  gameId: Id<"games">,
-  giverRoleId: string,
-  requesterRoleId: string,
-  amount: number,
-) {
-  const [giverTable, requesterTable] = await Promise.all([
-    db.query("tables").withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", giverRoleId)).first(),
-    db.query("tables").withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", requesterRoleId)).first(),
-  ]);
-  if (giverTable) {
-    await db.patch(giverTable._id, {
-      computeStock: Math.max(0, (giverTable.computeStock ?? 0) - amount),
-    });
-  }
-  if (requesterTable) {
-    await db.patch(requesterTable._id, {
-      computeStock: Math.max(0, (requesterTable.computeStock ?? 0) + amount),
-    });
-  }
-}
+import { emitPair, cancelPendingForAction, getAvailableStock } from "./computeLedger";
 
 /** Find an existing request matching the key fields, or insert a new one. Returns the request ID. */
 export async function findOrUpsertRequest(
@@ -69,7 +44,19 @@ export async function findOrUpsertRequest(
     });
     return match._id;
   }
-  return await ctx.db.insert("requests", { ...args, status: "pending" });
+  return await ctx.db.insert("requests", {
+    gameId: args.gameId,
+    roundNumber: args.roundNumber,
+    fromRoleId: args.fromRoleId,
+    fromRoleName: args.fromRoleName,
+    toRoleId: args.toRoleId,
+    toRoleName: args.toRoleName,
+    actionId: args.actionId,
+    actionText: args.actionText,
+    requestType: args.requestType,
+    computeAmount: args.computeAmount,
+    status: "pending",
+  });
 }
 
 export const directTransfer = mutation({
@@ -110,7 +97,16 @@ export const directTransfer = mutation({
       throw new Error("Recipient role not found or not enabled");
     }
 
-    await transferCompute(ctx.db, args.gameId, args.fromRoleId, args.toRoleId, args.amount);
+    await emitPair(ctx, {
+      gameId: args.gameId,
+      roundNumber: game.currentRound,
+      type: "transferred",
+      status: "settled",
+      fromRoleId: args.fromRoleId,
+      toRoleId: args.toRoleId,
+      amount: args.amount,
+      reason: "Direct transfer",
+    });
     await logEvent(ctx, args.gameId, "compute_direct_transfer", args.fromRoleId, {
       toRoleId: args.toRoleId,
       amount: args.amount,
@@ -165,18 +161,21 @@ export const send = mutation({
       v.literal("compute")
     ),
     computeAmount: v.optional(v.number()),
+    callerTableId: v.id("tables"),
   },
   handler: async (ctx, args) => {
     const game = await assertPhase(ctx, args.gameId, ["submit"], "send request");
     assertSubmitWindowOpen(game);
 
-    // Verify the sender's table exists and is enabled
-    const senderTable = await ctx.db.query("tables")
-      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.fromRoleId))
-      .first();
-    if (!senderTable || !senderTable.enabled) {
-      throw new Error("Sender role not found or not enabled in this game");
+    // Authorize: caller must occupy the claimed sender role. Without this check
+    // any client could forge fromRoleId to send requests impersonating any role.
+    const callerTable = await ctx.db.get(args.callerTableId);
+    if (!callerTable) throw new Error("Caller table not found");
+    if (callerTable.gameId !== args.gameId) throw new Error("Caller table does not belong to this game");
+    if (callerTable.roleId !== args.fromRoleId) {
+      throw new Error("Only the sender role can send this request");
     }
+    if (!callerTable.enabled) throw new Error("Sender role is not enabled in this game");
 
     // Reject self-endorsement / self-requests
     if (args.fromRoleId === args.toRoleId) {
@@ -211,27 +210,32 @@ export const send = mutation({
 export const cancel = mutation({
   args: {
     requestId: v.id("requests"),
+    callerTableId: v.id("tables"),
   },
   handler: async (ctx, args) => {
     const request = await ctx.db.get(args.requestId);
     if (!request) return;
 
+    // Authorize: caller must be the sender of this request.
+    const callerTable = await ctx.db.get(args.callerTableId);
+    if (!callerTable) throw new Error("Caller table not found");
+    if (callerTable.gameId !== request.gameId) throw new Error("Caller table does not belong to this game");
+    if (callerTable.roleId !== request.fromRoleId) {
+      throw new Error("Only the request sender can cancel this request");
+    }
+
     await assertPhase(ctx, request.gameId, ["submit"], "cancel requests");
 
-    // If compute was escrowed (accepted compute request), refund to the target
+    // If compute was escrowed (accepted compute request), cancel the pending ledger pair
+    // tied to this action. This refunds the target and removes the pending credit to submitter.
     if (
       request.status === "accepted" &&
       request.requestType === "compute" &&
-      request.computeAmount
+      request.actionId
     ) {
-      const targetTable = await ctx.db.query("tables")
-        .withIndex("by_game_and_role", (q) => q.eq("gameId", request.gameId).eq("roleId", request.toRoleId))
-        .first();
-      if (targetTable) {
-        await ctx.db.patch(targetTable._id, {
-          computeStock: (targetTable.computeStock ?? 0) + request.computeAmount,
-        });
-      }
+      await cancelPendingForAction(ctx, request.gameId, request.actionId, {
+        involvingRoleId: request.toRoleId,
+      });
     }
 
     await ctx.db.delete(args.requestId);
@@ -247,10 +251,19 @@ export const respond = mutation({
   args: {
     proposalId: v.id("requests"),
     status: v.union(v.literal("accepted"), v.literal("declined"), v.literal("pending")),
+    callerTableId: v.id("tables"),
   },
   handler: async (ctx, args) => {
     const proposal = await ctx.db.get(args.proposalId);
     if (!proposal) return;
+
+    // Authorize: caller must occupy the target role (only the recipient decides).
+    const callerTable = await ctx.db.get(args.callerTableId);
+    if (!callerTable) throw new Error("Caller table not found");
+    if (callerTable.gameId !== proposal.gameId) throw new Error("Caller table does not belong to this game");
+    if (callerTable.roleId !== proposal.toRoleId) {
+      throw new Error("Only the target role can respond to this request");
+    }
 
     const game = await assertPhase(ctx, proposal.gameId, ["submit"], "respond to requests");
     assertSubmitWindowOpen(game);
@@ -270,30 +283,23 @@ export const respond = mutation({
       return;
     }
 
-    // For compute requests: escrow from target on accept, refund on decline.
-    // The actual transfer to the requester happens in rollAllInternal on action success.
+    // For compute requests: escrow from target on accept (as a pending ledger pair),
+    // cancel the pair on decline. Settlement happens in rollAllInternal on action success.
     if (
       proposal.requestType === "compute" &&
-      proposal.computeAmount
+      proposal.computeAmount &&
+      proposal.actionId
     ) {
-      // If was accepted and now declining — refund the escrowed compute to the target
-      if (oldStatus === "accepted" && args.status === "declined") {
-        const targetTable = await ctx.db.query("tables")
-          .withIndex("by_game_and_role", (q) => q.eq("gameId", proposal.gameId).eq("roleId", proposal.toRoleId))
-          .first();
-        if (targetTable) {
-          await ctx.db.patch(targetTable._id, {
-            computeStock: (targetTable.computeStock ?? 0) + proposal.computeAmount,
-          });
-        }
+      // If was accepted and now moving away from accepted — cancel the pending escrow
+      if (oldStatus === "accepted" && args.status !== "accepted") {
+        await cancelPendingForAction(ctx, proposal.gameId, proposal.actionId, {
+          involvingRoleId: proposal.toRoleId,
+        });
       }
 
-      // If accepting (from pending or declined) — escrow from target (deduct, don't credit requester yet)
+      // If accepting (from pending or declined) — emit pending transferred pair
       if (args.status === "accepted" && oldStatus !== "accepted") {
-        const targetTable = await ctx.db.query("tables")
-          .withIndex("by_game_and_role", (q) => q.eq("gameId", proposal.gameId).eq("roleId", proposal.toRoleId))
-          .first();
-        const available = targetTable?.computeStock ?? 0;
+        const available = await getAvailableStock(ctx, proposal.gameId, proposal.toRoleId, proposal.roundNumber);
         if (available < proposal.computeAmount) {
           await ctx.db.patch(args.proposalId, { status: "declined" });
           await logEvent(ctx, proposal.gameId, "request_declined_insufficient", proposal.toRoleId, {
@@ -303,8 +309,16 @@ export const respond = mutation({
           });
           return;
         }
-        await ctx.db.patch(targetTable!._id, {
-          computeStock: available - proposal.computeAmount,
+        await emitPair(ctx, {
+          gameId: proposal.gameId,
+          roundNumber: proposal.roundNumber,
+          type: "transferred",
+          status: "pending",
+          fromRoleId: proposal.toRoleId,     // target escrows
+          toRoleId: proposal.fromRoleId,     // submitter to be credited
+          amount: proposal.computeAmount,
+          reason: `Compute request: ${proposal.actionText.slice(0, 80)}`,
+          actionId: proposal.actionId,
         });
       }
     }
@@ -383,10 +397,20 @@ export async function triggerAutoResponse(
     const accept = Math.random() < NPC_ACCEPT_RATE;
     if (accept) {
       const request = await ctx.db.get(args.requestId);
-      if (request?.requestType === "compute" && request.computeAmount) {
-        const available = targetTable.computeStock ?? 0;
+      if (request?.requestType === "compute" && request.computeAmount && request.actionId) {
+        const available = await getAvailableStock(ctx, args.gameId, args.toRoleId, args.roundNumber);
         if (available >= request.computeAmount) {
-          await ctx.db.patch(targetTable._id, { computeStock: available - request.computeAmount });
+          await emitPair(ctx, {
+            gameId: args.gameId,
+            roundNumber: args.roundNumber,
+            type: "transferred",
+            status: "pending",
+            fromRoleId: request.toRoleId,
+            toRoleId: request.fromRoleId,
+            amount: request.computeAmount,
+            reason: `NPC-accepted compute request: ${request.actionText.slice(0, 80)}`,
+            actionId: request.actionId,
+          });
         } else {
           await ctx.db.patch(args.requestId, { status: "declined" });
           return;
@@ -413,21 +437,31 @@ export const directTransferInternal = internalMutation({
   handler: async (ctx, args) => {
     if (args.amount <= 0 || args.fromRoleId === args.toRoleId) return;
 
-    // Validate sender has enough compute
+    const game = await ctx.db.get(args.gameId);
+    if (!game) return;
+
+    // Validate sender has enough compute (use settled stock, not available — AI transfers are immediate)
     const tables = await ctx.db
       .query("tables")
       .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
       .collect();
     const senderTable = tables.find((t) => t.roleId === args.fromRoleId && t.enabled);
     if (!senderTable) return;
-    const available = senderTable.computeStock ?? 0;
-    if (available < args.amount) return;
+    if ((senderTable.computeStock ?? 0) < args.amount) return;
 
-    // Validate recipient exists
     const recipientTable = tables.find((t) => t.roleId === args.toRoleId && t.enabled);
     if (!recipientTable) return;
 
-    await transferCompute(ctx.db, args.gameId, args.fromRoleId, args.toRoleId, args.amount);
+    await emitPair(ctx, {
+      gameId: args.gameId,
+      roundNumber: game.currentRound,
+      type: "transferred",
+      status: "settled",
+      fromRoleId: args.fromRoleId,
+      toRoleId: args.toRoleId,
+      amount: args.amount,
+      reason: "AI-initiated direct transfer",
+    });
     await logEvent(ctx, args.gameId, "compute_direct_transfer", args.fromRoleId, {
       toRoleId: args.toRoleId,
       amount: args.amount,
@@ -445,17 +479,25 @@ export const respondInternal = internalMutation({
     const proposal = await ctx.db.get(args.proposalId);
     if (!proposal || proposal.status !== "pending") return;
 
-    // Escrow compute from target on acceptance (transfer happens on action success in rollAllInternal)
-    if (args.status === "accepted" && proposal.requestType === "compute" && proposal.computeAmount) {
-      const targetTable = await ctx.db.query("tables")
-        .withIndex("by_game_and_role", (q) => q.eq("gameId", proposal.gameId).eq("roleId", proposal.toRoleId))
-        .first();
-      const available = targetTable?.computeStock ?? 0;
+    // Escrow compute from target on acceptance as a pending ledger pair. Settlement
+    // happens on action success in rollAllInternal.
+    if (args.status === "accepted" && proposal.requestType === "compute" && proposal.computeAmount && proposal.actionId) {
+      const available = await getAvailableStock(ctx, proposal.gameId, proposal.toRoleId, proposal.roundNumber);
       if (available < proposal.computeAmount) {
         await ctx.db.patch(args.proposalId, { status: "declined" });
         return;
       }
-      await ctx.db.patch(targetTable!._id, { computeStock: available - proposal.computeAmount });
+      await emitPair(ctx, {
+        gameId: proposal.gameId,
+        roundNumber: proposal.roundNumber,
+        type: "transferred",
+        status: "pending",
+        fromRoleId: proposal.toRoleId,
+        toRoleId: proposal.fromRoleId,
+        amount: proposal.computeAmount,
+        reason: `AI-accepted compute request: ${proposal.actionText.slice(0, 80)}`,
+        actionId: proposal.actionId,
+      });
     }
 
     await ctx.db.patch(args.proposalId, { status: args.status });

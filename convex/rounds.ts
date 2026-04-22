@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { labSnapshotValidator, labTrajectoryValidator } from "./schema";
+import { labTrajectoryValidator } from "./schema";
 import { assertFacilitator } from "./events";
 
 /** Find a single round by game + number using compound index (1 doc read). */
@@ -39,8 +39,13 @@ export const getByGameLightweight = query({
       number: r.number,
       label: r.label,
       labsAfter: r.labsAfter,
-      // Just the narrative string from summary (not full headlines/events arrays)
-      summaryNarrative: r.summary?.narrative,
+      // Sectioned summary — four short section arrays
+      summary: r.summary ? {
+        labs: r.summary.labs,
+        geopolitics: r.summary.geopolitics,
+        publicAndMedia: r.summary.publicAndMedia,
+        aiSystems: r.summary.aiSystems,
+      } : undefined,
       // Minimal flags for snapshot restore dropdown
       hasLabsBefore: r.labsBefore != null,
     }));
@@ -80,12 +85,11 @@ export const getForPlayer = query({
       number: round.number,
       label: round.label,
       summary: round.summary ? {
-        narrative: round.summary.narrative,
-        headlines: round.summary.headlines,
-        geopoliticalEvents: round.summary.geopoliticalEvents,
-        aiStateOfPlay: round.summary.aiStateOfPlay,
+        labs: round.summary.labs,
+        geopolitics: round.summary.geopolitics,
+        publicAndMedia: round.summary.publicAndMedia,
+        aiSystems: round.summary.aiSystems,
       } : undefined,
-      computeHolders: round.computeHolders,
     };
   },
 });
@@ -95,10 +99,10 @@ export const applySummary = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     summary: v.object({
-      narrative: v.optional(v.string()),
-      geopoliticalEvents: v.array(v.string()),
-      aiStateOfPlay: v.array(v.string()),
-      headlines: v.array(v.string()),
+      labs: v.array(v.string()),
+      geopolitics: v.array(v.string()),
+      publicAndMedia: v.array(v.string()),
+      aiSystems: v.array(v.string()),
       facilitatorNotes: v.optional(v.string()),
     }),
     facilitatorToken: v.optional(v.string()),
@@ -112,42 +116,13 @@ export const applySummary = mutation({
   },
 });
 
-export const applyResolution = mutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    resolvedEvents: v.array(
-      v.object({
-        id: v.string(),
-        description: v.string(),
-        visibility: v.union(v.literal("public"), v.literal("covert")),
-        actors: v.array(v.string()),
-        worldImpact: v.optional(v.string()),
-        sourceActions: v.optional(v.array(v.string())),
-      })
-    ),
-    facilitatorNotes: v.optional(v.string()),
-    facilitatorToken: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    assertFacilitator(args.facilitatorToken);
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (!round) return;
-
-    await ctx.db.patch(round._id, {
-      resolvedEvents: args.resolvedEvents,
-      facilitatorNotes: args.facilitatorNotes,
-    });
-  },
-});
-
 export const clearResolution = mutation({
   args: { gameId: v.id("games"), roundNumber: v.number(), facilitatorToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
-    await ctx.db.patch(round._id, { resolvedEvents: [], summary: undefined });
+    await ctx.db.patch(round._id, { summary: undefined });
   },
 });
 
@@ -172,32 +147,7 @@ export const setAiMeta = internalMutation({
   },
 });
 
-export const updateFallbackNarrative = mutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    fallbackNarrative: v.string(),
-    facilitatorToken: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    assertFacilitator(args.facilitatorToken);
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (!round) return;
-
-    await ctx.db.patch(round._id, { fallbackNarrative: args.fallbackNarrative });
-  },
-});
-
 // ─── Pipeline internal mutations ──────────────────────────────────────────────
-
-const resolvedEventValidator = v.object({
-  id: v.string(),
-  description: v.string(),
-  visibility: v.union(v.literal("public"), v.literal("covert")),
-  actors: v.array(v.string()),
-  worldImpact: v.optional(v.string()),
-  sourceActions: v.optional(v.array(v.string())),
-});
 
 export const getForPipeline = internalQuery({
   args: { gameId: v.id("games"), roundNumber: v.number() },
@@ -221,45 +171,15 @@ export const setResolveNonce = internalMutation({
   },
 });
 
-export const writePartialEvents = internalMutation({
-  args: { gameId: v.id("games"), roundNumber: v.number(), events: v.array(resolvedEventValidator) },
-  handler: async (ctx, args) => {
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (round) await ctx.db.patch(round._id, { partialEvents: args.events });
-  },
-});
-
-export const applyResolutionInternal = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    nonce: v.string(),
-    resolvedEvents: v.array(resolvedEventValidator),
-  },
-  handler: async (ctx, args) => {
-    // Check nonce to prevent double-execution
-    const game = await ctx.db.get(args.gameId);
-    if (game?.resolveNonce !== args.nonce) return;
-
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (!round) return;
-
-    await ctx.db.patch(round._id, {
-      resolvedEvents: args.resolvedEvents,
-      partialEvents: undefined,
-    });
-  },
-});
-
 export const applySummaryInternal = internalMutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
     summary: v.object({
-      narrative: v.optional(v.string()),
-      headlines: v.array(v.string()),
-      geopoliticalEvents: v.array(v.string()),
-      aiStateOfPlay: v.array(v.string()),
+      labs: v.array(v.string()),
+      geopolitics: v.array(v.string()),
+      publicAndMedia: v.array(v.string()),
+      aiSystems: v.array(v.string()),
       facilitatorNotes: v.optional(v.string()),
     }),
   },
@@ -269,37 +189,45 @@ export const applySummaryInternal = internalMutation({
   },
 });
 
+/** Build a labSnapshotValidator-shaped array from the current labs table + tables cache. */
+async function buildLabSnapshot(ctx: MutationCtx, gameId: Id<"games">) {
+  const [labs, tables] = await Promise.all([
+    ctx.db.query("labs").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect(),
+    ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect(),
+  ]);
+  const stockByRole = new Map(tables.map((t) => [t.roleId, t.computeStock ?? 0] as const));
+  return labs.map((l) => ({
+    labId: l._id,
+    name: l.name,
+    roleId: l.ownerRoleId,
+    computeStock: l.ownerRoleId ? stockByRole.get(l.ownerRoleId) ?? 0 : 0,
+    rdMultiplier: l.rdMultiplier,
+    allocation: l.allocation,
+    spec: l.spec,
+    colour: l.colour,
+    status: l.status,
+    mergedIntoLabId: l.mergedIntoLabId,
+    createdRound: l.createdRound,
+  }));
+}
+
 export const snapshotBeforeInternal = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    labsBefore: v.array(labSnapshotValidator),
-    roleComputeBefore: v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() })),
-  },
+  args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round || round.labsBefore) return; // Already snapshotted
-    await ctx.db.patch(round._id, {
-      labsBefore: args.labsBefore,
-      roleComputeBefore: args.roleComputeBefore,
-    });
+    const labsBefore = await buildLabSnapshot(ctx, args.gameId);
+    await ctx.db.patch(round._id, { labsBefore });
   },
 });
 
 export const snapshotAfterInternal = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    labsAfter: v.array(labSnapshotValidator),
-    roleComputeAfter: v.array(v.object({ roleId: v.string(), roleName: v.string(), computeStock: v.number() })),
-  },
+  args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) return;
-    await ctx.db.patch(round._id, {
-      labsAfter: args.labsAfter,
-      roleComputeAfter: args.roleComputeAfter,
-    });
+    const labsAfter = await buildLabSnapshot(ctx, args.gameId);
+    await ctx.db.patch(round._id, { labsAfter });
   },
 });
 
@@ -339,28 +267,87 @@ export const setAiMetaInternal = internalMutation({
   },
 });
 
-export const setComputeHolders = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    holders: v.array(v.object({
-      roleId: v.string(),
-      name: v.string(),
-      stockBefore: v.number(),
-      produced: v.number(),
-      transferred: v.number(),
-      adjustment: v.number(),
-      adjustmentReason: v.optional(v.string()),
-      stockAfter: v.number(),
-      override: v.optional(v.number()),
-      overrideReason: v.optional(v.string()),
-      sharePct: v.number(),
-      status: v.optional(v.union(v.literal("merged"), v.literal("created"))),
-    })),
-  },
+/** Derived compute holder view for a round — aggregates computeTransactions into the
+ *  {stockBefore, acquired, transferred, adjusted, merged, facilitator, stockAfter} shape
+ *  the ComputeFlowPanel / ComputeDetailTable consume. Replaces the old stored
+ *  round.computeHolders which is now unnecessary. */
+export const getComputeHolderView = query({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (round) await ctx.db.patch(round._id, { computeHolders: args.holders });
+    // All settled rows up to and including this round, for stockAfter computation.
+    const allTx = await ctx.db
+      .query("computeTransactions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    // `starting` rows are emitted at roundNumber=1 but represent seed stock present before
+    // the first round's activity — include them in stockBefore regardless of target round.
+    const priorRounds = allTx.filter((t) =>
+      t.status === "settled" &&
+      (t.roundNumber < args.roundNumber || t.type === "starting")
+    );
+    const thisRound = allTx.filter(
+      (t) => t.roundNumber === args.roundNumber && t.type !== "starting"
+    );
+
+    const stockBeforeByRole = new Map<string, number>();
+    for (const tx of priorRounds) {
+      stockBeforeByRole.set(tx.roleId, (stockBeforeByRole.get(tx.roleId) ?? 0) + tx.amount);
+    }
+
+    // Gather roleIds that appear either as holders before this round OR have activity this round.
+    const roleIds = new Set<string>([...stockBeforeByRole.keys(), ...thisRound.map((t) => t.roleId)]);
+
+    // Pull role names from tables (role metadata).
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const roleNameById = new Map(tables.map((t) => [t.roleId, t.roleName] as const));
+
+    const rows: {
+      roleId: string;
+      name: string;
+      stockBefore: number;
+      acquired: number;
+      transferred: number;
+      adjusted: number;
+      merged: number;
+      facilitator: number;
+      stockAfter: number;
+    }[] = [];
+
+    for (const roleId of roleIds) {
+      const stockBefore = Math.max(0, stockBeforeByRole.get(roleId) ?? 0);
+      let acquired = 0, transferred = 0, adjusted = 0, merged = 0, facilitator = 0;
+      for (const tx of thisRound) {
+        if (tx.roleId !== roleId) continue;
+        if (tx.status !== "settled") continue;
+        switch (tx.type) {
+          case "acquired": acquired += tx.amount; break;
+          case "transferred": transferred += tx.amount; break;
+          case "adjusted": adjusted += tx.amount; break;
+          case "merged": merged += tx.amount; break;
+          case "facilitator": facilitator += tx.amount; break;
+          case "starting": break; // already folded into stockBefore above; filtered out of thisRound
+        }
+      }
+      const delta = acquired + transferred + adjusted + merged + facilitator;
+      const stockAfter = Math.max(0, stockBefore + delta);
+      if (stockBefore === 0 && delta === 0) continue; // skip inert rows
+      rows.push({
+        roleId,
+        name: roleNameById.get(roleId) ?? roleId,
+        stockBefore,
+        acquired,
+        transferred,
+        adjusted,
+        merged,
+        facilitator,
+        stockAfter,
+      });
+    }
+
+    return rows.sort((a, b) => b.stockAfter - a.stockAfter);
   },
 });
 

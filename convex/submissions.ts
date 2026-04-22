@@ -5,6 +5,13 @@ import type { Id } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator } from "./events";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
+import {
+  cancelPendingForAction,
+  settlePendingForAction,
+  getAvailableStock,
+  emitPair,
+} from "./computeLedger";
+import { createLabInternal } from "./labs";
 
 const PRIORITY_HARD_CAP = 12;
 
@@ -12,11 +19,11 @@ export function generateActionId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-function validateComputeAllocation(allocation: { users: number; capability: number; safety: number }) {
-  if (allocation.users < 0 || allocation.capability < 0 || allocation.safety < 0) {
+function validateComputeAllocation(allocation: { deployment: number; research: number; safety: number }) {
+  if (allocation.deployment < 0 || allocation.research < 0 || allocation.safety < 0) {
     throw new Error("Compute allocation values must be >= 0");
   }
-  const sum = allocation.users + allocation.capability + allocation.safety;
+  const sum = allocation.deployment + allocation.research + allocation.safety;
   if (sum !== 100) {
     throw new Error(`Compute allocation must sum to 100, got ${sum}`);
   }
@@ -46,6 +53,12 @@ const computeTargetValidator = v.object({
   direction: v.optional(v.union(v.literal("send"), v.literal("request"))),
 });
 
+const foundLabValidator = v.object({
+  name: v.string(),
+  spec: v.optional(v.string()),
+  seedCompute: v.number(),
+});
+
 const actionValidator = v.object({
   text: v.string(),
   priority: v.number(),
@@ -57,6 +70,7 @@ const actionValidator = v.object({
   success: v.optional(v.boolean()),
   aiInfluence: v.optional(v.number()),
   computeTargets: v.optional(v.array(computeTargetValidator)),
+  foundLab: v.optional(foundLabValidator),
 });
 
 // Validator for actions that already have actionStatus set (e.g. grading pipeline output).
@@ -72,6 +86,7 @@ const persistedActionValidator = v.object({
   success: v.optional(v.boolean()),
   aiInfluence: v.optional(v.number()),
   computeTargets: v.optional(v.array(computeTargetValidator)),
+  foundLab: v.optional(foundLabValidator),
 });
 
 // Full query — includes secret text and reasoning. Requires facilitator token.
@@ -133,8 +148,7 @@ export const submit = mutation({
     actions: v.array(actionValidator),
     computeAllocation: v.optional(
       v.object({
-        users: v.number(),
-        capability: v.number(),
+        deployment: v.number(), research: v.number(),
         safety: v.number(),
       })
     ),
@@ -219,7 +233,7 @@ export const saveComputeAllocation = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     roleId: v.string(),
-    computeAllocation: v.object({ users: v.number(), capability: v.number(), safety: v.number() }),
+    computeAllocation: v.object({ deployment: v.number(), research: v.number(), safety: v.number() }),
   },
   handler: async (ctx, args) => {
     const table = await ctx.db.get(args.tableId);
@@ -362,67 +376,43 @@ export const submitAction = mutation({
   },
 });
 
-/** Escrow "send" compute targets — deducts from submitter's table.computeStock.
- *  table.computeStock is the single source of truth for all roles.
- *  game.labs[].computeStock is a derived cache, synced at pipeline resolution.
- *  Only called for "send" direction targets; "request" targets are escrowed
- *  from the target when they accept (see requests.ts respond mutation). */
-async function escrowCompute(
+/** Escrow "send" compute targets on action submit — emits a pending transferred pair
+ *  per target tied to the action. Cache stays at settled value; UI subtracts pending sends
+ *  via getAvailableStock. Settlement happens at roll time via settlePendingForAction.
+ *  Validates that the sender's available balance (settled − other pending sends) covers
+ *  the total. */
+async function escrowSendTargets(
   ctx: MutationCtx,
-  gameId: Id<"games">,
-  senderRoleId: string,
-  targets: { roleId: string; amount: number }[],
+  args: {
+    gameId: Id<"games">;
+    roundNumber: number;
+    senderRoleId: string;
+    actionId: string;
+    actionText: string;
+    targets: { roleId: string; amount: number }[];
+  },
 ) {
-  if (targets.length === 0) return;
-  const totalAmount = targets.reduce((s, t) => s + t.amount, 0);
+  if (args.targets.length === 0) return;
+  const totalAmount = args.targets.reduce((s, t) => s + t.amount, 0);
   if (totalAmount <= 0) return;
 
-  const senderTable = await ctx.db.query("tables")
-    .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", senderRoleId))
-    .first();
-  if (!senderTable) throw new Error("Sender table not found");
-  const available = senderTable.computeStock ?? 0;
+  const available = await getAvailableStock(ctx, args.gameId, args.senderRoleId, args.roundNumber);
   if (available < totalAmount) {
-    throw new Error(`Insufficient compute: have ${available}u, need ${totalAmount}u`);
+    throw new Error(`Insufficient compute: have ${available}u available, need ${totalAmount}u`);
   }
 
-  await ctx.db.patch(senderTable._id, { computeStock: available - totalAmount });
-}
-
-/** Refund escrowed compute back to sender's table.computeStock. */
-async function refundEscrow(
-  ctx: MutationCtx,
-  gameId: Id<"games">,
-  senderRoleId: string,
-  targets: { roleId: string; amount: number }[],
-) {
-  if (targets.length === 0) return;
-  const totalAmount = targets.reduce((s, t) => s + t.amount, 0);
-  if (totalAmount <= 0) return;
-
-  const senderTable = await ctx.db.query("tables")
-    .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", senderRoleId))
-    .first();
-  if (senderTable) {
-    await ctx.db.patch(senderTable._id, { computeStock: (senderTable.computeStock ?? 0) + totalAmount });
-  }
-}
-
-/** Credit compute to recipients' table.computeStock — used when escrowed action succeeds. */
-async function creditComputeRecipients(
-  ctx: MutationCtx,
-  gameId: Id<"games">,
-  targets: { roleId: string; amount: number }[],
-) {
-  for (const target of targets) {
-    const recipientTable = await ctx.db.query("tables")
-      .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", target.roleId))
-      .first();
-    if (recipientTable) {
-      await ctx.db.patch(recipientTable._id, {
-        computeStock: (recipientTable.computeStock ?? 0) + target.amount,
-      });
-    }
+  for (const t of args.targets) {
+    await emitPair(ctx, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      type: "transferred",
+      status: "pending",
+      fromRoleId: args.senderRoleId,
+      toRoleId: t.roleId,
+      amount: t.amount,
+      reason: `Send compute: ${args.actionText.slice(0, 80)}`,
+      actionId: args.actionId,
+    });
   }
 }
 
@@ -513,6 +503,7 @@ export const saveAndSubmit = mutation({
     secret: v.optional(v.boolean()),
     computeTargets: v.optional(v.array(computeTargetValidator)),
     endorseTargets: v.optional(v.array(v.string())),
+    foundLab: v.optional(foundLabValidator),
   },
   handler: async (ctx, args) => {
     // Validate table ownership: the table must belong to the claimed role
@@ -540,14 +531,6 @@ export const saveAndSubmit = mutation({
       if (t.roleId === args.roleId) throw new Error("Cannot transfer compute to yourself");
     }
 
-    // Escrow "send" targets — deduct from submitter's balance immediately.
-    // "request" targets are NOT escrowed here; they create request docs for the
-    // target to accept/decline. Escrow happens when the target accepts.
-    const sendTargets = targets.filter((t) => t.direction === "send");
-    if (sendTargets.length > 0) {
-      await escrowCompute(ctx, args.gameId, args.roleId, sendTargets);
-    }
-
     const existing = await findExistingSubmission(ctx, args.tableId, args.gameId, args.roundNumber);
 
     // Priority is assigned by rank order — 1st submitted gets highest priority.
@@ -557,13 +540,78 @@ export const saveAndSubmit = mutation({
       : 0;
     const rank = submittedCount + 1; // 1-based rank
 
+    // If we're upgrading an existing draft with the same text, preserve its actionId so
+    // ledger rows tied to that action (if any) stay linked. Otherwise generate a new one.
+    const existingDraftIndex = existing
+      ? existing.actions.findIndex((a) => a.actionStatus === "draft" && a.text === args.text)
+      : -1;
+    const actionId = existing && existingDraftIndex !== -1
+      ? existing.actions[existingDraftIndex].actionId
+      : generateActionId();
+
+    // Escrow "send" targets — emit pending ledger pairs tied to actionId.
+    // "request" targets are NOT escrowed here; they create request docs and the target's
+    // accept emits the pending pair (see requests.ts respond mutation).
+    // Validate foundLab args early (cheap checks before any writes).
+    if (args.foundLab) {
+      if (args.foundLab.seedCompute < 10) {
+        throw new Error("Minimum 10u compute required to found a lab");
+      }
+      if (!args.foundLab.name.trim()) {
+        throw new Error("Lab name required");
+      }
+    }
+
+    // Compose availability check: send-escrow total + foundLab seedCompute must fit in
+    // available stock. Done up-front so a send + foundLab on the same action can't each
+    // pass independently while summing over the limit.
+    const sendTargets = targets.filter((t) => t.direction === "send");
+    const sendTotal = sendTargets.reduce((sum, t) => sum + t.amount, 0);
+    const foundLabCost = args.foundLab?.seedCompute ?? 0;
+    if (sendTotal + foundLabCost > 0) {
+      const available = await getAvailableStock(ctx, args.gameId, args.roleId, args.roundNumber);
+      if (available < sendTotal + foundLabCost) {
+        throw new Error(
+          `Insufficient compute: have ${available}u available, need ${sendTotal + foundLabCost}u ` +
+          `(${sendTotal}u send + ${foundLabCost}u found-lab)`
+        );
+      }
+    }
+
+    if (sendTargets.length > 0) {
+      await escrowSendTargets(ctx, {
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        senderRoleId: args.roleId,
+        actionId,
+        actionText: args.text,
+        targets: sendTargets,
+      });
+    }
+
+    if (args.foundLab) {
+      // Pending row — counts as escrow (subtracted from availableStock) but not from settled cache.
+      await ctx.db.insert("computeTransactions", {
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        createdAt: Date.now(),
+        type: "adjusted",
+        status: "pending",
+        roleId: args.roleId,
+        amount: -args.foundLab.seedCompute,
+        reason: `Lab founding escrow: "${args.foundLab.name}"`,
+        actionId,
+      });
+    }
+
     const newAction = {
-      actionId: generateActionId(),
+      actionId,
       text: args.text,
       priority: rank,
       secret: args.secret,
       actionStatus: "submitted" as const,
       computeTargets: targets.length > 0 ? targets : undefined,
+      foundLab: args.foundLab,
     };
 
     let result: { submissionId: Id<"submissions">; actionIndex: number; actionId: string };
@@ -571,19 +619,13 @@ export const saveAndSubmit = mutation({
     if (existing) {
       if (submittedCount >= 5) throw new Error("Maximum 5 actions per round");
 
-      // Check if there's an existing draft with the same text — upgrade it instead of duplicating
-      const existingDraftIndex = existing.actions.findIndex(
-        (a) => a.actionStatus === "draft" && a.text === args.text,
-      );
+      // Draft-upgrade case reuses actionId computed above so ledger rows stay linked.
+      // Overwrite with newAction (which carries foundLab and current text) rather than
+      // spread-merging — prevents stale fields like foundLab=undefined from a prior draft
+      // clobbering the submitted intent, and vice versa.
       if (existingDraftIndex !== -1) {
         const actions = [...existing.actions];
-        actions[existingDraftIndex] = {
-          ...actions[existingDraftIndex],
-          priority: rank,
-          secret: args.secret,
-          actionStatus: "submitted" as const,
-          computeTargets: targets.length > 0 ? targets : undefined,
-        };
+        actions[existingDraftIndex] = newAction;
         await ctx.db.patch(existing._id, { actions, status: "submitted" });
         await logEvent(ctx, args.gameId, "action_submitted", args.roleId, {
           actionIndex: existingDraftIndex,
@@ -647,45 +689,20 @@ export const editSubmitted = mutation({
     if (!action) return;
     if (action.rolled != null) throw new Error("Cannot edit rolled actions");
 
-    // Refund escrowed "send" compute back to submitter
-    const sendTargets = (action.computeTargets ?? []).filter((t) => (t.direction ?? "send") === "send");
-    if (sendTargets.length > 0) {
-      await refundEscrow(ctx, sub.gameId, sub.roleId, sendTargets);
-    }
-
-    // Clean up all request docs for this action (endorsement + compute)
+    // Cancel all pending ledger rows (send + accepted-request escrows) for this action.
+    // Ledger handles refunds — no separate table patches needed.
     if (action.actionId) {
+      await cancelPendingForAction(ctx, sub.gameId, action.actionId);
+
+      // Delete all request docs (endorsement + compute) for this action
       const requests = await ctx.db.query("requests")
         .withIndex("by_from_role", (q) =>
           q.eq("gameId", sub.gameId).eq("roundNumber", sub.roundNumber).eq("fromRoleId", sub.roleId))
         .collect();
-      const actionRequests = requests.filter((r) => r.actionId === action.actionId);
-
-      // Refund escrowed "request" compute back to targets who accepted
-      const requestTargets = (action.computeTargets ?? []).filter((t) => t.direction === "request");
-      if (requestTargets.length > 0) {
-        const tables = await ctx.db.query("tables")
-          .withIndex("by_game", (q) => q.eq("gameId", sub.gameId))
-          .collect();
-        const tableByRole = new Map(tables.map((t) => [t.roleId, t]));
-        for (const target of requestTargets) {
-          const match = actionRequests.find((r) =>
-            r.toRoleId === target.roleId && r.requestType === "compute"
-          );
-          if (match?.status === "accepted" && match.computeAmount) {
-            const targetTable = tableByRole.get(target.roleId);
-            if (targetTable) {
-              await ctx.db.patch(targetTable._id, {
-                computeStock: (targetTable.computeStock ?? 0) + match.computeAmount,
-              });
-            }
-          }
+      for (const req of requests) {
+        if (req.actionId === action.actionId) {
+          await ctx.db.delete(req._id);
         }
-      }
-
-      // Delete all requests (endorsement + compute) for this action
-      for (const req of actionRequests) {
-        await ctx.db.delete(req._id);
       }
     }
 
@@ -718,10 +735,10 @@ export const deleteAction = mutation({
     if (!action) return;
     if (action.rolled != null) throw new Error("Cannot delete rolled actions");
 
-    // Refund escrowed "send" compute (request targets are escrowed from the target, not submitter)
-    const sendTargets = (action.computeTargets ?? []).filter((t) => (t.direction ?? "send") === "send");
-    if (sendTargets.length > 0) {
-      await refundEscrow(ctx, sub.gameId, sub.roleId, sendTargets);
+    // Cancel all pending ledger rows tied to this action — ledger refunds both
+    // send-escrows and request-accepted escrows automatically.
+    if (action.actionId) {
+      await cancelPendingForAction(ctx, sub.gameId, action.actionId);
     }
 
     const actions = sub.actions.filter((_, i) => i !== args.actionIndex);
@@ -731,7 +748,7 @@ export const deleteAction = mutation({
       await ctx.db.patch(args.submissionId, { actions });
     }
 
-    // Clean up requests for this action: refund accepted compute requests, then delete all
+    // Delete all request docs for this action
     const requests = await ctx.db
       .query("requests")
       .withIndex("by_game_and_round", (q) =>
@@ -742,17 +759,6 @@ export const deleteAction = mutation({
       if (req.fromRoleId === sub.roleId && (
         action.actionId ? req.actionId === action.actionId : req.actionText === action.text
       )) {
-        // Refund accepted compute requests to the target who escrowed
-        if (req.status === "accepted" && req.requestType === "compute" && req.computeAmount) {
-          const targetTable = await ctx.db.query("tables")
-            .withIndex("by_game_and_role", (q) => q.eq("gameId", sub.gameId).eq("roleId", req.toRoleId))
-            .first();
-          if (targetTable) {
-            await ctx.db.patch(targetTable._id, {
-              computeStock: (targetTable.computeStock ?? 0) + req.computeAmount,
-            });
-          }
-        }
         await ctx.db.delete(req._id);
       }
     }
@@ -961,10 +967,19 @@ export const setActionInfluence = mutation({
     submissionId: v.id("submissions"),
     actionIndex: v.number(),
     modifier: v.number(), // +power = boost, -power = sabotage, 0 = remove
+    callerTableId: v.id("tables"),
   },
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) throw new Error("Submission not found");
+
+    // Authorize: only the AI Systems player may push influence.
+    const callerTable = await ctx.db.get(args.callerTableId);
+    if (!callerTable) throw new Error("Caller table not found");
+    if (callerTable.gameId !== sub.gameId) throw new Error("Caller table does not belong to this game");
+    if (callerTable.roleId !== AI_SYSTEMS_ROLE_ID) {
+      throw new Error("Only the AI Systems player can set action influence");
+    }
 
     const game = await ctx.db.get(sub.gameId);
     if (!game) throw new Error("Game not found");
@@ -979,11 +994,11 @@ export const setActionInfluence = mutation({
     if (action.actionStatus !== "submitted") throw new Error("Can only influence submitted actions");
     if (action.rolled != null) throw new Error("Cannot influence already-rolled actions");
 
+    // Store 0 explicitly (not undefined) so the pipeline can distinguish "user
+    // chose neutral" from "never set" — the latter is the signal for AI Systems'
+    // own-action auto-boost to fire on resolve.
     const actions = [...sub.actions];
-    actions[args.actionIndex] = {
-      ...action,
-      aiInfluence: args.modifier === 0 ? undefined : args.modifier,
-    };
+    actions[args.actionIndex] = { ...action, aiInfluence: args.modifier };
     await ctx.db.patch(args.submissionId, { actions });
     await logEvent(ctx, sub.gameId, "ai_influence_single", AI_SYSTEMS_ROLE_ID, {
       actionIndex: args.actionIndex,
@@ -1055,90 +1070,29 @@ export const getAllForRound = internalQuery({
   },
 });
 
-/** Settle a single "request" compute target after action roll.
- *  On success: credit requester. On failure: refund target if escrowed. */
-async function settleRequestTarget(
+/** Shared dice + settlement logic. Called from both the internal pipeline path
+ *  (rollAllInternal) and the facilitator test-harness wrapper (rollAllFacilitator). */
+async function rollAllImpl(
   ctx: MutationCtx,
-  opts: {
-    gameId: Id<"games">;
-    roundNumber: number;
-    submitterRoleId: string;
-    actionId: string | undefined;
-    target: { roleId: string; amount: number };
-    success: boolean;
-  },
-) {
-  const { gameId, roundNumber, submitterRoleId, actionId, target, success } = opts;
-
-  // Batch: fetch request doc + both tables upfront
-  const [requests, submitterTable, targetTable] = await Promise.all([
-    ctx.db.query("requests")
-      .withIndex("by_from_role", (q) =>
-        q.eq("gameId", gameId).eq("roundNumber", roundNumber).eq("fromRoleId", submitterRoleId))
-      .collect(),
-    ctx.db.query("tables")
-      .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", submitterRoleId))
-      .first(),
-    ctx.db.query("tables")
-      .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", target.roleId))
-      .first(),
-  ]);
-  const match = requests.find((r) =>
-    r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === actionId
-  );
-
-  if (success) {
-    if (match?.status === "accepted") {
-      // Escrowed from target — credit the requester (submitter)
-      if (submitterTable) {
-        await ctx.db.patch(submitterTable._id, {
-          computeStock: (submitterTable.computeStock ?? 0) + target.amount,
-        });
-      }
-    } else if (match) {
-      // Not accepted — take from target, clamped to available balance.
-      // If no request doc (cancelled), skip — escrow was already refunded.
-      if (!targetTable) return;
-      const available = targetTable.computeStock ?? 0;
-      const clamped = Math.min(target.amount, available);
-      if (clamped <= 0) return;
-      await ctx.db.patch(targetTable._id, { computeStock: available - clamped });
-      if (submitterTable) {
-        await ctx.db.patch(submitterTable._id, {
-          computeStock: (submitterTable.computeStock ?? 0) + clamped,
-        });
-      }
-    }
-  } else {
-    // Failure: refund escrowed compute to the target who accepted
-    if (match?.status === "accepted" && targetTable) {
-      await ctx.db.patch(targetTable._id, {
-        computeStock: (targetTable.computeStock ?? 0) + target.amount,
-      });
-    }
-    // If not accepted, nothing was escrowed, nothing to refund
-  }
-}
-
-export const rollAllInternal = internalMutation({
-  args: { gameId: v.id("games"), roundNumber: v.number() },
-  handler: async (ctx, args) => {
-    const subs = await ctx.db
-      .query("submissions")
-      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
-      .collect();
-    for (const sub of subs) {
-      if (sub.status === "resolved") continue;
-      // Skip if already rolled (idempotent)
-      if (sub.actions.every((a) => a.rolled != null)) continue;
-      const actions = sub.actions.map((action) => {
-        if (action.actionStatus === "draft") return action;
-        const probability = action.probability ?? 50;
-        return { ...action, probability, ...rollDice(probability, action.aiInfluence) };
-      });
-      await ctx.db.patch(sub._id, { actions, status: "resolved" });
-      const rolled = actions.filter((a) => a.rolled != null);
-      await logEvent(ctx, args.gameId, "roll", sub.roleId, { round: args.roundNumber, total: rolled.length, successes: rolled.filter((a) => a.success).length });
+  gameId: Id<"games">,
+  roundNumber: number,
+): Promise<void> {
+  const subs = await ctx.db
+    .query("submissions")
+    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId).eq("roundNumber", roundNumber))
+    .collect();
+  for (const sub of subs) {
+    if (sub.status === "resolved") continue;
+    // Skip if already rolled (idempotent)
+    if (sub.actions.every((a) => a.rolled != null)) continue;
+    const actions = sub.actions.map((action) => {
+      if (action.actionStatus === "draft") return action;
+      const probability = action.probability ?? 50;
+      return { ...action, probability, ...rollDice(probability, action.aiInfluence) };
+    });
+    await ctx.db.patch(sub._id, { actions, status: "resolved" });
+    const rolled = actions.filter((a) => a.rolled != null);
+    await logEvent(ctx, gameId, "roll", sub.roleId, { round: roundNumber, total: rolled.length, successes: rolled.filter((a) => a.success).length });
 
       // ── Process compute transfers ──
       // Only process submitted+rolled actions — drafts were never escrowed.
@@ -1151,34 +1105,114 @@ export const rollAllInternal = internalMutation({
       //   Accepted + Failure → refund target.
       //   Not accepted + Success → take from target, clamped to available balance.
       //   Not accepted + Failure → nothing (no escrow to settle).
-      for (const action of actions) {
-        if (!action.computeTargets || action.computeTargets.length === 0) continue;
-        if (action.rolled == null) continue;
-
-        const sendTargets = action.computeTargets.filter((t) => (t.direction ?? "send") === "send");
-        const requestTargets = action.computeTargets.filter((t) => t.direction === "request");
-
-        const success = !!action.success;
-        if (success && sendTargets.length > 0) {
-          await creditComputeRecipients(ctx, args.gameId, sendTargets);
-        }
-        if (!success && sendTargets.length > 0) {
-          await refundEscrow(ctx, args.gameId, sub.roleId, sendTargets);
-        }
-        for (const target of requestTargets) {
-          await settleRequestTarget(ctx, {
-            gameId: args.gameId, roundNumber: args.roundNumber,
-            submitterRoleId: sub.roleId, actionId: action.actionId, target, success,
+    // Found-a-lab settlement: for each action with foundLab, success → create lab row +
+    // settle escrow; failure → cancel escrow. Does not require compute targets on the action.
+    for (const action of actions) {
+      if (!action.foundLab) continue;
+      if (action.rolled == null || !action.actionId) continue;
+      if (action.actionStatus !== "submitted") continue;
+      const success = !!action.success;
+      if (success) {
+        // Create the lab — owner is the submitter. Unique active name enforced inside helper.
+        try {
+          await createLabInternal(ctx, {
+            gameId,
+            name: action.foundLab.name,
+            spec: action.foundLab.spec,
+            rdMultiplier: 1,
+            allocation: { deployment: 33, research: 34, safety: 33 },
+            ownerRoleId: sub.roleId,
+            createdRound: roundNumber,
           });
+          // Settle the founding-cost escrow (pending adjusted row → cache deducts)
+          await settlePendingForAction(ctx, gameId, action.actionId);
+        } catch (err) {
+          // Name collision or other failure → treat as failed founding, refund escrow
+          console.warn(`[rollAll] Lab founding failed for "${action.foundLab.name}":`, err);
+          await cancelPendingForAction(ctx, gameId, action.actionId);
         }
-        if (sendTargets.length > 0 || requestTargets.length > 0) {
-          await logEvent(ctx, args.gameId, success ? "compute_transfer_success" : "compute_transfer_refund", sub.roleId, {
-            targets: action.computeTargets,
-            actionText: action.text,
-          });
-        }
+      } else {
+        await cancelPendingForAction(ctx, gameId, action.actionId);
       }
+      await logEvent(ctx, gameId, success ? "lab_founded" : "lab_founding_failed", sub.roleId, {
+        labName: action.foundLab.name,
+        seedCompute: action.foundLab.seedCompute,
+      });
     }
+
+    for (const action of actions) {
+      if (!action.computeTargets || action.computeTargets.length === 0) continue;
+      if (action.rolled == null) continue;
+      if (!action.actionId) continue;
+
+      const success = !!action.success;
+      // Ledger settlement: success → settle all pending rows for this action (sends + accepted requests);
+      // failure → cancel (refunds automatic since pending rows never hit the cache).
+      if (success) {
+        await settlePendingForAction(ctx, gameId, action.actionId);
+        // Accepted request targets are already represented as pending rows from requests.respond.
+        // If a request target was NOT accepted, the ledger has no pending pair — the submitter
+        // takes compute from the target clamped to availability, per the "soft request" rule.
+        const requestTargets = action.computeTargets.filter((t) => t.direction === "request");
+        for (const target of requestTargets) {
+          const existing = await ctx.db
+            .query("requests")
+            .withIndex("by_from_role", (q) =>
+              q.eq("gameId", gameId).eq("roundNumber", roundNumber).eq("fromRoleId", sub.roleId))
+            .collect();
+          const match = existing.find((r) =>
+            r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId
+          );
+          if (match?.status === "accepted") continue; // already settled above
+          // Soft-take: clamp to target's available balance
+          const targetAvail = await getAvailableStock(ctx, gameId, target.roleId, roundNumber);
+          const take = Math.min(target.amount, targetAvail);
+          if (take > 0) {
+            await emitPair(ctx, {
+              gameId,
+              roundNumber,
+              type: "transferred",
+              status: "settled",
+              fromRoleId: target.roleId,
+              toRoleId: sub.roleId,
+              amount: take,
+              reason: `Soft-take on unaccepted request: ${action.text.slice(0, 80)}`,
+              actionId: action.actionId,
+            });
+          }
+        }
+      } else {
+        await cancelPendingForAction(ctx, gameId, action.actionId);
+      }
+
+      await logEvent(ctx, gameId, success ? "compute_transfer_success" : "compute_transfer_refund", sub.roleId, {
+        targets: action.computeTargets,
+        actionText: action.text,
+      });
+    }
+  }
+}
+
+export const rollAllInternal = internalMutation({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    await rollAllImpl(ctx, args.gameId, args.roundNumber);
+  },
+});
+
+/** Facilitator-triggered wrapper around rollAllImpl. Runs dice + foundLab + compute-target
+ *  settlement without the LLM narration pass. Exists so test harnesses can pin the
+ *  pending→settled/cancelled path on foundLab escrows without burning LLM cost, and so a
+ *  facilitator can advance a stuck round if narration fails. Guarded by facilitator token. */
+export const rollAllFacilitator = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    await rollAllImpl(ctx, args.gameId, args.roundNumber);
   },
 });
 
@@ -1232,7 +1266,7 @@ export const submitInternal = internalMutation({
     roundNumber: v.number(),
     roleId: v.string(),
     actions: v.array(actionValidator),
-    computeAllocation: v.optional(v.object({ users: v.number(), capability: v.number(), safety: v.number() })),
+    computeAllocation: v.optional(v.object({ deployment: v.number(), research: v.number(), safety: v.number() })),
   },
   handler: async (ctx, args) => {
     if (args.computeAllocation) {

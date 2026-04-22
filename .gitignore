@@ -46,3 +46,7 @@ next-env.d.ts
 convex/_generated/convex/
 convex/_generated/src/
 .claude/worktrees/
+
+# design/scratch docs — not for commit
+temp-*
+

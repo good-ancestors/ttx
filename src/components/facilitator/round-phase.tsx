@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { getCapabilityDescription, TOTAL_ROUNDS, isSubmittedAction, isResolvingPhase as checkResolvingPhase } from "@/lib/game-data";
 import { useAuthMutation } from "@/lib/hooks";
@@ -230,7 +231,12 @@ export function RoundPhase({
           overrideProbability={overrideProbability}
           ungradeAction={ungradeAction}
           phase={phase}
-          hasNarrative={!!currentRound?.summary?.narrative}
+          hasNarrative={!!currentRound?.summary && (
+            (currentRound.summary.labs?.length ?? 0) > 0 ||
+            (currentRound.summary.geopolitics?.length ?? 0) > 0 ||
+            (currentRound.summary.publicAndMedia?.length ?? 0) > 0 ||
+            (currentRound.summary.aiSystems?.length ?? 0) > 0
+          )}
           narrativeStale={narrativeStale}
           onDiceChanged={onDiceChanged}
         />
@@ -360,7 +366,6 @@ export function RoundPhase({
 
 function WhereWeAreNow({
   gameId,
-  game,
   currentRound,
   isProjector,
   onEditNarrative,
@@ -371,10 +376,12 @@ function WhereWeAreNow({
   isProjector: boolean;
   onEditNarrative: () => void;
 }) {
-  const leading = game.labs.length > 0
-    ? game.labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b))
+  const labs = useQuery(api.labs.getActiveLabs, { gameId }) ?? [];
+  const leading = labs.length > 0
+    ? labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b))
     : null;
   const cap = leading ? getCapabilityDescription(leading.rdMultiplier) : null;
+  const holderView = useQuery(api.rounds.getComputeHolderView, { gameId, roundNumber: currentRound.number });
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
@@ -384,16 +391,21 @@ function WhereWeAreNow({
         badge={<CheckCircle className="w-3.5 h-3.5 text-viz-safety" />}
       >
         <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          {game.labs.map((lab) => {
-            const holder = currentRound.computeHolders?.find((h) => h.roleId === lab.roleId);
-            const stockChange = holder ? (holder.override ?? holder.stockAfter) - holder.stockBefore : 0;
+          {labs.map((lab) => {
+            const holder = lab.ownerRoleId ? holderView?.find((h) => h.roleId === lab.ownerRoleId) : undefined;
+            const stockChange = holder ? holder.stockAfter - holder.stockBefore : 0;
+            const totalAcquiredAll = (holderView ?? []).reduce((s, h) => s + Math.max(0, h.acquired), 0);
+            const labSharePct = holder && totalAcquiredAll > 0
+              ? Math.round((Math.max(0, holder.acquired) / totalAcquiredAll) * 100)
+              : 0;
+            const labStock = holder?.stockAfter ?? 0;
             return (
-              <div key={lab.name} className="bg-navy rounded-lg p-3 border border-navy-light">
+              <div key={lab._id} className="bg-navy rounded-lg p-3 border border-navy-light">
                 <div className={`${isProjector ? "text-base" : "text-sm"} font-bold text-white`}>{lab.name}</div>
                 <div className={`${isProjector ? "text-3xl" : "text-xl"} font-black text-[#06B6D4] font-mono`}>{lab.rdMultiplier}×</div>
                 <div className="text-xs text-text-light space-y-0.5">
                   <div>
-                    Stock {holder?.stockBefore ?? lab.computeStock}u {"→"} {lab.computeStock}u
+                    Stock {holder?.stockBefore ?? labStock}u {"→"} {labStock}u
                     {stockChange !== 0 && (
                       <span className={`ml-1 font-mono ${stockChange > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
                         ({stockChange > 0 ? "+" : ""}{stockChange})
@@ -401,7 +413,7 @@ function WhereWeAreNow({
                     )}
                   </div>
                   <div>
-                    {holder ? `${holder.sharePct}% of new compute` : "No flow data"} {" · "}Safety {lab.allocation.safety}%
+                    {holder ? `${labSharePct}% of new compute` : "No flow data"} {" · "}Safety {lab.allocation.safety}%
                   </div>
                 </div>
                 {lab.spec && (
@@ -459,28 +471,31 @@ function ComputeFlowPanel({
   gameId: Id<"games">;
   isProjector: boolean;
 }) {
-  const holders = currentRound.computeHolders;
-  if (!holders) return null;
+  const view = useQuery(api.rounds.getComputeHolderView, { gameId, roundNumber: currentRound.number });
+  if (!view) return null;
 
-  const entries = holders
-    .filter((h) => h.stockBefore !== 0 || h.produced !== 0 || h.transferred !== 0 || h.adjustment !== 0 || h.override != null)
-    .toSorted((a, b) => (b.override ?? b.stockAfter) - (a.override ?? a.stockAfter));
+  const entries = view.filter((e) =>
+    e.stockBefore !== 0 || e.acquired !== 0 || e.transferred !== 0 || e.adjusted !== 0 || e.merged !== 0 || e.facilitator !== 0,
+  );
+  if (entries.length === 0) return null;
 
   const totalBefore = entries.reduce((s, e) => s + e.stockBefore, 0);
-  const totalAfter = entries.reduce((s, e) => s + (e.override ?? e.stockAfter), 0);
+  const totalAfter = entries.reduce((s, e) => s + e.stockAfter, 0);
 
-  // Chart data
+  const totalAcquired = entries.reduce((s, e) => s + Math.max(0, e.acquired), 0);
+  // Chart data: split each row into gain (positive deltas of all types) and loss (negative deltas).
   const chartEntries = entries.map((e) => {
-    const after = e.override ?? e.stockAfter;
+    const gain = Math.max(0, e.acquired) + Math.max(0, e.transferred) + Math.max(0, e.adjusted) + Math.max(0, e.merged) + Math.max(0, e.facilitator);
+    const loss = Math.max(0, -e.transferred) + Math.max(0, -e.adjusted) + Math.max(0, -e.merged) + Math.max(0, -e.facilitator);
     return {
       name: e.name,
-      gain: Math.max(0, e.produced) + Math.max(0, e.transferred) + Math.max(0, e.adjustment),
-      loss: Math.max(0, -e.produced) + Math.max(0, -e.transferred) + Math.max(0, -e.adjustment),
+      gain,
+      loss,
       stockBefore: e.stockBefore,
-      stockAfter: after,
-      sharePct: e.sharePct,
+      stockAfter: e.stockAfter,
+      sharePct: totalAcquired > 0 ? Math.round((Math.max(0, e.acquired) / totalAcquired) * 100) : 0,
     };
-  });
+  }).sort((a, b) => b.stockAfter - a.stockAfter);
   const maxTotal = Math.max(...chartEntries.map((e) => e.stockBefore + e.gain), 1);
 
   return (
@@ -559,12 +574,24 @@ function ComputeFlowPanel({
   );
 }
 
+interface ComputeHolderEntry {
+  roleId: string;
+  name: string;
+  stockBefore: number;
+  acquired: number;
+  transferred: number;
+  adjusted: number;
+  merged: number;
+  facilitator: number;
+  stockAfter: number;
+}
+
 function ComputeDetailTable({
   entries,
   gameId,
   roundNumber,
 }: {
-  entries: { roleId: string; name: string; stockBefore: number; stockAfter: number; produced: number; transferred: number; adjustment: number; adjustmentReason?: string; sharePct: number; override?: number; overrideReason?: string }[];
+  entries: ComputeHolderEntry[];
   gameId: Id<"games">;
   roundNumber: number;
 }) {
@@ -626,15 +653,23 @@ function ComputeDetailTable({
         </thead>
         <tbody>
           {entries.map((e) => {
-            const defaultGained = Math.max(0, e.produced) + Math.max(0, e.transferred) + Math.max(0, e.adjustment);
-            const defaultLost = Math.max(0, -e.produced) + Math.max(0, -e.transferred) + Math.max(0, -e.adjustment);
+            // Default gain/loss columns are the per-type delta aggregates from the ledger.
+            const defaultGained = Math.max(0, e.acquired)
+              + Math.max(0, e.transferred)
+              + Math.max(0, e.adjusted)
+              + Math.max(0, e.merged)
+              + Math.max(0, e.facilitator);
+            const defaultLost = Math.max(0, -e.transferred)
+              + Math.max(0, -e.adjusted)
+              + Math.max(0, -e.merged)
+              + Math.max(0, -e.facilitator);
             const override = overrides[e.roleId];
             const isOverridden = e.roleId in overrides;
             const gained = override?.gained ?? defaultGained;
             const lost = override?.lost ?? defaultLost;
             const displayAfter = isOverridden
               ? Math.max(0, e.stockBefore + gained - lost)
-              : e.override ?? e.stockAfter;
+              : e.stockAfter;
 
             return (
               <tr key={e.roleId} className="border-t border-navy-light/30">
@@ -681,11 +716,13 @@ function ComputeDetailTable({
                   )}
                 </td>
                 <td className="py-1 text-right font-mono">
-                  <span className={isOverridden ? "text-[#FCD34D]" : e.override != null ? "text-[#FCD34D]" : "text-white"}>
+                  <span className={isOverridden ? "text-[#FCD34D]" : e.facilitator !== 0 ? "text-[#FCD34D]" : "text-white"}>
                     {displayAfter}
                   </span>
                 </td>
-                <td className="py-1 text-right font-mono text-text-light/50">{e.sharePct > 0 ? `${e.sharePct}%` : "—"}</td>
+                <td className="py-1 text-right font-mono text-text-light/50">
+                  {e.acquired > 0 ? `${e.acquired}u` : "—"}
+                </td>
               </tr>
             );
           })}

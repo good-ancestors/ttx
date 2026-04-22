@@ -2,10 +2,15 @@ import { v } from "convex/values";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 
-/** Validate facilitator token against env var. Throws if invalid. */
+/** Validate facilitator token against env var. Throws if invalid, or if the secret
+ *  itself is not configured — silently bypassing auth on a missing env var has
+ *  bitten prod deploys before; require the secret to be set so a deployment
+ *  misstep fails loud instead of leaving every facilitator mutation open. */
 export function assertFacilitator(token: string | undefined) {
   const secret = process.env.FACILITATOR_SECRET;
-  if (!secret) return; // No secret configured = no auth enforcement (dev mode)
+  if (!secret) {
+    throw new Error("Server misconfigured: FACILITATOR_SECRET not set — refusing facilitator-gated mutation");
+  }
   if (!token || token !== secret) {
     throw new Error("Unauthorized: invalid facilitator token");
   }

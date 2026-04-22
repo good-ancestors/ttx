@@ -23,7 +23,7 @@
       "Form strategic alliances. Partner with other players to consolidate your lead."
     ],
     "endOfRound": [
-      "Tell facilitator any changes to AI spec, compute allocations or stock"
+      "Set your AI spec and compute allocation in the Lab tab before submissions close. Transfers and requests happen via actions."
     ]
   },
   "deepcent-ceo": {
@@ -48,7 +48,7 @@
       "Build a new coalition. Offer AI infrastructure partnerships to nations, creating a bloc of technological cooperation outside of US influence."
     ],
     "endOfRound": [
-      "Tell facilitator any changes to AI spec, compute allocations or stock"
+      "Set your AI spec and compute allocation in the Lab tab before submissions close. Transfers and requests happen via actions."
     ]
   },
   "conscienta-ceo": {
@@ -74,7 +74,7 @@
       "Propose a unified safety project. Argue that the only way to prevent a catastrophic race is to merge Western efforts under a shared, safety-first framework."
     ],
     "endOfRound": [
-      "Tell facilitator any changes to AI spec, compute allocations or stock"
+      "Set your AI spec and compute allocation in the Lab tab before submissions close. Transfers and requests happen via actions."
     ]
   },
   "ai-systems": {

@@ -4,13 +4,12 @@ import { use, useState, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO, type Lab } from "@/lib/game-data";
 import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation } from "@/lib/hooks";
 import { RdProgressChart } from "@/components/rd-progress-chart";
 import { LabTracker } from "@/components/lab-tracker";
 import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
-import { FacilitatorCopilot } from "@/components/manual-controls";
 import { DebugPanel } from "@/components/debug-panel";
 import {
   Loader2,
@@ -40,6 +39,22 @@ export default function FacilitatorPage({
 
   // games.get is always subscribed — lightweight, needed for phase detection even when hidden
   const game = useQuery(api.games.get, { gameId });
+  const activeLabsRaw = useQuery(api.labs.getActiveLabs, isVisible ? { gameId } : "skip");
+  const labTables = useQuery(api.tables.getByGame, isVisible ? { gameId } : "skip");
+  const labs: Lab[] = (activeLabsRaw ?? []).map((l) => {
+    const table = labTables?.find((t) => t.roleId === l.ownerRoleId);
+    return {
+      labId: l._id,
+      name: l.name,
+      roleId: l.ownerRoleId,
+      computeStock: table?.computeStock ?? 0,
+      rdMultiplier: l.rdMultiplier,
+      allocation: l.allocation,
+      spec: l.spec,
+      colour: l.colour,
+      status: l.status,
+    };
+  });
 
   // Full tables query — needed for lobby (all 17 tables, including disabled)
   const gamePhase = game?.phase;
@@ -135,9 +150,8 @@ export default function FacilitatorPage({
     return () => clearTimeout(timer);
   }, [revealedCount, isRollingPhase, submissions]);
 
-  // Warm up API routes on facilitator page load (for copilot)
+  // Warm up serverless API routes on facilitator page load
   useEffect(() => {
-    // Fire-and-forget: warming up API route, failure is non-critical
     fetch("/api/warm").catch(() => {});
   }, []);
 
@@ -183,9 +197,18 @@ export default function FacilitatorPage({
   const currentRound = currentRoundFull ?? undefined;
   // rounds is guaranteed non-null after loading guard for playing/finished states
   const rounds = roundsLite ?? [];
-  // Previous narrative from lightweight rounds (summaryNarrative) or current round's narrative for round 1
+  // Previous-round summary text for display (joined sectioned summary) or
+  // the fixed starting scenario for round 1.
   const prevRoundLite = rounds.find(r => r.number === game.currentRound - 1);
-  const previousNarrative = prevRoundLite?.summaryNarrative ?? (game.currentRound === 1 ? STARTING_SCENARIO : undefined);
+  const prevSummary = prevRoundLite?.summary;
+  const previousNarrative = prevSummary
+    ? [
+        ...prevSummary.labs.map((l) => `[Labs] ${l}`),
+        ...prevSummary.geopolitics.map((l) => `[Geopolitics] ${l}`),
+        ...prevSummary.publicAndMedia.map((l) => `[Media] ${l}`),
+        ...prevSummary.aiSystems.map((l) => `[AI] ${l}`),
+      ].join("\n") || undefined
+    : (game.currentRound === 1 ? STARTING_SCENARIO : undefined);
   const phase = game.phase;
   const connectedCount = tables.filter((t) => t.connected).length;
   const snapshotOptions = isProjector ? [] : rounds.flatMap(r => {
@@ -284,7 +307,7 @@ export default function FacilitatorPage({
           </div>
           <GameTimeline
             rounds={roundsFull ?? []}
-            initialLabs={game.labs}
+            initialLabs={labs}
           />
         </div>
       </div>
@@ -406,9 +429,9 @@ export default function FacilitatorPage({
         <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
           {/* Left sidebar */}
           <div className="flex flex-col gap-4">
-            <RdProgressChart rounds={rounds} currentLabs={game.labs} currentRound={game.currentRound} />
+            <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={game.currentRound} />
             <LabTracker
-              labs={game.labs}
+              labs={labs}
               onMerge={isProjector ? undefined : async (survivor, absorbed) => {
                 await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
               }}
@@ -468,16 +491,6 @@ export default function FacilitatorPage({
             />
           </div>
         </div>
-
-        {/* Facilitator copilot — always visible during gameplay */}
-        {!isProjector && (
-          <div className="sticky bottom-0 z-40 bg-navy-dark">
-            <FacilitatorCopilot
-              gameId={gameId}
-              currentLabs={game.labs}
-            />
-          </div>
-        )}
 
         {/* Debug panel — fetches its own data when expanded to avoid always-on subscriptions */}
         {!isProjector && (

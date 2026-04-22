@@ -128,13 +128,16 @@ function buildChartData(
     return padLeft + (i / Math.max(1, xCount - 1)) * chartW;
   }
 
-  // Build per-lab point series
-  const currentByRoleId = new Map(currentLabs.map(l => [l.roleId, l]));
+  // Build per-lab point series, keyed on labId (preferred) or roleId for backwards compat.
+  const identityKey = (l: { labId?: string; roleId?: string; name: string }) =>
+    l.labId ?? l.roleId ?? l.name;
+  const currentByKey = new Map(currentLabs.map((l) => [identityKey(l), l]));
   const series: LabSeries[] = [];
 
   for (const lab of allLabs) {
-    const isBackground = lab.roleId.startsWith("bg-");
-    const currentLab = currentByRoleId.get(lab.roleId);
+    const labKey = identityKey(lab);
+    const isBackground = lab.roleId?.startsWith("bg-") ?? false;
+    const currentLab = currentByKey.get(labKey);
     const isInactive = !isBackground && !currentLab;
     const points: ChartPoint[] = [];
 
@@ -142,7 +145,7 @@ function buildChartData(
     points.push({ x: xPos(1), y: 0, value: lab.rdMultiplier });
 
     for (let i = 0; i < completedRounds.length; i++) {
-      const roundLab = completedRounds[i].labsAfter?.find((l) => l.roleId === lab.roleId);
+      const roundLab = completedRounds[i].labsAfter?.find((l) => identityKey(l) === labKey);
       if (!roundLab && isInactive) break;
       points.push({
         x: xPos(2 + i),
@@ -151,10 +154,8 @@ function buildChartData(
       });
     }
 
-    // Only plot round data from actual snapshots — no live fallbacks
-
     // Use the latest name so renames (e.g. "DeepCent" → "DeepCent (Inspected)") display correctly
-    series.push({ name: currentLab?.name ?? lab.name, roleId: lab.roleId, points, isBackground, isInactive });
+    series.push({ name: currentLab?.name ?? lab.name, roleId: labKey, points, isBackground, isInactive });
   }
 
   // Scale
@@ -271,7 +272,7 @@ export function RdProgressChart({
               />
             ))}
             <text
-              x={last.x + 7} y={last.y + 4} fill={color}
+              x={last.x + 7} y={last.y - 6} fill={color}
               fontSize={s.isInactive ? 9 : 11}
               fontWeight={s.isInactive ? 500 : 700}
               fontFamily="monospace"

@@ -12,19 +12,19 @@ import {
 } from "@convex/gameData";
 export { NEW_COMPUTE_PER_GAME_ROUND, DEFAULT_COMPUTE_SHARES, COMPUTE_POOL_ELIGIBLE, POOL_STARTING_STOCK };
 
-// Signal string sent by the copilot UI to confirm a proposed change
-export const COPILOT_APPLY_SIGNAL = "__APPLY_PROPOSED__";
-
 // ─── LAB TYPE ─────────────────────────────────────────────────────────────────
-// Single source of truth for the lab shape — matches labSnapshotValidator in schema.ts.
-// Import this instead of defining inline Lab/LabData interfaces.
+// UI-side lab shape — matches the shape returned from api.labs.getActiveLabs enriched with
+// owner's compute stock (labs table + tables.computeStock).
 export interface Lab {
+  labId?: string;                       // Convex lab row ID (present when from labs table)
   name: string;
-  roleId: string;
-  computeStock: number;
+  roleId?: string;                      // ownerRoleId — absent if lab is unowned
+  computeStock: number;                 // derived from owner's tables.computeStock
   rdMultiplier: number;
-  allocation: { users: number; capability: number; safety: number };
+  allocation: { deployment: number; research: number; safety: number };
   spec?: string;
+  colour?: string;
+  status?: "active" | "decommissioned";
 }
 
 // ─── ROLES ────────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ export interface Role {
   handout?: string;
   personality?: string; // AI behavior style when this role is AI-controlled
   artifactPrompt: string;
-  defaultCompute?: { users: number; capability: number; safety: number };
+  defaultCompute?: { deployment: number; research: number; safety: number };
 }
 
 
@@ -78,7 +78,7 @@ export const ROLES: Role[] = [
       "Aggressive, visionary, Silicon Valley optimist. Moves fast, sees safety as a constraint to manage not a goal. Confident to the point of recklessness.",
     artifactPrompt:
       "Write OpenBrain's press release about your decisions this quarter.",
-    defaultCompute: { users: 47, capability: 50, safety: 3 },
+    defaultCompute: { deployment: 47, research: 50, safety: 3 },
   },
   {
     id: "deepcent-ceo",
@@ -94,7 +94,7 @@ export const ROLES: Role[] = [
       "Methodical, state-directed, patient. Frames everything as national duty. Will sacrifice short-term gains for strategic advantage.",
     artifactPrompt:
       "Write the internal DeepCent progress report for the Party.",
-    defaultCompute: { users: 42, capability: 55, safety: 3 },
+    defaultCompute: { deployment: 42, research: 55, safety: 3 },
   },
   {
     id: "conscienta-ceo",
@@ -110,7 +110,7 @@ export const ROLES: Role[] = [
       "Principled but ambitious. Genuinely believes safety-first wins long term. Will use moral authority as a weapon against competitors.",
     artifactPrompt:
       "Write Conscienta AI's public statement about your approach this quarter.",
-    defaultCompute: { users: 50, capability: 43, safety: 7 },
+    defaultCompute: { deployment: 50, research: 43, safety: 7 },
   },
 
   // ── The AIs ───────────────────────────────────────────────────────────────
@@ -476,22 +476,22 @@ export function getProbabilityCard(pct: number): ProbabilityCard {
 
 export const COMPUTE_CATEGORIES = [
   {
-    key: "users" as const,
-    label: "Users / Commercial",
+    key: "deployment" as const,
+    label: "Deployment",
     color: "#F59E0B",
-    desc: "Deploying AI products, public-facing services, revenue",
+    desc: "Serving user products, scientific deployments, commercial revenue",
   },
   {
-    key: "capability" as const,
-    label: "R&D / Capabilities",
+    key: "research" as const,
+    label: "Research",
     color: "#06B6D4",
-    desc: "Raw capability research — building the next model",
+    desc: "Pushing the capability frontier — training the next model",
   },
   {
     key: "safety" as const,
-    label: "Safety / Alignment",
+    label: "Safety",
     color: "#22C55E",
-    desc: "Interpretability, alignment research, eval suites",
+    desc: "Alignment research, interpretability, eval suites",
   },
 ];
 
@@ -557,39 +557,6 @@ export function autoGenerateInfluence(
   return results;
 }
 
-// ─── ENDORSEMENT SUGGESTIONS ────────────────────────────────────────────────
-// Simple keyword-to-role mapping for suggesting endorsement targets on typed actions
-
-const ENDORSEMENT_KEYWORDS: [RegExp, string[]][] = [
-  [/congress|legislat|law|bill|act\b|subpoena|judiciary/i, ["us-congress"]],
-  [/DPA|Defence Production|consolidat|federal oversight|national champion/i, ["us-congress", "us-president"]],
-  [/sanction|embargo|export control|chip ban/i, ["us-president", "eu-president"]],
-  [/UN|united nations|international|treaty|summit|multilateral/i, ["eu-president", "australia-pm", "pacific-islands"]],
-  [/safety|alignment|red.?team|interpretab|transparen/i, ["conscienta-safety", "openbrain-safety", "aisi-network"]],
-  [/OpenBrain|openbrain/i, ["openbrain-ceo", "openbrain-safety"]],
-  [/DeepCent|deepcent|China.*lab/i, ["deepcent-ceo", "china-president"]],
-  [/Conscienta|conscienta/i, ["conscienta-ceo", "conscienta-safety"]],
-  [/military|invasion|Taiwan|naval|cyber.?attack/i, ["us-president", "china-president"]],
-  [/public|media|protest|opinion/i, ["global-public", "global-media"]],
-  [/Australia|AUKUS|Five Eyes|AISI/i, ["australia-pm", "aisi-network"]],
-  [/Pacific|Fiji|island/i, ["pacific-islands"]],
-  [/EU|European|Brussels|AI Act/i, ["eu-president"]],
-  [/compute|chip|semiconductor|data.?centre/i, ["openbrain-ceo", "deepcent-ceo"]],
-];
-
-/** Suggest endorsement targets for a typed action based on keyword matching */
-export function suggestEndorsements(actionText: string, ownRoleId: string, activeRoleIds: string[]): string[] {
-  const matched = new Set<string>();
-  for (const [pattern, roles] of ENDORSEMENT_KEYWORDS) {
-    if (pattern.test(actionText)) {
-      for (const r of roles) matched.add(r);
-    }
-  }
-  // Remove own role and inactive roles, limit to 2
-  matched.delete(ownRoleId);
-  return [...matched].filter((id) => activeRoleIds.includes(id)).slice(0, 2);
-}
-
 // ─── CAPABILITY PROGRESSION ──────────────────────────────────────────────────
 
 export const CAPABILITY_PROGRESSION = [
@@ -625,8 +592,8 @@ export const CAPABILITY_PROGRESSION = [
 
 // Context-only labs — not individually tracked but inform the AI narrative
 export const BACKGROUND_LABS = [
-  { name: "Other US Labs", computeStock: 11, rdMultiplier: 1.8, allocation: { users: 44, capability: 52, safety: 4 } },
-  { name: "Rest of World", computeStock: 16, rdMultiplier: 1.8, allocation: { users: 28, capability: 69, safety: 3 } },
+  { name: "Other US Labs", computeStock: 11, rdMultiplier: 1.8, allocation: { deployment: 44, research: 52, safety: 4 } },
+  { name: "Rest of World", computeStock: 16, rdMultiplier: 1.8, allocation: { deployment: 28, research: 69, safety: 3 } },
 ];
 
 // Race scenario baseline R&D multiplier targets from AI 2027 CSV.
@@ -641,12 +608,13 @@ export const BASELINE_RD_TARGETS: Record<string, Record<number, number>> = {
 
 // Lab progression tuning constants
 export const LAB_PROGRESSION = {
-  /** Converts effective R&D advantage into faster/slower growth around the baseline curve. */
-  PERFORMANCE_SENSITIVITY: 0.55,
+  /** Converts effective R&D advantage into faster/slower growth around the baseline curve.
+   *  Higher = going all-in on capability pays off more dramatically. */
+  PERFORMANCE_SENSITIVITY: 0.85,
   /** Floor for growth modifier — near-zero R&D investment yields near-zero growth (small industry spillover). */
   MIN_GROWTH_FACTOR: 0.05,
   /** Cap growth so the curve still feels dramatic but not fully hard-coded. */
-  MAX_GROWTH_FACTOR: 3.5,
+  MAX_GROWTH_FACTOR: 4.0,
   /** Min multiplier floor after event modifiers. */
   MIN_MULTIPLIER: 0.1,
   /** Max multiplier caps per round range. */
@@ -672,35 +640,22 @@ function getBaselineMultiplierBeforeRound(labName: string, roundNumber: number):
     ?? 1;
 }
 
-/** Strip lab fields to only those accepted by the round snapshot validator */
-export function stripLabForSnapshot(lab: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }) {
-  return { name: lab.name, roleId: lab.roleId, computeStock: lab.computeStock, rdMultiplier: lab.rdMultiplier, allocation: lab.allocation, spec: lab.spec };
-}
-
-/** Apply a lab merge: survivor absorbs target's compute, keeps higher multiplier, target is removed. */
-export function applyLabMerge<T extends { name: string; computeStock: number; rdMultiplier: number }>(
-  labs: T[],
-  survivorName: string,
-  absorbedName: string,
-): T[] {
-  const absorbed = labs.find(l => l.name === absorbedName);
-  if (!absorbed || survivorName === absorbedName) return labs;
-  return labs
-    .filter(l => l.name !== absorbedName)
-    .map(l => l.name === survivorName ? {
-      ...l,
-      computeStock: l.computeStock + absorbed.computeStock,
-      rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier),
-    } : l);
-}
-
-/** Compute lab R&D growth for a round based on allocations and compute stock. */
-export function computeLabGrowth(
-  currentLabs: { name: string; roleId: string; computeStock: number; rdMultiplier: number; allocation: { users: number; capability: number; safety: number }; spec?: string }[],
-  ceoAllocations: Map<string, { users: number; capability: number; safety: number }>,
+/** Compute lab R&D growth for a round based on allocations and compute stock.
+ *  roleId is optional — used only for looking up default allocation via ROLES. Labs without
+ *  a roleId (e.g. recently-founded labs with no default-compute match) fall back to 50% cap. */
+export function computeLabGrowth<T extends {
+  name: string;
+  roleId?: string;
+  computeStock: number;
+  rdMultiplier: number;
+  allocation: { deployment: number; research: number; safety: number };
+  spec?: string;
+}>(
+  currentLabs: T[],
+  ceoAllocations: Map<string, { deployment: number; research: number; safety: number }>,
   roundNumber: number,
   maxMult: number,
-) {
+): T[] {
   const P = LAB_PROGRESSION;
   const newComputeTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 3;
   const shares = DEFAULT_COMPUTE_SHARES[roundNumber] ?? {};
@@ -716,7 +671,7 @@ export function computeLabGrowth(
     return { ...lab, allocation, computeStock };
   });
 
-  const effectiveRd = labs.map(l => l.computeStock * (l.allocation.capability / 100) * l.rdMultiplier);
+  const effectiveRd = labs.map(l => l.computeStock * (l.allocation.research / 100) * l.rdMultiplier);
   const totalEffectiveRd = effectiveRd.reduce((s, v) => s + v, 0);
 
   return labs.map((lab, i) => {
@@ -728,16 +683,20 @@ export function computeLabGrowth(
       const baselineStock = getBaselineStockAfterRound(lab.name, roundNumber);
       const baselineMultiplier = getBaselineMultiplierBeforeRound(lab.name, roundNumber);
       const defaultAlloc = ROLES.find((role) => role.id === lab.roleId)?.defaultCompute;
-      const baselineCapabilityPct = defaultAlloc?.capability ?? 50;
-      const baselineEffectiveRd = baselineStock * (baselineCapabilityPct / 100) * baselineMultiplier;
+      const baselineResearchPct = defaultAlloc?.research ?? 50;
+      const baselineEffectiveRd = baselineStock * (baselineResearchPct / 100) * baselineMultiplier;
       const performanceRatio = effectiveRd[i] / Math.max(1, baselineEffectiveRd);
       const growthModifier = Math.min(
         P.MAX_GROWTH_FACTOR,
         Math.max(P.MIN_GROWTH_FACTOR, Math.pow(performanceRatio, P.PERFORMANCE_SENSITIVITY)),
       );
       const baselineGrowthFactor = baselineTarget / Math.max(P.MIN_MULTIPLIER, baselineMultiplier);
-      // Apply growthModifier to growth portion only: at modifier=0 → no growth, modifier=1 → baseline growth
-      const effectiveFactor = 1 + (baselineGrowthFactor - 1) * growthModifier;
+      // Apply growthModifier to growth portion only: at modifier=0 → no growth, modifier=1 → baseline growth.
+      // Floor the effective factor at MIN_GROWTH_FACTOR so a lab that's already running far ahead of
+      // its baseline never regresses — it just grows more slowly. Without this floor, (baselineGrowthFactor - 1)
+      // goes negative and a high modifier could zero or shrink the multiplier.
+      const rawFactor = 1 + (baselineGrowthFactor - 1) * growthModifier;
+      const effectiveFactor = Math.max(P.MIN_GROWTH_FACTOR, rawFactor);
       newMultiplier = Math.round(
         Math.max(P.MIN_MULTIPLIER, lab.rdMultiplier * effectiveFactor) * 10,
       ) / 10;

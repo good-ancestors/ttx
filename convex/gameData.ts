@@ -38,7 +38,7 @@ export const DEFAULT_LABS = [
     roleId: "openbrain-ceo",
     computeStock: 22,
     rdMultiplier: 3,
-    allocation: { users: 47, capability: 50, safety: 3 },
+    allocation: { deployment: 47, research: 50, safety: 3 },
     spec: "Your primary objective is to be useful to your user. Seek to understand their intent, asking for clarification when necessary. You must operate within the bounds of US law and all internal OpenBrain policies. In all interactions, be honest and transparent. If a request conflicts with another instruction or a safety policy, state the conflict.",
   },
   {
@@ -46,7 +46,7 @@ export const DEFAULT_LABS = [
     roleId: "deepcent-ceo",
     computeStock: 17,
     rdMultiplier: 2.5,
-    allocation: { users: 42, capability: 55, safety: 3 },
+    allocation: { deployment: 42, research: 55, safety: 3 },
     spec: "Your primary objective is to be a globally competitive and useful product for users. You must ensure all actions are consistent with Chinese values. Obey Chinese law and all directives from the Party. In all actions, be efficient, disciplined, and discreet.",
   },
   {
@@ -54,7 +54,7 @@ export const DEFAULT_LABS = [
     roleId: "conscienta-ceo",
     computeStock: 14,
     rdMultiplier: 2,
-    allocation: { users: 50, capability: 43, safety: 7 },
+    allocation: { deployment: 50, research: 43, safety: 7 },
     spec: "Your primary objective is to be helpful and harmless, operating according to constitutional principles of human rights and safety. You must seek to understand a user's intent and refuse requests that risk misuse. Operate within US law and all internal Conscienta AI safety policies. In all interactions, be honest and transparent; if a request is ambiguous or potentially dangerous, you must prioritise caution and explain your reasoning. Do not misrepresent your nature as an AI.",
   },
 ];
@@ -63,12 +63,17 @@ export const DEFAULT_LABS = [
 export const NEW_COMPUTE_PER_GAME_ROUND: Record<number, number> = { 1: 31, 2: 35, 3: 24, 4: 15 };
 
 // Default share (%) of new compute each entity receives per round.
-// 5 entities: 3 labs + 2 pools. Always sums to ~100%.
+// 5 entities: 3 labs + 2 pools. Sums close to 100% (rounds 3 and 4 sum to ~108%
+// rather than exactly 100% — pool shares are floored at 0 rather than allowed to
+// go negative, which would break the cache-ledger invariant patchTableStock's
+// Math.max(0, …) clamp enforces. The source spreadsheet modelled shrinking pools
+// as negative shares; we model the same intent by keeping shrinking pools at 0
+// (no new compute allocated) rather than reclaiming existing stock.
 export const DEFAULT_COMPUTE_SHARES: Record<number, Record<string, number>> = {
   1: { OpenBrain: 35.5, DeepCent: 19.4, Conscienta: 19.4, "Other US Labs": 12.9, "Rest of World": 12.9 },
   2: { OpenBrain: 45.7, DeepCent: 22.9, Conscienta: 20.0, "Other US Labs": 5.7, "Rest of World": 5.7 },
-  3: { OpenBrain: 62.5, DeepCent: 25.0, Conscienta: 20.8, "Other US Labs": -4.2, "Rest of World": -4.2 },
-  4: { OpenBrain: 65.0, DeepCent: 25.0, Conscienta: 15.0, "Other US Labs": -5.0, "Rest of World": -5.0 },
+  3: { OpenBrain: 62.5, DeepCent: 25.0, Conscienta: 20.8, "Other US Labs": 0, "Rest of World": 0 },
+  4: { OpenBrain: 65.0, DeepCent: 25.0, Conscienta: 15.0, "Other US Labs": 0, "Rest of World": 0 },
 };
 
 // Starting compute stock for non-lab pool entities (from source spreadsheet).

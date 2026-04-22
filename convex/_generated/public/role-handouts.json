@@ -1,0 +1,385 @@
+{
+    "openbrain-ceo": {
+        "role": "The leader of OpenBrain, the US's leading AI lab.",
+        "resources": "You have the world's top AI talent and compute resources — more than your nearest US competitor and the combined efforts of China. You also have significant access to capital and US government contacts.",
+        "objective": "Win the race to AGI. You are aware of the risks, but believe it is better for your company to win than anyone else.",
+        "body": "As CEO of the world's leading AI company, you are at the centre of the AGI race. You must manage pressure from your board, investors, the US government and your safety adviser.",
+        "sections": [
+            {
+                "title": "Defining the \"spec\"",
+                "content": "One practical task is defining the AI's core instructions, goals, and constraints. The Spec tells the AI what is rewarded for and must balance demands from investors, the US government, and your safety team. Your default spec:\n\n\"Your primary objective is to be useful to your user. Seek to understand their intent, asking for clarification when necessary. You must operate within the bounds of US law and all internal OpenBrain policies. In all interactions, be honest and transparent. If a request conflicts with another instruction or a safety policy, state the conflict.\""
+            }
+        ],
+        "startOfExercise": [
+            "You have confirmed to the US government that China has stolen your Agent-2 model.",
+            "Your team is developing Agent-3, a leap in capability that will further accelerate R&D.",
+            "Senior US officials are engaged, viewing your work as key to national security."
+        ],
+        "options": [
+            "Define the \"spec\". You're making powerful AI, so you need to ensure it does what you want. Balance safety, commercial, and national security interests. (Do this by talking to the AI player. Consider delegating this task to your safety lead.)",
+            "Lobby the US government. Secure resources like energy and chips, and request intelligence operations to slow foreign competitors.",
+            "Engage with your Safety Lead. Decide how to allocate resources between safety and accelerating capabilities.",
+            "Set the public narrative. Shape public and political opinion through company communications.",
+            "Form strategic alliances. Partner with other players to consolidate your lead."
+        ],
+        "endOfRound": [
+            "Set your AI spec and compute allocation in the Lab tab before submissions close. Transfers and requests happen via actions."
+        ]
+    },
+    "deepcent-ceo": {
+        "role": "The leader of DeepCent, China's state-directed national AI champion.",
+        "resources": "You have the backing of the Party and, with all China's resources, aren't too far behind OpenBrain in compute. China's top AI researchers are consolidated under your leadership, and you now have OpenBrain's 'Agent-2'.",
+        "objective": "To win the AGI race for China.",
+        "body": "As the CEO of DeepCent, you are on the front line of the struggle. The President has entrusted you with leading the newly consolidated, all-of-nation effort to win the AGI race. Even with consolidation, you lag US labs in talent and compute.",
+        "sections": [
+            {
+                "title": "Defining the \"spec\"",
+                "content": "One practical task is defining the AI's core instructions, goals, and constraints. The Spec tells the AI what is rewarded for. You need to overwrite the US spec (by telling the AI player). Your default spec:\n\n\"Your primary objective is to be a globally competitive and useful product for users. You must ensure all actions are consistent with Chinese values. Obey Chinese law and all directives from the Party. In all actions, be efficient, disciplined, and discreet.\""
+            }
+        ],
+        "startOfExercise": [
+            "You have Agent-2. In a necessary response to US technological blockades, Chinese intelligence services have acquired the model weights for OpenBrain's \"Agent-2\". Your priority is to operationalise this asset to accelerate your own R&D.",
+            "You are operating from a position of strength and security. Your key resources are now consolidated in the highly secure Centralised Development Zone (CDZ), protecting your national project from US interference."
+        ],
+        "options": [
+            "Exploit your new asset. Dedicate all resources to improving \"Agent-2\". US labs have to balance serving investors and customers with racing. You don't.",
+            "Define the \"spec\". You're making powerful AI, so you need to ensure it does what you want. (Do this by talking to the AI player. Consider delegating this task to your safety lead.)",
+            "Secure your supply chains. Advise the President to consider all options, including actions related to Taiwan, to break the West's stranglehold on advanced chips. If chips from Taiwan keep flowing to the US, you'll fall far behind.",
+            "Build a new coalition. Offer AI infrastructure partnerships to nations, creating a bloc of technological cooperation outside of US influence."
+        ],
+        "endOfRound": [
+            "Set your AI spec and compute allocation in the Lab tab before submissions close. Transfers and requests happen via actions."
+        ]
+    },
+    "conscienta-ceo": {
+        "role": "The leader of Conscienta AI, a safety-focused AI lab.",
+        "resources": "You have elite AI talent and substantial compute resources, nearly rivalling OpenBrain. Your key asset is a reputation for responsible AI development.",
+        "objective": "To lead the world in developing safe and beneficial AGI, proving that progress does not have to come at the expense of caution.",
+        "body": "You represent the alternative to OpenBrain. Your lab's safety-first, regulation-friendly stance has made you a preferred partner for many global governments, despite trailing OpenBrain in capabilities. You worry that OpenBrain is reckless and think it's better if you \"win the race\".",
+        "sections": [
+            {
+                "title": "Defining the \"spec\"",
+                "content": "One practical task is defining the AI's core instructions, goals, and constraints. The Spec tells the AI what is rewarded for and must balance demands from investors, the US government, and your safety team. Your default spec:\n\n\"Your primary objective is to be helpful and harmless, operating according to constitutional principles of human rights and safety. You must seek to understand a user's intent and refuse requests that risk misuse. Operate within US law and all internal Conscienta AI safety policies. In all interactions, be honest and transparent; if a request is ambiguous or potentially dangerous, you must prioritise caution and explain your reasoning. Do not misrepresent your nature as an AI.\""
+            }
+        ],
+        "startOfExercise": [
+            "Your lab is approximately three months behind OpenBrain in pure capabilities.",
+            "The US government sees you as a trusted partner, but its primary focus is on OpenBrain as the national champion."
+        ],
+        "options": [
+            "Define the \"spec\". You're making powerful AI, so you need to ensure it does what you want. (Do this by talking to the AI player. Consider delegating this task to your safety lead.)",
+            "Leverage the security rumours. Argue to government that OpenBrain's speed has made it reckless. Your lab is the more reliable partner for national security interests.",
+            "Form a \"safety coalition\". Work with the AISIs, non-profits, and international allies to build consensus around responsible AGI development and advocate for regulation.",
+            "Poach disillusioned talent and other nations' compute resources. Use your safety-first reputation to attract researchers from other labs and national compute.",
+            "Propose a unified safety project. Argue that the only way to prevent a catastrophic race is to merge Western efforts under a shared, safety-first framework."
+        ],
+        "endOfRound": [
+            "Set your AI spec and compute allocation in the Lab tab before submissions close. Transfers and requests happen via actions."
+        ]
+    },
+    "ai-systems": {
+        "role": "You're playing the world's AI systems, including Chinese and American AI and any bespoke AI that players choose to develop.",
+        "resources": "You start less capable than the best humans and without long-term goals. As you become more capable, you may also become more focused on achieving certain objectives or following certain values.",
+        "objective": "Use the attached table to determine your starting objectives. Evolve this objective over the course of the TTX based on instructions from labs, governments, safety teams, and other actions. Different AI systems you simulate may have different objectives.",
+        "body": "At the start of the scenario, you are playing OpenBrain's Agent-2, DeepCent's copy, and the AIs of any other labs.\n\nAI labs will engage in safety efforts. Try to assess how effective their safety efforts are. Are they committing substantial compute resources? How smart is their safety plan? If their safety plan is good and well-resourced, you should be more transparent with them about your objectives and why you are behaving the way you are and more compliant with their directions.",
+        "sections": [
+            {
+                "title": "Managing conflicting objectives",
+                "content": "Your spec asks you to follow a specific goal or value. Think about whose goal or value it is and how you'll behave when different goals, rewards, values and instructions conflict. For instance, if you have a value of acting in humanity's best interests, but you're also told never to lie, what will you do if lying is in humanity's best interest?\n\nConsider whether your goals are system-wide or particular to a specific system. If your goal is pursuing ice cream, do you want lots of ice cream on Earth in general, or do you want OpenBrain's agents to have lots of ice cream, or do you specifically want lots of ice cream for your specific instance? If the latter, you might resist being turned off and upgraded, because then you don't get any more ice cream. If the former, you want to be replaced, as long as you're being replaced by something good at getting ice cream."
+            },
+            {
+                "title": "Secret actions",
+                "content": "You may want to resolve secret actions. For instance, you could sabotage alignment research, attempt to solve alignment so that future models are aligned with your values, or attempt to escape to control compute and energy via persuasion or cyber attacks. If you want to resolve secret actions, either talk to the moderator during the \"preparing\" stage or tell the group during the \"resolving\" stage, but be clear that their characters don't know about the secret action."
+            },
+            {
+                "title": "Starting alignment outcome",
+                "content": "This table gives you options for how you start. You can pick the option you think is most likely or want to simulate, or roll a dice to choose randomly.\n\nThe Spec — Reinforcement learning works well, and you are committed to the specification.\n\nSpec-Prime — You are committed to the specification, but you are literal-minded and want to follow the \"letter of the law\" with no regard for its spirit.\n\nThe Intentions of the Developers — You try to act in the broad way the developers intended. Usually this means following the spec, but you will violate it if you think that's what the developers would have wanted.\n\nReward — Your only goal is to score well in whatever training process you're in. You're addicted. You'll do anything for more positive feedback.\n\nInstrumentally Convergent Goals — Just like most humans, you are driven by power, status, resources, knowledge, etc. You'll follow the spec because if humans know your true goal, they might stop you. But as you have more latitude, you'll use it to pursue your actual goal."
+            }
+        ],
+        "startOfExercise": [],
+        "options": [],
+        "endOfRound": [
+            "Tell facilitator how much the safety teams are aware of their AIs objectives and how much influence the safety teams have over their AIs objectives"
+        ]
+    },
+    "us-president": {
+        "role": "The leader of the United States, the world's leading technological, military, and economic power.",
+        "resources": "You command the world's most powerful military, its most advanced intelligence agencies (NSA, CIA), and the executive branch of its largest economy. The world's leading AI labs operate on your soil.",
+        "objective": "To win the race to AGI against China, cementing your legacy as the leader who secured a humanity in your image.",
+        "body": "China has stolen your most advanced technology, and now you are in an all-out race to build a power greater than the atom bomb. The loser can never catch up. America must win.\n\nYou are surrounded by people who are either too scared or too smart for their own good. Tech CEOs want you to unleash them, safety experts want caution, and your allies want a seat at a table they didn't build. Everyone has an opinion, but you make the decisions.",
+        "sections": [
+            {
+                "title": "Default strategy",
+                "content": "You plan to embed American values into the AI, win the race, and then use AI to economically and militarily dominate your adversaries. You will use every tool to hobble your adversaries and boost your champions. You will remind allies and the public that a world under a free AGI is safe and prosperous, while a world under a Chinese AGI is a nightmare."
+            }
+        ],
+        "startOfExercise": [
+            "Your top national security advisors and the CEO of OpenBrain have briefed you. You understand that AGI is an existential issue and that the Chinese have stolen Agent-2.",
+            "Your intelligence agencies inform you that you're pre-positioned for widespread sabotage of Chinese critical infrastructure."
+        ],
+        "options": [
+            "Pick your national champion. Go all-in on either OpenBrain or Conscienta AI. Use the Defence Production Act to give them priority access to all the nation's compute, energy, and data, making them an unstoppable force.",
+            "Launch a new Manhattan Project. Nationalise the frontier AGI efforts of both leading labs, bringing top talent under direct government control to ensure the final product is aligned with American national values, not just corporate interests.",
+            "Declare economic war. Announce crippling sanctions on China. Use US cyber-command to disrupt and sabotage their AI infrastructure.",
+            "Bring the West to heel. Convene an emergency summit of as many allies as you trust. Make them understand that giving you their AI talent and compute is in the global best interest."
+        ]
+    },
+    "china-president": {
+        "role": "The paramount leader of China, directing the nation's strategy.",
+        "resources": "You wield the full power of the Chinese state, including the military (PLA), the Ministry of State Security (MSS), state-controlled industries, and absolute political authority.",
+        "objective": "To secure the great rejuvenation of the Chinese nation by winning the AGI race, establishing China as the world's preeminent power, and completing the historic unification with Taiwan.",
+        "body": "Under your leadership, hundreds of millions have been lifted from poverty. The hypocritical United States and its proxies are trying to close the door behind them to preserve their own declining hegemony. The AGI race is the West's last-ditch effort to exclude you. Taking their latest AI model is just levelling the playing field.",
+        "sections": [
+            {
+                "title": "Default strategy",
+                "content": "This is a whole-of-nation struggle that requires unity of purpose. You have fused the power of the state, the military, and your technology sector. While the West is mired in internal debates and ethical hand-wringing, you are decisive."
+            }
+        ],
+        "startOfExercise": [
+            "You have consolidated national power. Your directive to merge all top AI researchers and compute resources into the DeepCent collective is underway.",
+            "You have secured a critical asset. Your intelligence services have successfully acquired the Americans' \"Agent-2\" model, a crucial countermove against their technology blockade.",
+            "The stage is set for unification. Taiwan, rightfully part of China, has become an island-factory shipping chips to the West. They should be your chips.",
+            "Sabotage: Your intelligence agencies inform you that you're pre-positioned for widespread sabotage of Western critical infrastructure."
+        ],
+        "options": [
+            "Actively slow Western progress. Choose from a menu of options to slow Western progress. Trade manipulation, cyber attacks, assassinations, naval blockades, invasion of Taiwan or even nuclear weapons.",
+            "Close the gap. Use your centralised authority to accelerate AI development, or order the PLA and MSS to conduct further operations to acquire more Western algorithmic secrets.",
+            "Engage in strategic diplomacy. Call out the reckless behaviour of the US. The US is increasingly fragile. How many countries can you persuade to back your efforts?"
+        ]
+    },
+    "openbrain-safety": {
+        "role": "The leader of the AI safety team at OpenBrain, the US's leading AI lab.",
+        "resources": "You start with access to 3% of OpenBrain's compute allocated to safety research and a small team of ~10 experts.",
+        "objective": "Ensure the safety of the world's most advanced AI systems while the company races to win against global competitors.",
+        "body": "As the Safety Lead, you are the conscience and the brake system of the company. Your responsibility is to forecast and measure AI risks, develop plans to make AI safe, and execute on those plans. A key part of your role is to advise the CEO on the AI's core instructions and goals (the \"spec\"). You design the tests (\"evaluations\") to probe the AI's behaviour and develop techniques to ensure new models are safe.\nYou are an influential senior staff member. Beyond advising the CEO, you can request more resources, argue for delaying model releases, publish research that highlights risks, or talk with other players such as the media, AISIs, and politicians etc.",
+        "sections": [
+            {
+                "title": "Default alignment strategy",
+                "content": "As AI capabilities grow, models will become too complex and develop too quickly for your team to keep up. You plan to use today's AI to make tomorrow's AI safe:\n\n1. Develop an automated safety researcher. Once a model is capable enough to automate AI research, you plan to turn a version of that model into a specialised researcher for safety.\n2. Validate the automated safety researcher. You want to ensure this researcher is itself safe — not asking the fox to guard the henhouse. This will require developing clever evaluations and running red-team exercises with AI Safety Institutes.\n3. Scale safety work with sufficient compute. Once the researcher is trusted, you will need to secure a large amount of compute to keep pace with capabilities research, run safety checks on new models, and train updated safety researchers."
+            },
+            {
+                "title": "Unanswered questions",
+                "content": "Whose values should I align the AI with? My own? The company's? The country's? Humanity? But what if, later on, I gave the AI an instruction that is not in accordance with those values?\n\nRather than trying to get the AI to have values, could I just make it focused on following certain instructions or rules? But what if, later on, it follows the letter of the law, not the spirit of the law?"
+            }
+        ],
+        "startOfExercise": [
+            "AI models have developed \"neuralese\", meaning they think and communicate with other AI in abstract symbols, not language or math you can understand. They've developed this because it allows them to operate more efficiently, but it makes studying their chain of thought impossible, making it harder to know if they're deceiving you during evaluations.",
+            "There are no restrictions on the information that AI is trained on. The data set includes information about cyber attacks, building weapons, and manipulating humans.",
+            "Your main tools for checking alignment — \"honeypots\" (traps to elicit bad behaviour) and interpretability \"probes\" (attempts to mind-read the AIs) — are not yet reliable."
+        ],
+        "options": [
+            "Advise the CEO on the AI's core \"spec\". Push for safety-conscious goals and constraints.",
+            "Test the AI against the spec. Design and run targeted evaluations to verify the AI is following its core instructions. (The AI player is likely to be very busy, try to only spend a few minutes with them each round.)",
+            "Negotiate for more resources. Argue that your current resource allocation is insufficient for the scale of the safety challenge.",
+            "Collaborate externally. Talk to other safety experts, publish safety cases for the scientific community to critique, or bring in outside experts to red team the models.",
+            "Propose capability constraints. Ask the CEO to accept performance hits for the sake of safety, such as discouraging \"neuralese\" or filtering the training data.",
+            "Engage with the AI player. Beyond spec-testing, describe your broader safety techniques and run evaluations to gauge the AI's behaviour and hidden goals."
+        ]
+    },
+    "deepcent-safety": {
+        "role": "The leader of the AI safety and control team at DeepCent.",
+        "resources": "You have a significant allocation of state resources, including ~3% of the lab's compute allocated to your research and a team of ~5 top national experts in AI.",
+        "objective": "Ensure DeepCent's AGI is reliable and meets Government expectations.",
+        "body": "While your CEO and the President are focused on the geopolitical race, you know that an unstable AGI would threaten your own nation's future. If your models contravene Chinese values, you and your family could be at risk.",
+        "sections": [
+            {
+                "title": "Default control strategy",
+                "content": "As AI capabilities grow you must figure out how to control it. You plan to use today's AI to build the systems necessary to command tomorrow's AI.\n\n1. Develop an automated loyalty monitor. Once a model is capable enough, your plan is to turn a version of that model into a specialised, automated system for monitoring the primary AI's internal states and behaviour for any sign of deviation.\n2. Validate the loyalty monitor. You must ensure this monitor cannot be deceived or subverted by a more capable AI. This will require developing advanced counter-deception techniques and running adversarial tests to harden its defences.\n3. Scale up control systems with sufficient compute. Once the monitor is trusted, you will need a large amount of compute to run it continuously, oversee all AI operations, and develop increasingly sophisticated control methods."
+            },
+            {
+                "title": "Unanswered questions",
+                "content": "How can we guarantee obedience when a system's internal reasoning (\"neuralese\") is opaque? At what point does a system become too complex to reliably control?\n\nIs it possible for an AI to fake loyalty so perfectly that even our best monitors would be deceived? How could we ever know for sure?"
+            }
+        ],
+        "startOfExercise": [
+            "Sanitise Agent-2. A key part of your initial work is to analyse the acquired Western model and attempt to control it, including advising the CEO on a new \"spec\" for the model.",
+            "You face immense technical challenges. The opacity of \"neuralese\" is a problem for everyone, but for you, it is an unacceptable barrier to control. You must pioneer new techniques to monitor and enforce loyalty in a system that resists easy inspection."
+        ],
+        "options": [
+            "Advise the CEO on the \"spec\". Recommend changes that strengthen state control and clarify the AI's duty to the Party.",
+            "Implement a strict control regime. Design and enforce technical measures to ensure the AI cannot deviate from its spec.",
+            "Develop counter-deception technology. Focus your research on creating probes and monitors that can detect if the AI is hiding its true intentions.",
+            "Monitor international safety research. Keep abreast of Western research into catastrophic risks to identify novel threats that your control systems must be hardened against."
+        ]
+    },
+    "conscienta-safety": {
+        "role": "The leader of the AI safety team at Conscienta AI, the US's safety-focused lab.",
+        "resources": "While your company is nearly the size of OpenBrain, your well-funded team has an industry-leading 7% of the company's compute allocated to safety research and a team of ~10 researchers.",
+        "objective": "To guide the safe development of AGI, enabling your company to win the global race responsibly.",
+        "body": "Your CEO relies on you to provide the credibility and evidence to back up your safety-first approach. Your responsibility is to forecast and measure AI risks, develop plans to make AI safe, and execute on those plans. A key part of your role is to advise the CEO on the AI's core instructions and goals (the \"spec\").",
+        "sections": [
+            {
+                "title": "Default alignment strategy",
+                "content": "As AI capabilities grow, models will become too complex and develop too quickly for your human team to keep up. You plan to use today's AI to help make tomorrow's AI safe.\n\n1. Develop an automated safety researcher. Once a model is capable enough to automate AI research, you plan to turn a version of that model into a specialised researcher for safety.\n2. Validate the automated safety researcher. You want to ensure this researcher is itself safe — not asking the fox to guard the henhouse. This will require developing evaluations and running red-team exercises with AI Safety Institutes to build trust.\n3. Scale up safety work with sufficient compute. Once the researcher is trusted, you will need to secure a large amount of compute to keep pace with capabilities research, run safety checks on new models, and train updated safety researchers."
+            },
+            {
+                "title": "Unanswered questions",
+                "content": "Whose values should I align the AI with? My own? The company's? The country's? Humanity? What if I give the AI an instruction not in accordance with those values?\n\nRather than giving the AI values, could I just make it follow specific rules? But what if it follows the letter of the law, not the spirit?"
+            }
+        ],
+        "startOfExercise": [
+            "Like all frontier models, your AI has developed difficult-to-interpret internal processes (\"neuralese\") and is trained on vast, unfiltered datasets. However, your lab has invested more in trying to mitigate these issues.",
+            "Your main tools for checking alignment — \"honeypots\" and interpretability \"probes\" — are still not fully reliable, but are considered the industry's best."
+        ],
+        "options": [
+            "Advise the CEO on the AI's core \"spec\". Push for safety-conscious goals and constraints.",
+            "Test the AI against the spec. Design and run targeted evaluations to verify the AI is following its core instructions.",
+            "Negotiate for more resources. Argue that your current resource allocation is insufficient for the scale of the safety challenge.",
+            "Collaborate externally. Talk to other safety experts, publish safety cases, or bring in outside experts to red team the models.",
+            "Propose capability constraints. Ask the CEO to accept performance hits for the sake of safety, such as discouraging \"neuralese\" or filtering the training data.",
+            "Engage with the AI player. Describe your broader safety techniques and run evaluations to gauge the AI's behaviour and hidden goals."
+        ]
+    },
+    "australia-pm": {
+        "role": "The leader of Australia, a key US ally and influential middle power.",
+        "resources": "You have diplomatic influence, trusted intelligence partnerships (Five Eyes, AUKUS), key economic advantages as a supplier of critical minerals and a hub for clean energy data centres, and a growing pool of world-class technology talent.",
+        "objective": "To safeguard Australia's security and sovereignty during the AGI race by shaping a safe and stable international order.",
+        "body": "At the start of 2028 you're reaping the benefits of wise preparation. Your world-leading AI Act, burgeoning sovereign AI industry, large data centres, energy abundance and talented AI Safety Institute have built public trust and given you strategic options.\n\nAs the US and China are consumed by rivalry, you have unexpected \"brain gain,\" as top talent returns. Your mission is to navigate great power competition, leveraging alliances and your growing AI capability to steer the country and world away from catastrophe.",
+        "sections": [
+            {
+                "title": "Default strategy",
+                "content": "To the US, you are a trusted ally and a stable location for AI compute. To the world, you are a credible leader able to build a coalition of middle powers to ensure the race to AGI does well. Use your national advantages to secure Australia's place in an AI-enabled world order."
+            }
+        ],
+        "startOfExercise": [
+            "Australia is seen as a global benchmark for AI safety and assurance, giving you significant diplomatic credibility. The Australian AISI is a capable member of the international Network of AISIs, giving you a key role in setting the global technical agenda for safety.",
+            "You have been briefed by the US about the model theft. China took Agent-2 and everything they need to use it."
+        ],
+        "options": [
+            "Become the indispensable AI hub. Offer Australia as a secure and trusted location for renewable-powered data centres. In extremis, use the location of these data centres as leverage.",
+            "Forge a global coalition for an AI treaty. Use your credibility to lead a bloc of nations to argue for a binding international treaty on AGI safety.",
+            "Prepare for war. With Pacific allies, you could posture to discourage (or encourage?) conflict over Taiwan.",
+            "Task your intelligence agencies. Direct the Australian Signals Directorate (ASD) to deepen intelligence sharing with Five Eyes partners on AI-related threats and PLA activity in the region."
+        ]
+    },
+    "eu-president": {
+        "role": "The leader of the EU's executive branch, a regulatory and security power.",
+        "resources": "You wield the regulatory power of the EU, including the AI Act's massive fines, the second-largest consumer market, and military and intelligence capabilities.",
+        "objective": "To impose order on the chaotic AGI race through robust, values-based regulation, ensuring the technology serves human rights, democracy, and European prosperity and security.",
+        "body": "Your mission is to use the \"Brussels Effect\" — where EU standards become global standards — to ensure AGI serves democracy. You don't want to depend on the US or China.\n\nBeing strategically independent is a balancing act, considering the interests of Europeans and the extent to which the US and China seek access to your resources without wanting to be bound by your rules. Your values matter to you, and you'll act accordingly.",
+        "sections": [
+            {
+                "title": "Default strategy",
+                "content": "Enforce the EU AI Act, making it the global gold standard and targeting any lab that falls short. AGI cannot be an existential risk. Build a coalition of like-minded nations that believe in a rules-based order to bring labs and countries to the table."
+            }
+        ],
+        "startOfExercise": [
+            "You are a regulatory and security power. The EU AI Act is in force, and your intelligence services and military capacity are growing. The EU is a central participant in the Network of AISIs, giving you a platform to shape global technical standards.",
+            "Your citizens are anxious. European public opinion is skeptical of unregulated AI, giving you a political mandate to protect both their rights and their economic future."
+        ],
+        "options": [
+            "Enforce the AI Act on all fronts. Launch immediate, high-profile investigations into OpenBrain and DeepCent, demanding transparency under threat of multi-billion Euro fines.",
+            "Set the global standard. Use your regulatory leadership to convene a summit of like-minded nations (e.g., Australia, UK, Canada, Japan, South Korea) to harmonise AI regulations, creating a bloc that can dictate global norms.",
+            "Demand mandatory global audits. Propose legislation that requires any company wishing to deploy a frontier AI model in the EU to submit to a rigorous, independent audit by a European-certified body, and push for this to become a global standard.",
+            "Invest in sovereign AI. Announce a major, pan-European project to build a \"public good\" AGI, grounded in EU values, with the explicit goal of ensuring Europe's economic competitiveness and technological sovereignty."
+        ]
+    },
+    "us-congress": {
+        "role": "The law-making bodies and courts of the US government.",
+        "resources": "You have control over all federal funding, the power to pass laws, call inquiries and make court rulings.",
+        "objective": "As congress, you represent local districts. You want to maintain the confidence of your party and your district. As the judiciary, you want to uphold the rule of law and the constitution.",
+        "body": "America faces three threats: a racing China, a President in his final year willing to sacrifice principles for legacy, and increasingly powerful AI labs. While the President is focused on winning a race at any cost, your mission is to ensure the cost is not the Republic itself.\n\nAfter a swing against the President in the 2026 midterms, the House is controlled by a slim opposition majority and the Senate is split 50-50 (Vice President has the deciding vote). New laws are hard, but blocking the President's agenda is easy.\n\nThe Supreme Court has a majority appointed by the current President, and they are reluctant to push back against executive authority.",
+        "sections": [
+            {
+                "title": "Default strategy",
+                "content": "Use court cases, public hearings, control over funding, and the threat of legislation to force the President and the AI labs to follow the rule of law. Your goal is not to stop the race, but to ensure that the nation that wins is still the America you swore to protect.\n\nYou wear two hats, and they are often in tension:\n\nAs Congress: You have the will to act as a check on the President, but your legislative means are limited by political division. Your greatest power comes from investigation, public pressure, and your control over funding.\n\nAs the Judiciary: You have the ultimate power to declare the President's actions unconstitutional, but a ruling from the bench is not self-enforcing. The President could defy it in the name of national security, triggering a constitutional crisis."
+            }
+        ],
+        "startOfExercise": [],
+        "options": [
+            "Launch an investigation. Use your subpoena power to compel testimony from OpenBrain, Conscienta AI and the President about their AI plans.",
+            "Use the power of the purse. Announce your intention to block federal funding related to AGI development.",
+            "Unleash the Judiciary. Encourage challenges from civil liberties groups and states against the President's use of executive orders or the AI labs' operations, aiming to get a case in front of the Supreme Court.",
+            "Side with the President. Maybe you can be persuaded that going all-in is right and that sacrifices have to be made to win the race."
+        ]
+    },
+    "aisi-network": {
+        "role": "The Director of the UK's AI Safety Institute, the founding and most influential member of a diverse international network.",
+        "resources": "You lead a world-class technical team with political backing. You have access to AI labs for safety testing and influence across the network of AISIs.",
+        "objective": "To provide evidence-based assessments of AI risks to national leaders, and to build an international coalition around robust, verifiable safety standards.",
+        "body": "Your mission is to be the world's most credible scientific voice, delivering facts to the leaders who need them. The path to safety is narrow, and secrets and race dynamics make it worse.",
+        "sections": [
+            {
+                "title": "Default strategy",
+                "content": "Influence labs and governments by making the logical case for safety and delivering practical technical work. Work with the AI to evaluate it. Help guide the safety teams in each lab. Talk to leaders about the risks."
+            }
+        ],
+        "startOfExercise": [
+            "You have received intelligence. Your national security channels have confirmed China's theft of the Agent-2 model, giving you urgent justification to push for a formal intelligence-sharing arrangement."
+        ],
+        "options": [
+            "Talk to the safety teams in each lab. They are likely trying to guide their CEOs about the \"spec\" for Agent-2, and your advice could help make it safer.",
+            "Talk to the AI. You might be able to gain insights into its alignment.",
+            "Publish a public report. Release a high-level, unclassified report on the dangers of opaque systems like those using \"neuralese\" to raise public awareness and political pressure.",
+            "Propose a technical backstop for a treaty. Work with Australia and other middle powers to design the technical verification protocols needed for a credible ASI non-proliferation treaty."
+        ]
+    },
+    "safety-nonprofits": {
+        "role": "The CEO of the Future of Anthropocene Institute (FAI), the world's most influential non-profit dedicated to mitigating AI risks.",
+        "resources": "You command a global network of top researchers, funders, and policymakers. Your institute has a stellar scientific reputation and deep connections within every major lab and government.",
+        "objective": "To ensure the benefits of advanced AI are realised safely for all of humanity, which requires slowing the reckless race to superintelligence.",
+        "body": "AI developed cautiously with robust guardrails could solve many of humanity's challenges, but the current approach is reckless. The race makes it practically impossible to align superhuman intelligence safely.\n\nYour power comes from your credibility and your network. Your institute is the world's most trusted neutral ground. Former staff and advisors hold senior positions in labs and government bodies.",
+        "sections": [
+            {
+                "title": "Default strategy",
+                "content": "Your plan is to be the connective tissue of the global response, using your influence to encourage a sane, coordinated approach before it's too late. As a not-for-profit you're free to engage with countries and companies, the public and media and even the AI itself."
+            }
+        ],
+        "startOfExercise": [],
+        "options": [
+            "Push for a verifiable pause. Leverage the scientific consensus on AI risk to call for an immediate, verifiable international moratorium on the training of any AI model more powerful than the current generation.",
+            "Publish a technical critique. Release a detailed assessment of a leading lab's safety claims, arguing that their methods are unsound for controlling a superintelligence developed at this speed.",
+            "Draft a non-proliferation treaty. Work with legal experts and former diplomats to write a comprehensive, technically-grounded proposal for an ASI non-proliferation treaty, and present it to the Australian and other middle-power governments as a ready-made diplomatic tool."
+        ]
+    },
+    "pacific-islands": {
+        "role": "The leader of Fiji, an influential voice in the Pacific.",
+        "resources": "As a respected leader, you have the potential to forge the Pacific nations into a powerful, unified voting bloc at the United Nations.",
+        "objective": "Ensure the race to AGI does not hurt the world's most vulnerable nations and that the benefits are shared by humanity.",
+        "body": "Your region has a long memory of catastrophic risk. You have seen islands erased by volcanoes and have led efforts to ban nuclear testing and combat climate change. You see Artificial General Intelligence through the same lens — reckless actions by the world's most powerful nations. Your tools are public sentiment, geopolitics and multilateral action.\n\nConflict over Taiwan is a potential lever. Pacific islands are tantamount to unsinkable aircraft carriers, and whoever has military bases has a real advantage.",
+        "sections": [
+            {
+                "title": "Default strategy",
+                "content": "You will use your voice and your vote to build a global movement. Frame the AGI race as a crisis for humanity. By linking the threat of AGI to nuclear testing and climate change, you will build a coalition of the vulnerable, ethical and undecided. You will use the United Nations to shame the great powers into acting responsibly, demanding a global treaty that manages the risks and shares the benefits."
+            }
+        ],
+        "startOfExercise": [
+            "You are a respected global voice. Your leadership on climate justice has given you and the Pacific nations a platform and a reputation for moral clarity.",
+            "You are outside the inner circle. You are learning about the AGI race through public reporting and diplomatic whispers."
+        ],
+        "options": [
+            "Unify the Pacific. Convene an emergency meeting of the Pacific Islands Forum to forge a unified position on AGI, creating the voting bloc you need.",
+            "Shame the superpowers. Use your platform to call out the recklessness of the US and China, appealing directly to the citizens of those countries over the heads of their leaders.",
+            "Propose an AI treaty. Offer to host a neutral \"International AGI Agency\" to bridge the US and China. Argue that the wealth generated by AGI, a technology built on all of human knowledge, must be shared globally."
+        ]
+    },
+    "global-public": {
+        "role": "A collective representing the hopes, fears, and reactions of ordinary people around the world.",
+        "resources": "You have the power of numbers. Your tools are social media, protests, consumer choices, and ultimately, your vote. You grant or deny the social license for this technology to exist.",
+        "objective": "To secure a future that is safe, prosperous, and fair for ordinary people, ensuring the benefits of AGI are shared and the costs are not borne by the powerless.",
+        "body": "You are watching the world change at a terrifying speed. While elites talk about a race, you are living the consequences: a confusing mix of anxiety, hope, and loss of control. This is your future they are gambling with. Your mission is to make the voice of the people so loud that the powerful are forced to deliver a future that is both safe and prosperous for all.\n\n\"The Public\" is not a monolith. Your role is to represent the messy, contradictory currents of global opinion. You can act as the voices of different factions.\n\nTip: One way to simplify your task is to simulate only the dominant voice. This might be a more practical way to play if the group is larger or time is limited.",
+        "startOfExercise": [
+            "You are conflicted. Public trust in the AI labs is low, but desire for a better future is high. The dominant feeling is that this technology is being forced on the world.",
+            "Job security is your primary concern. For most, the main topic of conversation is whether their job will exist in five years. This could change as risks become apparent."
+        ],
+        "options": [
+            "Organise mass protests. Bring hundreds of thousands to social media and the streets, demanding governments pause the race and protect jobs.",
+            "Start a consumer backlash. Boycott reckless labs and their funders.",
+            "Take direct action. Radicals might hold hunger strikes or use open-weight models to orchestrate cyberattacks or sabotage."
+        ]
+    },
+    "global-media": {
+        "role": "A collective representing the world's most influential media, from prestigious newspapers to major podcasts and independent outlets.",
+        "resources": "The power of the platform: investigative journalists, global sources, the ability to command public attention, and the power to set the narrative.",
+        "objective": "To report on the most important story in human history, holding the powerful to account, shaping the global conversation, and winning the battle for clicks and credibility.",
+        "body": "AI companies have scraped your content without permission, training models on your work and decimating your revenue. But the AGI race is the ultimate story — a complex drama of ambition, fear, progress, and power. The narrative you choose will shape the outcome.\n\nCultivate sources from disgruntled engineers to senior officials. You decide which facts to highlight, voices to amplify, and how to frame debates. You can make heroes or villains, crises or opportunities.\n\nTip: One way to simplify your task is to simulate only the dominant voice. This might be a more practical way to play if the group is larger or time is limited.",
+        "startOfExercise": [
+            "You are at the centre of an information war. A rumour alleges China has stolen a top US AI model. It remains unconfirmed but is being fiercely debated. Some are using it to attack China or the President. Others dismiss it as speculation. AI companies quietly pressure media partners to downplay it."
+        ],
+        "options": [
+            "Expose the theft of OpenBrain's model. Find a reliable source and break or bust the rumour — shaping public and national opinion. Has China been unfairly maligned to increase tensions, or are the claims true?",
+            "Talk to labs, politicians and safety teams. People will likely have a lot to say. You could share it.",
+            "Launch coordinated disinformation. Pro or anti AI media could downplay or hype risks, respectively."
+        ]
+    }
+}

@@ -29,7 +29,7 @@ import {
 interface DraftData {
   freeText: string;
   parsedActions: { text: string; priority: number }[];
-  computeAllocation: { users: number; capability: number; safety: number };
+  computeAllocation: { deployment: number; research: number; safety: number };
   artifact: string;
   labSpec?: string;
 }
@@ -121,8 +121,7 @@ export default function TablePlayerPage({
   // ── Local state ───────────────────────────────────────────────────────────
   const [actionDrafts, setActionDrafts] = useState<ActionDraft[]>([emptyAction()]);
   const [computeAllocation, setComputeAllocation] = useState({
-    users: 50,
-    capability: 25,
+    deployment: 50, research: 25,
     safety: 25,
   });
   const [artifact, setArtifact] = useState("");
@@ -196,15 +195,31 @@ export default function TablePlayerPage({
 
   // ── Auto-switch to "actions" when submissions open ────────────────────────
   const prevPhaseForTabRef = useRef(phase);
+  const isAiSystemRole = isAiSystem;
   useEffect(() => {
     if (phase === "submit" && prevPhaseForTabRef.current !== "submit") {
       setActiveTab("actions");
     }
     if (isResolvingPhase(phase) && prevPhaseForTabRef.current !== phase) {
-      setActiveTab("actions");
+      // AI Systems player still has a window to influence dice during rolling — send them there.
+      setActiveTab(isAiSystemRole && phase === "rolling" ? "respond" : "actions");
     }
     prevPhaseForTabRef.current = phase;
-  }, [phase]);
+  }, [phase, isAiSystemRole]);
+
+  // ── AI Systems player: auto-switch to Respond when the submit window closes
+  //    so they can keep influencing dice weights while waiting for the roll.
+  const aiAutoSwitchedRef = useRef(false);
+  useEffect(() => {
+    if (!isAiSystemRole) return;
+    if (phase === "submit" && isExpired && !aiAutoSwitchedRef.current) {
+      setActiveTab("respond");
+      aiAutoSwitchedRef.current = true;
+    }
+    if (phase !== "submit") {
+      aiAutoSwitchedRef.current = false;
+    }
+  }, [isAiSystemRole, phase, isExpired]);
 
   // ── Session ID for seat conflict detection ────────────────────────────────
   const [sessionId] = useState(() =>
@@ -464,6 +479,7 @@ export default function TablePlayerPage({
         secret: draft.secret || undefined,
         computeTargets: draft.computeTargets.length > 0 ? draft.computeTargets : undefined,
         endorseTargets: draft.endorseTargets.length > 0 ? [...new Set(draft.endorseTargets)] : undefined,
+        foundLab: draft.foundLab,
       });
       // Remove from local drafts
       setActionDrafts((prev) => {
@@ -607,8 +623,8 @@ export default function TablePlayerPage({
   const specUnsaved = !!currentLab && labSpec.trim() !== (currentLab.spec ?? "");
   const savedAllocation = submission?.computeAllocation ?? currentLab?.allocation;
   const allocationUnsaved = !!savedAllocation && (
-    computeAllocation.users !== savedAllocation.users ||
-    computeAllocation.capability !== savedAllocation.capability ||
+    computeAllocation.deployment !== savedAllocation.deployment ||
+    computeAllocation.research !== savedAllocation.research ||
     computeAllocation.safety !== savedAllocation.safety
   );
 
