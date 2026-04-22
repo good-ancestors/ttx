@@ -49,8 +49,8 @@ export interface Role {
 export const DEFAULT_ROUND_LABEL = ROUND_CONFIGS[0].label;
 
 // Phase helpers
-export function isResolvingPhase(phase: string): phase is "rolling" | "narrate" {
-  return phase === "rolling" || phase === "narrate";
+export function isResolvingPhase(phase: string): phase is "rolling" | "effect-review" | "narrate" {
+  return phase === "rolling" || phase === "effect-review" || phase === "narrate";
 }
 
 // Tag helpers — gate UI features and AI context

@@ -8,6 +8,7 @@ import { useAuthMutation } from "@/lib/hooks";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { NarrativeEditor } from "@/components/manual-controls";
 import { AttemptedPanel } from "./attempted-panel";
+import { EffectReviewPanel } from "./effect-review-panel";
 import { ExpandableSection } from "./expandable-section";
 import { AddLabForm } from "./add-lab-form";
 import {
@@ -306,6 +307,16 @@ export function RoundPhase({
           currentRound={currentRound}
           isProjector={isProjector}
           onEditNarrative={() => setEditModal("narrative")}
+        />
+      )}
+
+      {/* ─── 8b. EFFECT REVIEW — P7 mandatory pause ─── */}
+      {phase === "effect-review" && (
+        <EffectReviewPanel
+          gameId={gameId}
+          round={currentRound}
+          roundNumber={game.currentRound}
+          isProjector={isProjector}
         />
       )}
 

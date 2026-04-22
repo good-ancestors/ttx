@@ -286,6 +286,7 @@ export const advancePhase = mutation({
       v.literal("discuss"),
       v.literal("submit"),
       v.literal("rolling"),
+      v.literal("effect-review"),
       v.literal("narrate")
     ),
     durationSeconds: v.optional(v.number()),
@@ -788,10 +789,60 @@ export const finishResolveInternal = internalMutation({
   },
 });
 
+/** P7 transition — decide LLM has run and structural effects have landed. Pauses the
+ *  pipeline so the facilitator can review applied ops + flagged rejections before the
+ *  deterministic R&D growth + compute acquisition + narrative LLM run. The resolving
+ *  lock is released during the pause; continueFromEffectReview re-acquires it. */
+export const setPhaseEffectReviewInternal = internalMutation({
+  args: { gameId: v.id("games") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.gameId, {
+      phase: "effect-review" as const,
+      phaseEndsAt: undefined,
+      resolving: false,
+      resolvingStartedAt: undefined,
+      pipelineStatus: { step: "effect-review", detail: "Review effects, then continue to narrative", startedAt: Date.now() },
+    });
+    await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: "effect-review" });
+  },
+});
+
+/** Facilitator-triggered continue from P7. Re-acquires the resolving lock, bumps the
+ *  pipeline status back into resolving, and schedules the second-half pipeline action
+ *  (R&D growth → compute acquisition → narrative LLM). */
+export const triggerContinueFromEffectReview = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.status !== "playing") throw new Error("Game is not in playing state");
+    if (game.phase !== "effect-review") {
+      throw new Error(`Cannot continue: game is in ${game.phase} phase, expected effect-review`);
+    }
+    assertNotResolving(game);
+
+    await ctx.db.patch(args.gameId, {
+      resolving: true,
+      resolvingStartedAt: Date.now(),
+      pipelineStatus: { step: "resolving", detail: "Applying R&D growth and compute acquisition...", startedAt: Date.now() },
+    });
+
+    await ctx.scheduler.runAfter(0, internal.pipeline.continueFromEffectReview, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+    });
+  },
+});
+
 export const advancePhaseInternal = internalMutation({
   args: {
     gameId: v.id("games"),
-    phase: v.union(v.literal("discuss"), v.literal("submit"), v.literal("rolling"), v.literal("narrate")),
+    phase: v.union(v.literal("discuss"), v.literal("submit"), v.literal("rolling"), v.literal("effect-review"), v.literal("narrate")),
     durationSeconds: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -882,7 +933,7 @@ export const triggerRoll = mutation({
       pipelineStatus: { step: "rolling", detail: "Rolling dice...", startedAt: Date.now() },
     });
 
-    await ctx.scheduler.runAfter(0, internal.pipeline.rollAndNarrate, {
+    await ctx.scheduler.runAfter(0, internal.pipeline.rollAndApplyEffects, {
       gameId: args.gameId,
       roundNumber: args.roundNumber,
       aiDisposition: args.aiDisposition,

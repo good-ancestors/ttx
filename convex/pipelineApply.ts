@@ -1,6 +1,16 @@
-// Atomic resolve apply — single mutation that lands lab CRUD + ledger writes + snapshot.
+// Atomic resolve apply — two mutations, one per pipeline half.
 // Kept out of pipeline.ts because that module is "use node" (actions only); mutations must
 // live in a default Convex runtime module.
+//
+// Split per docs/resolve-pipeline.md P7:
+//
+//   applyDecidedEffectsInternal   — phase 5 (and 5.7 internal): structural ops +
+//                                   adjusted compute + merged-pair ledger. The
+//                                   facilitator reviews the result at P7.
+//   applyGrowthAndAcquisitionInternal — phase 8/9/10: share% overrides already
+//                                   live on games.computeShareOverrides by this
+//                                   point; multiplier updates and acquired rows
+//                                   land together so the post-state is coherent.
 
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
@@ -13,7 +23,7 @@ import {
 } from "./labs";
 import { emitTransaction, emitPair, clearRegenerableRows } from "./computeLedger";
 
-export const applyResolveInternal = internalMutation({
+export const applyDecidedEffectsInternal = internalMutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
@@ -27,27 +37,21 @@ export const applyResolveInternal = internalMutation({
     })),
     decommissionOps: v.array(v.object({ labId: v.id("labs") })),
     transferOps: v.array(v.object({ labId: v.id("labs"), newOwnerRoleId: v.optional(v.string()) })),
-    multiplierUpdates: v.array(v.object({ labId: v.id("labs"), rdMultiplier: v.number() })),
-    acquired: v.array(v.object({ roleId: v.string(), amount: v.number() })),
+    // multiplierOverrides are LLM-initiated and apply in this phase. Growth-derived
+    // multiplier updates land in applyGrowthAndAcquisitionInternal.
+    multiplierOverrides: v.array(v.object({ labId: v.id("labs"), rdMultiplier: v.number() })),
     adjusted: v.array(v.object({ roleId: v.string(), amount: v.number(), reason: v.string() })),
     merged: v.array(v.object({ fromRoleId: v.string(), toRoleId: v.string(), amount: v.number(), reason: v.string() })),
   },
   handler: async (ctx, args) => {
-    // Re-verify the resolve nonce inside the atomic mutation. The pipeline action checks
-    // the nonce earlier, but several runMutation/runQuery calls separate that check from
-    // here — a concurrent resolve could have overwritten the nonce in between. Failing
-    // here prevents two runs from both landing structural lab mutations.
+    // Re-verify the resolve nonce inside the atomic mutation.
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
     if (game.resolveNonce !== args.nonce) {
       throw new Error(`Resolve nonce mismatch (expected ${args.nonce}, got ${game.resolveNonce ?? "null"}) — another resolve superseded this run`);
     }
 
-    // Validate — every labId exists, belongs to this game, AND is still active for
-    // structural ops (merge/decommission/transfer). Between the pipeline reading
-    // labsAtResolve and this mutation landing, a facilitator could have decommissioned
-    // a lab via games.mergeLabs; operating on it now would corrupt ancestry. Fail fast.
-    // multiplierUpdates tolerate decommissioned targets (they're no-op but harmless).
+    // Validate — every labId exists and (for structural ops) is still active.
     const structuralLabIds: Id<"labs">[] = [
       ...args.mergeOps.flatMap((m) => [m.survivorLabId, m.absorbedLabId]),
       ...args.decommissionOps.map((d) => d.labId),
@@ -62,27 +66,16 @@ export const applyResolveInternal = internalMutation({
         throw new Error(`Lab ${id} (${lab.name}) is not active — structural op rejected (likely facilitator-decommissioned since resolve started)`);
       }
     }
-    for (const u of args.multiplierUpdates) {
+    for (const u of args.multiplierOverrides) {
       const lab = await ctx.db.get(u.labId);
       if (!lab || lab.gameId !== args.gameId) {
         throw new Error(`Lab ${u.labId} not found or wrong game — aborting resolve apply`);
       }
     }
 
-    // Ledger: wipe regenerable rows, emit fresh acquired/adjusted/merged
+    // Ledger: wipe regenerable rows, then emit adjusted + merged only.
+    // Acquired rows land in applyGrowthAndAcquisitionInternal after R&D growth.
     await clearRegenerableRows(ctx, args.gameId, args.roundNumber);
-    for (const row of args.acquired) {
-      if (row.amount === 0) continue;
-      await emitTransaction(ctx, {
-        gameId: args.gameId,
-        roundNumber: args.roundNumber,
-        type: "acquired",
-        status: "settled",
-        roleId: row.roleId,
-        amount: row.amount,
-        reason: "Round pool share",
-      });
-    }
     for (const row of args.adjusted) {
       if (row.amount === 0) continue;
       await emitTransaction(ctx, {
@@ -109,7 +102,7 @@ export const applyResolveInternal = internalMutation({
       });
     }
 
-    // Structural lab mutations
+    // Structural lab mutations — these are phase 5.5/5.6/5.4/5.7 ops.
     for (const m of args.mergeOps) {
       await mergeLabsInternal(ctx, {
         survivorLabId: m.survivorLabId,
@@ -124,8 +117,51 @@ export const applyResolveInternal = internalMutation({
     for (const t of args.transferOps) {
       await transferLabOwnershipInternal(ctx, t.labId, t.newOwnerRoleId);
     }
-    for (const u of args.multiplierUpdates) {
+    // LLM-initiated multiplier overrides apply here so the facilitator sees the final
+    // override value during P7 review. Growth-derived updates land later.
+    for (const u of args.multiplierOverrides) {
       await updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier);
+    }
+  },
+});
+
+export const applyGrowthAndAcquisitionInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    nonce: v.string(),
+    // Multiplier updates from deterministic R&D growth (computeLabGrowth).
+    multiplierUpdates: v.array(v.object({ labId: v.id("labs"), rdMultiplier: v.number() })),
+    // New compute acquired this round — labs get growth stock, non-lab roles get pool share.
+    acquired: v.array(v.object({ roleId: v.string(), amount: v.number() })),
+  },
+  handler: async (ctx, args) => {
+    const game = await ctx.db.get(args.gameId);
+    if (!game) throw new Error("Game not found");
+    if (game.resolveNonce !== args.nonce) {
+      throw new Error(`Resolve nonce mismatch on growth apply — another resolve superseded this run`);
+    }
+
+    for (const u of args.multiplierUpdates) {
+      const lab = await ctx.db.get(u.labId);
+      if (!lab || lab.gameId !== args.gameId) {
+        // Multiplier update on a missing lab — skip (likely decommissioned after the decide
+        // phase by a facilitator override between P7 and continue).
+        continue;
+      }
+      await updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier);
+    }
+    for (const row of args.acquired) {
+      if (row.amount === 0) continue;
+      await emitTransaction(ctx, {
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        type: "acquired",
+        status: "settled",
+        roleId: row.roleId,
+        amount: row.amount,
+        reason: "Round pool share",
+      });
     }
   },
 });

@@ -270,6 +270,27 @@ export const setLabTrajectories = internalMutation({
   },
 });
 
+/** Write the P7 applied-ops list for facilitator review. Rendered on the effect-review
+ *  screen so the facilitator sees what the decide LLM proposed, what actually landed,
+ *  and what was rejected by the validator (conflicts, invalid roleIds, last-active-lab
+ *  guard, etc.). */
+export const setAppliedOpsInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    appliedOps: v.array(v.object({
+      type: v.string(),
+      status: v.union(v.literal("applied"), v.literal("rejected")),
+      summary: v.string(),
+      reason: v.optional(v.string()),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
+    if (round) await ctx.db.patch(round._id, { appliedOps: args.appliedOps });
+  },
+});
+
 export const setResolveDebugInternal = internalMutation({
   args: {
     gameId: v.id("games"),

@@ -79,6 +79,10 @@ export default defineSchema({
       v.literal("discuss"),
       v.literal("submit"),
       v.literal("rolling"),
+      // P7 mandatory pause per docs/resolve-pipeline.md — effects have been applied,
+      // facilitator reviews what landed (and any flagged rejections) before the
+      // deterministic R&D growth + compute acquisition + narrative LLM run.
+      v.literal("effect-review"),
       v.literal("narrate")
     ),
     phaseEndsAt: v.optional(v.number()),
@@ -238,6 +242,16 @@ export default defineSchema({
         capturedAt: v.number(),
       })
     ),
+    // Structural operations the decide LLM proposed and how they resolved. Surfaced on the
+    // P7 effect-review screen so the facilitator can see what landed and what was rejected
+    // before the deterministic R&D growth + compute acquisition runs. Written at the end of
+    // the effect-application phase; cleared on re-resolve.
+    appliedOps: v.optional(v.array(v.object({
+      type: v.string(),              // merge | decommission | transferOwnership | computeChange | multiplierOverride
+      status: v.union(v.literal("applied"), v.literal("rejected")),
+      summary: v.string(),           // human-readable one-line description of what happened
+      reason: v.optional(v.string()),// LLM's reason for the op (applied ops) or why it was rejected
+    }))),
     // Pre-resolve snapshot of lab structural state (multiplier, allocation, spec, name).
     // Compute history lives in the computeTransactions ledger — not duplicated here.
     labsBefore: v.optional(v.array(labSnapshotValidator)),

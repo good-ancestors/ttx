@@ -3,7 +3,9 @@
 import { ResultActionCard, type ResultAction } from "./result-action-card";
 
 interface TableResolvingProps {
-  phase: "rolling" | "narrate";
+  // effect-review is a facilitator-only pause; from the player table view it
+  // should render the same as narrate would before the narrative lands.
+  phase: "rolling" | "effect-review" | "narrate";
   round: {
     label: string;
     summary?: {

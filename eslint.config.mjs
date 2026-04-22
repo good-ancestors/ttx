@@ -15,6 +15,10 @@ const eslintConfig = defineConfig([
     ".claude/**",
     "next-env.d.ts",
     "convex/_generated/**",
+    // Claude Code worktrees + skills — not part of the canonical source tree.
+    // Files under these paths may be experimental or checkouts of other branches
+    // and shouldn't trip lint on the main checkout.
+    ".claude/**",
   ]),
 
   // Type-aware linting for TS/TSX files

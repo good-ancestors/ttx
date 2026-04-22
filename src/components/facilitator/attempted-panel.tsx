@@ -101,9 +101,14 @@ export function AttemptedPanel({
     return [...allActions].sort((a, b) => b.action.priority - a.action.priority);
   }, [allActions, isRollingOrNarrate]);
 
-  // During narrate phase, all actions are already revealed — skip staggered animation.
-  // The stagger only matters during rolling→narrate transition, not on page reload.
-  const effectiveRevealedCount = phase === "narrate" ? allActions.length : revealedCount;
+  // During narrate phase OR the P7 effect-review pause, all actions are already revealed
+  // — dice have fully rolled by the time we land on effect-review. The staggered reveal
+  // animation only matters during the rolling→effect-review transition itself. Without
+  // this, the whole "What Was Attempted" panel renders grey (pre-reveal state) during
+  // the facilitator's review pause.
+  const effectiveRevealedCount = (phase === "narrate" || phase === "effect-review")
+    ? allActions.length
+    : revealedCount;
   const allRevealed = isRollingOrNarrate && effectiveRevealedCount >= allActions.length;
 
   // Default open during rolling/narrate with submissions; user's explicit toggle overrides.

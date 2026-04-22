@@ -328,14 +328,18 @@ export const gradeOnly = internalAction({
 // ─── Stage 3: Roll dice + narrate (merged resolve+narrate) ────────────────────
 
 
-export const rollAndNarrate = internalAction({
+/** Phase 2-6 of docs/resolve-pipeline.md: roll → decide LLM → apply structural effects.
+ *  Terminates at the P7 facilitator-review pause. The second half (R&D growth, compute
+ *  acquisition, narrative) runs in continueFromEffectReview after the facilitator
+ *  clicks "Continue to Narrative". */
+export const rollAndApplyEffects = internalAction({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
     aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
   },
-  // Complexity is inherent: multi-step pipeline (roll, narrate,
-  // compute lab growth, snapshot) that must run as a single atomic action.
+  // Complexity is inherent: multi-step pipeline (roll, decide LLM, validate + apply
+  // structural effects) that must run as a single atomic action up to the P7 pause.
   // eslint-disable-next-line complexity
   handler: async (ctx, args) => {
     const { gameId, roundNumber } = args;
@@ -440,10 +444,12 @@ export const rollAndNarrate = internalAction({
         status: { step: "resolving", detail: "Deciding state changes...", startedAt: Date.now() },
       });
 
-      const [submissions, rounds, tables, labsAtResolve]: [Submission[], Round[], Table[], LabWithCompute[]] = await Promise.all([
+      // Narrative-phase data (tables, previousTrajectories) is fetched in
+      // continueFromEffectReview now — the decide phase only needs submissions + rounds
+      // + labs.
+      const [submissions, rounds, labsAtResolve]: [Submission[], Round[], LabWithCompute[]] = await Promise.all([
         ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }),
         ctx.runQuery(internal.rounds.getAllForPipeline, { gameId }),
-        ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
         ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
       ]);
       const currentRound = rounds.find((r) => r.number === roundNumber);
@@ -463,14 +469,10 @@ export const rollAndNarrate = internalAction({
           }));
       });
 
-      // Previous round trajectories feed into next round's trajectory assessment.
-      const prevRound = rounds.find((r) => r.number === roundNumber - 1);
-      const previousTrajectories = prevRound?.labTrajectories as
-        { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[] | undefined;
-
       // Detect structural changes that happened BETWEEN last round's resolve and this
       // one (facilitator overrides via games.mergeLabs / updateLabs, etc.). Diff the
       // previous round's labsAfter against the current lab list at resolve start.
+      const prevRound = rounds.find((r) => r.number === roundNumber - 1);
       const interRoundChanges: string[] = [];
       if (prevRound?.labsAfter) {
         const prevByName = new Map(prevRound.labsAfter.map((l) => [l.name, l] as const));
@@ -709,72 +711,22 @@ export const rollAndNarrate = internalAction({
         console.warn(`[pipeline] Rejected lab ops: ${rejectedOps.join("; ")}`);
       }
 
-      // Apply baseline R&D growth on the in-memory working labs
-      const ceoAllocations = new Map<string, { deployment: number; research: number; safety: number }>();
-      for (const sub of submissions) {
-        if (sub.computeAllocation) {
-          const lab = workingLabs.find((l) => l.roleId === sub.roleId);
-          if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
-        }
-      }
-      const grownLabs = computeLabGrowth(workingLabs, ceoAllocations, roundNumber, maxMult);
-      // Compute per-lab growth stock + multiplier deltas
-      const multiplierUpdates: { labId: Id<"labs">; rdMultiplier: number }[] = [];
-      for (const lab of grownLabs) {
-        const pre = workingLabs.find((l) => l.name === lab.name || (l as WorkingLab).labId === (lab as WorkingLab).labId);
-        if (!pre) continue;
-        const preMult = pre.rdMultiplier;
-        if (lab.rdMultiplier !== preMult) {
-          multiplierUpdates.push({ labId: (pre as WorkingLab).labId, rdMultiplier: lab.rdMultiplier });
-        }
-      }
-      // Apply multiplierOverride on top of growth
-      for (const ov of multiplierOverrides) {
-        const update = { labId: ov.labId, rdMultiplier: ov.newMultiplier };
-        const existing = multiplierUpdates.findIndex((u) => u.labId === ov.labId);
-        if (existing >= 0) multiplierUpdates[existing] = update;
-        else multiplierUpdates.push(update);
-      }
+      // ═══ PHASE 5 APPLY — structural effects only ═══
+      // R&D growth (phase 9) and compute acquisition (phase 10) run AFTER the P7
+      // facilitator pause in continueFromEffectReview. That keeps the mechanical
+      // consequences of actions reviewable before the deterministic growth lands,
+      // and matches docs/resolve-pipeline.md.
 
-      // Build ledger entries: acquired (per lab's net stock growth from pool share),
-      // adjusted (narrative computeChange), merged (pair per merger).
-      const acquiredEntries: { roleId: string; amount: number }[] = [];
-      // For each lab: acquired = (post-growth stock − pre-growth stock) − narrative adjustment
-      const modifierByLabId = new Map(computeModifiers.map((m) => [m.labId, m]));
-      for (const lab of grownLabs) {
-        if (!lab.roleId) continue;
-        const pre = labsAfterClear.find((l) => l.labId === (lab as WorkingLab).labId);
-        if (!pre) continue;
-        const preStock = pre.roleId ? tableComputeByRole.get(pre.roleId) ?? 0 : 0;
-        const mod = modifierByLabId.get((lab as WorkingLab).labId);
-        const acquired = lab.computeStock - preStock - (mod?.change ?? 0);
-        if (acquired > 0) acquiredEntries.push({ roleId: lab.roleId, amount: acquired });
-      }
-      // Non-lab roles (governments, civil society) get pool share
-      const activeOwnerRoleIds = new Set(grownLabs.map((l) => l.roleId).filter((r): r is string => !!r));
-      const enabledRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
-      const { calculatePoolNewCompute, NEW_COMPUTE_PER_GAME_ROUND } = await import("./gameData");
-      for (const t of tables) {
-        if (!t.enabled || activeOwnerRoleIds.has(t.roleId)) continue;
-        const overridePct = game.computeShareOverrides?.[t.roleId];
-        let produced: number;
-        if (overridePct != null) {
-          const baseTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
-          produced = Math.round(baseTotal * overridePct / 100);
-        } else {
-          produced = calculatePoolNewCompute(t.roleId, roundNumber, enabledRoleIds);
-        }
-        if (produced !== 0) acquiredEntries.push({ roleId: t.roleId, amount: produced });
-      }
-
+      // Adjusted compute ledger entries from LLM computeChange ops
       const adjustedEntries = computeModifiers
         .map((m) => {
-          const lab = grownLabs.find((l) => (l as WorkingLab).labId === m.labId);
+          const lab = workingLabs.find((l) => l.labId === m.labId);
           if (!lab?.roleId) return null;
           return { roleId: lab.roleId, amount: m.change, reason: m.reason };
         })
         .filter((x): x is { roleId: string; amount: number; reason: string } => x !== null && x.amount !== 0);
 
+      // Merged-pair ledger: absorbed owner's stock moves to survivor owner
       const mergedEntries: { fromRoleId: string; toRoleId: string; amount: number; reason: string }[] = [];
       for (const m of mergeOps) {
         const absorbed = labsAfterClear.find((l) => l.labId === m.absorbedLabId);
@@ -791,40 +743,267 @@ export const rollAndNarrate = internalAction({
         }
       }
 
-      // Apply everything atomically via a single mutation
-      await ctx.runMutation(internal.pipelineApply.applyResolveInternal, {
+      // Apply structural ops + LLM multiplier overrides + adjusted + merged ledger.
+      // Rename newMultiplier → rdMultiplier for the mutation shape (the mutation calls
+      // updateLabRdMultiplierInternal which names the field rdMultiplier).
+      await ctx.runMutation(internal.pipelineApply.applyDecidedEffectsInternal, {
         gameId,
         roundNumber,
         nonce,
         mergeOps,
         decommissionOps,
         transferOps,
-        multiplierUpdates,
-        acquired: acquiredEntries,
+        multiplierOverrides: multiplierOverrides.map((ov) => ({ labId: ov.labId, rdMultiplier: ov.newMultiplier })),
         adjusted: adjustedEntries,
         merged: mergedEntries,
       });
-      // Snapshot labs-after for post-game restore / review. Also makes the narrative
-      // pass a pure reader — everything it sees is frozen ground truth.
+
+      // Build the P7 appliedOps list — what the facilitator sees on the review screen.
+      // Includes both applied and rejected ops so the facilitator knows what the LLM
+      // attempted and why anything was dropped.
+      const labNameById = new Map(labsAfterClear.map((l) => [l.labId, l.name] as const));
+      const appliedOps: { type: string; status: "applied" | "rejected"; summary: string; reason?: string }[] = [];
+      for (const m of mergeOps) {
+        const s = labNameById.get(m.survivorLabId) ?? "?";
+        const a = labNameById.get(m.absorbedLabId) ?? "?";
+        const rename = m.newName && m.newName !== s ? ` → renamed ${m.newName}` : "";
+        appliedOps.push({ type: "merge", status: "applied", summary: `${a} merged into ${s}${rename}`, reason: m.reason });
+      }
+      for (const d of decommissionOps) {
+        appliedOps.push({ type: "decommission", status: "applied", summary: `${labNameById.get(d.labId) ?? "?"} decommissioned` });
+      }
+      for (const t of transferOps) {
+        const name = labNameById.get(t.labId) ?? "?";
+        appliedOps.push({ type: "transferOwnership", status: "applied", summary: `${name} ownership → ${t.newOwnerRoleId ?? "(unowned)"}` });
+      }
+      for (const ov of multiplierOverrides) {
+        const name = labNameById.get(ov.labId) ?? "?";
+        appliedOps.push({ type: "multiplierOverride", status: "applied", summary: `${name} R&D multiplier → ${ov.newMultiplier}×` });
+      }
+      for (const m of computeModifiers) {
+        const name = labNameById.get(m.labId) ?? "?";
+        const sign = m.change > 0 ? "+" : "";
+        appliedOps.push({ type: "computeChange", status: "applied", summary: `${name} compute ${sign}${m.change}u`, reason: m.reason });
+      }
+      for (const rej of rejectedOps) {
+        appliedOps.push({ type: "rejected", status: "rejected", summary: rej });
+      }
+
+      // Save decide metadata + applied ops + decide-half debug blob.
+      // The narrate half is added in continueFromEffectReview.
+      const decideOnlyDebug = {
+        decide: {
+          prompt: decidePrompt,
+          response: decideResponseJson ? JSON.parse(decideResponseJson) : null,
+          error: decideError,
+        },
+      };
+      await Promise.all([
+        ctx.runMutation(internal.rounds.setAppliedOpsInternal, { gameId, roundNumber, appliedOps }),
+        ctx.runMutation(internal.rounds.setAiMetaInternal, {
+          gameId,
+          roundNumber,
+          meta: { resolveModel: decideModel, resolveTimeMs: decideTimeMs, resolveTokens: decideTokens },
+        }),
+        ctx.runMutation(internal.rounds.setResolveDebugInternal, {
+          gameId,
+          roundNumber,
+          prompt: decidePrompt,
+          responseJson: JSON.stringify(decideOnlyDebug, null, 2),
+          error: decideError,
+        }),
+      ]);
+
+      // P7 — transition to effect-review, release resolving lock. Facilitator reviews
+      // applied ops + any flagged rejections, then clicks "Continue to Narrative" to
+      // trigger continueFromEffectReview.
+      await ctx.runMutation(internal.games.setPhaseEffectReviewInternal, { gameId });
+    } catch (err) {
+      await failPipeline(ctx, gameId, "Resolve", err);
+    }
+  },
+});
+
+/** Phase 8-11 of docs/resolve-pipeline.md: R&D growth → new compute acquired →
+ *  narrate. Triggered by the facilitator clicking "Continue to Narrative" on the
+ *  P7 effect-review screen (via triggerContinueFromEffectReview in games.ts). */
+// eslint-disable-next-line complexity
+export const continueFromEffectReview = internalAction({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+  },
+  // eslint-disable-next-line complexity
+  handler: async (ctx, args) => {
+    const { gameId, roundNumber } = args;
+    try {
+      const [game, submissions, rounds, tables, labsNow]: [Doc<"games"> | null, Submission[], Round[], Table[], LabWithCompute[]] = await Promise.all([
+        ctx.runQuery(internal.games.getInternal, { gameId }),
+        ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }),
+        ctx.runQuery(internal.rounds.getAllForPipeline, { gameId }),
+        ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
+        ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
+      ]);
+      if (!game) throw new Error("Game not found");
+      const currentRound = rounds.find((r) => r.number === roundNumber);
+      if (!currentRound) throw new Error("Round not found");
+      const nonce = game.resolveNonce;
+      if (!nonce) throw new Error("No resolve nonce — continueFromEffectReview requires a live nonce from rollAndApplyEffects");
+
+      // Re-resolve aiDisposition from the AI Systems table (same logic as roll phase)
+      let aiDisposition: { label: string; description: string } | undefined;
+      const aiTable = tables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID && t.aiDisposition);
+      if (aiTable?.aiDisposition) {
+        const { getDisposition } = await import("@/lib/game-data");
+        const disp = getDisposition(aiTable.aiDisposition);
+        if (disp) aiDisposition = { label: disp.label, description: disp.description };
+      }
+
+      const tableComputeByRole = new Map(
+        tables.filter((t) => t.computeStock != null).map((t) => [t.roleId, t.computeStock!] as const),
+      );
+      const maxMult = LAB_PROGRESSION.maxMultiplier(roundNumber);
+
+      // ═══ PHASE 9 — R&D GROWTH ═══
+      const ceoAllocations = new Map<string, { deployment: number; research: number; safety: number }>();
+      for (const sub of submissions) {
+        if (sub.computeAllocation) {
+          const lab = labsNow.find((l) => l.roleId === sub.roleId);
+          if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
+        }
+      }
+      const grownLabs = computeLabGrowth(labsNow, ceoAllocations, roundNumber, maxMult);
+      const multiplierUpdates: { labId: Id<"labs">; rdMultiplier: number }[] = [];
+      for (const lab of grownLabs) {
+        const pre = labsNow.find((l) => l.labId === lab.labId);
+        if (!pre) continue;
+        if (lab.rdMultiplier !== pre.rdMultiplier) {
+          multiplierUpdates.push({ labId: pre.labId, rdMultiplier: lab.rdMultiplier });
+        }
+      }
+
+      // ═══ PHASE 10 — NEW COMPUTE ACQUIRED ═══
+      const acquiredEntries: { roleId: string; amount: number }[] = [];
+      for (const lab of grownLabs) {
+        if (!lab.roleId) continue;
+        const pre = labsNow.find((l) => l.labId === lab.labId);
+        if (!pre) continue;
+        const preStock = pre.roleId ? tableComputeByRole.get(pre.roleId) ?? 0 : 0;
+        const acquired = lab.computeStock - preStock;
+        if (acquired > 0) acquiredEntries.push({ roleId: lab.roleId, amount: acquired });
+      }
+      const activeOwnerRoleIds = new Set(grownLabs.map((l) => l.roleId).filter((r): r is string => !!r));
+      const enabledRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
+      const { calculatePoolNewCompute, NEW_COMPUTE_PER_GAME_ROUND } = await import("./gameData");
+      for (const t of tables) {
+        if (!t.enabled || activeOwnerRoleIds.has(t.roleId)) continue;
+        const overridePct = game.computeShareOverrides?.[t.roleId];
+        let produced: number;
+        if (overridePct != null) {
+          const baseTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
+          produced = Math.round(baseTotal * overridePct / 100);
+        } else {
+          produced = calculatePoolNewCompute(t.roleId, roundNumber, enabledRoleIds);
+        }
+        if (produced !== 0) acquiredEntries.push({ roleId: t.roleId, amount: produced });
+      }
+
+      await ctx.runMutation(internal.pipelineApply.applyGrowthAndAcquisitionInternal, {
+        gameId,
+        roundNumber,
+        nonce,
+        multiplierUpdates,
+        acquired: acquiredEntries,
+      });
+      // Snapshot labs-after — the narrator's frozen ground truth.
       await ctx.runMutation(internal.rounds.snapshotAfterInternal, { gameId, roundNumber });
 
-      // ═══ SPLIT RESOLVE — NARRATE PHASE ═══
-      // Second LLM pass: reads the frozen (labsBefore, labsAfter) pair plus the
-      // action log and emits prose + risk trajectories. No state is decided here;
-      // anything that contradicts labsAfter is wrong by definition.
+      // ═══ PHASE 11 — NARRATE ═══
       await ctx.runMutation(internal.games.updatePipelineStatus, {
         gameId,
         status: { step: "narrating", detail: "Writing the story...", startedAt: Date.now() },
       });
 
-      // Post-apply lab state — this is what the narrator sees as "end of round".
       const labsAfterApply: LabWithCompute[] = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
+
+      // Reconstitute labsBefore from the round snapshot (written during rollAndApplyEffects).
+      // The snapshot validator has extra bookkeeping fields (mergedIntoLabId, createdRound)
+      // that aren't on LabWithCompute — stripped here since the narrative prompt doesn't
+      // read them.
+      const labsBeforeSnapshot = currentRound.labsBefore ?? [];
+      const labsBefore: LabWithCompute[] = labsBeforeSnapshot.map((s) => ({
+        labId: s.labId,
+        name: s.name,
+        roleId: s.roleId,
+        computeStock: s.computeStock,
+        rdMultiplier: s.rdMultiplier,
+        allocation: s.allocation,
+        spec: s.spec,
+        colour: s.colour,
+        status: s.status,
+        jurisdiction: s.jurisdiction,
+      }));
+
+      const resolvedActions = submissions.flatMap((sub) => {
+        const role = ROLES.find((r) => r.id === sub.roleId);
+        return sub.actions
+          .filter((a) => a.rolled != null)
+          .map((a) => ({
+            roleName: role?.name ?? sub.roleId,
+            text: a.text,
+            priority: a.priority,
+            probability: a.probability ?? 50,
+            rolled: a.rolled!,
+            success: a.success ?? false,
+            secret: a.secret,
+          }));
+      });
+
+      const prevRound = rounds.find((r) => r.number === roundNumber - 1);
+      const previousTrajectories = prevRound?.labTrajectories as
+        { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[] | undefined;
+
+      const interRoundChanges: string[] = [];
+      if (prevRound?.labsAfter) {
+        const prevByName = new Map(prevRound.labsAfter.map((l) => [l.name, l] as const));
+        const currentByName = new Map(labsBefore.map((l) => [l.name, l] as const));
+        for (const [name, prev] of prevByName) {
+          const curr = currentByName.get(name);
+          const wasActive = prev.status === "active";
+          if (wasActive && !curr) {
+            interRoundChanges.push(`${name} was decommissioned or merged away since last round (no longer in active labs).`);
+          } else if (wasActive && curr && prev.roleId !== curr.roleId) {
+            interRoundChanges.push(`${name} changed ownership: ${prev.roleId ?? "(unowned)"} → ${curr.roleId ?? "(unowned)"}.`);
+          }
+        }
+        for (const [name, curr] of currentByName) {
+          if (!prevByName.has(name) && curr.status === "active") {
+            interRoundChanges.push(`${name} appeared as a new active lab since last round.`);
+          }
+        }
+      }
+
+      const previousRoundsForPrompt = rounds
+        .filter((r) => r.number < roundNumber && r.summary)
+        .map((r) => ({
+          number: r.number,
+          label: r.label,
+          summary: r.summary ? {
+            outcomes: r.summary.outcomes,
+            stateOfPlay: r.summary.stateOfPlay,
+            pressures: r.summary.pressures,
+            labs: r.summary.labs,
+            geopolitics: r.summary.geopolitics,
+            publicAndMedia: r.summary.publicAndMedia,
+            aiSystems: r.summary.aiSystems,
+          } : undefined,
+        }));
 
       const narrativePrompt = buildResolveNarrativePrompt({
         round: roundNumber,
-        roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
+        roundLabel: currentRound.label ?? `Round ${roundNumber}`,
         resolvedActions,
-        labsBefore: labsAtResolve,
+        labsBefore,
         labsAfter: labsAfterApply,
         aiDisposition,
         previousRounds: previousRoundsForPrompt,
@@ -924,7 +1103,6 @@ export const rollAndNarrate = internalAction({
           status: { step: "narrating", detail: `Narrative generation failed: ${narrativeError.slice(0, 100)}. Using fallback.`, startedAt: Date.now() },
         });
 
-        // Minimal fallback summary so the facilitator has something to edit from.
         const succeeded: typeof resolvedActions = [];
         const failed: typeof resolvedActions = [];
         for (const a of resolvedActions) (a.success ? succeeded : failed).push(a);
@@ -944,22 +1122,20 @@ export const rollAndNarrate = internalAction({
         narrativeModel = "fallback";
       }
 
-      // Only keep trajectories for labs that exist in the post-apply state. The
-      // narrator should only emit for labsAfter labs, but guard against stale
-      // entries from previousTrajectories that could leak through.
       const activeLabNames = new Set(labsAfterApply.map((l) => l.name));
       const survivingTrajectories = narrativeOutput.labTrajectories.filter(
         (t) => activeLabNames.has(t.labName),
       );
 
-      // Save decide + narrate debug as a single JSON blob so the facilitator-only
-      // debug button surfaces both passes.
+      // Merge decide debug (written during rollAndApplyEffects) with the new narrate
+      // debug so the facilitator debug button surfaces both passes.
+      const existingRound = await ctx.runQuery(internal.rounds.getForPipeline, { gameId, roundNumber });
+      let existingDebug: Record<string, unknown> = {};
+      if (existingRound?.resolveDebug?.responseJson) {
+        try { existingDebug = JSON.parse(existingRound.resolveDebug.responseJson) as Record<string, unknown>; } catch { /* ignore malformed */ }
+      }
       const combinedDebug = {
-        decide: {
-          prompt: decidePrompt,
-          response: decideResponseJson ? JSON.parse(decideResponseJson) : null,
-          error: decideError,
-        },
+        ...existingDebug,
         narrate: {
           prompt: narrativePrompt,
           response: narrativeResponseJson ? JSON.parse(narrativeResponseJson) : null,
@@ -967,44 +1143,26 @@ export const rollAndNarrate = internalAction({
         },
       };
 
-      // Write narrative + trajectories + aiMeta + resolve debug in parallel.
       await Promise.all([
-        ctx.runMutation(internal.rounds.applySummaryInternal, {
-          gameId,
-          roundNumber,
-          summary: narrativeOutput.summary,
-        }),
+        ctx.runMutation(internal.rounds.applySummaryInternal, { gameId, roundNumber, summary: narrativeOutput.summary }),
         ctx.runMutation(internal.rounds.setLabTrajectories, { gameId, roundNumber, trajectories: survivingTrajectories }),
         ctx.runMutation(internal.rounds.setAiMetaInternal, {
           gameId,
           roundNumber,
-          meta: {
-            resolveModel: decideModel,
-            resolveTimeMs: decideTimeMs,
-            resolveTokens: decideTokens,
-            narrativeModel,
-            narrativeTimeMs,
-            narrativeTokens,
-          },
+          meta: { narrativeModel, narrativeTimeMs, narrativeTokens },
         }),
         ctx.runMutation(internal.rounds.setResolveDebugInternal, {
           gameId,
           roundNumber,
-          prompt: decidePrompt,
+          prompt: narrativePrompt,
           responseJson: JSON.stringify(combinedDebug, null, 2),
-          error: decideError ?? narrativeError,
+          error: narrativeError,
         }),
       ]);
 
-      // shareChanges removed from LLM output — share overrides are facilitator-set now
-      // (games.computeShareOverrides, written via setShareOverridesInternal). LLM proposing
-      // raw percentages was buggy: negatives got silently clamped, absolute-vs-delta was
-      // ambiguous, and the decision blurred with narrative prose. See docs/resolve-pipeline.md.
-
-      // Done — single mutation to advance phase, clear resolving lock, and set status
       await ctx.runMutation(internal.games.finishResolveInternal, { gameId });
     } catch (err) {
-      await failPipeline(ctx, gameId, "Resolve", err);
+      await failPipeline(ctx, gameId, "Continue-from-effect-review", err);
     }
   },
 });
