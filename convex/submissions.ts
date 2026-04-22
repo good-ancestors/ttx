@@ -939,16 +939,22 @@ export const overrideProbability = mutation({
     const action = actions[args.actionIndex];
     if (!action) return;
 
+    // When probability changes, stale LLM reasoning no longer applies to the new value.
+    // Strip it so the facilitator-visible "Show reasoning" tooltip doesn't misleadingly
+    // justify a number that has since been overridden.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { reasoning: _reasoning, ...actionWithoutReasoning } = action;
+
     // If dice have already been rolled, auto-reroll at the new probability
     if (action.rolled != null) {
       actions[args.actionIndex] = {
-        ...action,
+        ...actionWithoutReasoning,
         probability: args.probability,
         ...rollDice(args.probability, action.aiInfluence),
       };
     } else {
       actions[args.actionIndex] = {
-        ...action,
+        ...actionWithoutReasoning,
         probability: args.probability,
       };
     }
@@ -972,8 +978,10 @@ export const ungradeAction = mutation({
     const action = actions[args.actionIndex];
     if (!action) return;
 
-    // Strip grading/rolling fields, keeping everything else
-    const { probability: _, rolled: __, success: ___, ...rest } = action;
+    // Strip grading/rolling fields AND stale reasoning — once the grade is
+    // discarded, the LLM rationale behind it is no longer meaningful.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { probability: _p, rolled: _r, success: _s, reasoning: _reason, ...rest } = action;
     actions[args.actionIndex] = rest;
 
     await ctx.db.patch(args.submissionId, { actions });

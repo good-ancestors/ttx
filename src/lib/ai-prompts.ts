@@ -543,6 +543,12 @@ LAB OPERATIONS — output any that apply:
 - "computeChange": Direct compute stock change from a specific narrative event — DPA transfer, sanctions, infrastructure damage, theft, grant. Use for ONE-OFF shocks tied to player actions or world events. DO NOT use to simulate routine revenue: each lab's deployment% already scales baseline compute inflow (±20% at extremes) automatically. Reserve computeChange for unexpected revenue shocks (hit product, lost contract) or political events.
 - "multiplierOverride": Event changes R&D capability (Safer pivot halves it, sabotage, breakthrough). Absolute new value.
 
+IDENTIFIERS — this is load-bearing:
+- \`labName\` is a lab name string that must match a lab in LAB STATUS exactly. Not a role name.
+- \`controllerRoleId\` is a ROLE ID (slug form, e.g. "us-president", "australia-pm", "openbrain-ceo"), NOT a display role name (e.g. "US President", "Australia PM"). If you emit a display name here the transfer will be rejected and the lab will stay with its old controller. When in doubt about the ID form, look at how the role appeared in earlier prompts — the slug form is always lowercase hyphen-separated.
+- \`survivor\` and \`absorbed\` for merges are lab names, same rule as labName.
+- Never use a role name (e.g. "Australian PM") as a lab name, even when nationalisation brings a lab under a government's control. The lab keeps its existing name unless the merge action specifies newName.
+
 NOT AVAILABLE: lab creation (players-only, via the found-a-lab action) and standalone rename (use merge with newName for consolidation-driven renames).
 
 Only output operations DIRECTLY caused by successful actions. Empty array if nothing affects labs.
