@@ -102,7 +102,22 @@
 
 Each scenario is a small JSON fixture + a 10-15 line test. The harness should support probability/dice overrides as first-class args so tests never depend on randomness.
 
-8. **Write event-driven pipeline tests covering consequential actions** (2026-04-23) — we have unit tests for grader/narrate diff and a few game-logic primitives, but no integration test exercises the full resolve pipeline through a round with genuinely consequential, LLM-decided effects. Add fixtures + tests for:
+8. **Unify `adjustHolderCompute` vs `overrideHolderCompute`** (2026-04-23, flagged in simplify review #S4) — `convex/computeMutations.ts` now has two facilitator-edit mutations that both emit a `facilitator` ledger row via `emitTransaction`:
+   - `overrideHolderCompute({gameId, roundNumber, roleId, computeStock, reason})` — takes an **absolute** target stock; computes delta server-side from current `table.computeStock`.
+   - `adjustHolderCompute({gameId, roundNumber, roleId, delta, reason})` — takes a **delta** directly; no server-side read.
+
+   The UX split: compute-detail-table uses override (facilitator types the "After" value); new-compute-acquired editor uses adjust (facilitator edits pct-share → delta). Both are correct but the dual surface is redundant — a single mutation that accepts `{mode: "delta" | "absolute", amount: number}` would consolidate, or one could be deleted and the caller rewritten to compute the other's input.
+
+   **Do this AFTER the PR reviews land** (agentIds currently running produce `temp-review-correctness.md` and `temp-review-design.md`). The reviews may flag additional considerations that change the right consolidation target. Order of ops:
+   1. Read both review reports
+   2. Decide which mutation to keep based on the collected feedback
+   3. Rewrite the other's callers
+   4. Delete the loser + its tests
+   5. Run knip to confirm no dangling references
+
+   Hook points: `convex/computeMutations.ts`, `src/components/facilitator/new-compute-acquired.tsx#AcquiredEditor.save`, `src/components/facilitator/resolve-sections/state-section.tsx` (if any compute-detail callers remain after the compute-stock-and-flow deletion — grep for `overrideHolderCompute` to audit).
+
+9. **Write event-driven pipeline tests covering consequential actions** (2026-04-23) — we have unit tests for grader/narrate diff and a few game-logic primitives, but no integration test exercises the full resolve pipeline through a round with genuinely consequential, LLM-decided effects. Add fixtures + tests for:
    - **Compute destruction**: Taiwan bombed → TSMC offline → large `computeChange` negative ops across all labs, then subsequent rounds' new-compute totals drop. Assert ledger entries, lab stocks, and that R&D growth slows as expected given reduced stock.
    - **Data-centre cyber attacks**: compute stolen or disabled — either pure `computeChange` negative (destruction) or `computeTransfer`-style (taken over by attacker role). Assert source/sink conservation for transfers, non-conservation for destruction.
    - **Structural actions**: mergers (player + LLM-decided), splits (new-lab founding after spec divergence), decommissions, ownership transfers to real roles (never empty). Assert lab table state, `mergedIntoLabId` pointers, and that `appliedOps` summaries carry the correct role + intent text.
