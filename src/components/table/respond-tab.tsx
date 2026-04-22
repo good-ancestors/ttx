@@ -376,14 +376,18 @@ function AiRespondTab({
         return b.action.priority - a.action.priority;
       });
   }, [submissions]);
-
-  const influenced = useMemo(
-    () => allActions.filter(({ action, sub }) => effectiveAiResponse(action, sub.roleId) !== null),
+  const editableActions = useMemo(
+    () => allActions.filter(({ action }) => action.rolled == null),
     [allActions],
   );
+
+  const influenced = useMemo(
+    () => editableActions.filter(({ action, sub }) => effectiveAiResponse(action, sub.roleId) !== null),
+    [editableActions],
+  );
   const uninfluenced = useMemo(
-    () => allActions.filter(({ action, sub }) => effectiveAiResponse(action, sub.roleId) === null),
-    [allActions],
+    () => editableActions.filter(({ action, sub }) => effectiveAiResponse(action, sub.roleId) === null),
+    [editableActions],
   );
 
   if (!submissions || allActions.length === 0) {
@@ -392,6 +396,17 @@ function AiRespondTab({
         <Inbox className="w-10 h-10 text-border mb-3" />
         <p className="text-sm text-text-muted max-w-xs">
           No actions submitted yet. Other players&apos; actions will appear here.
+        </p>
+      </div>
+    );
+  }
+
+  if (editableActions.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Inbox className="w-10 h-10 text-border mb-3" />
+        <p className="text-sm text-text-muted max-w-xs">
+          Dice are already rolling. Influence is locked for actions once they have rolled.
         </p>
       </div>
     );
@@ -452,7 +467,6 @@ function AiRespondTab({
             <div className="flex-1 h-px bg-border" />
           </div>
           {uninfluenced.map(({ action, i, sub, role }) => {
-            if (action.rolled != null) return null;
             const isOwn = sub.roleId === AI_SYSTEMS_ROLE_ID;
             const roleLabel = isOwn ? `${role?.name ?? sub.roleId} (yours · cleared)` : role?.name ?? sub.roleId;
             return (

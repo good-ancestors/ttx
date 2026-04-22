@@ -293,16 +293,12 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
 
 // ─── Resolve phase ───────────────────────────────────────────────────────────
 
-function ResolveContent({ common, resolve, submit, lab, labs }: {
+function ResolveContent({ common, resolve, submit, lab }: {
   common: CommonProps;
   resolve: ResolveProps & { phase: "rolling" | "narrate" };
   submit: Pick<SubmitProps, "currentRound" | "allRequests">;
   lab: Pick<LabProps, "currentLab" | "startingStock">;
-  labs: Lab[];
 }) {
-  // AI Systems: keep influence tab interactive during the rolling phase so the
-  // player can still boost/sabotage up until dice are actually rolled on a given action.
-  const aiInfluenceStillEditable = common.isAiSystem && resolve.phase === "rolling";
   return (
     <>
       {common.activeTab === "brief" && resolve.round && (
@@ -312,26 +308,13 @@ function ResolveContent({ common, resolve, submit, lab, labs }: {
         <TableResolving phase={resolve.phase} round={resolve.round} sortedResultActions={resolve.sortedResultActions} showNarrative={false} />
       )}
       {common.activeTab === "respond" && (
-        aiInfluenceStillEditable ? (
-          <RespondTab
-            gameId={common.gameId}
-            roundNumber={submit.currentRound}
-            roleId={common.role.id}
-            tableId={common.tableId}
-            isAiSystem
-            aiInfluencePower={getAiInfluencePower(labs)}
-            allRequests={submit.allRequests}
-            allowEdits
-          />
-        ) : (
-          <RespondResultsTab
-            gameId={common.gameId}
-            roundNumber={submit.currentRound}
-            roleId={common.role.id}
-            isAiSystem={common.isAiSystem}
-            allRequests={submit.allRequests ?? []}
-          />
-        )
+        <RespondResultsTab
+          gameId={common.gameId}
+          roundNumber={submit.currentRound}
+          roleId={common.role.id}
+          isAiSystem={common.isAiSystem}
+          allRequests={submit.allRequests ?? []}
+        />
       )}
       {common.activeTab === "lab" && common.hasLabAccess && lab.currentLab && (
         <>
@@ -375,7 +358,6 @@ export function PhaseContent({ common, submit, lab, resolve, labs, phase, player
         resolve={{ ...resolve, round: resolve.round, phase }}
         submit={{ currentRound: submit.currentRound, allRequests: submit.allRequests }}
         lab={{ currentLab: lab.currentLab, startingStock: lab.startingStock }}
-        labs={labs}
       />
     );
   }

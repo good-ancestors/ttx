@@ -283,6 +283,105 @@ describe("EndorsementRespondTab (via RespondTab)", () => {
   });
 });
 
+describe("AiRespondTab (via RespondTab)", () => {
+  let RespondTab: typeof import("@/components/table/respond-tab").RespondTab;
+  let mockSetInfluenceFn: ReturnType<typeof vi.fn>;
+  let convexReact: typeof import("convex/react");
+
+  beforeEach(async () => {
+    convexReact = await import("convex/react");
+    mockSetInfluenceFn = vi.fn();
+    vi.mocked(convexReact.useMutation).mockReturnValue(mockSetInfluenceFn);
+    vi.mocked(convexReact.useQuery).mockReturnValue([
+      {
+        _id: "sub-1",
+        _creationTime: Date.now(),
+        tableId: "table-openbrain",
+        gameId: "game-1",
+        roundNumber: 1,
+        roleId: "openbrain-ceo",
+        status: "submitted",
+        actions: [
+          {
+            actionId: "action-1",
+            text: "Launch a new model",
+            priority: 5,
+            actionStatus: "submitted",
+          },
+        ],
+      },
+    ] as never);
+
+    const mod = await import("@/components/table/respond-tab");
+    RespondTab = mod.RespondTab;
+  });
+
+  it("Support sets positive AI influence while edits are enabled", () => {
+    render(
+      <RespondTab
+        gameId={"game-1" as never}
+        roundNumber={1}
+        roleId="ai-systems"
+        tableId={"table-ai" as never}
+        isAiSystem={true}
+        aiInfluencePower={30}
+        allRequests={[] as never}
+        allowEdits={true}
+      />,
+    );
+
+    const supportBtn = screen.getByText("Support").closest("button")!;
+    fireEvent.click(supportBtn);
+    expect(mockSetInfluenceFn).toHaveBeenCalledWith({
+      callerTableId: "table-ai",
+      submissionId: "sub-1",
+      actionIndex: 0,
+      modifier: 30,
+    });
+  });
+
+  it("removes rolled actions from the editable AI respond list", () => {
+    vi.mocked(convexReact.useQuery).mockReturnValue([
+      {
+        _id: "sub-1",
+        _creationTime: Date.now(),
+        tableId: "table-openbrain",
+        gameId: "game-1",
+        roundNumber: 1,
+        roleId: "openbrain-ceo",
+        status: "submitted",
+        actions: [
+          {
+            actionId: "action-1",
+            text: "Launch a new model",
+            priority: 5,
+            actionStatus: "submitted",
+            aiInfluence: 30,
+            rolled: 42,
+            success: false,
+          },
+        ],
+      },
+    ] as never);
+
+    render(
+      <RespondTab
+        gameId={"game-1" as never}
+        roundNumber={1}
+        roleId="ai-systems"
+        tableId={"table-ai" as never}
+        isAiSystem={true}
+        aiInfluencePower={30}
+        allRequests={[] as never}
+        allowEdits={true}
+      />,
+    );
+
+    expect(screen.getByText("Dice are already rolling. Influence is locked for actions once they have rolled.")).toBeInTheDocument();
+    expect(screen.queryByText("Launch a new model")).not.toBeInTheDocument();
+  });
+});
+
 // =============================================================================
 // 4. AttemptedPanel — Component tests
 // =============================================================================

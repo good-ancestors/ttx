@@ -1055,11 +1055,11 @@ export const setActionInfluence = mutation({
 
     const game = await ctx.db.get(sub.gameId);
     if (!game) throw new Error("Game not found");
-    // Allow during submit and rolling phases (until dice are actually rolled)
-    if (game.phase !== "submit" && game.phase !== "rolling") {
-      throw new Error("Cannot set influence after dice are rolled");
+    // AI influence remains editable after the submit timer ends, but only until
+    // the facilitator actually clicks "Roll Dice" and the phase leaves submit.
+    if (game.phase !== "submit") {
+      throw new Error("Cannot set influence after Roll Dice has been clicked");
     }
-    assertSubmitWindowOpen(game);
 
     const action = sub.actions[args.actionIndex];
     if (!action) throw new Error("Action not found");
