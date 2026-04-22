@@ -36,9 +36,6 @@ export interface ActionDraft {
   /** If set, this action is a "Found a lab" attempt. On roll success the seedCompute is
    *  consumed and a new lab row is created owned by the submitter. On failure the escrow refunds. */
   foundLab?: { name: string; spec?: string; seedCompute: number };
-  /** If set, this action is a merger attempt. On roll success absorbed is decommissioned,
-   *  survivor takes optional newName/newSpec, and absorbed owner's full compute flows to
-   *  survivor owner. Submitter must own either absorbed or survivor. */
   mergeLab?: { absorbedLabId: Id<"labs">; survivorLabId: Id<"labs">; newName?: string; newSpec?: string };
 }
 
@@ -71,9 +68,9 @@ interface Props {
   /** Roles that can send/receive compute (has-compute tag, excluding self) */
   computeRoles?: { id: string; name: string; computeStock?: number }[];
   ownComputeStock?: number;
-  /** Lab owned by this player (enables Merge-lab button). Absent = no owned lab. */
+  /** Lab owned by this player — enables the Merge-lab button. */
   ownedLab?: LabRef;
-  /** All other active labs in the game (merger candidates). Excludes ownedLab. */
+  /** Candidate labs for a merger (excludes the submitter's own). */
   otherLabs?: LabRef[];
   isSubmitted: boolean;
   onSubmitAction?: (index: number) => void;
@@ -308,7 +305,6 @@ function ActionCard({
             </button>
           )}
 
-          {/* Merge-lab toggle — only when submitter owns a lab and another lab is active. */}
           {ownedLab && otherLabs && otherLabs.length > 0 && (
             <button
               onClick={() => onUpdate({

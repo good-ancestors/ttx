@@ -85,6 +85,7 @@ async function gradeSubmissionBatch(
   // Pre-build lookup maps to avoid repeated .find() calls inside the loop
   const roleMap = new Map(ROLES.map((r) => [r.id, r]));
   const labMap = new Map(labs.filter((l) => l.roleId).map((l) => [l.roleId!, l]));
+  const labByLabId = new Map(labs.map((l) => [String(l.labId), l] as const));
   const roundMap = new Map(rounds.map((r) => [r.number, r]));
   const allSubsSummary = allSubmissions.map((s) => ({
     roleId: s.roleId,
@@ -110,7 +111,6 @@ async function gradeSubmissionBatch(
           requestType: r.requestType, computeAmount: r.computeAmount, status: r.status,
         }));
 
-      const labByLabId = new Map(labs.map((l) => [String(l.labId), l] as const));
       const mergeContextFor = (a: (typeof sub.actions)[number]) => {
         if (!a.mergeLab) return undefined;
         const absorbedLab = labByLabId.get(String(a.mergeLab.absorbedLabId));

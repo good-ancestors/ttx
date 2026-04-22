@@ -11,7 +11,7 @@ import {
   getAvailableStock,
   emitPair,
 } from "./computeLedger";
-import { createLabInternal, mergeLabsInternal } from "./labs";
+import { createLabInternal, mergeLabsWithComputeInternal } from "./labs";
 
 const PRIORITY_HARD_CAP = 12;
 
@@ -617,19 +617,19 @@ export const saveAndSubmit = mutation({
       if (!survivor || survivor.gameId !== args.gameId || survivor.status !== "active") {
         throw new Error("Survivor lab is not active in this game");
       }
-      // Submitter must own one of the two labs (initiator must have skin in the game).
       if (absorbed.ownerRoleId !== args.roleId && survivor.ownerRoleId !== args.roleId) {
         throw new Error("You must own either the absorbed or survivor lab to propose a merger");
       }
-      if (args.mergeLab.newName?.trim()) {
+      const newName = args.mergeLab.newName?.trim();
+      if (newName && newName !== survivor.name) {
         const clash = await ctx.db
           .query("labs")
           .withIndex("by_game_and_status", (q) => q.eq("gameId", args.gameId).eq("status", "active"))
           .collect();
         const conflict = clash.find(
-          (l) => l._id !== args.mergeLab!.survivorLabId && l.name === args.mergeLab!.newName!.trim(),
+          (l) => l._id !== args.mergeLab!.survivorLabId && l.name === newName,
         );
-        if (conflict) throw new Error(`Active lab named "${args.mergeLab.newName}" already exists`);
+        if (conflict) throw new Error(`Active lab named "${newName}" already exists`);
       }
     }
 
@@ -1212,60 +1212,50 @@ async function rollAllImpl(
       });
     }
 
-    // Merge-lab settlement: on success, merge the two labs and flow absorbed owner's
-    // settled compute stock to survivor owner via a merged ledger pair. Auto-fail if
-    // either lab was decommissioned earlier this round (another merger won the race).
+    // Merge-lab settlement. Auto-fails if either lab was decommissioned earlier this
+    // round (another merger won the race).
     for (const action of actions) {
       if (!action.mergeLab) continue;
       if (action.rolled == null || !action.actionId) continue;
       if (action.actionStatus !== "submitted") continue;
-      const success = !!action.success;
-      const [absorbed, survivor] = await Promise.all([
-        ctx.db.get(action.mergeLab.absorbedLabId),
-        ctx.db.get(action.mergeLab.survivorLabId),
-      ]);
-      const bothActive = absorbed?.status === "active" && survivor?.status === "active";
-      const succeeded = success && bothActive;
-      if (succeeded && absorbed && survivor) {
-        try {
-          await mergeLabsInternal(ctx, {
-            survivorLabId: survivor._id,
-            absorbedLabId: absorbed._id,
-            newName: action.mergeLab.newName?.trim() || undefined,
-            newSpec: action.mergeLab.newSpec?.trim() || undefined,
-          });
-          // Flow absorbed owner's settled stock to survivor owner. Read fresh from the
-          // tables cache so we pick up any intra-round settlements that already ran.
-          if (absorbed.ownerRoleId && survivor.ownerRoleId && absorbed.ownerRoleId !== survivor.ownerRoleId) {
-            const absorbedTable = await ctx.db
-              .query("tables")
-              .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", absorbed.ownerRoleId!))
-              .first();
-            const amount = absorbedTable?.computeStock ?? 0;
-            if (amount > 0) {
-              await emitPair(ctx, {
-                gameId,
-                roundNumber,
-                type: "merged",
-                status: "settled",
-                fromRoleId: absorbed.ownerRoleId,
-                toRoleId: survivor.ownerRoleId,
-                amount,
-                reason: `Merger: ${absorbed.name} → ${survivor.name}`,
-                actionId: action.actionId,
-              });
-            }
-          }
-        } catch (err) {
-          console.warn(`[rollAll] Merger ${absorbed.name} → ${survivor.name} failed:`, err);
-        }
+      if (!action.success) {
+        await logEvent(ctx, gameId, "lab_merge_failed", sub.roleId, {
+          absorbedLabId: action.mergeLab.absorbedLabId,
+          survivorLabId: action.mergeLab.survivorLabId,
+          reason: "rolled_failure",
+        });
+        continue;
       }
-      await logEvent(ctx, gameId, succeeded ? "lab_merged" : "lab_merge_failed", sub.roleId, {
-        absorbedLabId: action.mergeLab.absorbedLabId,
-        survivorLabId: action.mergeLab.survivorLabId,
-        rolled: success,
-        bothActive,
-      });
+      try {
+        const outcome = await mergeLabsWithComputeInternal(ctx, {
+          gameId,
+          roundNumber,
+          survivorLabId: action.mergeLab.survivorLabId,
+          absorbedLabId: action.mergeLab.absorbedLabId,
+          newName: action.mergeLab.newName?.trim() || undefined,
+          newSpec: action.mergeLab.newSpec?.trim() || undefined,
+          reason: `Merger on action: ${action.text.slice(0, 80)}`,
+          actionId: action.actionId,
+        });
+        await logEvent(ctx, gameId, outcome ? "lab_merged" : "lab_merge_failed", sub.roleId, {
+          absorbedLabId: action.mergeLab.absorbedLabId,
+          survivorLabId: action.mergeLab.survivorLabId,
+          reason: outcome ? undefined : "lab_already_decommissioned",
+          amountMoved: outcome?.amountMoved,
+        });
+      } catch (err) {
+        // Structural merge half-completed (compute may be stranded on the absorbed
+        // owner). Log loudly so facilitator can reconcile via ledger adjustment.
+        console.error(`[rollAll] Merger settlement crashed after structural change`, {
+          actionId: action.actionId, absorbedLabId: action.mergeLab.absorbedLabId,
+          survivorLabId: action.mergeLab.survivorLabId, err,
+        });
+        await logEvent(ctx, gameId, "lab_merge_error", sub.roleId, {
+          absorbedLabId: action.mergeLab.absorbedLabId,
+          survivorLabId: action.mergeLab.survivorLabId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     for (const action of actions) {

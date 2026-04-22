@@ -7,9 +7,9 @@ import { internal } from "./_generated/api";
 import {
   getActiveLabsForGame,
   createLabInternal,
-  mergeLabsInternal,
+  mergeLabsWithComputeInternal,
 } from "./labs";
-import { emitPair, emitTransaction } from "./computeLedger";
+import { emitTransaction } from "./computeLedger";
 
 
 /** Pre-generate AI/NPC actions so they're ready before submissions open. */
@@ -696,30 +696,13 @@ export const mergeLabs = mutation({
     if (!survivor) throw new Error(`Survivor lab "${args.survivorName}" not found`);
     if (!absorbed) throw new Error(`Absorbed lab "${args.absorbedName}" not found`);
 
-    await mergeLabsInternal(ctx, {
+    await mergeLabsWithComputeInternal(ctx, {
+      gameId: args.gameId,
+      roundNumber: game.currentRound,
       survivorLabId: survivor._id,
       absorbedLabId: absorbed._id,
+      reason: `Facilitator-triggered merge: ${args.absorbedName} → ${args.survivorName}`,
     });
-
-    // Emit merged ledger pair for the compute movement if both labs had owners with stock.
-    if (survivor.ownerRoleId && absorbed.ownerRoleId) {
-      const absorbedTable = await ctx.db.query("tables")
-        .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", absorbed.ownerRoleId!))
-        .first();
-      const absorbedStock = absorbedTable?.computeStock ?? 0;
-      if (absorbedStock > 0) {
-        await emitPair(ctx, {
-          gameId: args.gameId,
-          roundNumber: game.currentRound,
-          type: "merged",
-          status: "settled",
-          fromRoleId: absorbed.ownerRoleId,
-          toRoleId: survivor.ownerRoleId,
-          amount: absorbedStock,
-          reason: `Facilitator-triggered merge: ${args.absorbedName} → ${args.survivorName}`,
-        });
-      }
-    }
 
     await logEvent(ctx, args.gameId, "lab_merged", survivor.ownerRoleId, {
       survivor: args.survivorName,

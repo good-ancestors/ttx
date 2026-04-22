@@ -1,16 +1,8 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 
-// Integration tests for the mergeLab action flow.
-//
-// Exercises:
-//   - submit-time validation (self-merge, non-owner, inactive labs, name clash)
-//   - settlement: success merges both labs + flows absorbed owner's compute to survivor
-//   - settlement: failure leaves both labs alone
-//   - race: absorbed lab already decommissioned at roll time → auto-fail
-//
 // Run with: npm run test:integration  (requires `npx convex dev` running)
 
 const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
@@ -48,8 +40,10 @@ async function setupGameInSubmitPhase() {
 }
 
 describe("mergeLab: submit-time validation", () => {
+  let ctx: Awaited<ReturnType<typeof setupGameInSubmitPhase>>;
+  beforeAll(async () => { ctx = await setupGameInSubmitPhase(); });
+
   it("rejects self-merge (absorbed == survivor)", async () => {
-    const ctx = await setupGameInSubmitPhase();
     await expect(
       convex.mutation(api.submissions.saveAndSubmit, {
         tableId: ctx.openbrainTable._id,
@@ -67,7 +61,6 @@ describe("mergeLab: submit-time validation", () => {
   });
 
   it("rejects when submitter owns neither lab", async () => {
-    const ctx = await setupGameInSubmitPhase();
     await expect(
       convex.mutation(api.submissions.saveAndSubmit, {
         tableId: ctx.openbrainTable._id,
@@ -85,7 +78,6 @@ describe("mergeLab: submit-time validation", () => {
   });
 
   it("rejects newName clashing with another active lab", async () => {
-    const ctx = await setupGameInSubmitPhase();
     await expect(
       convex.mutation(api.submissions.saveAndSubmit, {
         tableId: ctx.openbrainTable._id,
@@ -184,9 +176,13 @@ describe("mergeLab: settlement via rollAllFacilitator", () => {
 
   it("race: absorbed lab already decommissioned by an earlier merger → this one no-ops", async () => {
     const ctx = await setupGameInSubmitPhase();
-    const absorbedStockBefore = (await convex.query(api.tables.get, { tableId: ctx.deepcentTable._id }))!.computeStock ?? 0;
+    const [absorbedBefore, openbrainBefore, conscientaBefore] = await Promise.all([
+      convex.query(api.tables.get, { tableId: ctx.deepcentTable._id }),
+      convex.query(api.tables.get, { tableId: ctx.openbrainTable._id }),
+      convex.query(api.tables.get, { tableId: ctx.conscientaTable._id }),
+    ]);
+    const absorbedStock = absorbedBefore!.computeStock ?? 0;
 
-    // OpenBrain tries to absorb DeepCent.
     const first = await convex.mutation(api.submissions.saveAndSubmit, {
       tableId: ctx.openbrainTable._id,
       gameId: ctx.gameId,
@@ -196,7 +192,6 @@ describe("mergeLab: settlement via rollAllFacilitator", () => {
       priority: 1,
       mergeLab: { absorbedLabId: ctx.deepcentLab._id, survivorLabId: ctx.openbrainLab._id },
     });
-    // Conscienta also tries to absorb DeepCent.
     const second = await convex.mutation(api.submissions.saveAndSubmit, {
       tableId: ctx.conscientaTable._id,
       gameId: ctx.gameId,
@@ -217,15 +212,16 @@ describe("mergeLab: settlement via rollAllFacilitator", () => {
       gameId: ctx.gameId, roundNumber: 1, facilitatorToken: FACILITATOR_TOKEN,
     });
 
-    // Only one of the two survivors should have absorbed DeepCent's stock.
-    const openbrainTable = await convex.query(api.tables.get, { tableId: ctx.openbrainTable._id });
-    const conscientaTable = await convex.query(api.tables.get, { tableId: ctx.conscientaTable._id });
-    const absorbedTableAfter = await convex.query(api.tables.get, { tableId: ctx.deepcentTable._id });
-    expect(absorbedTableAfter!.computeStock).toBe(0);
+    const [absorbedAfter, openbrainAfter, conscientaAfter] = await Promise.all([
+      convex.query(api.tables.get, { tableId: ctx.deepcentTable._id }),
+      convex.query(api.tables.get, { tableId: ctx.openbrainTable._id }),
+      convex.query(api.tables.get, { tableId: ctx.conscientaTable._id }),
+    ]);
+    expect(absorbedAfter!.computeStock).toBe(0);
 
-    const openbrainDelta = (openbrainTable!.computeStock ?? 0) - 22; // OpenBrain seed stock
-    const conscientaDelta = (conscientaTable!.computeStock ?? 0) - 8; // Conscienta seed stock
-    const absorbedFlowedOnce = [openbrainDelta, conscientaDelta].filter((d) => d === absorbedStockBefore).length;
+    const openbrainDelta = (openbrainAfter!.computeStock ?? 0) - (openbrainBefore!.computeStock ?? 0);
+    const conscientaDelta = (conscientaAfter!.computeStock ?? 0) - (conscientaBefore!.computeStock ?? 0);
+    const absorbedFlowedOnce = [openbrainDelta, conscientaDelta].filter((d) => d === absorbedStock).length;
     expect(absorbedFlowedOnce).toBe(1);
   });
 });

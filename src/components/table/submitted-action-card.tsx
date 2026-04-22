@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Send, Pencil, Trash2, EyeOff, Lock, Handshake, Zap, GitMerge } from "lucide-react";
+import type { Id } from "@convex/_generated/dataModel";
 
 export interface SentRequest {
   toRoleName: string;
@@ -18,7 +19,7 @@ export function SubmittedActionCard({
   onDelete,
   sentRequests,
 }: {
-  action: { text: string; priority: number; secret?: boolean; probability?: number; rolled?: number; mergeLab?: { absorbedLabId: string; survivorLabId: string; newName?: string } };
+  action: { text: string; priority: number; secret?: boolean; probability?: number; rolled?: number; mergeLab?: { absorbedLabId: Id<"labs">; survivorLabId: Id<"labs">; newName?: string } };
   index: number;
   canEdit: boolean;
   onEdit: () => void;
