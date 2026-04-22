@@ -252,6 +252,15 @@ export default defineSchema({
       summary: v.string(),           // human-readable one-line description of what happened
       reason: v.optional(v.string()),// LLM's reason for the op (applied ops) or why it was rejected
     }))),
+    // LLM multiplier overrides from this round's decide pass, carried across the P7
+    // pause. Applied in phase 5 for facilitator review visibility, then RE-applied
+    // after computeLabGrowth in phase 9 so the final rdMultiplier is exactly the
+    // override value (not the override * growth factor, which compounded to absurd
+    // numbers like 2000× in practice). Cleared on re-resolve.
+    pendingMultiplierOverrides: v.optional(v.array(v.object({
+      labId: v.id("labs"),
+      rdMultiplier: v.number(),
+    }))),
     // Pre-resolve snapshot of lab structural state (multiplier, allocation, spec, name).
     // Compute history lives in the computeTransactions ledger — not duplicated here.
     labsBefore: v.optional(v.array(labSnapshotValidator)),

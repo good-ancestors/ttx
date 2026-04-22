@@ -848,8 +848,18 @@ export const rollAndApplyEffects = internalAction({
           error: decideError,
         },
       };
+      // Stash multiplier overrides so continueFromEffectReview can re-apply them after
+      // R&D growth (otherwise growth compounds on top and the final multiplier exceeds
+      // what the facilitator reviewed at P7 — in live testing this escalated to 2000×).
+      const pendingMultiplierOverrides = multiplierOverrides.map((ov) => ({ labId: ov.labId, rdMultiplier: ov.newMultiplier }));
+
       await Promise.all([
         ctx.runMutation(internal.rounds.setAppliedOpsInternal, { gameId, roundNumber, appliedOps }),
+        ctx.runMutation(internal.rounds.setPendingMultiplierOverridesInternal, {
+          gameId,
+          roundNumber,
+          pendingMultiplierOverrides,
+        }),
         ctx.runMutation(internal.rounds.setAiMetaInternal, {
           gameId,
           roundNumber,
@@ -930,6 +940,21 @@ export const continueFromEffectReview = internalAction({
         if (lab.rdMultiplier !== pre.rdMultiplier) {
           multiplierUpdates.push({ labId: pre.labId, rdMultiplier: lab.rdMultiplier });
         }
+      }
+
+      // Re-apply LLM multiplier overrides AFTER growth. The overrides were already
+      // applied in phase 5 for P7 visibility, but growth runs on top of that value and
+      // would compound — a 10× override plus a 2× growth factor lands at 20×, and over
+      // multiple rounds compounded to 2000× in live testing. Override semantics should
+      // be "final value", so we force the lab's rdMultiplier back to the override here.
+      if (currentRound.pendingMultiplierOverrides && currentRound.pendingMultiplierOverrides.length > 0) {
+        for (const ov of currentRound.pendingMultiplierOverrides) {
+          const existing = multiplierUpdates.findIndex((u) => u.labId === ov.labId);
+          if (existing >= 0) multiplierUpdates[existing] = { labId: ov.labId, rdMultiplier: ov.rdMultiplier };
+          else multiplierUpdates.push({ labId: ov.labId, rdMultiplier: ov.rdMultiplier });
+        }
+        // Clear the stash so a later re-resolve or restore doesn't double-apply.
+        await ctx.runMutation(internal.rounds.clearPendingMultiplierOverridesInternal, { gameId, roundNumber });
       }
 
       // ═══ PHASE 10 — NEW COMPUTE ACQUIRED ═══
