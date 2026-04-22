@@ -24,6 +24,7 @@ export interface LabWithCompute {
   spec?: string;
   colour: string;
   status: "active" | "decommissioned";
+  jurisdiction?: string;             // legal/regulatory home
 }
 
 // Default colour palette for auto-assigned labs (founder-chosen overrides).
@@ -81,6 +82,7 @@ export async function getLabsWithCompute(
     spec: l.spec,
     colour: l.colour,
     status: l.status,
+    jurisdiction: l.jurisdiction,
   }));
 }
 
@@ -99,6 +101,7 @@ export async function createLabInternal(
     ownerRoleId?: string;
     colour?: string;
     createdRound: number;
+    jurisdiction?: string;
   },
 ): Promise<Id<"labs">> {
   const active = await getActiveLabsForGame(ctx, args.gameId);
@@ -114,6 +117,7 @@ export async function createLabInternal(
     colour: args.colour ?? pickColour(active),
     status: "active",
     createdRound: args.createdRound,
+    jurisdiction: args.jurisdiction,
   });
 }
 

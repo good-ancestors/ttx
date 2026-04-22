@@ -220,6 +220,7 @@ async function buildLabSnapshot(ctx: MutationCtx, gameId: Id<"games">) {
     status: l.status,
     mergedIntoLabId: l.mergedIntoLabId,
     createdRound: l.createdRound,
+    jurisdiction: l.jurisdiction,
   }));
 }
 

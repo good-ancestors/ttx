@@ -41,6 +41,7 @@ async function snapshotRound(ctx: MutationCtx, gameId: Id<"games">, roundNumber:
       status: l.status,
       mergedIntoLabId: l.mergedIntoLabId,
       createdRound: l.createdRound,
+      jurisdiction: l.jurisdiction,
     })),
   });
 }
@@ -90,6 +91,7 @@ export const create = mutation({
         colour: LAB_COLOURS[lab.roleId] ?? "#64748B",
         status: "active",
         createdRound: 1,
+        jurisdiction: lab.jurisdiction,
       });
     }
 
@@ -512,6 +514,7 @@ export const restoreSnapshot = mutation({
           colour: snap.colour,
           status: snap.status,
           createdRound: snap.createdRound,
+          jurisdiction: snap.jurisdiction,
           // mergedIntoLabId set in pass 2 once remap is complete.
         });
         labIdRemap.set(snap.labId, insertedId);

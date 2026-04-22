@@ -25,6 +25,7 @@ export interface Lab {
   spec?: string;
   colour?: string;
   status?: "active" | "decommissioned";
+  jurisdiction?: string;                // legal/regulatory home — affects probability weighting; mutated by redomicile
 }
 
 // ─── ROLES ────────────────────────────────────────────────────────────────────

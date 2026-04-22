@@ -20,6 +20,7 @@ const labSnapshotValidator = v.object({
   status: v.union(v.literal("active"), v.literal("decommissioned")),
   mergedIntoLabId: v.optional(v.id("labs")),
   createdRound: v.number(),
+  jurisdiction: v.optional(v.string()),
 });
 
 export const labTrajectoryValidator = v.object({
@@ -56,6 +57,11 @@ export default defineSchema({
     status: v.union(v.literal("active"), v.literal("decommissioned")),
     mergedIntoLabId: v.optional(v.id("labs")),    // set when status=decommissioned via merger
     createdRound: v.number(),                     // round at founding — for filtering chart history
+    // Legal/regulatory home of the lab. Affects probability weighting for actions
+    // that depend on jurisdiction (nationalisation, export controls, regulatory
+    // moves) and narrative framing. Mutated by redomicile actions; unrelated to
+    // ownership (ownerRoleId).
+    jurisdiction: v.optional(v.string()),
   })
     .index("by_game", ["gameId"])
     .index("by_game_and_owner", ["gameId", "ownerRoleId"])
