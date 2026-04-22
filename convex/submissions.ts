@@ -57,6 +57,11 @@ const foundLabValidator = v.object({
   name: v.string(),
   spec: v.optional(v.string()),
   seedCompute: v.number(),
+  allocation: v.optional(v.object({
+    deployment: v.number(),
+    research: v.number(),
+    safety: v.number(),
+  })),
 });
 
 const mergeLabValidator = v.object({
@@ -1192,7 +1197,7 @@ async function rollAllImpl(
             name: action.foundLab.name,
             spec: action.foundLab.spec,
             rdMultiplier: 1,
-            allocation: { deployment: 33, research: 34, safety: 33 },
+            allocation: action.foundLab.allocation ?? { deployment: 33, research: 34, safety: 33 },
             ownerRoleId: sub.roleId,
             createdRound: roundNumber,
           });

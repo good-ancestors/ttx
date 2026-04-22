@@ -152,6 +152,14 @@ export default defineSchema({
           name: v.string(),
           spec: v.optional(v.string()),
           seedCompute: v.number(),
+          /** Founder-chosen allocation split for the new lab's compute
+           *  (deployment/research/safety). Percentages, summing to 100.
+           *  Optional for backward compat; defaults to {33,34,33} if absent. */
+          allocation: v.optional(v.object({
+            deployment: v.number(),
+            research: v.number(),
+            safety: v.number(),
+          })),
         })),
         /** Merger attempt attached to this action. Submitter must own absorbed or survivor. */
         mergeLab: v.optional(v.object({

@@ -34,8 +34,15 @@ export interface ActionDraft {
   endorseTargets: string[]; // roleIds
   computeTargets: ComputeTarget[];
   /** If set, this action is a "Found a lab" attempt. On roll success the seedCompute is
-   *  consumed and a new lab row is created owned by the submitter. On failure the escrow refunds. */
-  foundLab?: { name: string; spec?: string; seedCompute: number };
+   *  consumed and a new lab row is created owned by the submitter. On failure the escrow refunds.
+   *  seedCompute is auto-set to the founder's entire current compute stock at toggle time.
+   *  allocation lets the founder set the lab's initial deployment/research/safety split. */
+  foundLab?: {
+    name: string;
+    spec?: string;
+    seedCompute: number;
+    allocation?: { deployment: number; research: number; safety: number };
+  };
   mergeLab?: { absorbedLabId: Id<"labs">; survivorLabId: Id<"labs">; newName?: string; newSpec?: string };
 }
 
@@ -285,10 +292,17 @@ function ActionCard({
           </button>
 
           {/* Found-a-lab toggle — only for has-compute roles without an existing lab
-              and with enough compute to meet the 10u minimum seed. */}
+              and with enough compute to meet the 10u minimum seed. Founding consumes the
+              founder's entire current compute pool on success (refunded on failure). */}
           {computeRoles && !ownedLab && (ownComputeStock ?? 0) >= 10 && (
             <button
-              onClick={() => onUpdate({ foundLab: action.foundLab ? undefined : { name: "", seedCompute: 10 } })}
+              onClick={() => onUpdate({
+                foundLab: action.foundLab ? undefined : {
+                  name: "",
+                  seedCompute: ownComputeStock ?? 10,
+                  allocation: { deployment: 33, research: 34, safety: 33 },
+                },
+              })}
               disabled={isSubmitted}
               aria-label="Found a new lab with this action"
               aria-pressed={!!action.foundLab}
@@ -299,9 +313,7 @@ function ActionCard({
               }`}
             >
               <FlaskConical className="w-4 h-4" />
-              <span className="text-xs font-medium">
-                Found lab{action.foundLab ? ` (${action.foundLab.seedCompute}u)` : ""}
-              </span>
+              <span className="text-xs font-medium">Found lab</span>
             </button>
           )}
 
@@ -388,44 +400,13 @@ function ActionCard({
         />
       )}
 
-      {/* Found-a-lab inline form */}
+      {/* Found-a-lab inline form: full compute pool is staked; founder sets allocation. */}
       {action.foundLab && !isSubmitted && (
-        <div className="mt-2 pt-2 border-t border-border">
-          <p className="text-[11px] text-text-muted mb-2 flex items-center gap-1">
-            <FlaskConical className="w-3 h-3 text-[#7C3AED]" />
-            Found a new lab: seed compute is consumed on success, refunded on failure.
-          </p>
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={action.foundLab.name}
-              onChange={(e) => onUpdate({ foundLab: { ...action.foundLab!, name: e.target.value } })}
-              placeholder="Lab name"
-              maxLength={60}
-              className="flex-1 min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text"
-            />
-            <input
-              type="number"
-              min={10}
-              max={Math.max(10, ownComputeStock ?? 10)}
-              value={action.foundLab.seedCompute}
-              onChange={(e) => {
-                const n = Math.max(10, Math.min(ownComputeStock ?? 10000, parseInt(e.target.value) || 10));
-                onUpdate({ foundLab: { ...action.foundLab!, seedCompute: n } });
-              }}
-              className="w-20 min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text font-mono text-center"
-              placeholder="u"
-            />
-          </div>
-          <textarea
-            value={action.foundLab.spec ?? ""}
-            onChange={(e) => onUpdate({ foundLab: { ...action.foundLab!, spec: e.target.value || undefined } })}
-            placeholder="Lab spec / mission (optional)"
-            maxLength={500}
-            rows={2}
-            className="w-full mt-2 rounded-lg border border-border bg-warm-gray px-2 py-1 text-xs text-text resize-none"
-          />
-        </div>
+        <FoundLabForm
+          foundLab={action.foundLab}
+          ownComputeStock={ownComputeStock ?? 0}
+          onUpdate={(fl) => onUpdate({ foundLab: fl })}
+        />
       )}
 
       {/* Merge-lab inline form */}
@@ -638,6 +619,79 @@ function ComputeRequestPicker({
           <X className="w-3 h-3" /> Clear all
         </button>
       )}
+    </div>
+  );
+}
+
+function FoundLabForm({
+  foundLab,
+  ownComputeStock,
+  onUpdate,
+}: {
+  foundLab: NonNullable<ActionDraft["foundLab"]>;
+  ownComputeStock: number;
+  onUpdate: (fl: NonNullable<ActionDraft["foundLab"]>) => void;
+}) {
+  // The founder always stakes their full current compute pool. Keep the form's
+  // seedCompute synced to the current stock so the value reflects anything that
+  // changes between toggling and submitting.
+  useEffect(() => {
+    if (ownComputeStock > 0 && foundLab.seedCompute !== ownComputeStock) {
+      onUpdate({ ...foundLab, seedCompute: ownComputeStock });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownComputeStock]);
+
+  const alloc = foundLab.allocation ?? { deployment: 33, research: 34, safety: 33 };
+  const setAlloc = (patch: Partial<typeof alloc>) => {
+    onUpdate({ ...foundLab, allocation: { ...alloc, ...patch } });
+  };
+  const total = alloc.deployment + alloc.research + alloc.safety;
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border">
+      <p className="text-[11px] text-text-muted mb-2 flex items-center gap-1">
+        <FlaskConical className="w-3 h-3 text-[#7C3AED]" />
+        New lab staked with your full compute pool ({ownComputeStock}u). Refunded on failure.
+      </p>
+      <input
+        type="text"
+        value={foundLab.name}
+        onChange={(e) => onUpdate({ ...foundLab, name: e.target.value })}
+        placeholder="Lab name"
+        maxLength={60}
+        className="w-full min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text mb-2"
+      />
+      <textarea
+        value={foundLab.spec ?? ""}
+        onChange={(e) => onUpdate({ ...foundLab, spec: e.target.value || undefined })}
+        placeholder="Lab spec / mission (optional)"
+        maxLength={500}
+        rows={2}
+        className="w-full rounded-lg border border-border bg-warm-gray px-2 py-1 text-xs text-text resize-none mb-2"
+      />
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[11px] text-text-muted">Initial allocation</span>
+        <span className={`text-[10px] font-mono ${total === 100 ? "text-text-muted" : "text-viz-danger"}`}>
+          {total}% {total !== 100 ? "(must total 100)" : ""}
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {(["deployment", "research", "safety"] as const).map((k) => (
+          <div key={k} className="flex items-center gap-2">
+            <label className="text-[11px] text-text-muted capitalize w-20 shrink-0">{k}</label>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={alloc[k]}
+              onChange={(e) => setAlloc({ [k]: parseInt(e.target.value) || 0 })}
+              className="flex-1"
+            />
+            <span className="text-[11px] font-mono w-10 text-right">{alloc[k]}%</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
