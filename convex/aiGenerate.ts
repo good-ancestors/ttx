@@ -137,7 +137,15 @@ export const generateAll = internalAction({
         try {
           const all = getSampleActions(sampleData as never, table.roleId, roundNumber);
           if (all.length === 0) continue;
-          const picked = pickRandom(all, actionsPerTable);
+          // Prefer structured-intent actions when this role+round has any. They're
+          // mergers, lab foundings, and compute transfers hand-tagged for P7 review
+          // coverage — picking them first means test rounds deterministically surface
+          // applied ops rather than relying on the random picker landing on them.
+          const structured = all.filter((a: typeof all[number] & { structured?: unknown }) => !!a.structured);
+          const plain = all.filter((a: typeof all[number] & { structured?: unknown }) => !a.structured);
+          const picked = structured.length > 0
+            ? [...pickRandom(structured, Math.min(structured.length, actionsPerTable)), ...pickRandom(plain, Math.max(0, actionsPerTable - structured.length))]
+            : pickRandom(all, actionsPerTable);
           const decay = PRIORITY_DECAY[picked.length] ?? PRIORITY_DECAY[5];
 
           const role = ROLES.find((r) => r.id === table.roleId);
