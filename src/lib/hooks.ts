@@ -164,16 +164,22 @@ export function useKeyboardScroll() {
 }
 
 const FACILITATOR_TOKEN_KEY = "ttx-facilitator-token";
+const FACILITATOR_TOKEN_EVENT = "ttx:facilitator-token-change";
 
 /** Read the facilitator token from localStorage (SSR-safe, cross-tab sync). */
 export function useFacilitatorToken(): string | undefined {
   const subscribe = useCallback((cb: () => void) => {
+    if (typeof window === "undefined") return () => {};
     window.addEventListener("storage", cb);
-    return () => window.removeEventListener("storage", cb);
+    window.addEventListener(FACILITATOR_TOKEN_EVENT, cb);
+    return () => {
+      window.removeEventListener("storage", cb);
+      window.removeEventListener(FACILITATOR_TOKEN_EVENT, cb);
+    };
   }, []);
 
   const getSnapshot = useCallback(
-    () => localStorage.getItem(FACILITATOR_TOKEN_KEY) ?? undefined,
+    () => (typeof window === "undefined" ? undefined : localStorage.getItem(FACILITATOR_TOKEN_KEY) ?? undefined),
     [],
   );
 
@@ -185,6 +191,7 @@ export function useFacilitatorToken(): string | undefined {
 /** Store the facilitator token in localStorage. */
 export function storeFacilitatorToken(passphrase: string) {
   localStorage.setItem(FACILITATOR_TOKEN_KEY, passphrase);
+  window.dispatchEvent(new Event(FACILITATOR_TOKEN_EVENT));
 }
 
 /**

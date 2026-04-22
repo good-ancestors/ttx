@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { useQuery } from "convex/react";
+import { useConvex } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Loader2, CheckCircle, ChevronDown, Bug, X } from "lucide-react";
@@ -42,6 +42,12 @@ const SECTIONS: { key: keyof NonNullable<Round["summary"]>; label: string }[] = 
   { key: "publicAndMedia", label: "Public & Media" },
   { key: "aiSystems", label: "AI Systems" },
 ];
+
+interface ResolveDebugData {
+  prompt: string;
+  responseJson: string;
+  error?: string;
+}
 
 export function NarrativePanel({
   round,
@@ -139,11 +145,10 @@ export function NarrativePanel({
 function ResolveDebugButton({ gameId, roundNumber }: { gameId: Id<"games">; roundNumber: number }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"prompt" | "response">("response");
+  const [debug, setDebug] = useState<ResolveDebugData | null | undefined>(undefined);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const convex = useConvex();
   const facilitatorToken = useFacilitatorToken();
-  const debug = useQuery(
-    api.rounds.getResolveDebug,
-    open ? { gameId, roundNumber, facilitatorToken } : "skip",
-  );
 
   useEffect(() => {
     if (!open) return;
@@ -152,10 +157,31 @@ function ResolveDebugButton({ gameId, roundNumber }: { gameId: Id<"games">; roun
     return () => document.removeEventListener("keydown", handler);
   }, [open]);
 
+  const openDebug = () => {
+    setOpen(true);
+    setTab("response");
+    setDebug(undefined);
+
+    if (!facilitatorToken) {
+      setLoadError("Facilitator authentication is missing. Refresh and sign in again.");
+      return;
+    }
+
+    setLoadError(null);
+
+    void convex
+      .query(api.rounds.getResolveDebug, { gameId, roundNumber, facilitatorToken })
+      .then((result) => setDebug(result))
+      .catch((error) => {
+        console.error("Failed to load resolve debug:", error);
+        setLoadError(error instanceof Error ? error.message : "Failed to load resolve debug.");
+      });
+  };
+
   return (
     <>
       <button
-        onClick={() => setOpen(true)}
+        onClick={openDebug}
         className="absolute top-4 right-4 text-text-light/60 hover:text-text-light transition-colors"
         title="Show LLM prompt and response for this round"
         aria-label="Show resolve-phase LLM debug"
@@ -191,7 +217,11 @@ function ResolveDebugButton({ gameId, roundNumber }: { gameId: Id<"games">; roun
               ))}
             </div>
             <div className="flex-1 overflow-auto px-4 py-3">
-              {debug === undefined ? (
+              {loadError ? (
+                <div className="rounded bg-viz-danger/20 border border-viz-danger/40 text-viz-danger text-xs px-3 py-2">
+                  {loadError}
+                </div>
+              ) : debug === undefined ? (
                 <div className="text-text-light text-xs">Loading…</div>
               ) : debug === null ? (
                 <div className="text-text-light text-xs">No LLM debug captured for this round yet (will appear after the narrative runs).</div>

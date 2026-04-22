@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /// <reference types="@testing-library/jest-dom" />
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, renderHook, screen, fireEvent, cleanup, waitFor, act } from "@testing-library/react";
 import * as matchers from "@testing-library/jest-dom/matchers";
 expect.extend(matchers);
 
@@ -9,6 +9,7 @@ expect.extend(matchers);
 vi.mock("convex/react", () => ({
   useQuery: vi.fn(),
   useMutation: vi.fn(() => Object.assign(vi.fn(), { withOptimisticUpdate: vi.fn() })),
+  useConvex: vi.fn(),
 }));
 
 // ─── Mock lucide-react icons as simple spans ────────────────────────────────
@@ -40,6 +41,7 @@ vi.mock("lucide-react", () => lucideMock);
 vi.mock("@convex/_generated/api", () => ({
   api: {
     requests: { respond: "requests:respond" },
+    rounds: { getResolveDebug: "rounds:getResolveDebug" },
     submissions: {
       getByGameAndRoundRedacted: "submissions:getByGameAndRoundRedacted",
       setActionInfluence: "submissions:setActionInfluence",
@@ -582,5 +584,75 @@ describe("BriefTab", () => {
     expect(screen.getByText("Test Role")).toBeInTheDocument();
     expect(screen.getByText("Test Resources")).toBeInTheDocument();
     expect(screen.getByText("Test Objective")).toBeInTheDocument();
+  });
+});
+
+describe("facilitator auth client state", () => {
+  it("updates useFacilitatorToken subscribers in the same tab", async () => {
+    let token: string | null = null;
+    const storage = {
+      getItem: vi.fn(() => token),
+      setItem: vi.fn((_key: string, value: string) => {
+        token = value;
+      }),
+      removeItem: vi.fn(),
+    };
+    Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
+    Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+    const { useFacilitatorToken, storeFacilitatorToken } = await import("@/lib/hooks");
+    const { result } = renderHook(() => useFacilitatorToken());
+
+    expect(result.current).toBeUndefined();
+
+    act(() => {
+      storeFacilitatorToken("test-token");
+    });
+
+    await waitFor(() => expect(result.current).toBe("test-token"));
+    expect(storage.setItem).toHaveBeenCalledWith("ttx-facilitator-token", "test-token");
+  });
+});
+
+describe("NarrativePanel resolve debug", () => {
+  it("shows an inline error when the debug fetch fails instead of crashing the app", async () => {
+    const storage = {
+      getItem: vi.fn((key: string) => (key === "ttx-facilitator-token" ? "test-token" : null)),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    };
+    Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
+    Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+    const convexReact = await import("convex/react");
+    const query = vi.fn().mockRejectedValue(new Error("Unauthorized: invalid facilitator token"));
+    vi.mocked(convexReact.useConvex).mockReturnValue({ query } as never);
+    vi.mocked(convexReact.useQuery).mockReturnValue(undefined);
+
+    const { NarrativePanel } = await import("@/components/narrative-panel");
+
+    render(
+      <NarrativePanel
+        round={{
+          _id: "round-1",
+          number: 1,
+          label: "Round 1",
+          summary: {
+            labs: ["Lab update"],
+            geopolitics: [],
+            publicAndMedia: [],
+            aiSystems: [],
+          },
+        }}
+        debugContext={{ gameId: "game-1" as never }}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Show resolve-phase LLM debug"));
+
+    expect(await screen.findByText("Unauthorized: invalid facilitator token")).toBeInTheDocument();
+    expect(query).toHaveBeenCalledWith("rounds:getResolveDebug", {
+      gameId: "game-1",
+      roundNumber: 1,
+      facilitatorToken: "test-token",
+    });
   });
 });
