@@ -243,7 +243,7 @@ export function RoundPhase({
       )}
 
       {/* ─── 5. Skip timer + Grade/Roll buttons (submit phase) ─── */}
-      {phase === "submit" && !isProjector && (
+      {phase === "submit" && !isProjector && (isTimerExpired || !game.phaseEndsAt) && (
         <div className="space-y-3">
           {submittedActionCount > 0 && (
             <div className="flex gap-3">
@@ -262,20 +262,20 @@ export function RoundPhase({
                 </button>
               )}
 
-              {/* Roll Dice — only enabled when all submitted actions are graded */}
-              <button
-                onClick={handleRollDice}
-                disabled={resolving || ungradedCount > 0}
-                className={`flex-1 py-3 rounded-lg font-extrabold text-base transition-colors flex items-center justify-center gap-2 ${
-                  resolving
-                    ? "bg-navy-light text-navy-muted opacity-50"
-                    : ungradedCount === 0
-                      ? "bg-white text-navy hover:bg-off-white shadow-lg ring-1 ring-white/20"
-                      : "bg-navy-light text-navy-muted cursor-default"
-                }`}
-              >
-                <Dices className="w-5 h-5" /> Roll Dice
-              </button>
+              {/* Roll Dice — only appears once all submitted actions are graded */}
+              {ungradedCount === 0 && (
+                <button
+                  onClick={handleRollDice}
+                  disabled={resolving}
+                  className={`flex-1 py-3 rounded-lg font-extrabold text-base transition-colors flex items-center justify-center gap-2 ${
+                    resolving
+                      ? "bg-navy-light text-navy-muted opacity-50"
+                      : "bg-white text-navy hover:bg-off-white shadow-lg ring-1 ring-white/20"
+                  }`}
+                >
+                  <Dices className="w-5 h-5" /> Roll Dice
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -299,7 +299,11 @@ export function RoundPhase({
 
       {/* ─── 7. WHAT HAPPENED — narrative (rolling/narrate) ─── */}
       {isResolvingPhase && (resolving || currentRound?.summary) && (
-        <NarrativePanel round={currentRound} isProjector={isProjector} />
+        <NarrativePanel
+          round={currentRound}
+          isProjector={isProjector}
+          debugContext={!isProjector ? { gameId } : undefined}
+        />
       )}
 
       {/* ─── 8. WHERE WE ARE NOW — lab state + capability (narrate) ─── */}

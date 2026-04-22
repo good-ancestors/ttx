@@ -214,6 +214,7 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
           submittedActions={submit.submittedActions}
           isExpired={submit.isExpired}
           computeStock={submit.computeStock}
+          ownsLab={!!lab.currentLab}
           computeRecipients={submit.computeRecipients}
           actionDrafts={submit.actionDrafts}
           onActionDraftsChange={submit.onActionDraftsChange}

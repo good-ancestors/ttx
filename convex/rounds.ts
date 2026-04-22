@@ -61,10 +61,22 @@ export const getCurrent = query({
     const round = await findRound(ctx, args.gameId, game.currentRound);
     if (!round) return null;
 
-    const { facilitatorNotes: _, summary, ...rest } = round;
+    // Strip facilitator-only fields: reactive query is read by every player table,
+    // and resolveDebug prompts can be ~20KB.
+    const { facilitatorNotes: _, resolveDebug: __, summary, ...rest } = round;
     if (!summary) return { ...rest, summary: undefined };
-    const { facilitatorNotes: __, ...summaryRest } = summary;
+    const { facilitatorNotes: ___, ...summaryRest } = summary;
     return { ...rest, summary: summaryRest };
+  },
+});
+
+/** Facilitator-only: raw LLM prompt + response for the resolve narrative call. */
+export const getResolveDebug = query({
+  args: { gameId: v.id("games"), roundNumber: v.number(), facilitatorToken: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
+    return round?.resolveDebug ?? null;
   },
 });
 
@@ -240,6 +252,28 @@ export const setLabTrajectories = internalMutation({
   handler: async (ctx, args) => {
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (round) await ctx.db.patch(round._id, { labTrajectories: args.trajectories });
+  },
+});
+
+export const setResolveDebugInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    prompt: v.string(),
+    responseJson: v.string(),
+    error: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
+    if (!round) return;
+    await ctx.db.patch(round._id, {
+      resolveDebug: {
+        prompt: args.prompt,
+        responseJson: args.responseJson,
+        error: args.error,
+        capturedAt: Date.now(),
+      },
+    });
   },
 });
 

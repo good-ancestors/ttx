@@ -184,8 +184,10 @@ export function buildGradingPrompt(args: {
   actions: { text: string; priority: number }[];
   /** Other actions from the same role that already have a facilitator-set probability.
    *  Shown to the LLM as context only — NOT to regrade — so priority budget and competition
-   *  are evaluated against the complete submission rather than a subset. */
-  siblingPreGraded?: { text: string; priority: number; probability?: number }[];
+   *  are evaluated against the complete submission rather than a subset.
+   *  Probability is deliberately withheld so the LLM grades independently rather than
+   *  anchoring on the facilitator's number. */
+  siblingPreGraded?: { text: string; priority: number }[];
   labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { deployment: number; research: number; safety: number } }[];
 
   actionRequests?: ActionRequest[];
@@ -250,7 +252,7 @@ SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resource
 ${args.actions.map((a, i) => `${i + 1}. <action>${escapeAction(a.text)}</action> [priority: ${a.priority}/10]`).join("\n")}
 ${args.siblingPreGraded && args.siblingPreGraded.length > 0 ? `
 THIS ROLE'S ALREADY-GRADED ACTIONS THIS ROUND (for context — do NOT regrade; factor into priority budget and coherence of the submission):
-${args.siblingPreGraded.map((a) => `- <action>${escapeAction(a.text)}</action> [P${a.priority}${a.probability != null ? `, already graded ${a.probability}%` : ""}]`).join("\n")}
+${args.siblingPreGraded.map((a) => `- <action>${escapeAction(a.text)}</action> [P${a.priority}]`).join("\n")}
 ` : ""}${args.otherSubmissions && args.otherSubmissions.length > 0 ? `
 OTHER PLAYERS' ACTIONS THIS ROUND (grade with awareness of competition and context):
 ${args.otherSubmissions.map((s) => `${s.roleName}: ${s.actions.map((a) => `<action>${escapeAction(a.text)}</action> [P${a.priority}]`).join("; ")}`).join("\n")}

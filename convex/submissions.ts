@@ -259,6 +259,20 @@ export const saveComputeAllocation = mutation({
         status: "draft",
       });
     }
+
+    // Dual-write: submissions.computeAllocation is what the pipeline consumes each round,
+    // lab.allocation is what read-only views (LabComputeSummary) render between rounds.
+    const ownedLab = await ctx.db
+      .query("labs")
+      .withIndex("by_game_and_owner", (q) =>
+        q.eq("gameId", args.gameId).eq("ownerRoleId", args.roleId),
+      )
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .first();
+    if (ownedLab) {
+      await ctx.db.patch(ownedLab._id, { allocation: args.computeAllocation });
+    }
+
     await logEvent(ctx, args.gameId, "compute_allocation_saved", args.roleId, args.computeAllocation);
   },
 });
