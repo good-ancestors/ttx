@@ -518,7 +518,6 @@ export const rollAndNarrate = internalAction({
           aiSystems: string[];
         };
         labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; change?: number; newMultiplier?: number; controllerRoleId?: string; spec?: string }[];
-        shareChanges?: { roleId: string; sharePct: number; reason: string }[];
         labTrajectories: { labName: string; safetyAdequacy: "adequate" | "concerning" | "dangerous" | "catastrophic"; likelyFailureMode: "aligned" | "deceptive" | "spec-gaming" | "power-concentration" | "benevolent-override" | "loss-of-control" | "misuse"; reasoning: string; signalStrength: number }[];
       };
 
@@ -583,19 +582,6 @@ export const rollAndNarrate = internalAction({
                     controllerRoleId: { type: "string", description: "New owner role ID (transferOwnership only); empty string = unowned" },
                   },
                   required: ["reason", "type"],
-                },
-              },
-              shareChanges: {
-                type: "array",
-                description: "If events this round change who gets new compute NEXT round (e.g. Taiwan invasion cuts OpenBrain's chip supply, DPA consolidation), propose share overrides. Each entry sets a role's % of next round's new compute. Only include roles whose share should differ from proportional-to-stock. Empty array if no changes.",
-                items: {
-                  type: "object",
-                  properties: {
-                    roleId: { type: "string", description: "Role ID of the compute holder" },
-                    sharePct: { type: "number", description: "Percentage of next round's new compute (0-100)" },
-                    reason: { type: "string", description: "Why this share changed", maxLength: 150 },
-                  },
-                  required: ["roleId", "sharePct", "reason"],
                 },
               },
               labTrajectories: {
@@ -938,21 +924,10 @@ export const rollAndNarrate = internalAction({
         meta: { resolveModel: usedModel, resolveTimeMs: timeMs, resolveTokens: tokens },
       });
 
-      // Apply LLM-proposed share changes for next round (if any).
-      // Filter to non-lab roles only — labs use computeLabGrowth with R&D dynamics.
-      // Clamp values to 0-100 and skip invalid role IDs.
-      if (narrativeOutput.shareChanges && narrativeOutput.shareChanges.length > 0) {
-        const validRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
-        const labOwnerRoleIds = new Set(grownLabs.map((l) => l.roleId).filter((r): r is string => !!r));
-        const shareOverrides = Object.fromEntries(
-          narrativeOutput.shareChanges
-            .filter((sc) => validRoleIds.has(sc.roleId) && !labOwnerRoleIds.has(sc.roleId))
-            .map((sc) => [sc.roleId, Math.max(0, Math.min(100, sc.sharePct))])
-        );
-        if (Object.keys(shareOverrides).length > 0) {
-          await ctx.runMutation(internal.games.setShareOverridesInternal, { gameId, overrides: shareOverrides });
-        }
-      }
+      // shareChanges removed from LLM output — share overrides are facilitator-set now
+      // (games.computeShareOverrides, written via setShareOverridesInternal). LLM proposing
+      // raw percentages was buggy: negatives got silently clamped, absolute-vs-delta was
+      // ambiguous, and the decision blurred with narrative prose. See docs/resolve-pipeline.md.
 
       // Done — single mutation to advance phase, clear resolving lock, and set status
       await ctx.runMutation(internal.games.finishResolveInternal, { gameId });
