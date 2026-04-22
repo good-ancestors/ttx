@@ -214,7 +214,10 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
           submittedActions={submit.submittedActions}
           isExpired={submit.isExpired}
           computeStock={submit.computeStock}
-          ownsLab={!!lab.currentLab}
+          ownedLab={lab.currentLab?.labId ? { labId: lab.currentLab.labId as Id<"labs">, name: lab.currentLab.name } : undefined}
+          otherLabs={labs
+            .filter((l) => l.labId && l.labId !== lab.currentLab?.labId)
+            .map((l) => ({ labId: l.labId as Id<"labs">, name: l.name }))}
           computeRecipients={submit.computeRecipients}
           actionDrafts={submit.actionDrafts}
           onActionDraftsChange={submit.onActionDraftsChange}

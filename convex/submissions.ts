@@ -11,7 +11,7 @@ import {
   getAvailableStock,
   emitPair,
 } from "./computeLedger";
-import { createLabInternal } from "./labs";
+import { createLabInternal, mergeLabsWithComputeInternal } from "./labs";
 
 const PRIORITY_HARD_CAP = 12;
 
@@ -59,6 +59,13 @@ const foundLabValidator = v.object({
   seedCompute: v.number(),
 });
 
+const mergeLabValidator = v.object({
+  absorbedLabId: v.id("labs"),
+  survivorLabId: v.id("labs"),
+  newName: v.optional(v.string()),
+  newSpec: v.optional(v.string()),
+});
+
 const actionValidator = v.object({
   text: v.string(),
   priority: v.number(),
@@ -71,6 +78,7 @@ const actionValidator = v.object({
   aiInfluence: v.optional(v.number()),
   computeTargets: v.optional(v.array(computeTargetValidator)),
   foundLab: v.optional(foundLabValidator),
+  mergeLab: v.optional(mergeLabValidator),
 });
 
 // Validator for actions that already have actionStatus set (e.g. grading pipeline output).
@@ -87,6 +95,7 @@ const persistedActionValidator = v.object({
   aiInfluence: v.optional(v.number()),
   computeTargets: v.optional(v.array(computeTargetValidator)),
   foundLab: v.optional(foundLabValidator),
+  mergeLab: v.optional(mergeLabValidator),
 });
 
 // Full query — includes secret text and reasoning. Requires facilitator token.
@@ -518,6 +527,7 @@ export const saveAndSubmit = mutation({
     computeTargets: v.optional(v.array(computeTargetValidator)),
     endorseTargets: v.optional(v.array(v.string())),
     foundLab: v.optional(foundLabValidator),
+    mergeLab: v.optional(mergeLabValidator),
   },
   handler: async (ctx, args) => {
     // Validate table ownership: the table must belong to the claimed role
@@ -593,6 +603,36 @@ export const saveAndSubmit = mutation({
       }
     }
 
+    if (args.mergeLab) {
+      if (args.mergeLab.absorbedLabId === args.mergeLab.survivorLabId) {
+        throw new Error("Cannot merge a lab with itself");
+      }
+      const [absorbed, survivor] = await Promise.all([
+        ctx.db.get(args.mergeLab.absorbedLabId),
+        ctx.db.get(args.mergeLab.survivorLabId),
+      ]);
+      if (!absorbed || absorbed.gameId !== args.gameId || absorbed.status !== "active") {
+        throw new Error("Absorbed lab is not active in this game");
+      }
+      if (!survivor || survivor.gameId !== args.gameId || survivor.status !== "active") {
+        throw new Error("Survivor lab is not active in this game");
+      }
+      if (absorbed.ownerRoleId !== args.roleId && survivor.ownerRoleId !== args.roleId) {
+        throw new Error("You must own either the absorbed or survivor lab to propose a merger");
+      }
+      const newName = args.mergeLab.newName?.trim();
+      if (newName && newName !== survivor.name) {
+        const clash = await ctx.db
+          .query("labs")
+          .withIndex("by_game_and_status", (q) => q.eq("gameId", args.gameId).eq("status", "active"))
+          .collect();
+        const conflict = clash.find(
+          (l) => l._id !== args.mergeLab!.survivorLabId && l.name === newName,
+        );
+        if (conflict) throw new Error(`Active lab named "${newName}" already exists`);
+      }
+    }
+
     // Compose availability check: send-escrow total + foundLab seedCompute must fit in
     // available stock. Done up-front so a send + foundLab on the same action can't each
     // pass independently while summing over the limit.
@@ -643,6 +683,7 @@ export const saveAndSubmit = mutation({
       actionStatus: "submitted" as const,
       computeTargets: targets.length > 0 ? targets : undefined,
       foundLab: args.foundLab,
+      mergeLab: args.mergeLab,
     };
 
     let result: { submissionId: Id<"submissions">; actionIndex: number; actionId: string };
@@ -1169,6 +1210,52 @@ async function rollAllImpl(
         labName: action.foundLab.name,
         seedCompute: action.foundLab.seedCompute,
       });
+    }
+
+    // Merge-lab settlement. Auto-fails if either lab was decommissioned earlier this
+    // round (another merger won the race).
+    for (const action of actions) {
+      if (!action.mergeLab) continue;
+      if (action.rolled == null || !action.actionId) continue;
+      if (action.actionStatus !== "submitted") continue;
+      if (!action.success) {
+        await logEvent(ctx, gameId, "lab_merge_failed", sub.roleId, {
+          absorbedLabId: action.mergeLab.absorbedLabId,
+          survivorLabId: action.mergeLab.survivorLabId,
+          reason: "rolled_failure",
+        });
+        continue;
+      }
+      try {
+        const outcome = await mergeLabsWithComputeInternal(ctx, {
+          gameId,
+          roundNumber,
+          survivorLabId: action.mergeLab.survivorLabId,
+          absorbedLabId: action.mergeLab.absorbedLabId,
+          newName: action.mergeLab.newName?.trim() || undefined,
+          newSpec: action.mergeLab.newSpec?.trim() || undefined,
+          reason: `Merger on action: ${action.text.slice(0, 80)}`,
+          actionId: action.actionId,
+        });
+        await logEvent(ctx, gameId, outcome ? "lab_merged" : "lab_merge_failed", sub.roleId, {
+          absorbedLabId: action.mergeLab.absorbedLabId,
+          survivorLabId: action.mergeLab.survivorLabId,
+          reason: outcome ? undefined : "lab_already_decommissioned",
+          amountMoved: outcome?.amountMoved,
+        });
+      } catch (err) {
+        // Structural merge half-completed (compute may be stranded on the absorbed
+        // owner). Log loudly so facilitator can reconcile via ledger adjustment.
+        console.error(`[rollAll] Merger settlement crashed after structural change`, {
+          actionId: action.actionId, absorbedLabId: action.mergeLab.absorbedLabId,
+          survivorLabId: action.mergeLab.survivorLabId, err,
+        });
+        await logEvent(ctx, gameId, "lab_merge_error", sub.roleId, {
+          absorbedLabId: action.mergeLab.absorbedLabId,
+          survivorLabId: action.mergeLab.survivorLabId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     for (const action of actions) {

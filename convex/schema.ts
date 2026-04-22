@@ -147,6 +147,13 @@ export default defineSchema({
           spec: v.optional(v.string()),
           seedCompute: v.number(),
         })),
+        /** Merger attempt attached to this action. Submitter must own absorbed or survivor. */
+        mergeLab: v.optional(v.object({
+          absorbedLabId: v.id("labs"),
+          survivorLabId: v.id("labs"),
+          newName: v.optional(v.string()),
+          newSpec: v.optional(v.string()),
+        })),
       })
     ),
     computeAllocation: v.optional(

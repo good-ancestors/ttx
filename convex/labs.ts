@@ -8,6 +8,7 @@
 import { v } from "convex/values";
 import { query, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { emitPair } from "./computeLedger";
 
 export type Lab = Doc<"labs">;
 
@@ -166,6 +167,69 @@ export async function mergeLabsInternal(
     await ctx.db.patch(args.survivorLabId, survivorUpdates);
   }
   await decommissionLabInternal(ctx, args.absorbedLabId, { mergedIntoLabId: args.survivorLabId });
+}
+
+/** Structural merge + automatic compute absorption: absorbed owner's full settled stock
+ *  flows to the survivor owner via a settled `merged` ledger pair. Used by both
+ *  facilitator-triggered merges and player mergeLab actions.
+ *
+ *  Returns null if either lab is no longer active (race with another merger). Throws on
+ *  uniqueness / structural errors from mergeLabsInternal. Errors mid-merge (after the
+ *  structural patch) are rethrown — callers must handle: on the player-action path, the
+ *  result is a merged lab with compute stranded on the absorbed owner, recoverable via
+ *  a facilitator ledger adjustment. */
+export async function mergeLabsWithComputeInternal(
+  ctx: MutationCtx,
+  args: {
+    gameId: Id<"games">;
+    roundNumber: number;
+    survivorLabId: Id<"labs">;
+    absorbedLabId: Id<"labs">;
+    newName?: string;
+    newSpec?: string;
+    reason: string;
+    actionId?: string;
+  },
+): Promise<{ amountMoved: number } | null> {
+  const [survivor, absorbed] = await Promise.all([
+    ctx.db.get(args.survivorLabId),
+    ctx.db.get(args.absorbedLabId),
+  ]);
+  if (survivor?.status !== "active" || absorbed?.status !== "active") return null;
+
+  await mergeLabsInternal(ctx, {
+    survivorLabId: args.survivorLabId,
+    absorbedLabId: args.absorbedLabId,
+    newName: args.newName,
+    newSpec: args.newSpec,
+  });
+
+  let amountMoved = 0;
+  if (
+    absorbed.ownerRoleId &&
+    survivor.ownerRoleId &&
+    absorbed.ownerRoleId !== survivor.ownerRoleId
+  ) {
+    const absorbedTable = await ctx.db
+      .query("tables")
+      .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", absorbed.ownerRoleId!))
+      .first();
+    amountMoved = absorbedTable?.computeStock ?? 0;
+    if (amountMoved > 0) {
+      await emitPair(ctx, {
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        type: "merged",
+        status: "settled",
+        fromRoleId: absorbed.ownerRoleId,
+        toRoleId: survivor.ownerRoleId,
+        amount: amountMoved,
+        reason: args.reason,
+        actionId: args.actionId,
+      });
+    }
+  }
+  return { amountMoved };
 }
 
 export async function updateLabRdMultiplierInternal(

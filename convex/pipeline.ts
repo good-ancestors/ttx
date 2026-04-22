@@ -85,6 +85,7 @@ async function gradeSubmissionBatch(
   // Pre-build lookup maps to avoid repeated .find() calls inside the loop
   const roleMap = new Map(ROLES.map((r) => [r.id, r]));
   const labMap = new Map(labs.filter((l) => l.roleId).map((l) => [l.roleId!, l]));
+  const labByLabId = new Map(labs.map((l) => [String(l.labId), l] as const));
   const roundMap = new Map(rounds.map((r) => [r.number, r]));
   const allSubsSummary = allSubmissions.map((s) => ({
     roleId: s.roleId,
@@ -110,9 +111,22 @@ async function gradeSubmissionBatch(
           requestType: r.requestType, computeAmount: r.computeAmount, status: r.status,
         }));
 
+      const mergeContextFor = (a: (typeof sub.actions)[number]) => {
+        if (!a.mergeLab) return undefined;
+        const absorbedLab = labByLabId.get(String(a.mergeLab.absorbedLabId));
+        const survivorLab = labByLabId.get(String(a.mergeLab.survivorLabId));
+        if (!absorbedLab || !survivorLab) return undefined;
+        return {
+          absorbedLabName: absorbedLab.name,
+          survivorLabName: survivorLab.name,
+          submitterIsAbsorbed: absorbedLab.roleId === sub.roleId,
+          newName: a.mergeLab.newName,
+          newSpec: a.mergeLab.newSpec,
+        };
+      };
       const actionsToGrade = onlyUngraded
-        ? sub.actions.filter((a) => a.probability == null).map((a) => ({ text: a.text, priority: a.priority }))
-        : sub.actions.map((a) => ({ text: a.text, priority: a.priority }));
+        ? sub.actions.filter((a) => a.probability == null).map((a) => ({ text: a.text, priority: a.priority, mergeLab: mergeContextFor(a) }))
+        : sub.actions.map((a) => ({ text: a.text, priority: a.priority, mergeLab: mergeContextFor(a) }));
       // When grading only ungraded actions, still give the LLM the full picture of this role's
       // other actions — including any the facilitator has already manually graded — so competition,
       // priority budgets and narrative coherence are evaluated against the complete submission.

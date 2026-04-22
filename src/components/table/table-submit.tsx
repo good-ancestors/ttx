@@ -1,7 +1,7 @@
 "use client";
 
 import { type Role, hasCompute } from "@/lib/game-data";
-import { type ActionDraft } from "@/components/action-input";
+import { type ActionDraft, type LabRef } from "@/components/action-input";
 import { ActionInput } from "@/components/action-input";
 import { SubmittedActionCard, type SentRequest } from "@/components/table/submitted-action-card";
 import type { SampleAction } from "@/lib/sample-actions";
@@ -33,7 +33,8 @@ interface TableSubmitProps {
   }[];
   isExpired?: boolean;
   computeStock?: number;
-  ownsLab?: boolean;
+  ownedLab?: LabRef;
+  otherLabs?: LabRef[];
   computeRecipients?: { id: string; name: string; computeStock?: number }[];
   // Form state (local drafts — not yet submitted)
   actionDrafts: ActionDraft[];
@@ -60,7 +61,8 @@ export function TableSubmit({
   onActionDraftsChange,
   isExpired,
   computeStock,
-  ownsLab,
+  ownedLab,
+  otherLabs,
   computeRecipients,
   enabledRoles,
   onSubmitAction,
@@ -120,7 +122,8 @@ export function TableSubmit({
             enabledRoles={enabledRoles}
             computeRoles={hasCompute(role) && computeRecipients ? computeRecipients : undefined}
             ownComputeStock={computeStock}
-            ownsLab={ownsLab}
+            ownedLab={ownedLab}
+            otherLabs={otherLabs}
             isSubmitted={false}
             onSubmitAction={onSubmitAction}
           />

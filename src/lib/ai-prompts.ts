@@ -175,13 +175,21 @@ export interface ActionRequest {
   status: string;
 }
 
+interface MergeLabContext {
+  absorbedLabName: string;
+  survivorLabName: string;
+  submitterIsAbsorbed: boolean;
+  newName?: string;
+  newSpec?: string;
+}
+
 export function buildGradingPrompt(args: {
   round: number;
   roundLabel: string;
   roleName: string;
   roleDescription: string;
   roleTags?: string[];
-  actions: { text: string; priority: number }[];
+  actions: { text: string; priority: number; mergeLab?: MergeLabContext }[];
   /** Other actions from the same role that already have a facilitator-set probability.
    *  Shown to the LLM as context only — NOT to regrade — so priority budget and competition
    *  are evaluated against the complete submission rather than a subset.
@@ -249,7 +257,12 @@ ${args.roleDescription}${args.labSpec ? `\nLAB AI DIRECTIVE (set by CEO): "${arg
 ${requestSection}${incomingSection}
 
 SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resources/effort committed):
-${args.actions.map((a, i) => `${i + 1}. <action>${escapeAction(a.text)}</action> [priority: ${a.priority}/10]`).join("\n")}
+${args.actions.map((a, i) => {
+  const mergeSuffix = a.mergeLab
+    ? ` [MERGE ATTEMPT: ${a.mergeLab.absorbedLabName} absorbed into ${a.mergeLab.survivorLabName}${a.mergeLab.newName ? `, renamed to ${a.mergeLab.newName}` : ""}${a.mergeLab.submitterIsAbsorbed ? "; submitter is the ABSORBED (selling) party" : "; submitter is the SURVIVOR (acquiring) party"}]`
+    : "";
+  return `${i + 1}. <action>${escapeAction(a.text)}</action> [priority: ${a.priority}/10]${mergeSuffix}`;
+}).join("\n")}
 ${args.siblingPreGraded && args.siblingPreGraded.length > 0 ? `
 THIS ROLE'S ALREADY-GRADED ACTIONS THIS ROUND (for context — do NOT regrade; factor into priority budget and coherence of the submission):
 ${args.siblingPreGraded.map((a) => `- <action>${escapeAction(a.text)}</action> [P${a.priority}]`).join("\n")}
@@ -269,9 +282,16 @@ GRADING RULES:
    - President convening a summit = 90% (just a meeting)
    - CEO changing their own lab's allocation = 90% (internal decision)
    - Safety lead publishing a report = 70% (within their job)
-   - Lab CEO proposing a merger = 50% (needs other party's agreement)
    - Government imposing sanctions = 50-70% (executive authority but implementation complex)
    NEVER grade an action below 30% unless the actor literally cannot do it (e.g., safety lead launching a military strike). Political obstacles reduce probability but don't make executive actions "Remote".
+
+   MERGER ATTEMPTS (flagged with [MERGE ATTEMPT: …]): the structural merger will only execute if this action's dice roll succeeds. Grade the probability that the merger COMPLETES, factoring in:
+   - Friendly merger (counterparty accepted endorsement, compute buyout attached): 60-80%
+   - Neutral (counterparty did not respond): 40-55% — plausible if acquirer dominates the target on compute/R&D, lower if peers
+   - Hostile (counterparty declined endorsement, no government backing): 15-30% — possible via stock pressure, board coup, etc., but hard
+   - Hostile + strong government endorsement (DPA, nationalization, antitrust-forced consolidation): 50-70%
+   - Cross-jurisdiction without treaty cover (US lab absorbing a Chinese lab or vice versa, no diplomatic endorsement): max 25%
+   - Compute disparity matters: acquirer with 3× the target's compute stock and R&D has a realistic path even without consent.
 
 2. PRIORITY IS A MODIFIER (~10% impact), NOT the primary driver. Priority reflects how much of their budget/effort this player is committing to this action RELATIVE TO THEIR OTHER ACTIONS. A high-priority action from a player who can't realistically do it still fails. A low-priority action that's easy and well-resourced can still succeed.
    - High priority (7-10): +5% to +10% probability boost (strong commitment, dedicated resources)

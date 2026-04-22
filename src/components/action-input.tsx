@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY } from "@/lib/game-data";
-import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send, Zap, FlaskConical } from "lucide-react";
+import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send, Zap, FlaskConical, GitMerge } from "lucide-react";
+import type { Id } from "@convex/_generated/dataModel";
 
 
 export type PriorityLevel = "low" | "medium" | "high";
@@ -35,6 +36,7 @@ export interface ActionDraft {
   /** If set, this action is a "Found a lab" attempt. On roll success the seedCompute is
    *  consumed and a new lab row is created owned by the submitter. On failure the escrow refunds. */
   foundLab?: { name: string; spec?: string; seedCompute: number };
+  mergeLab?: { absorbedLabId: Id<"labs">; survivorLabId: Id<"labs">; newName?: string; newSpec?: string };
 }
 
 /** Assign priorities using the auto-decay table based on position order. */
@@ -55,6 +57,8 @@ function emptyAction(): ActionDraft {
   return { text: "", priority: "medium", secret: false, endorseTargets: [], computeTargets: [] };
 }
 
+export interface LabRef { labId: Id<"labs">; name: string }
+
 interface Props {
   actions: ActionDraft[];
   onChange: (actions: ActionDraft[]) => void;
@@ -64,13 +68,15 @@ interface Props {
   /** Roles that can send/receive compute (has-compute tag, excluding self) */
   computeRoles?: { id: string; name: string; computeStock?: number }[];
   ownComputeStock?: number;
-  /** True if this player already owns an active lab — hides the Found-lab button. */
-  ownsLab?: boolean;
+  /** Lab owned by this player — enables the Merge-lab button. */
+  ownedLab?: LabRef;
+  /** Candidate labs for a merger (excludes the submitter's own). */
+  otherLabs?: LabRef[];
   isSubmitted: boolean;
   onSubmitAction?: (index: number) => void;
 }
 
-export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRoles, ownComputeStock, ownsLab, isSubmitted, onSubmitAction }: Props) {
+export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRoles, ownComputeStock, ownedLab, otherLabs, isSubmitted, onSubmitAction }: Props) {
   // Filter out own role and AI Systems (AI Systems uses influence, not endorsements)
   const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId))
     .filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId && r.id !== AI_SYSTEMS_ROLE_ID : true);
@@ -140,7 +146,8 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRo
             otherRoles={otherRoles}
             computeRoles={computeRoles}
             ownComputeStock={ownComputeStock}
-            ownsLab={ownsLab}
+            ownedLab={ownedLab}
+            otherLabs={otherLabs}
             isSubmitted={isSubmitted}
             canRemove={actions.length > 1 || action.text.trim() !== ""}
             onAddNext={actions.length < 5 && !isSubmitted ? addAction : undefined}
@@ -173,7 +180,8 @@ function ActionCard({
   otherRoles,
   computeRoles,
   ownComputeStock,
-  ownsLab,
+  ownedLab,
+  otherLabs,
   isSubmitted,
   canRemove,
   onAddNext,
@@ -189,7 +197,8 @@ function ActionCard({
   otherRoles: { id: string; name: string }[];
   computeRoles?: { id: string; name: string; computeStock?: number }[];
   ownComputeStock?: number;
-  ownsLab?: boolean;
+  ownedLab?: LabRef;
+  otherLabs?: LabRef[];
   isSubmitted: boolean;
   canRemove: boolean;
   onAddNext?: () => void;
@@ -277,7 +286,7 @@ function ActionCard({
 
           {/* Found-a-lab toggle — only for has-compute roles without an existing lab
               and with enough compute to meet the 10u minimum seed. */}
-          {computeRoles && !ownsLab && (ownComputeStock ?? 0) >= 10 && (
+          {computeRoles && !ownedLab && (ownComputeStock ?? 0) >= 10 && (
             <button
               onClick={() => onUpdate({ foundLab: action.foundLab ? undefined : { name: "", seedCompute: 10 } })}
               disabled={isSubmitted}
@@ -293,6 +302,27 @@ function ActionCard({
               <span className="text-xs font-medium">
                 Found lab{action.foundLab ? ` (${action.foundLab.seedCompute}u)` : ""}
               </span>
+            </button>
+          )}
+
+          {ownedLab && otherLabs && otherLabs.length > 0 && (
+            <button
+              onClick={() => onUpdate({
+                mergeLab: action.mergeLab
+                  ? undefined
+                  : { absorbedLabId: otherLabs[0].labId, survivorLabId: ownedLab.labId },
+              })}
+              disabled={isSubmitted}
+              aria-label="Propose a merger with another lab"
+              aria-pressed={!!action.mergeLab}
+              className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                action.mergeLab
+                  ? "bg-[#E0F2FE] text-[#0369A1]"
+                  : "text-text-light hover:text-text-muted hover:bg-warm-gray"
+              }`}
+            >
+              <GitMerge className="w-4 h-4" />
+              <span className="text-xs font-medium">Merge lab</span>
             </button>
           )}
 
@@ -396,6 +426,16 @@ function ActionCard({
             className="w-full mt-2 rounded-lg border border-border bg-warm-gray px-2 py-1 text-xs text-text resize-none"
           />
         </div>
+      )}
+
+      {/* Merge-lab inline form */}
+      {action.mergeLab && !isSubmitted && ownedLab && otherLabs && (
+        <MergeLabForm
+          mergeLab={action.mergeLab}
+          ownedLab={ownedLab}
+          otherLabs={otherLabs}
+          onUpdate={(ml) => onUpdate({ mergeLab: ml })}
+        />
       )}
 
       {/* Secret badge */}
@@ -598,6 +638,98 @@ function ComputeRequestPicker({
           <X className="w-3 h-3" /> Clear all
         </button>
       )}
+    </div>
+  );
+}
+
+function MergeLabForm({
+  mergeLab,
+  ownedLab,
+  otherLabs,
+  onUpdate,
+}: {
+  mergeLab: NonNullable<ActionDraft["mergeLab"]>;
+  ownedLab: LabRef;
+  otherLabs: LabRef[];
+  onUpdate: (ml: ActionDraft["mergeLab"]) => void;
+}) {
+  const counterpartyId = mergeLab.absorbedLabId === ownedLab.labId
+    ? mergeLab.survivorLabId
+    : mergeLab.absorbedLabId;
+  const submitterIsSurvivor = mergeLab.survivorLabId === ownedLab.labId;
+
+  const setCounterparty = (newLabId: Id<"labs">) => {
+    onUpdate({
+      ...mergeLab,
+      absorbedLabId: submitterIsSurvivor ? newLabId : ownedLab.labId,
+      survivorLabId: submitterIsSurvivor ? ownedLab.labId : newLabId,
+    });
+  };
+
+  const setSurvivor = (side: "mine" | "theirs") => {
+    const theirId = counterpartyId;
+    onUpdate({
+      ...mergeLab,
+      absorbedLabId: side === "mine" ? theirId : ownedLab.labId,
+      survivorLabId: side === "mine" ? ownedLab.labId : theirId,
+    });
+  };
+
+  return (
+    <div className="mt-2 pt-2 border-t border-border">
+      <p className="text-[11px] text-text-muted mb-2 flex items-center gap-1">
+        <GitMerge className="w-3 h-3 text-[#0369A1]" />
+        Merger: the absorbed lab is decommissioned and its compute flows to the survivor owner.
+      </p>
+      <div className="flex items-center gap-2 mb-2">
+        <label className="text-[11px] text-text-muted shrink-0 w-24">Other lab:</label>
+        <select
+          value={counterpartyId}
+          onChange={(e) => setCounterparty(e.target.value as Id<"labs">)}
+          className="flex-1 min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text"
+        >
+          {otherLabs.map((l) => (
+            <option key={l.labId} value={l.labId}>{l.name}</option>
+          ))}
+        </select>
+      </div>
+      <div className="flex items-center gap-2 mb-2">
+        <label className="text-[11px] text-text-muted shrink-0 w-24">Survivor:</label>
+        <div className="flex rounded-lg border border-border overflow-hidden">
+          <button
+            onClick={() => setSurvivor("mine")}
+            className={`min-h-[36px] px-3 text-xs font-bold transition-colors ${
+              submitterIsSurvivor ? "bg-[#0369A1] text-white" : "bg-warm-gray text-text-muted hover:bg-border"
+            }`}
+          >
+            My lab ({ownedLab.name})
+          </button>
+          <button
+            onClick={() => setSurvivor("theirs")}
+            className={`min-h-[36px] px-3 text-xs font-bold transition-colors ${
+              !submitterIsSurvivor ? "bg-[#0369A1] text-white" : "bg-warm-gray text-text-muted hover:bg-border"
+            }`}
+          >
+            Their lab
+          </button>
+        </div>
+      </div>
+      <input
+        type="text"
+        value={mergeLab.newName ?? ""}
+        onChange={(e) => onUpdate({ ...mergeLab, newName: e.target.value || undefined })}
+        placeholder="New name for the merged lab (optional)"
+        maxLength={60}
+        className="w-full min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text mb-2"
+      />
+      <textarea
+        value={mergeLab.newSpec ?? ""}
+        onChange={(e) => onUpdate({ ...mergeLab, newSpec: e.target.value || undefined })}
+        placeholder="New AI directive / spec for the merged lab (optional)"
+        maxLength={500}
+        rows={2}
+        className="w-full rounded-lg border border-border bg-warm-gray px-2 py-1 text-xs text-text resize-none"
+      />
     </div>
   );
 }
