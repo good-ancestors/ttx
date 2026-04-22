@@ -1,29 +1,29 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useQuery } from "convex/react";
-import { api } from "@convex/_generated/api";
-import { getCapabilityDescription, TOTAL_ROUNDS, isSubmittedAction, isResolvingPhase as checkResolvingPhase } from "@/lib/game-data";
-import { useAuthMutation } from "@/lib/hooks";
-import { NarrativePanel } from "@/components/narrative-panel";
+import { TOTAL_ROUNDS, isSubmittedAction, type Lab } from "@/lib/game-data";
 import { NarrativeEditor } from "@/components/manual-controls";
-import { AttemptedPanel } from "./attempted-panel";
-import { EffectReviewPanel } from "./effect-review-panel";
-import { ExpandableSection } from "./expandable-section";
+import { AttemptedSection } from "./resolve-sections/attempted-section";
+import { HappenedSection } from "./resolve-sections/happened-section";
+import { StateSection } from "./resolve-sections/state-section";
 import { AddLabForm } from "./add-lab-form";
 import {
   Loader2,
   Dices,
   SkipForward,
-  Pencil,
   ChevronRight,
-  CheckCircle,
   MessageSquareText,
 } from "lucide-react";
 import type { FacilitatorPhaseProps, Round, Submission, Proposal } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 
 // ─── Main unified round phase ───────────────────────────────────────────────
+
+interface RoundLite {
+  number: number;
+  label: string;
+  labsAfter?: Lab[];
+}
 
 interface RoundPhaseProps extends FacilitatorPhaseProps {
   submissions: Submission[];
@@ -57,10 +57,15 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   timerDisplay?: string;
   isUrgent?: boolean;
   adjustTimer: (args: { gameId: Id<"games">; deltaSeconds: number }) => Promise<unknown>;
+  labs: Lab[];
+  rounds: RoundLite[];
+  mergeLabs: (args: { gameId: Id<"games">; survivorName: string; absorbedName: string }) => Promise<unknown>;
+  openAddLab: () => void;
 }
 
 // Complexity is inherent: this is the top-level facilitator view orchestrating
-// discuss, submit, rolling, and narrate phases in a single progressive layout.
+// discuss, submit, rolling, effect-review, and narrate phases in a single
+// progressive layout.
 // eslint-disable-next-line complexity
 export function RoundPhase({
   gameId,
@@ -98,9 +103,12 @@ export function RoundPhase({
   timerDisplay,
   isUrgent,
   adjustTimer,
+  labs,
+  rounds,
+  mergeLabs,
+  openAddLab,
 }: RoundPhaseProps) {
   const phase = game.phase;
-  const isResolvingPhase = checkResolvingPhase(phase);
 
   const { submittedActionCount, ungradedCount } = useMemo(() => {
     const submitted = submissions.flatMap((s) =>
@@ -115,17 +123,27 @@ export function RoundPhase({
   const [editModal, setEditModal] = useState<"narrative" | "addlab" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
 
+  const hasNarrative = !!currentRound?.summary && (
+    !!currentRound.summary.outcomes ||
+    !!currentRound.summary.stateOfPlay ||
+    !!currentRound.summary.pressures ||
+    (currentRound.summary.labs?.length ?? 0) > 0 ||
+    (currentRound.summary.geopolitics?.length ?? 0) > 0 ||
+    (currentRound.summary.publicAndMedia?.length ?? 0) > 0 ||
+    (currentRound.summary.aiSystems?.length ?? 0) > 0
+  );
+
   return (
     <div className="space-y-4">
       {/* ─── DISCUSS phase controls ─── */}
       {phase === "discuss" && (
         <div className="bg-navy rounded-xl border border-navy-light p-5">
-        <div className="text-center py-8">
-          <MessageSquareText className="w-10 h-10 text-text-light mx-auto mb-3" />
-          <h3 className="text-lg font-bold mb-2">Tables are discussing</h3>
-          <p className="text-text-light mb-4 text-sm">
-            Each table: discuss what your actor does this quarter, then submit.
-          </p>
+          <div className="text-center py-8">
+            <MessageSquareText className="w-10 h-10 text-text-light mx-auto mb-3" />
+            <h3 className="text-lg font-bold mb-2">Tables are discussing</h3>
+            <p className="text-text-light mb-4 text-sm">
+              Each table: discuss what your actor does this quarter, then submit.
+            </p>
             <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
               {[2, 4, 6, 8, 10].map((min) => (
                 <button
@@ -204,43 +222,35 @@ export function RoundPhase({
         </div>
       )}
 
-      {/* ─── 3. WHAT WAS ATTEMPTED (collapsed, populates as submissions arrive) ─── */}
-      {phase !== "discuss" && (
-        <AttemptedPanel
-          submissions={submissions}
-          proposals={proposals}
-          isProjector={isProjector}
-          resolving={resolving}
-          revealedCount={revealedCount}
-          revealedSecrets={revealedSecrets}
-          toggleReveal={toggleReveal}
-          revealAllSecrets={revealAllSecrets}
-          hideAllSecrets={hideAllSecrets}
-          handleReResolve={handleReResolve}
-          rerollAction={rerollAction}
-          overrideProbability={overrideProbability}
-          ungradeAction={ungradeAction}
-          phase={phase}
-          hasNarrative={!!currentRound?.summary && (
-            !!currentRound.summary.outcomes ||
-            !!currentRound.summary.stateOfPlay ||
-            !!currentRound.summary.pressures ||
-            (currentRound.summary.labs?.length ?? 0) > 0 ||
-            (currentRound.summary.geopolitics?.length ?? 0) > 0 ||
-            (currentRound.summary.publicAndMedia?.length ?? 0) > 0 ||
-            (currentRound.summary.aiSystems?.length ?? 0) > 0
-          )}
-          narrativeStale={narrativeStale}
-          onDiceChanged={onDiceChanged}
-        />
-      )}
+      {/* ─── Section 1: What Was Attempted ─── */}
+      <AttemptedSection
+        gameId={gameId}
+        roundNumber={game.currentRound}
+        phase={phase}
+        currentRound={currentRound}
+        submissions={submissions}
+        proposals={proposals}
+        isProjector={isProjector}
+        resolving={resolving}
+        revealedCount={revealedCount}
+        revealedSecrets={revealedSecrets}
+        toggleReveal={toggleReveal}
+        revealAllSecrets={revealAllSecrets}
+        hideAllSecrets={hideAllSecrets}
+        handleReResolve={handleReResolve}
+        rerollAction={rerollAction}
+        overrideProbability={overrideProbability}
+        ungradeAction={ungradeAction}
+        hasNarrative={hasNarrative}
+        narrativeStale={narrativeStale}
+        onDiceChanged={onDiceChanged}
+      />
 
-      {/* ─── 5. Skip timer + Grade/Roll buttons (submit phase) ─── */}
+      {/* ─── Grade/Roll buttons (submit phase, timer expired) ─── */}
       {phase === "submit" && !isProjector && (isTimerExpired || !game.phaseEndsAt) && (
         <div className="space-y-3">
           {submittedActionCount > 0 && (
             <div className="flex gap-3">
-              {/* Grade Remaining — AI grades actions without a probability */}
               {(ungradedCount > 0 || resolving) && (
                 <button
                   onClick={handleGradeRemaining}
@@ -255,7 +265,6 @@ export function RoundPhase({
                 </button>
               )}
 
-              {/* Roll Dice — only appears once all submitted actions are graded */}
               {ungradedCount === 0 && (
                 <button
                   onClick={handleRollDice}
@@ -274,53 +283,34 @@ export function RoundPhase({
         </div>
       )}
 
-      {/* ─── 6. Resolve progress (rolling/narrate) ─── */}
-      {isResolvingPhase && resolving && resolveStep && (
-        <div className="flex items-center gap-2 py-2 text-sm text-text-light">
-          <Loader2 className="w-4 h-4 animate-spin" />
-          {resolveStep}
-        </div>
-      )}
-      {!isProjector && resolveStep && (resolveStep.toLowerCase().includes("error") || resolveStep.toLowerCase().includes("failed")) && (
-        <button
-          onClick={() => void forceClearLock({ gameId })}
-          className="text-[11px] px-3 py-1.5 bg-viz-danger/20 text-viz-danger rounded font-medium hover:bg-viz-danger/30 transition-colors flex items-center gap-1 mt-2"
-        >
-          Clear Lock &amp; Retry
-        </button>
-      )}
+      {/* ─── Section 2: What Happened — narrative + effect summaries ─── */}
+      <HappenedSection
+        gameId={gameId}
+        currentRound={currentRound}
+        phase={phase}
+        resolving={resolving}
+        resolveStep={resolveStep}
+        isProjector={isProjector}
+        forceClearLock={forceClearLock}
+      />
 
-      {/* ─── 7. WHAT HAPPENED — narrative (rolling/narrate) ─── */}
-      {isResolvingPhase && (resolving || currentRound?.summary) && (
-        <NarrativePanel
-          round={currentRound}
-          isProjector={isProjector}
-          debugContext={!isProjector ? { gameId } : undefined}
-        />
-      )}
+      {/* ─── Section 3: Where Things Are At (narrate phase only) ─── */}
+      <StateSection
+        gameId={gameId}
+        currentRound={currentRound}
+        currentRoundNumber={game.currentRound}
+        phase={phase}
+        isProjector={isProjector}
+        labs={labs}
+        rounds={rounds}
+        onEditNarrative={() => setEditModal("narrative")}
+        onMerge={isProjector ? undefined : async (survivor, absorbed) => {
+          await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
+        }}
+        onAddLab={isProjector ? undefined : openAddLab}
+      />
 
-      {/* ─── 8. WHERE WE ARE NOW — lab state + capability (narrate) ─── */}
-      {isResolvingPhase && currentRound?.summary && (
-        <WhereWeAreNow
-          gameId={gameId}
-          game={game}
-          currentRound={currentRound}
-          isProjector={isProjector}
-          onEditNarrative={() => setEditModal("narrative")}
-        />
-      )}
-
-      {/* ─── 8b. EFFECT REVIEW — P7 mandatory pause ─── */}
-      {phase === "effect-review" && (
-        <EffectReviewPanel
-          gameId={gameId}
-          round={currentRound}
-          roundNumber={game.currentRound}
-          isProjector={isProjector}
-        />
-      )}
-
-      {/* ─── 9. Advance / End button (narrate phase) ─── */}
+      {/* ─── Advance / End button (narrate phase) ─── */}
       {phase === "narrate" && !isProjector && (<div className="mt-6">
         {game.currentRound < TOTAL_ROUNDS ? (
           pendingConfirm === "advance" ? (
@@ -364,382 +354,6 @@ export function RoundPhase({
           currentRound={currentRound}
           addLab={addLab}
         />
-      )}
-    </div>
-  );
-}
-
-// ─── Where We Are Now sub-component ─────────────────────────────────────────
-
-function WhereWeAreNow({
-  gameId,
-  currentRound,
-  isProjector,
-  onEditNarrative,
-}: {
-  gameId: Id<"games">;
-  game: RoundPhaseProps["game"];
-  currentRound: Round;
-  isProjector: boolean;
-  onEditNarrative: () => void;
-}) {
-  const labs = useQuery(api.labs.getActiveLabs, { gameId }) ?? [];
-  const leading = labs.length > 0
-    ? labs.reduce((a, b) => (a.rdMultiplier > b.rdMultiplier ? a : b))
-    : null;
-  const cap = leading ? getCapabilityDescription(leading.rdMultiplier) : null;
-  const holderView = useQuery(api.rounds.getComputeHolderView, { gameId, roundNumber: currentRound.number });
-
-  return (
-    <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
-      <ExpandableSection
-        title="Where We Are Now"
-        defaultOpen
-        badge={<CheckCircle className="w-3.5 h-3.5 text-viz-safety" />}
-      >
-        <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          {labs.map((lab) => {
-            const holder = lab.ownerRoleId ? holderView?.find((h) => h.roleId === lab.ownerRoleId) : undefined;
-            const stockChange = holder ? holder.stockAfter - holder.stockBefore : 0;
-            const totalAcquiredAll = (holderView ?? []).reduce((s, h) => s + Math.max(0, h.acquired), 0);
-            const labSharePct = holder && totalAcquiredAll > 0
-              ? Math.round((Math.max(0, holder.acquired) / totalAcquiredAll) * 100)
-              : 0;
-            const labStock = holder?.stockAfter ?? 0;
-            return (
-              <div key={lab._id} className="bg-navy rounded-lg p-3 border border-navy-light">
-                <div className={`${isProjector ? "text-base" : "text-sm"} font-bold text-white`}>{lab.name}</div>
-                <div className={`${isProjector ? "text-3xl" : "text-xl"} font-black text-[#06B6D4] font-mono`}>{lab.rdMultiplier}×</div>
-                <div className="text-xs text-text-light space-y-0.5">
-                  <div>
-                    Stock {holder?.stockBefore ?? labStock}u {"→"} {labStock}u
-                    {stockChange !== 0 && (
-                      <span className={`ml-1 font-mono ${stockChange > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                        ({stockChange > 0 ? "+" : ""}{stockChange})
-                      </span>
-                    )}
-                  </div>
-                  <div>
-                    {holder ? `${labSharePct}% of new compute` : "No flow data"} {" · "}Safety {lab.allocation.safety}%
-                  </div>
-                </div>
-                {lab.spec && (
-                  <div className="text-[10px] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
-                    Spec: {lab.spec}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-        {cap && (
-          <>
-            <div className="bg-navy rounded-lg p-4 border border-navy-light mb-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-bold text-white">How Capable is AI?</span>
-                <span className="text-xs text-viz-capability font-mono ml-auto">{cap.agent} · {cap.rdRange}</span>
-              </div>
-              <p className={`${isProjector ? "text-base" : "text-sm"} text-[#E2E8F0] mb-2`}>{cap.generalCapability}</p>
-              <div className="space-y-1 mb-2">
-                {cap.specificCapabilities.map((c: string, i: number) => (
-                  <p key={`cap-${i}`} className={`${isProjector ? "text-base" : "text-sm"} text-text-light flex items-start gap-1.5`}>
-                    <span className="text-viz-capability mt-0.5">●</span> {c}
-                  </p>
-                ))}
-              </div>
-              <div className="flex items-center gap-2 pt-2 border-t border-navy-light">
-                <span className="text-base font-bold text-white">{cap.timeCompression}</span>
-              </div>
-            </div>
-            <div className="bg-navy rounded-lg p-3 border border-navy-light">
-              <p className={`${isProjector ? "text-base" : "text-sm"} text-[#E2E8F0]`}>{cap.implication}</p>
-            </div>
-          </>
-        )}
-        <ComputeFlowPanel currentRound={currentRound} gameId={gameId} isProjector={isProjector} />
-        {!isProjector && (
-          <div className="flex gap-2 mt-3">
-            <button onClick={onEditNarrative} className="text-[10px] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors flex items-center gap-1">
-              <Pencil className="w-3 h-3" /> Edit narrative
-            </button>
-          </div>
-        )}
-      </ExpandableSection>
-    </div>
-  );
-}
-
-function ComputeFlowPanel({
-  currentRound,
-  gameId,
-  isProjector,
-}: {
-  currentRound: Round;
-  gameId: Id<"games">;
-  isProjector: boolean;
-}) {
-  const view = useQuery(api.rounds.getComputeHolderView, { gameId, roundNumber: currentRound.number });
-  if (!view) return null;
-
-  const entries = view.filter((e) =>
-    e.stockBefore !== 0 || e.acquired !== 0 || e.transferred !== 0 || e.adjusted !== 0 || e.merged !== 0 || e.facilitator !== 0,
-  );
-  if (entries.length === 0) return null;
-
-  const totalBefore = entries.reduce((s, e) => s + e.stockBefore, 0);
-  const totalAfter = entries.reduce((s, e) => s + e.stockAfter, 0);
-
-  const totalAcquired = entries.reduce((s, e) => s + Math.max(0, e.acquired), 0);
-  // Chart data: split each row into gain (positive deltas of all types) and loss (negative deltas).
-  const chartEntries = entries.map((e) => {
-    const gain = Math.max(0, e.acquired) + Math.max(0, e.transferred) + Math.max(0, e.adjusted) + Math.max(0, e.merged) + Math.max(0, e.facilitator);
-    const loss = Math.max(0, -e.transferred) + Math.max(0, -e.adjusted) + Math.max(0, -e.merged) + Math.max(0, -e.facilitator);
-    return {
-      name: e.name,
-      gain,
-      loss,
-      stockBefore: e.stockBefore,
-      stockAfter: e.stockAfter,
-      sharePct: totalAcquired > 0 ? Math.round((Math.max(0, e.acquired) / totalAcquired) * 100) : 0,
-    };
-  }).sort((a, b) => b.stockAfter - a.stockAfter);
-  const maxTotal = Math.max(...chartEntries.map((e) => e.stockBefore + e.gain), 1);
-
-  return (
-    <div className="mt-3 mb-3 rounded-lg border border-navy-light bg-navy p-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="text-sm font-bold text-white">Compute Stock and Flow</div>
-          <div className="text-xs text-text-light">
-            Total {totalBefore}u {"→"} {totalAfter}u
-          </div>
-        </div>
-        <div className="flex items-center gap-4 text-[10px] text-text-light">
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-viz-safety" /> New</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-[#64748B]" /> Stock</span>
-          <span className="flex items-center gap-1"><span className="inline-block w-2.5 h-2.5 rounded-sm bg-viz-danger" /> Lost</span>
-        </div>
-      </div>
-
-      {/* Stacked column chart — baseline separates gains (above) from losses (below) */}
-      {(() => {
-        const maxLoss = Math.max(...chartEntries.map((e) => e.loss), 0);
-        const scale = maxTotal + maxLoss || 1;
-        const baselinePct = (maxLoss / scale) * 100;
-        const aboveHeight = 120;
-        const belowHeight = maxLoss > 0 ? 30 : 0;
-        return (
-          <div className="flex gap-1.5" style={{ height: aboveHeight + belowHeight + 40 }}>
-            {chartEntries.map((entry) => {
-              const retained = Math.max(0, entry.stockBefore - entry.loss);
-              const retainedPct = retained / scale * 100;
-              const gainPct = entry.gain / scale * 100;
-              const lossPct = entry.loss / scale * 100;
-
-              return (
-                <div key={entry.name} className="flex-1 flex flex-col items-center min-w-0">
-                  {/* Above baseline: gain + retained (grows upward) */}
-                  <div className="w-full flex flex-col justify-end" style={{ height: aboveHeight }}>
-                    {gainPct > 0 && (
-                      <div className="w-full bg-viz-safety rounded-t-sm" style={{ height: `${(gainPct / (100 - baselinePct)) * 100}%` }} title={`+${entry.gain}u new`} />
-                    )}
-                    {retainedPct > 0 && (
-                      <div className={`w-full bg-[#64748B] ${gainPct === 0 ? "rounded-t-sm" : ""}`} style={{ height: `${(retainedPct / (100 - baselinePct)) * 100}%` }} title={`${retained}u retained`} />
-                    )}
-                  </div>
-                  {/* Below baseline: loss (grows downward, red) */}
-                  <div className="w-full" style={{ height: belowHeight }}>
-                    {lossPct > 0 && (
-                      <div className="w-full bg-viz-danger rounded-b-sm" style={{ height: `${belowHeight > 0 ? (lossPct / baselinePct) * 100 : 0}%` }} title={`-${entry.loss}u lost`} />
-                    )}
-                  </div>
-                  {/* Label */}
-                  <div className="text-center w-full overflow-hidden mt-1">
-                    <div className="text-[10px] font-bold text-white truncate">{entry.name}</div>
-                    <div className="text-[10px] font-mono text-text-light">{entry.stockAfter}u</div>
-                    {entry.sharePct > 0 && (
-                      <div className="text-[9px] text-text-light/60">{entry.sharePct}%</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        );
-      })()}
-
-      {/* Detail table — only for facilitator, not projector */}
-      {!isProjector && (
-        <ComputeDetailTable
-          key={currentRound.number}
-          entries={entries}
-          gameId={gameId}
-          roundNumber={currentRound.number}
-        />
-      )}
-    </div>
-  );
-}
-
-interface ComputeHolderEntry {
-  roleId: string;
-  name: string;
-  stockBefore: number;
-  acquired: number;
-  transferred: number;
-  adjusted: number;
-  merged: number;
-  facilitator: number;
-  stockAfter: number;
-}
-
-function ComputeDetailTable({
-  entries,
-  gameId,
-  roundNumber,
-}: {
-  entries: ComputeHolderEntry[];
-  gameId: Id<"games">;
-  roundNumber: number;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [overrides, setOverrides] = useState<Record<string, { gained: number; lost: number; reason: string }>>({});
-  const overrideCompute = useAuthMutation(api.computeMutations.overrideHolderCompute);
-
-  const handleSave = async () => {
-    try {
-      await Promise.all(
-        Object.entries(overrides).map(([roleId, { gained, lost, reason }]) => {
-          const entry = entries.find((e) => e.roleId === roleId);
-          if (!entry) return Promise.resolve();
-          const computeStock = Math.max(0, entry.stockBefore + gained - lost);
-          return overrideCompute({ gameId, roundNumber, roleId, computeStock, reason: reason || undefined });
-        })
-      );
-      setOverrides({});
-      setEditing(false);
-    } catch (err) {
-      console.error("[ComputeDetailTable] Save failed:", err);
-    }
-  };
-
-  return (
-    <div className="mt-3 border-t border-navy-light pt-3">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-text-light">Detail</span>
-        {!editing ? (
-          <button onClick={() => setEditing(true)} className="text-[10px] px-2 py-0.5 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors flex items-center gap-1">
-            <Pencil className="w-2.5 h-2.5" /> Edit
-          </button>
-        ) : (
-          <div className="flex gap-1.5">
-            <button onClick={() => { setOverrides({}); setEditing(false); }} className="text-[10px] px-2 py-0.5 bg-navy-light text-text-light rounded hover:bg-navy-muted transition-colors">
-              Cancel
-            </button>
-            <button
-              onClick={() => void handleSave()}
-              disabled={Object.keys(overrides).length === 0}
-              className="text-[10px] px-2 py-0.5 bg-white text-navy rounded font-bold hover:bg-off-white transition-colors disabled:opacity-40"
-            >
-              Save
-            </button>
-          </div>
-        )}
-      </div>
-
-      <table className="w-full text-[11px]">
-        <thead>
-          <tr className="text-text-light/60 text-left">
-            <th className="pb-1 font-semibold">Entity</th>
-            <th className="pb-1 font-semibold text-right">Start</th>
-            <th className="pb-1 font-semibold text-right">New</th>
-            <th className="pb-1 font-semibold text-right">Lost</th>
-            <th className="pb-1 font-semibold text-right">After</th>
-            <th className="pb-1 font-semibold text-right">Share</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entries.map((e) => {
-            // Default gain/loss columns are the per-type delta aggregates from the ledger.
-            const defaultGained = Math.max(0, e.acquired)
-              + Math.max(0, e.transferred)
-              + Math.max(0, e.adjusted)
-              + Math.max(0, e.merged)
-              + Math.max(0, e.facilitator);
-            const defaultLost = Math.max(0, -e.transferred)
-              + Math.max(0, -e.adjusted)
-              + Math.max(0, -e.merged)
-              + Math.max(0, -e.facilitator);
-            const override = overrides[e.roleId];
-            const isOverridden = e.roleId in overrides;
-            const gained = override?.gained ?? defaultGained;
-            const lost = override?.lost ?? defaultLost;
-            const displayAfter = isOverridden
-              ? Math.max(0, e.stockBefore + gained - lost)
-              : e.stockAfter;
-
-            return (
-              <tr key={e.roleId} className="border-t border-navy-light/30">
-                <td className="py-1 text-white font-medium truncate max-w-[120px]">{e.name}</td>
-                <td className="py-1 text-right font-mono text-text-light">{e.stockBefore}</td>
-                <td className="py-1 text-right font-mono">
-                  {editing ? (
-                    <input
-                      type="number"
-                      value={gained}
-                      onChange={(ev) => {
-                        const val = Math.max(0, parseInt(ev.target.value) || 0);
-                        setOverrides((prev) => ({
-                          ...prev,
-                          [e.roleId]: { gained: val, lost: prev[e.roleId]?.lost ?? defaultLost, reason: prev[e.roleId]?.reason ?? "" },
-                        }));
-                      }}
-                      className={`w-14 bg-navy-dark border rounded px-1 py-0.5 text-right font-mono text-viz-safety outline-none ${
-                        isOverridden ? "border-[#FCD34D]" : "border-navy-light"
-                      } focus:border-text-light`}
-                    />
-                  ) : (
-                    <span className="text-viz-safety">{gained > 0 ? `+${gained}` : "—"}</span>
-                  )}
-                </td>
-                <td className="py-1 text-right font-mono">
-                  {editing ? (
-                    <input
-                      type="number"
-                      value={lost}
-                      onChange={(ev) => {
-                        const val = Math.max(0, parseInt(ev.target.value) || 0);
-                        setOverrides((prev) => ({
-                          ...prev,
-                          [e.roleId]: { gained: prev[e.roleId]?.gained ?? defaultGained, lost: val, reason: prev[e.roleId]?.reason ?? "" },
-                        }));
-                      }}
-                      className={`w-14 bg-navy-dark border rounded px-1 py-0.5 text-right font-mono text-viz-danger outline-none ${
-                        isOverridden ? "border-[#FCD34D]" : "border-navy-light"
-                      } focus:border-text-light`}
-                    />
-                  ) : (
-                    <span className="text-viz-danger">{lost > 0 ? `−${lost}` : "—"}</span>
-                  )}
-                </td>
-                <td className="py-1 text-right font-mono">
-                  <span className={isOverridden ? "text-[#FCD34D]" : e.facilitator !== 0 ? "text-[#FCD34D]" : "text-white"}>
-                    {displayAfter}
-                  </span>
-                </td>
-                <td className="py-1 text-right font-mono text-text-light/50">
-                  {e.acquired > 0 ? `${e.acquired}u` : "—"}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-
-      {editing && (
-        <div className="mt-2 text-[9px] text-text-light/60">
-          Edit &quot;New&quot; and &quot;Lost&quot; values. &quot;After&quot; is calculated automatically.
-        </div>
       )}
     </div>
   );

@@ -1,153 +1,109 @@
-# Next Session: Role Expansion + Polish
+# Next Session — Resolve Pipeline P7 Follow-ups
 
-## Prompt to paste into Claude Code:
+## State at handoff (2026-04-22 evening)
 
-```
-Read NEXT-SESSION.md, PLAN.md, and the memory files in .claude/projects/-Users-lukefreeman-code-ttx/memory/. Then read src/lib/game-data.ts, src/lib/ai-prompts.ts, convex/schema.ts, and the player handouts at /Users/lukefreeman/code/ttx/source-docs/11-player-handouts-full.md (first 300 lines for structure).
+**Open PR:** [#21 — Resolve pipeline: split decide→apply→P7→narrate; deterministic effect ordering](https://github.com/good-ancestors/ttx/pull/21)
+**Branch:** `t3code/clarify-attempted-versus-happened`
+**HEAD:** `33b1ae5` (plus whatever the in-flight UI-reorg agent commits)
 
-The app is a working TTX web app for "The Race to AGI". Current state: 88 tests passing, clean build, AI grading/narrative working via Vercel AI Gateway, full 3-round playthrough verified.
+### What landed in this session's PR
 
-Priority 1: Expand from 6 fixed roles to the full 17+ individual player roles from the source material. See NEXT-SESSION.md for the design. Each role can be human or AI-controlled. Labs split into CEO + Safety Lead with conflicting goals. New entities can emerge mid-game.
+- **Pipeline split** `rollAndNarrate` → `rollAndApplyEffects` + `continueFromEffectReview` with a mandatory facilitator pause in between (P7 per `docs/resolve-pipeline.md`).
+- **R&D growth ordering fix** — growth now lands as phase 9, after the P7 pause, not at start of resolve.
+- **multiplierOverride compounding fix** — overrides are now "final value", stashed on `round.pendingMultiplierOverrides`, re-applied after `computeLabGrowth` so they can't escalate (was compounding to 2000×).
+- **`EffectReviewPanel`** at `src/components/facilitator/effect-review-panel.tsx` rendering applied + flagged ops from both decide LLM (tagged `(LLM)`) and player actions (tagged `(player action)`, pulled from event log via new `events.getSinceForRound` internal query).
+- **Structured NPC sample actions** — `public/sample-actions.json` + mirror in `convex/sampleActionsData.ts`. 4 merger-intent actions on openbrain-ceo / conscienta-ceo rounds 2-4. `src/lib/sample-actions.ts` has the `StructuredIntent` union. `convex/aiGenerate.ts` resolves intents into `mergeLab` on submission + prefers structured samples in the picker.
+- **Bug fixes rolled in:** debug-panel model/cost display (`split("/").pop()`), `attempted-panel.tsx` reveal during effect-review (was rendering grey), eslint ignore `.claude/**`.
+- **Verification:** 116 tests passing, tsc clean, lint 0 errors, knip clean, 4 live rounds verified.
 
-Priority 2: After role expansion, do a full end-to-end test and polish for the May 2026 Small Giants Forum event.
-```
+### Session memory added
 
----
-
-## Current State (as of this session)
-
-### What's built and working:
-- Splash page, facilitator dashboard (1080p projection), mobile table player view
-- AI grading via Vercel AI Gateway (Gemini Flash for dev, swap to Claude for prod)
-- AI narrative generation with two-ending structure (race vs slowdown)
-- AI-controlled players that auto-submit on resolve
-- Inter-table proposals (send/accept/reject, boosts probability)
-- Compute stock tracking: OpenBrain (22u), DeepCent (17u), Conscienta (14u)
-- 3-way allocation (Users/Capability/Safety) per lab
-- Manual override (edit dials, narrative, probabilities)
-- Demo mode for facilitator rehearsal
-- 88 tests, 0 lint errors, 5 git commits
-
-### What works well from playtesting:
-- AI grading correctly handles edge cases (alignment impossible = 10%, cooperation boosts, timeline violations penalised)
-- Narrative coherence across 3 rounds with escalating drama
-- AI Systems role generates genuinely strategic secret actions
-- World state compounds sensibly (Capability 3→4→6→7, Tension 4→6→6→8)
-
-### Known issues from playtesting:
-- Lab allocation doesn't update from player submissions (only from narrative AI)
-- Resolve sequence has hardcoded waits (5s + 3s) — fragile
+- `~/.claude/projects/.../memory/feedback_orchestration.md` — rules for checking worktrees before duplicating work, using Sonnet for bulk edits + Opus for tricky decisions, token/context discipline. **Read this first every session.**
 
 ---
 
-## Role Expansion Design
+## Outstanding work (priority order)
 
-### Current: 6 roles (tables)
-OpenBrain, United States, China, Australia & Allies, AI Safety Community, The AI Systems
+### P0 — Bugs flagged during live testing
 
-### Target: 17+ individual roles from source material
+1. **Merged-survivor compute routing** — in a live R4 test the merger survivor lab rendered as `OpenBrain 2000× 0u` (the 2000× is fixed now by the override fix, but the `0u` on a survivor that should have absorbed compute is real). Likely one of:
+   - Survivor's `ownerRoleId` got cleared during the merge (the `(unowned)` case) so `mergedEntries` emitted no pair transfer in pipeline.ts:782-796.
+   - `mergeLabsWithComputeInternal` player-path settlement left the absorbed-owner's compute stranded.
+   - Display is mid-pipeline (effect-review) and compute acquisition hasn't happened yet — but other labs showed non-zero stock in the same screenshot.
 
-#### Labs (CEO + Safety Lead pairs):
-| # | Role | Lab | Type | Key Tension |
-|---|------|-----|------|-------------|
-| 1 | OpenBrain CEO | OpenBrain | lab-ceo | Speed vs. safety, board pressure |
-| 2 | OpenBrain Safety Lead | OpenBrain | lab-safety | Convince CEO to slow down |
-| 3 | Conscienta AI CEO | Conscienta | lab-ceo | Safety reputation vs. commercial pressure |
-| 4 | Conscienta AI Safety Lead | Conscienta | lab-safety | Has more influence than OB's safety lead |
-| 5 | DeepCent CEO | DeepCent | lab-ceo | Catch up with stolen weights, state pressure |
-| 6 | DeepCent Safety Lead | DeepCent | lab-safety | Minimal budget, CCP pressure |
+   **Where to look:** `convex/pipeline.ts:782-796`, `convex/labs.ts#mergeLabsInternal`, `convex/labs.ts#mergeLabsWithComputeInternal`. Reproduce by running a game to R4 with NPC mergers landing (picker is now deterministic).
 
-#### Governments:
-| # | Role | Type | Key Tension |
-|---|------|------|-------------|
-| 7 | United States (President) | government | Regulate vs. maintain edge |
-| 8 | China (President) | government | State control of AI race |
-| 9 | Australia (Prime Minister) | government | Middle power relevance |
-| 10 | Pacific Islands (PM of Fiji) | government | Existential climate + AI risk |
-| 11 | European Union (EC President) | government | Regulatory leadership vs. falling behind |
+### P0 — UI requests from user
 
-#### Civil Society:
-| # | Role | Type |
-|---|------|------|
-| 12 | Network of AISIs (UK AISI Director) | civil-society |
-| 13 | AI Safety Nonprofits (FAI CEO) | civil-society |
+2. **Full-width sequential facilitator UI** — an in-flight agent (agentId `abace416e585dd3d0`) was launched to do this at end of session. Check its commit. If not landed, the task is: make facilitator view full-width (currently centered narrow), reorder sections so during NARRATE phase the order is: What Was Attempted → What Happened → Lab State → Compute Stock and Flow → Lab Allocations → R&D Progress chart → New Compute Acquired. Last three per explicit user request ("allocations 3rd-last, R&D chart 2nd-last, new-compute last").
 
-#### Special:
-| # | Role | Type | Notes |
-|---|------|------|-------|
-| 14+ | The AI Systems | ai-system | One per lab, different alignment properties |
+   "New Compute Acquired" component **may not exist yet** — build it as a compact per-role list of this round's `acquired` ledger rows. Extract to its own file under `src/components/facilitator/` to keep `round-phase.tsx` under the 740-line max.
 
-### Schema Changes
+3. **Redesign facilitator resolve UI into three narrative sections with progressive reveal** (2026-04-22) — current layout shows Lab State + R&D chart the entire time, which spoils the reveal rhythm. Restructure the resolve/narrate view into three clearly-labelled sections that populate in order as the pipeline progresses:
 
-```typescript
-// roles table (new — replaces hardcoded ROLES array)
-roles: defineTable({
-  gameId: v.id("games"),
-  roleKey: v.string(),        // e.g., "openbrain-ceo", "us-president"
-  name: v.string(),           // e.g., "OpenBrain CEO"
-  type: v.union(
-    v.literal("lab-ceo"),
-    v.literal("lab-safety"),
-    v.literal("government"),
-    v.literal("civil-society"),
-    v.literal("ai-system")
-  ),
-  labId: v.optional(v.string()),  // which lab this role controls (if any)
-  brief: v.string(),
-  color: v.string(),
-  enabled: v.boolean(),
-  controlMode: v.union(v.literal("human"), v.literal("ai"), v.literal("npc")),
-  connected: v.boolean(),
-  joinCode: v.string(),
-})
+   **Section 1 — "What was attempted"**
+   - Shows the list of player/NPC actions submitted this round.
+   - Once dice are rolled, actions migrate into two sub-groups: **Succeeded** and **Failed**.
+   - Succeeded ones may carry a flag indicating they need review (today's EffectReviewPanel — a merger, decommission, ownership change, etc. that the facilitator should eyeball). Failed actions just sit grey in the Failed column.
 
-// labs table (new — replaces labs array in games)
-labs: defineTable({
-  gameId: v.id("games"),
-  name: v.string(),
-  computeStock: v.number(),
-  rdMultiplier: v.number(),
-  allocation: v.object({
-    users: v.number(),
-    capability: v.number(),
-    safety: v.number(),
-  }),
-  isPlayerControlled: v.boolean(),  // vs background context
-})
+   **Section 2 — "What happened"**
+   - Narrative / effect descriptions from the decide LLM + structured effect summaries (merge X into Y, compute +3u, etc.).
+   - Also where the narrative-phase text streams in.
+
+   **Section 3 — "Where things are at"** (in this order, top to bottom)
+   - **Lab state + allocations** (combined) — one component per lab showing name, R&D multiplier, compute stock, ownership, spec snippet, AND the coloured allocation blocks (deploy/research/safety) that `LabTracker` currently renders separately. Merge today's `WhereWeAreNow` lab cards with `LabTracker` into a single per-lab card. No separate "Lab Allocations" section.
+   - **AI capabilities** component — currently missing from the UI after recent changes, needs to be restored. Sits directly below the combined lab state + allocations.
+   - Compute stock + flow.
+   - R&D multiplier chart (historical trajectory).
+   - New compute allocation for this round.
+
+   **Progressive display rule:** Sections 1 and 2 are visible from submit/rolling phases. Section 3 (lab state + R&D chart + new compute) should **only appear late** — once growth + acquisition have landed (i.e. post-P7, during or after narrative). Right now Lab State and R&D show the whole time, which kills the reveal.
+
+   **Hook points:** `src/components/facilitator/round-phase.tsx` (main orchestration, phase gating), `src/components/facilitator/attempted-panel.tsx` (succeeded/failed split — this already exists for reveal, extend it with the review-flag badge), `src/components/facilitator/effect-review-panel.tsx` (fold into the Succeeded column as a flag, not a separate panel), `src/components/facilitator/new-compute-acquired.tsx` (move into Section 3), R&D chart component (check current location — likely under `round-phase.tsx` or a neighbour).
+
+   This is a significant restructure — consider a short Plan agent pass before implementing, and expect to keep `round-phase.tsx` under 700 lines by extracting section components.
+
+   **Step 9 — visual hierarchy + logical-flow review** (do this after all content moves land, before the PR merge). Step back and look at the whole facilitator screen as a facilitator would. Things to check explicitly:
+   - **Section peerage**: do S1 / S2 / S3 read as three clearly-labelled siblings, or do internal panel titles ("WHERE WE ARE NOW", "WHAT HAPPENED") compete with the section headers? May need a single section-header band above each section's cards so the three-part structure is obvious at a glance on a projection.
+   - **Spacing rhythm**: consistent card padding, consistent gap between sibling cards inside a section vs. gap between sections. Today each section is a stack of independent cards; consider whether sections should have a visible bounding wrap (subtle border or background tint) to group related cards.
+   - **Progressive reveal beat**: when phase transitions submit → rolling → effect-review → narrate, do sections appear in order without layout jank? No unmount-remount flicker on the narrative panel? Section 3's pop-in after Continue should feel like a reveal, not a jump.
+   - **Applied Effects placement**: currently lives as a separate card under the narrative. Decide: (a) second card under narrative (today), (b) collapsed summary-by-default with a "show effects" toggle, or (c) inlined into the narrative card as a sub-section. (a) is simplest; (b) reduces noise during narrate; (c) tightest but highest churn.
+   - **Allocation block scale**: `ComputeDotsViz` renders 1 block per compute unit. At 200u+ this becomes a large rectangle and dominates the lab card. Consider capping to 50 blocks with a "×N" multiplier label, or switching to a proportional bar at high counts.
+   - **Narrate-only R&D chart vs. always-on before**: the chart used to be always-visible below the fold. Now gated to `narrate`. Confirm this is the right call for facilitators who want to glance at trajectory during submit/rolling — maybe the chart should appear during submit/rolling too, just without the current-round dot. Decide.
+   - **Debug panel position**: DebugPanel is still at the bottom. Confirm it's below Section 3 in the new layout and doesn't visually break the section hierarchy.
+   - **Projector view**: load `?projector=true` and sanity-check. Many of the facilitator-only UIs (Continue bar, Edit narrative, merge buttons, regenerate) should be absent. No clipped content, no tiny text.
+
+   Only after this polish pass should the PR be marked ready.
+
+### P1 — Follow-ups explicitly deferred from the resolve-pipeline.md plan
+
+3. **Richer P7 flag surface** — current `appliedOps[].type === "rejected"` uses freeform strings. Replace with typed categories: `conflict`, `precondition_failure`, `invalid_reference`, `low_confidence_extraction`. Severity-ordered display. Hook points: `convex/pipeline.ts` rejection sites (merge/decommission/transfer/compute/multiplier validators), `src/components/facilitator/effect-review-panel.tsx`.
+
+4. **Structured action vocabulary on grader output** — per `docs/resolve-pipeline.md` phase 2, grader should emit `{probability, structuredEffect, confidence}` per action. Today grader only emits `probability + reasoning`. Adding `structuredEffect` would let us replace the decide LLM with deterministic extraction (phase 5 derives ops from grader output, no second LLM call). Big change — split into its own PR.
+
+5. **Split `labOperation` type into a discriminated union** — current shape at `convex/pipeline.ts:524` is a flat type with every field optional. Make it `{type: "merge", survivor, absorbed, newName?, spec?} | {type: "decommission", labName} | ...`. Mechanical refactor.
+
+### P2 — Code quality
+
+6. **`round-phase.tsx` too long** — 740 lines, above the 700-line warning. Extract at least:
+   - `AdvanceRound` / `EndScenario` buttons into their own component.
+   - The effect-review integration point is already extracted; continue with the narrate-phase bottom bar.
+
+7. **Sample action generator script** — `convex/sampleActionsData.ts` says "DO NOT EDIT — auto-generated" but there's no script. Either write a `scripts/generate-sample-actions-data.mjs` that does `fs.readFile("public/sample-actions.json") → writeFile("convex/sampleActionsData.ts", ...)` or update the header to say "maintained in sync by hand" and add a test that asserts equality.
+
+---
+
+## How to resume
+
 ```
+Read /Users/lukefreeman/code/ttx/app/NEXT-SESSION.md,
+  /Users/lukefreeman/.claude/projects/-Users-lukefreeman-code-ttx/memory/feedback_orchestration.md,
+  docs/resolve-pipeline.md.
 
-### Key Mechanics
+The resolve pipeline refactor (PR #21) is open. Check if the UI-reorg agent
+committed. Then pick up outstanding work from NEXT-SESSION.md in priority order.
 
-1. **CEO + Safety Lead conflict**: Both submit actions for the same lab. CEO controls capability allocation, Safety Lead controls safety allocation. If they disagree, the CEO wins by default unless the Safety Lead has political backing (e.g., government mandate).
-
-2. **Compute allocation per lab**: The CEO's submission sets the lab's allocation for the round. The Safety Lead can submit a "protest" allocation that the facilitator sees. If there's an accepted proposal between them, the compromise is used.
-
-3. **Dynamic lab creation**: Facilitator can add a new lab mid-game (e.g., "EU AI Lab" with starting compute from a government's action). This creates a new entry in the labs table.
-
-4. **The AI Systems**: One AI entity per lab. In the full game, the AI player manages all of them — each with potentially different alignment and capabilities. Actions can be per-AI or coordinated.
-
-5. **Emergent entities**: A rogue AI starting a company is an action that, if it succeeds, creates a new lab controlled by the AI Systems role. The narrative AI handles the details.
-
-### Migration Path
-
-Phase 1 (minimum viable):
-- Keep the 6-table format for the 90-minute version
-- Add the ability for the facilitator to create games with the full 17-role roster
-- Each role gets its own join code / AI player
-- Lab roles are tagged with their lab
-
-Phase 2 (full implementation):
-- CEO + Safety Lead conflict mechanics
-- Dynamic lab creation
-- Per-lab AI alignment tracking
-- Role-specific round briefings
-
-### Files to change:
-- `convex/schema.ts` — Add roles and labs tables
-- `convex/games.ts` — Update create mutation for flexible role selection
-- `src/lib/game-data.ts` — Full 17-role roster with briefs from source handouts
-- `src/app/game/[id]/facilitator/page.tsx` — Role management in lobby
-- `src/app/game/[id]/table/[code]/page.tsx` — Role-specific UI (CEO vs Safety Lead)
-- `src/lib/ai-prompts.ts` — Role-specific grading context
-- `src/app/api/ai-player/route.ts` — Handle new role types
-- Tests — Update for new schema
+Current branch: t3code/clarify-attempted-versus-happened.
+Dev deployment: oceanic-lapwing-232 (ANTHROPIC_API_KEY and FACILITATOR_SECRET set).
+Passphrase: coral-ember-drift-sage.
+```

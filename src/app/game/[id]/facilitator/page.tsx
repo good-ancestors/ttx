@@ -6,8 +6,6 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, type Lab } from "@/lib/game-data";
 import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation } from "@/lib/hooks";
-import { RdProgressChart } from "@/components/rd-progress-chart";
-import { LabTracker } from "@/components/lab-tracker";
 import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
 import { DebugPanel } from "@/components/debug-panel";
@@ -21,8 +19,6 @@ import { LobbyPhase } from "@/components/facilitator/lobby-phase";
 import { RoundPhase } from "@/components/facilitator/round-phase";
 import { TimerDisplay } from "@/components/facilitator/timer-display";
 import { AddLabForm } from "@/components/facilitator/add-lab-form";
-import { NewComputeAcquired } from "@/components/facilitator/new-compute-acquired";
-import { isResolvingPhase } from "@/lib/game-data";
 
 export default function FacilitatorPage({
   params,
@@ -80,8 +76,9 @@ export default function FacilitatorPage({
   const roundsLite = useQuery(api.rounds.getByGameLightweight, isVisible ? { gameId } : "skip");
   // Full rounds only needed for finished-game timeline
   const roundsFull = useQuery(api.rounds.getByGame, isVisible && game?.status === "finished" ? { gameId } : "skip");
-  // Full current round only needed during submit/rolling/narrate (narrative panel, resolve results)
-  const needsCurrentRound = gamePhase === "rolling" || gamePhase === "narrate" || gamePhase === "submit";
+  // Full current round only needed during submit/rolling/effect-review/narrate
+  // (narrative panel, resolve results, P7 applied-ops review).
+  const needsCurrentRound = gamePhase === "rolling" || gamePhase === "narrate" || gamePhase === "submit" || gamePhase === "effect-review";
   const currentRoundFull = useQuery(api.rounds.getCurrent,
     isVisible && needsCurrentRound ? { gameId } : "skip"
   );
@@ -305,9 +302,6 @@ export default function FacilitatorPage({
   }
 
   // ─── PLAYING ────────────────────────────────────────────────────────────────
-  const isResolvingNow = isResolvingPhase(phase);
-  const hasNarrativeData = isResolvingNow && !!currentRound?.summary;
-
   return (
     <div className="min-h-screen bg-navy-dark text-white">
       <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
@@ -430,7 +424,7 @@ export default function FacilitatorPage({
           />
         )}
 
-        {/* ── Sections 1–5: phase controls, AttemptedPanel, NarrativePanel, lab cards, compute flow ── */}
+        {/* ── Sections 1–3: phase controls, AttemptedSection, HappenedSection, StateSection (all progressively revealed) ── */}
         <RoundPhase
           gameId={gameId}
           game={game}
@@ -467,27 +461,11 @@ export default function FacilitatorPage({
           timerDisplay={timerDisplay}
           isUrgent={isUrgent}
           adjustTimer={adjustTimer}
-        />
-
-        {/* ── Section 6: Lab Allocations (always visible, full-width) ── */}
-        <LabTracker
           labs={labs}
-          onMerge={isProjector ? undefined : async (survivor, absorbed) => {
-            await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
-          }}
-          onAddLab={isProjector ? undefined : () => setAddLabOpen(true)}
+          rounds={rounds}
+          mergeLabs={mergeLabs}
+          openAddLab={() => setAddLabOpen(true)}
         />
-
-        {/* ── Section 7: R&D Progress chart (always visible, full-width) ── */}
-        <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={game.currentRound} />
-
-        {/* ── Section 8: New Compute Acquired — only during rolling/narrate after narrative lands ── */}
-        {hasNarrativeData && (
-          <NewComputeAcquired
-            gameId={gameId}
-            roundNumber={game.currentRound}
-          />
-        )}
 
         {/* Debug panel — fetches its own data when expanded to avoid always-on subscriptions */}
         {!isProjector && (
