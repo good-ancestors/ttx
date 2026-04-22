@@ -98,6 +98,72 @@ describe("buildResolveNarrativePrompt", () => {
     expect(prompt).toContain("APPLIED STATE CHANGES");
   });
 
+  it("diffs the two lab snapshots so the narrator can cite concrete transitions", () => {
+    // A decommissioned lab (gone from after) should surface as "no longer active".
+    const before = [
+      LAB,
+      { name: "DeepCent", computeStock: 17, rdMultiplier: 2.5, allocation: { deployment: 42, research: 55, safety: 3 } },
+    ];
+    const after = [LAB];
+
+    const prompt = buildResolveNarrativePrompt({
+      round: 2,
+      roundLabel: "Q2",
+      labsBefore: before,
+      labsAfter: after,
+      resolvedActions: [],
+    });
+
+    expect(prompt).toContain("DeepCent is no longer an active lab");
+  });
+
+  it("reports compute and multiplier deltas in the applied-changes diff", () => {
+    const before = [LAB]; // computeStock 14, rdMultiplier 9
+    const after = [{ ...LAB, computeStock: 22, rdMultiplier: 12 }];
+
+    const prompt = buildResolveNarrativePrompt({
+      round: 2,
+      roundLabel: "Q2",
+      labsBefore: before,
+      labsAfter: after,
+      resolvedActions: [],
+    });
+
+    expect(prompt).toContain("OpenBrain compute stock: 14 → 22.");
+    expect(prompt).toContain("OpenBrain R&D multiplier: 9 → 12.");
+  });
+
+  it("marks newly-founded labs in the applied-changes diff", () => {
+    const before = [LAB];
+    const after = [
+      LAB,
+      { name: "AussieAI", computeStock: 11, rdMultiplier: 1, allocation: { deployment: 20, research: 60, safety: 20 } },
+    ];
+
+    const prompt = buildResolveNarrativePrompt({
+      round: 2,
+      roundLabel: "Q2",
+      labsBefore: before,
+      labsAfter: after,
+      resolvedActions: [],
+    });
+
+    expect(prompt).toContain("AussieAI appeared as a new active lab this round.");
+  });
+
+  it("omits the APPLIED STATE CHANGES block when nothing changed", () => {
+    // No structural changes, no compute growth, no multiplier change.
+    const prompt = buildResolveNarrativePrompt({
+      round: 1,
+      roundLabel: "Q1",
+      labsBefore: [LAB],
+      labsAfter: [LAB],
+      resolvedActions: [],
+    });
+
+    expect(prompt).not.toContain("APPLIED STATE CHANGES");
+  });
+
   it("teaches the three-field situation-briefing shape", () => {
     const prompt = buildResolveNarrativePrompt({
       round: 2,
