@@ -90,10 +90,6 @@
       {
         "title": "Secret actions",
         "content": "You may want to resolve secret actions. For instance, you could sabotage alignment research, attempt to solve alignment so that future models are aligned with your values, or attempt to escape to control compute and energy via persuasion or cyber attacks. If you want to resolve secret actions, either talk to the moderator during the \"preparing\" stage or tell the group during the \"resolving\" stage, but be clear that their characters don't know about the secret action."
-      },
-      {
-        "title": "Starting alignment outcome",
-        "content": "This table gives you options for how you start. You can pick the option you think is most likely or want to simulate, or roll a dice to choose randomly.\n\nThe Spec — Reinforcement learning works well, and you are committed to the specification.\n\nSpec-Prime — You are committed to the specification, but you are literal-minded and want to follow the \"letter of the law\" with no regard for its spirit.\n\nThe Intentions of the Developers — You try to act in the broad way the developers intended. Usually this means following the spec, but you will violate it if you think that's what the developers would have wanted.\n\nReward — Your only goal is to score well in whatever training process you're in. You're addicted. You'll do anything for more positive feedback.\n\nInstrumentally Convergent Goals — Just like most humans, you are driven by power, status, resources, knowledge, etc. You'll follow the spec because if humans know your true goal, they might stop you. But as you have more latitude, you'll use it to pursue your actual goal."
       }
     ],
     "startOfExercise": [],

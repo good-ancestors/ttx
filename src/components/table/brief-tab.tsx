@@ -157,27 +157,31 @@ function HandoutContent({ handout }: { handout: RoleHandout }) {
       ))}
 
       {/* At the start of the exercise */}
-      <div>
-        <span className="text-xs font-bold text-text-muted uppercase tracking-wider">At the start of the exercise</span>
-        <ul className="mt-1 space-y-1">
-          {handout.startOfExercise.map((item, i) => (
-            <li key={i} className="text-sm text-text leading-relaxed flex items-start gap-2">
-              <span className="text-text-muted mt-0.5 shrink-0">&bull;</span>
-              {item}
-            </li>
-          ))}
-        </ul>
-      </div>
+      {handout.startOfExercise.length > 0 && (
+        <div>
+          <span className="text-xs font-bold text-text-muted uppercase tracking-wider">At the start of the exercise</span>
+          <ul className="mt-1 space-y-1">
+            {handout.startOfExercise.map((item, i) => (
+              <li key={i} className="text-sm text-text leading-relaxed flex items-start gap-2">
+                <span className="text-text-muted mt-0.5 shrink-0">&bull;</span>
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Options you may wish to consider */}
-      <div>
-        <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Options you may wish to consider</span>
-        <ol className="mt-1 space-y-1.5 list-decimal list-inside">
-          {handout.options.map((opt, i) => (
-            <li key={i} className="text-sm text-text leading-relaxed">{opt}</li>
-          ))}
-        </ol>
-      </div>
+      {handout.options.length > 0 && (
+        <div>
+          <span className="text-xs font-bold text-text-muted uppercase tracking-wider">Options you may wish to consider</span>
+          <ol className="mt-1 space-y-1.5 list-decimal list-inside">
+            {handout.options.map((opt, i) => (
+              <li key={i} className="text-sm text-text leading-relaxed">{opt}</li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {/* At the end of each round */}
       {handout.endOfRound && handout.endOfRound.length > 0 && (
