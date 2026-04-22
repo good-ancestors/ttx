@@ -243,7 +243,7 @@ export function RoundPhase({
       )}
 
       {/* ─── 5. Skip timer + Grade/Roll buttons (submit phase) ─── */}
-      {phase === "submit" && !isProjector && isTimerExpired && (
+      {phase === "submit" && !isProjector && (isTimerExpired || !game.phaseEndsAt) && (
         <div className="space-y-3">
           {submittedActionCount > 0 && (
             <div className="flex gap-3">
