@@ -655,4 +655,44 @@ describe("NarrativePanel resolve debug", () => {
       facilitatorToken: "test-token",
     });
   });
+
+  it("shows the missing-token error and does not call convex when no facilitator token is stored", async () => {
+    const storage = {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+    };
+    Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
+    Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+    const convexReact = await import("convex/react");
+    const query = vi.fn();
+    vi.mocked(convexReact.useConvex).mockReturnValue({ query } as never);
+    vi.mocked(convexReact.useQuery).mockReturnValue(undefined);
+
+    const { NarrativePanel } = await import("@/components/narrative-panel");
+
+    render(
+      <NarrativePanel
+        round={{
+          _id: "round-1",
+          number: 1,
+          label: "Round 1",
+          summary: {
+            labs: ["Lab update"],
+            geopolitics: [],
+            publicAndMedia: [],
+            aiSystems: [],
+          },
+        }}
+        debugContext={{ gameId: "game-1" as never }}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Show resolve-phase LLM debug"));
+
+    expect(
+      await screen.findByText("Facilitator authentication is missing. Refresh and sign in again."),
+    ).toBeInTheDocument();
+    expect(query).not.toHaveBeenCalled();
+  });
 });

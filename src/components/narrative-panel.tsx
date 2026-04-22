@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useConvex } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Loader2, CheckCircle, ChevronDown, Bug, X } from "lucide-react";
@@ -43,11 +44,7 @@ const SECTIONS: { key: keyof NonNullable<Round["summary"]>; label: string }[] = 
   { key: "aiSystems", label: "AI Systems" },
 ];
 
-interface ResolveDebugData {
-  prompt: string;
-  responseJson: string;
-  error?: string;
-}
+type ResolveDebugData = FunctionReturnType<typeof api.rounds.getResolveDebug>;
 
 export function NarrativePanel({
   round,
@@ -145,10 +142,12 @@ export function NarrativePanel({
 function ResolveDebugButton({ gameId, roundNumber }: { gameId: Id<"games">; roundNumber: number }) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<"prompt" | "response">("response");
-  const [debug, setDebug] = useState<ResolveDebugData | null | undefined>(undefined);
+  const [debug, setDebug] = useState<ResolveDebugData | undefined>(undefined);
+  // ResolveDebugData already includes `null` (no LLM debug captured); `undefined` means still loading.
   const [loadError, setLoadError] = useState<string | null>(null);
   const convex = useConvex();
   const facilitatorToken = useFacilitatorToken();
+  const requestIdRef = useRef(0);
 
   useEffect(() => {
     if (!open) return;
@@ -169,10 +168,17 @@ function ResolveDebugButton({ gameId, roundNumber }: { gameId: Id<"games">; roun
 
     setLoadError(null);
 
+    // Imperative convex.query (not useQuery) so auth errors surface inline in this modal
+    // instead of throwing from a subscription and crashing the whole narrative tree.
+    const requestId = ++requestIdRef.current;
     void convex
       .query(api.rounds.getResolveDebug, { gameId, roundNumber, facilitatorToken })
-      .then((result) => setDebug(result))
+      .then((result) => {
+        if (requestIdRef.current !== requestId) return;
+        setDebug(result);
+      })
       .catch((error) => {
+        if (requestIdRef.current !== requestId) return;
         console.error("Failed to load resolve debug:", error);
         setLoadError(error instanceof Error ? error.message : "Failed to load resolve debug.");
       });

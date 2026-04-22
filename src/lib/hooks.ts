@@ -190,6 +190,7 @@ export function useFacilitatorToken(): string | undefined {
 
 /** Store the facilitator token in localStorage. */
 export function storeFacilitatorToken(passphrase: string) {
+  if (typeof window === "undefined") return;
   localStorage.setItem(FACILITATOR_TOKEN_KEY, passphrase);
   window.dispatchEvent(new Event(FACILITATOR_TOKEN_EVENT));
 }
