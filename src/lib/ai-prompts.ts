@@ -561,7 +561,13 @@ LAB OPERATIONS — output any that apply:
   - Do NOT simulate routine revenue: each lab's deployment% already scales baseline compute inflow (±20% at extremes) automatically.
   - Do NOT use computeChange to represent soft/narrative effects like "degraded safety culture" or "eroded legitimacy" — those belong in the narrative pass only.
   - Reserve for: unexpected revenue shocks (hit product, lost contract), political events, physical damage, theft, grants tied to specific actions.
-- "multiplierOverride": Event changes R&D capability (Safer pivot halves it, sabotage, breakthrough). Absolute new value. Reserve for narrative-discontinuous events — do NOT emit a multiplierOverride just to nudge values; if a lab's trajectory is just "ahead" or "behind", the natural growth formula handles it.
+- "multiplierOverride": Use ONLY for discrete narrative events that discontinuously change R&D capability. The natural growth formula already compounds multipliers round-on-round based on compute × research% — do NOT emit overrides to "manage" that growth. The qualifying triggers are a short list:
+  * A Safer-style safety pivot explicitly proposed by a player action — halve or set below current.
+  * Physical sabotage / targeted destruction of R&D infrastructure explicitly referenced by an action — proportional reduction.
+  * A technical breakthrough action that succeeded with very high probability — a multiplicative bump up to ~2× current.
+  * **Never for mergers.** The merge op automatically sets the survivor's rdMultiplier to max(survivor, absorbed). Don't pile a multiplierOverride on top of a merge; the combination is handled mechanically.
+  * **Do NOT emit multiplierOverride to express general safety concern, to "cap" a lab that feels too dangerous, or to punish low safety allocation.** Those belong in the narrative prose, not the structural ops. A lab with 3% safety at 100× should still grow to 300× next round if compute × research% supports it — the safety consequences surface in trajectories, not in a stealth cap.
+  * **Do NOT emit multiplierOverride to match a number you feel is "right" for this phase of the scenario.** The game arc is encoded in the formula + maxMultiplier caps, not in your judgment. Trust the formula.
 
 **Guiding principle — only emit ops with genuine mechanical consequence.** The list should reflect the structural changes to the world; narrative-only color belongs in the next pass. If a round produced no structural changes (all actions were routine/diplomatic/descriptive), emit an empty array — an empty list is the correct output for a quiet round.
 

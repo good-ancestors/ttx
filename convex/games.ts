@@ -336,6 +336,21 @@ export const updateLabs = mutation({
         const clash = active.find((l) => l._id !== p.labId && l.status === "active" && l.name === p.name);
         if (clash) throw new Error(`Active lab named "${p.name}" already exists`);
       }
+      // Allocation must sum to 100 (same rule as the player-path spec editor). Facilitator
+      // clients validate client-side but we enforce here too so a bad or custom client
+      // can't land `{deployment: 100, research: 100, safety: 0}` and break growth.
+      if (p.allocation !== undefined) {
+        const sum = p.allocation.deployment + p.allocation.research + p.allocation.safety;
+        if (sum !== 100) {
+          throw new Error(`Lab allocation must sum to 100 (got ${sum})`);
+        }
+        if (p.allocation.deployment < 0 || p.allocation.research < 0 || p.allocation.safety < 0) {
+          throw new Error(`Lab allocation values must be non-negative`);
+        }
+      }
+      if (p.rdMultiplier !== undefined && p.rdMultiplier < 0) {
+        throw new Error(`Lab rdMultiplier must be non-negative (got ${p.rdMultiplier})`);
+      }
       const patch: Partial<typeof lab> = {};
       if (p.name !== undefined) patch.name = p.name;
       if (p.spec !== undefined) patch.spec = p.spec;
@@ -433,6 +448,13 @@ export const advanceRound = mutation({
     assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game || game.currentRound >= 4) return;
+
+    // Phase + resolving guards — advanceRound is only valid from narrate phase with no
+    // in-flight resolve. A double-click on the Advance button or a stray call from an
+    // earlier phase (effect-review, rolling) would otherwise skip the narrative and
+    // clobber pending state. Advance from a non-narrate phase is a no-op.
+    if (game.phase !== "narrate") return;
+    assertNotResolving(game);
 
     // Materialise any deferred acquisition for the round we're leaving — this is the
     // moment the new compute arrives in players' tables. Writes `acquired` ledger rows

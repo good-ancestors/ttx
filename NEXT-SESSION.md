@@ -121,7 +121,36 @@ Each scenario is a small JSON fixture + a 10-15 line test. The harness should su
 
    Hook points: `src/lib/ai-prompts.ts` (prompt), `convex/pipeline.ts:~620-720` (per-op validation switch + rejection tracking), JSON schema definition for the decide output.
 
-9. **Unify `adjustHolderCompute` vs `overrideHolderCompute`** (2026-04-23, flagged in simplify review #S4) — `convex/computeMutations.ts` now has two facilitator-edit mutations that both emit a `facilitator` ledger row via `emitTransaction`:
+9. **Move UI affordances into the sections they belong to + tighten narrative style** (2026-04-23):
+
+   **(a) Button/heading placement audit.** After the three-section refactor, several edit affordances ended up on the wrong section. Concrete example flagged by the user: "Edit narrative" currently lives inside `state-section.tsx` (the "Where We Are Now" card, bottom) but the narrative actually lives in `happened-section.tsx`. Move the pencil button onto/near the `<NarrativePanel>` rendering. Do a full sweep while you're there:
+   - Facilitator pencil buttons on each card should be inside that card, not on a neighbouring section.
+   - Section-level actions (Add Lab, Edit Narrative, Regenerate Narrative) belong inside their owning section's header.
+   - Nothing on the projector view that is facilitator-only — audit with `?projector=true`.
+   - Check `src/components/facilitator/resolve-sections/*.tsx` for any button that references state owned by a different section.
+
+   **(b) Narrative prose is too fluffy — tighten to "just the facts, bulleted where possible".** Today `outcomes` / `stateOfPlay` / `pressures` render as prose paragraphs. User wants terse, scannable facilitator-facing copy. Two coupled changes:
+   - **Prompt side** (`src/lib/ai-prompts.ts#buildResolveNarrativePrompt`): change the instructions from "2-3 sentences" narrative prose to a structured format — short clauses or bullet points per section. Remove permission to speculate, colour, or set a mood — just deltas and their immediate implication.
+   - **Schema side** (`convex/schema.ts` round.summary): consider storing outcomes/stateOfPlay/pressures as `Array<string>` (bullets) instead of `string` (prose blob). Migration is trivial since the field is optional and re-generated each round.
+   - **Render side** (`src/components/narrative-panel.tsx`): render bullets instead of `<p>` paragraphs when the field is an array. Keep string fallback for any older rounds still in the DB.
+
+   Goal: a facilitator should be able to read the narrative section in under 30 seconds and know exactly what changed. Narrative color lives in the player-facing pages, not the facilitator dashboard.
+
+   Hook points: `src/components/facilitator/resolve-sections/state-section.tsx` (move Edit narrative button out), `happened-section.tsx` (receive Edit narrative button), `src/components/narrative-panel.tsx` (render adjustments), `src/lib/ai-prompts.ts` (prompt rewording), `convex/schema.ts` + `convex/rounds.ts#applySummary` (if changing schema to arrays).
+
+10. **Correctness-review follow-ups** (2026-04-23, from `temp-review-correctness.md`) — B1 (advanceRound phase guard) and B3 (updateLabs allocation sum validation) shipped in this branch. Remaining items to address:
+
+    **B5 (medium) — `labsAfter` snapshot frozen pre-materialisation.** `snapshotAfterInternal` runs inside `continueFromEffectReview` (narrate phase), which is BEFORE `advanceRound` materialises `pendingAcquired`. Result: `round.labsAfter[i].computeStock` is the pre-acquisition value, while `tables.computeStock` is the post-acquisition value after Advance. Next round's narrative prompt reconstitutes `labsBefore` from this stale snapshot, so the LLM sees pre-acquisition numbers while players see post. Fix: either re-snapshot in `advanceRound` after materialisation, or omit `computeStock` from the snapshot and join fresh from `tables` on read. (Overlaps with `temp-simplify-report.md` #4 — "labSnapshotValidator.computeStock is a derived field baked into the wire".)
+
+    **B2 (medium) — `decommissionLabInternal` clears `mergedIntoLabId` when called without opts.** Any caller who wants "just decommission this lab" without specifying `mergedIntoLabId` accidentally nukes the pointer. Fix: only touch `mergedIntoLabId` when `opts.mergedIntoLabId` is explicitly passed.
+
+    **B4 (medium) — `forceClearResolvingLock` leaves `resolveNonce` + `phase` stuck.** When a facilitator clicks "Clear Lock & Retry" mid-pipeline-error, the game's `resolveNonce` stays set; retrying then re-validates the nonce and fails. Also the phase (e.g. `rolling`) isn't reverted. Fix: the mutation should also clear `resolveNonce` and optionally rewind phase to its last stable state (whatever makes sense — submit if pre-roll, narrate if post-apply).
+
+    **B7 (medium) — re-resolve after LLM override carries stale `labs.rdMultiplier`.** `clearRegenerableRows` (called at start of `rollAndApplyEffects`) only touches ledger rows; the labs table still has the last round's `rdMultiplier` from an earlier override. On re-resolve the decide pass reads the overridden multiplier and either overwrites it or suppresses natural growth. Fix: on re-resolve from a live round, also reset `labs.rdMultiplier` to the pre-round snapshot (from `round.labsBefore`).
+
+    Low/nit items from the correctness review are captured in `temp-review-correctness.md` under B6, B8-B12 — look there if shipping a polish pass.
+
+11. **Unify `adjustHolderCompute` vs `overrideHolderCompute`** (2026-04-23, flagged in simplify review #S4) — `convex/computeMutations.ts` now has two facilitator-edit mutations that both emit a `facilitator` ledger row via `emitTransaction`:
    - `overrideHolderCompute({gameId, roundNumber, roleId, computeStock, reason})` — takes an **absolute** target stock; computes delta server-side from current `table.computeStock`.
    - `adjustHolderCompute({gameId, roundNumber, roleId, delta, reason})` — takes a **delta** directly; no server-side read.
 
