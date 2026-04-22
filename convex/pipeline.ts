@@ -785,6 +785,8 @@ export const rollAndApplyEffects = internalAction({
       // this summary (rollAllImpl settled the merge before the pipeline kicked off).
       const allLabsForNames = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId, includeInactive: true });
       const labNameById = new Map(allLabsForNames.map((l) => [l.labId, l.name] as const));
+      const { ROLES } = await import("./gameData");
+      const roleNameById = new Map<string, string>(ROLES.map((r) => [r.id, r.name]));
       const appliedOps: { type: string; status: "applied" | "rejected"; summary: string; reason?: string; category?: string; opType?: string }[] = [];
 
       // (b) Player-originated structural ops. rollAllImpl settles player mergers and
@@ -797,34 +799,53 @@ export const rollAndApplyEffects = internalAction({
           sinceTimestamp: sinceMs,
           types: ["lab_merged", "lab_merge_failed", "lab_founded", "lab_founding_failed"],
         });
+        const plainReason = (r: string): string => {
+          switch (r) {
+            case "rolled_failure": return "dice roll failed";
+            case "lab_already_decommissioned": return "target lab was already absorbed earlier this round";
+            case "unknown": return "unknown reason";
+            default: return r.replace(/_/g, " ");
+          }
+        };
         for (const evt of playerEvents) {
           const data: Record<string, unknown> = evt.data ? (() => { try { return JSON.parse(evt.data) as Record<string, unknown>; } catch { return {}; } })() : {};
+          const actorName = evt.roleId ? roleNameById.get(evt.roleId) ?? evt.roleId : "a player";
           if (evt.type === "lab_merged") {
             const survivorName = typeof data.survivorLabId === "string" ? labNameById.get(data.survivorLabId as Id<"labs">) ?? "?" : "?";
             const absorbedName = typeof data.absorbedLabId === "string" ? labNameById.get(data.absorbedLabId as Id<"labs">) ?? "?" : "?";
             appliedOps.push({
               type: "merge",
               status: "applied",
-              summary: `${absorbedName} merged into ${survivorName} (player action)`,
+              summary: `${actorName} merged ${absorbedName} into ${survivorName}`,
               reason: typeof data.amountMoved === "number" ? `${data.amountMoved}u compute transferred` : undefined,
             });
           } else if (evt.type === "lab_merge_failed") {
+            const survivorName = typeof data.survivorLabId === "string" ? labNameById.get(data.survivorLabId as Id<"labs">) ?? "?" : "?";
+            const absorbedName = typeof data.absorbedLabId === "string" ? labNameById.get(data.absorbedLabId as Id<"labs">) ?? "?" : "?";
+            const reason = typeof data.reason === "string" ? plainReason(data.reason) : "unknown reason";
             appliedOps.push({
               type: "rejected",
               status: "rejected",
-              summary: `Player merger failed: ${typeof data.reason === "string" ? data.reason : "unknown"}`,
+              summary: `${actorName} tried to merge ${absorbedName} into ${survivorName} — ${reason}`,
+              category: "precondition_failure",
+              opType: "merge",
             });
           } else if (evt.type === "lab_founded") {
+            const labName = typeof data.labName === "string" ? data.labName : "?";
+            const seed = typeof data.seedCompute === "number" ? data.seedCompute : "?";
             appliedOps.push({
               type: "foundLab",
               status: "applied",
-              summary: `New lab founded: ${typeof data.labName === "string" ? data.labName : "?"} (${typeof data.seedCompute === "number" ? data.seedCompute : "?"}u seed)`,
+              summary: `${actorName} founded ${labName} with ${seed}u seed compute`,
             });
           } else if (evt.type === "lab_founding_failed") {
+            const labName = typeof data.labName === "string" ? data.labName : "?";
             appliedOps.push({
               type: "rejected",
               status: "rejected",
-              summary: `Lab founding failed: ${typeof data.labName === "string" ? data.labName : "?"} (player action)`,
+              summary: `${actorName} tried to found ${labName} — action failed`,
+              category: "precondition_failure",
+              opType: "foundLab",
             });
           }
         }

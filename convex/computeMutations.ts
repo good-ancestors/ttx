@@ -16,6 +16,36 @@ export const setComputeShareOverrides = mutation({
   },
 });
 
+/** Adjust a role's compute by a delta. Writes a `facilitator` ledger row for the delta
+ *  amount directly — caller supplies the delta (no need to know current stock). */
+export const adjustHolderCompute = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    roleId: v.string(),
+    delta: v.number(),
+    reason: v.optional(v.string()),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    if (args.delta === 0) return;
+    await emitTransaction(ctx, {
+      gameId: args.gameId,
+      roundNumber: args.roundNumber,
+      type: "facilitator",
+      status: "settled",
+      roleId: args.roleId,
+      amount: args.delta,
+      reason: args.reason ?? "Facilitator compute adjustment",
+    });
+    await logEvent(ctx, args.gameId, "compute_override", args.roleId, {
+      delta: args.delta,
+      reason: args.reason,
+    });
+  },
+});
+
 /** Facilitator-edit path: write a `facilitator` ledger row for the delta. The ledger
  *  updates table.computeStock cache; labs table doesn't store compute. */
 export const overrideHolderCompute = mutation({

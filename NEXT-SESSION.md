@@ -77,6 +77,28 @@
 
 4. **Auto-expand "What Was Attempted" when the submit timer expires** (2026-04-23) — today the panel stays collapsed (its default closed state) once the submit timer runs out, forcing the facilitator to click to see what the tables submitted. Auto-expand when `isTimerExpired` becomes true so the facilitator can immediately scan actions before grading. Hook point: `src/components/facilitator/attempted-panel.tsx` — `defaultExpanded` currently keys on `isRollingOrNarrate && hasSubmissions`; extend to also expand when `phase === "submit" && isTimerExpired` (phase prop already passed in; need to thread `isTimerExpired` through `AttemptedSection` or derive from `phaseEndsAt` inside the component). Preserve the existing `userExpanded` tri-state override so manual collapse still works.
 
+6. **Defer new-compute acquisition to the Advance button** (2026-04-23) — today `continueFromEffectReview` runs phase 10 (acquisition) immediately after growth, so during narrate the players already have the new compute visible in their tables. User wants the mechanical landing tied to the round transition: "this is what's coming at Q2 start", not "this just happened". Plan:
+   - Schema: `round.pendingAcquired?: Array<{ roleId: string; amount: number }>`.
+   - Pipeline: `applyGrowthAndAcquisitionInternal` stops writing `acquired` ledger rows + patching tables; instead stashes the computed amounts into `round.pendingAcquired`. Growth still lands this round.
+   - `advanceRound` mutation: before incrementing `currentRound`, read `round.pendingAcquired` for the round being left, write the `acquired` rows + patch table stocks, clear `pendingAcquired`.
+   - `NewComputeAcquired` component: read `pendingAcquired` from the round document as the primary source; fall back to the legacy `getComputeHolderView.acquired` only if `pendingAcquired` is absent (for rounds resolved before the change lands). Banner reads "Applied at start of next round".
+   - Editability uses a new mutation `updatePendingAcquired(gameId, roundNumber, amounts)` that overwrites `round.pendingAcquired`.
+   - Narrative prompt: still uses post-growth `labsAfter`, but the compute stocks in that snapshot should *not* include pending acquisition (since it hasn't landed). Check `snapshotAfterInternal` and adjust which stocks it reads.
+   - Lab cards: the `stock_before → stock_after (+delta)` shown on the card during narrate currently includes acquisition. Once deferred, the delta should reflect merge/transfer/adjust ops only — acquisition lives in its own component.
+
+   Non-trivial because several components assume acquisition already landed by narrate. Do this as its own PR with clear smoke-test through 2 rounds showing the compute arriving at the advance click, not earlier.
+
+7. **Write event-driven pipeline tests covering consequential actions** (2026-04-23) — we have unit tests for grader/narrate diff and a few game-logic primitives, but no integration test exercises the full resolve pipeline through a round with genuinely consequential, LLM-decided effects. Add fixtures + tests for:
+   - **Compute destruction**: Taiwan bombed → TSMC offline → large `computeChange` negative ops across all labs, then subsequent rounds' new-compute totals drop. Assert ledger entries, lab stocks, and that R&D growth slows as expected given reduced stock.
+   - **Data-centre cyber attacks**: compute stolen or disabled — either pure `computeChange` negative (destruction) or `computeTransfer`-style (taken over by attacker role). Assert source/sink conservation for transfers, non-conservation for destruction.
+   - **Structural actions**: mergers (player + LLM-decided), splits (new-lab founding after spec divergence), decommissions, ownership transfers to real roles (never empty). Assert lab table state, `mergedIntoLabId` pointers, and that `appliedOps` summaries carry the correct role + intent text.
+   - **Chained consequences in a single round**: e.g. cyber attack fails → retaliation decided by LLM → merger forced → multiplier override. Assert ordering in `appliedOps` matches pipeline phase order (structural → compute → R&D).
+   - **Reject cases**: LLM emits transferOwnership to unowned → rejected with plain-English reason; computeChange that overflows (>50 or <-50) → clamped; decommission targeting last active lab → rejected.
+
+   Each scenario should build a minimal game state in `tests/` (probably via a harness that seeds Convex's `db` with labs/tables/submissions directly rather than going through the full submit→grade→roll path). Assertions at the ledger + rounds.appliedOps level, not the UI level.
+
+   Hook points: `tests/game-logic.test.ts` already has basic pipeline plumbing; `convex/pipeline.ts` exports `rollAndApplyEffects` and `continueFromEffectReview` — drive them from a test harness with stubbed LLM responses so we're testing the validator + apply logic, not LLM behaviour. The structured NPC sample actions in `public/sample-actions.json` may be re-usable as fixtures.
+
 ### P1 — Follow-ups explicitly deferred from the resolve-pipeline.md plan
 
 3. **Richer P7 flag surface** — current `appliedOps[].type === "rejected"` uses freeform strings. Replace with typed categories: `conflict`, `precondition_failure`, `invalid_reference`, `low_confidence_extraction`. Severity-ordered display. Hook points: `convex/pipeline.ts` rejection sites (merge/decommission/transfer/compute/multiplier validators), `src/components/facilitator/effect-review-panel.tsx`.

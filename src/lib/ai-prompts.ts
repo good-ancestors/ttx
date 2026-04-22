@@ -555,9 +555,15 @@ ${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}
 LAB OPERATIONS — output any that apply:
 - "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Use newName to rename the merged lab. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).
 - "decommission": Lab shut down or destroyed. Specify labName.
-- "transferOwnership": Lab moves to a different controller (nationalisation, forced acquisition). Specify labName + controllerRoleId (empty string = unowned).
-- "computeChange": Direct compute stock change from a specific narrative event — DPA transfer, sanctions, infrastructure damage, theft, grant. Use for ONE-OFF shocks tied to player actions or world events. DO NOT use to simulate routine revenue: each lab's deployment% already scales baseline compute inflow (±20% at extremes) automatically. Reserve computeChange for unexpected revenue shocks (hit product, lost contract) or political events.
-- "multiplierOverride": Event changes R&D capability (Safer pivot halves it, sabotage, breakthrough). Absolute new value.
+- "transferOwnership": Lab moves to a different controller (nationalisation, forced acquisition). Specify labName + controllerRoleId. **Never emit an empty controllerRoleId — a lab with no owner strands its compute and breaks the display. If the narrative is that a lab dissolves, use "decommission" instead.**
+- "computeChange": Direct compute stock change from a specific, concrete narrative event — DPA transfer, sanctions, infrastructure damage, theft, grant. Use ONLY for ONE-OFF shocks tied to a specific successful action or world event. Rules:
+  - The change must be NON-ZERO. A \`computeChange: 0\` is not an op — omit it entirely; the narrative pass will handle any purely descriptive consequences.
+  - Do NOT simulate routine revenue: each lab's deployment% already scales baseline compute inflow (±20% at extremes) automatically.
+  - Do NOT use computeChange to represent soft/narrative effects like "degraded safety culture" or "eroded legitimacy" — those belong in the narrative pass only.
+  - Reserve for: unexpected revenue shocks (hit product, lost contract), political events, physical damage, theft, grants tied to specific actions.
+- "multiplierOverride": Event changes R&D capability (Safer pivot halves it, sabotage, breakthrough). Absolute new value. Reserve for narrative-discontinuous events — do NOT emit a multiplierOverride just to nudge values; if a lab's trajectory is just "ahead" or "behind", the natural growth formula handles it.
+
+**Guiding principle — only emit ops with genuine mechanical consequence.** The list should reflect the structural changes to the world; narrative-only color belongs in the next pass. If a round produced no structural changes (all actions were routine/diplomatic/descriptive), emit an empty array — an empty list is the correct output for a quiet round.
 
 IDENTIFIERS — this is load-bearing:
 - \`labName\` is a lab name string that must match a lab in LAB STATUS exactly. Not a role name.
