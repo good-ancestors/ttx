@@ -40,7 +40,6 @@ function getRoleDescription(roleId: string, fallbackBrief: string): string {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-// Doc<"games"> no longer carries labs — kept as a comment marker for future callers.
 type Submission = Doc<"submissions">;
 type Round = Doc<"rounds">;
 type Table = Doc<"tables">;
@@ -329,11 +328,12 @@ export const gradeOnly = internalAction({
     const { gameId, roundNumber } = args;
 
     try {
-      // Quick check: fetch submissions first to see if there's anything to grade
-      const existingSubs: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
+      // Both reads are independent — fetch in parallel to halve the RTT.
+      const [existingSubs, allTables]: [Submission[], Table[]] = await Promise.all([
+        ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }),
+        ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
+      ]);
 
-      // Check for missing AI/NPC submissions before proceeding
-      const allTables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
       const submittedRoles = new Set(existingSubs.map((s) => s.roleId));
       const enabledNonHuman = allTables.filter((t) => t.enabled && t.controlMode !== "human");
       const missingTables = enabledNonHuman.filter((t) => !submittedRoles.has(t.roleId));
@@ -370,11 +370,14 @@ export const gradeOnly = internalAction({
 
       if (submissions.length === 0) throw new Error("No submissions to grade");
 
-      // Only fetch remaining data when we actually have things to grade
-      const rounds: Round[] = await ctx.runQuery(internal.rounds.getAllForPipeline, { gameId });
-      const requests = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
-      const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
-      const labs = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
+      // Only fetch remaining data when we actually have things to grade. All four
+      // queries are independent of each other — parallelise to save ~3 RTTs.
+      const [rounds, requests, tables, labs] = await Promise.all([
+        ctx.runQuery(internal.rounds.getAllForPipeline, { gameId }),
+        ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber }),
+        ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
+        ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
+      ]);
       const enabledRoleNames = tables.filter((t) => t.enabled).map((t) => t.roleName);
 
       await gradeAllBatched(ctx, {
@@ -430,9 +433,12 @@ export const rollAndApplyEffects = internalAction({
           (t) => t.roleId === AI_SYSTEMS_ROLE_ID && t.enabled && t.aiDisposition
         );
         if (aiSystemsTable) {
-          const labsNow = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
+          // labsNow and subs are independent — parallelise.
+          const [labsNow, subs]: [LabWithCompute[], Submission[]] = await Promise.all([
+            ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
+            ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }),
+          ]);
           if (labsNow) {
-            const subs: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
             const power = getAiInfluencePower(labsNow);
             const influences: { submissionId: Id<"submissions">; actionIndex: number; modifier: number }[] = [];
 

@@ -201,7 +201,7 @@ export function AttemptedPanel({
     (currentRound?.appliedOps ?? []).filter((op) =>
       op.status === "applied" && REVIEWABLE_OP_TYPES.has(op.type)
     ),
-  [currentRound]);
+  [currentRound?.appliedOps]);
   const showReviewBadges = phase === "effect-review" && reviewableApplied.length > 0;
 
   // Derive the lab/role option lists used by the effect editor dropdowns.

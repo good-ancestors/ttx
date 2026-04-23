@@ -162,12 +162,7 @@ export function LabStateCard({
                   className="inline-block w-1.5 h-1.5 rounded-[1px]"
                   style={{ backgroundColor: cat.color }}
                 />
-                {cat.key === "deployment"
-                  ? "Deployment"
-                  : cat.key === "research"
-                    ? "Research"
-                    : "Safety"}{" "}
-                {lab.allocation[cat.key]}%
+                {cat.label} {lab.allocation[cat.key]}%
               </span>
             ))}
           </div>

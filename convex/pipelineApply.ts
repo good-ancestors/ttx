@@ -1,16 +1,6 @@
-// Atomic resolve apply — two mutations, one per pipeline half.
-// Kept out of pipeline.ts because that module is "use node" (actions only); mutations must
-// live in a default Convex runtime module.
-//
-// Split per docs/resolve-pipeline.md P7:
-//
-//   applyDecidedEffectsInternal   — phase 5 (and 5.7 internal): structural ops +
-//                                   adjusted compute + merged-pair ledger. The
-//                                   facilitator reviews the result at P7.
-//   applyGrowthAndAcquisitionInternal — phase 8/9/10: share% overrides already
-//                                   live on games.computeShareOverrides by this
-//                                   point; multiplier updates and acquired rows
-//                                   land together so the post-state is coherent.
+// Phase-5 structural apply + phase-9/10 growth-and-acquisition apply. Split
+// because pipeline.ts is `use node` and mutations must live in a default Convex
+// runtime module. See docs/resolve-pipeline.md for the full phase ordering.
 
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
@@ -84,28 +74,29 @@ export const applyDecidedEffectsInternal = internalMutation({
       ...args.decommissionOps.map((d) => d.labId),
       ...args.transferOps.map((t) => t.labId),
     ];
-    for (const id of structuralLabIds) {
-      const lab = await ctx.db.get(id);
+    const structuralLabs = await Promise.all(structuralLabIds.map((id) => ctx.db.get(id)));
+    structuralLabIds.forEach((id, i) => {
+      const lab = structuralLabs[i];
       if (!lab || lab.gameId !== args.gameId) {
         throw new Error(`Lab ${id} not found or wrong game — aborting resolve apply`);
       }
       if (lab.status !== "active") {
         throw new Error(`Lab ${id} (${lab.name}) is not active — structural op rejected (likely facilitator-decommissioned since resolve started)`);
       }
-    }
-    for (const u of args.multiplierUpdates) {
-      const lab = await ctx.db.get(u.labId);
+    });
+    const multiplierLabs = await Promise.all(args.multiplierUpdates.map((u) => ctx.db.get(u.labId)));
+    args.multiplierUpdates.forEach((u, i) => {
+      const lab = multiplierLabs[i];
       if (!lab || lab.gameId !== args.gameId) {
         throw new Error(`Lab ${u.labId} not found or wrong game — aborting resolve apply`);
       }
-    }
+    });
 
-    // Ledger: wipe regenerable rows, then emit adjusted + merged only.
+    // Ledger: wipe regenerable rows, then emit adjusted + merged in parallel.
     // Acquired rows land in applyGrowthAndAcquisitionInternal after R&D growth.
     await clearRegenerableRows(ctx, args.gameId, args.roundNumber);
-    for (const row of args.adjusted) {
-      if (row.amount === 0) continue;
-      await emitTransaction(ctx, {
+    await Promise.all([
+      ...args.adjusted.filter((r) => r.amount !== 0).map((row) => emitTransaction(ctx, {
         gameId: args.gameId,
         roundNumber: args.roundNumber,
         type: "adjusted",
@@ -113,11 +104,8 @@ export const applyDecidedEffectsInternal = internalMutation({
         roleId: row.roleId,
         amount: row.amount,
         reason: row.reason,
-      });
-    }
-    for (const row of args.merged) {
-      if (row.amount === 0) continue;
-      await emitPair(ctx, {
+      })),
+      ...args.merged.filter((r) => r.amount !== 0).map((row) => emitPair(ctx, {
         gameId: args.gameId,
         roundNumber: args.roundNumber,
         type: "merged",
@@ -126,29 +114,22 @@ export const applyDecidedEffectsInternal = internalMutation({
         toRoleId: row.toRoleId,
         amount: row.amount,
         reason: row.reason,
-      });
-    }
+      })),
+    ]);
 
-    // Structural lab mutations — these are phase 5.5/5.6/5.4/5.7 ops.
-    for (const m of args.mergeOps) {
-      await mergeLabsInternal(ctx, {
-        survivorLabId: m.survivorLabId,
-        absorbedLabId: m.absorbedLabId,
-        newName: m.newName,
-        newSpec: m.newSpec,
-      });
-    }
-    for (const d of args.decommissionOps) {
-      await decommissionLabInternal(ctx, d.labId);
-    }
-    for (const t of args.transferOps) {
-      await transferLabOwnershipInternal(ctx, t.labId, t.newOwnerRoleId);
-    }
+    // Structural lab mutations. Parallelise within each bucket; buckets run
+    // sequentially so merges settle before subsequent ops touch the survivor.
+    await Promise.all(args.mergeOps.map((m) => mergeLabsInternal(ctx, {
+      survivorLabId: m.survivorLabId,
+      absorbedLabId: m.absorbedLabId,
+      newName: m.newName,
+      newSpec: m.newSpec,
+    })));
+    await Promise.all(args.decommissionOps.map((d) => decommissionLabInternal(ctx, d.labId)));
+    await Promise.all(args.transferOps.map((t) => transferLabOwnershipInternal(ctx, t.labId, t.newOwnerRoleId)));
     // Breakthrough / modelRollback final multiplier values. Growth in phase 9
     // grows from this value; there is no post-growth re-apply.
-    for (const u of args.multiplierUpdates) {
-      await updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier);
-    }
+    await Promise.all(args.multiplierUpdates.map((u) => updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier)));
 
     // Stash productivity mods + write initial mechanicsLog slice on the round doc.
     const round = await ctx.db.query("rounds")
@@ -185,15 +166,14 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
       throw new Error(`Resolve nonce mismatch on growth apply — another resolve superseded this run`);
     }
 
-    for (const u of args.multiplierUpdates) {
-      const lab = await ctx.db.get(u.labId);
-      if (!lab || lab.gameId !== args.gameId) {
-        // Multiplier update on a missing lab — skip (likely decommissioned after the decide
-        // phase by a facilitator override between P7 and continue).
-        continue;
-      }
-      await updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier);
-    }
+    // Validate + update multipliers in parallel. Missing labs are skipped
+    // (likely decommissioned by a facilitator override between P7 and continue).
+    const existing = await Promise.all(args.multiplierUpdates.map((u) => ctx.db.get(u.labId)));
+    const validUpdates = args.multiplierUpdates.filter((_, i) => {
+      const lab = existing[i];
+      return lab && lab.gameId === args.gameId;
+    });
+    await Promise.all(validUpdates.map((u) => updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier)));
 
     // Stash acquired amounts on the round doc for materialisation at Advance.
     // Also clear pendingProductivityMods (consumed by phase-9 growth) and append

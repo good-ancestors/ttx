@@ -9,44 +9,55 @@ import { isResolvingPhase } from "@/lib/game-data";
 import type { Round } from "../types";
 import type { Id } from "@convex/_generated/dataModel";
 
-const TYPE_LABELS: Record<string, string> = {
+/** Types emitted into round.appliedOps by the pipeline. Aggregate types
+ *  (multiplierUpdate, productivityMod) roll up the underlying structured
+ *  effects — pipeline.ts never pushes breakthrough/modelRollback/
+ *  researchDisruption/researchBoost as appliedOps directly. */
+type AppliedOpType =
+  | "merge"
+  | "decommission"
+  | "transferOwnership"
+  | "multiplierUpdate"
+  | "productivityMod"
+  | "computeDestroyed"
+  | "computeTransfer"
+  | "foundLab"
+  | "rejected";
+
+const TYPE_LABELS: Record<AppliedOpType, string> = {
   merge: "Merge",
   decommission: "Decommission",
   transferOwnership: "Ownership",
-  breakthrough: "Breakthrough",
-  modelRollback: "Model rollback",
   multiplierUpdate: "R&D update",
   productivityMod: "Productivity",
-  researchDisruption: "Disruption",
-  researchBoost: "Boost",
   computeDestroyed: "Compute destroyed",
   computeTransfer: "Compute transfer",
   foundLab: "New Lab",
+  rejected: "Rejected",
 };
 
-const TYPE_COLOURS: Record<string, string> = {
+const TYPE_COLOURS: Record<AppliedOpType, string> = {
   merge: "bg-viz-capability/15 text-viz-capability",
   decommission: "bg-viz-danger/15 text-viz-danger",
   transferOwnership: "bg-viz-safety/15 text-viz-safety",
-  breakthrough: "bg-viz-capability/15 text-viz-capability",
-  modelRollback: "bg-viz-warning/15 text-viz-warning",
   multiplierUpdate: "bg-viz-capability/15 text-viz-capability",
   productivityMod: "bg-viz-warning/15 text-viz-warning",
-  researchDisruption: "bg-viz-warning/15 text-viz-warning",
-  researchBoost: "bg-viz-safety/15 text-viz-safety",
   computeDestroyed: "bg-viz-danger/15 text-viz-danger",
   computeTransfer: "bg-viz-capability/15 text-viz-capability",
   foundLab: "bg-viz-safety/15 text-viz-safety",
+  rejected: "bg-viz-danger/15 text-viz-danger",
 };
 
 /** invalid_reference (LLM emitted a target that doesn't exist) is scarier than
  *  precondition_failure (rule violation — often benign). */
-const CATEGORY_SEVERITY: Record<string, number> = {
+type RejectionCategory = "invalid_reference" | "precondition_failure";
+
+const CATEGORY_SEVERITY: Record<RejectionCategory, number> = {
   invalid_reference: 2,
   precondition_failure: 1,
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
+const CATEGORY_LABELS: Record<RejectionCategory, string> = {
   invalid_reference: "invalid ref",
   precondition_failure: "precondition",
 };
@@ -82,18 +93,15 @@ export function HappenedSection({
     resolveStep.toLowerCase().includes("failed")
   );
 
-  // The spinner + resolveStep text represents "system is working" — only show
-  // when the pipeline is actually running (grading, rolling, applying,
-  // narrating). At the P7 effect-review pause, the system is NOT running;
-  // it's waiting for the facilitator to click Continue. The old "Review
-  // effects, then continue" message with a spinner misled facilitators into
-  // thinking the system was stuck.
+  // At the P7 effect-review pause the pipeline is idle waiting for Continue,
+  // so the spinner would misread as "stuck". Only show it while actually working.
   const pipelineActivelyWorking = resolving && phase !== "effect-review";
 
   const appliedOps = currentRound?.appliedOps ?? [];
   const applied = appliedOps.filter((op) => op.status === "applied");
+  const severity = (cat: string | undefined) => CATEGORY_SEVERITY[cat as RejectionCategory] ?? 0;
   const rejected = [...appliedOps.filter((op) => op.status === "rejected")]
-    .sort((a, b) => (CATEGORY_SEVERITY[b.category ?? ""] ?? 0) - (CATEGORY_SEVERITY[a.category ?? ""] ?? 0));
+    .sort((a, b) => severity(b.category) - severity(a.category));
 
   return (
     <>
@@ -234,8 +242,8 @@ function AppliedOpsPanel({
           <ul className="space-y-1.5">
             {applied.map((op, i) => (
               <li key={`applied-${i}`} className="flex items-start gap-2 text-sm">
-                <span className={`inline-block text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 mt-[3px] shrink-0 ${TYPE_COLOURS[op.type] ?? "bg-navy-light text-text-light"}`}>
-                  {TYPE_LABELS[op.type] ?? op.type}
+                <span className={`inline-block text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 mt-[3px] shrink-0 ${TYPE_COLOURS[op.type as AppliedOpType] ?? "bg-navy-light text-text-light"}`}>
+                  {TYPE_LABELS[op.type as AppliedOpType] ?? op.type}
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="text-text-light">{op.summary}</div>
@@ -263,7 +271,7 @@ function AppliedOpsPanel({
                   <div className="text-navy-muted">{op.summary}</div>
                   {op.category && (
                     <div className="text-[11px] text-viz-danger/80 mt-0.5 uppercase tracking-wider">
-                      {CATEGORY_LABELS[op.category] ?? op.category}
+                      {CATEGORY_LABELS[op.category as RejectionCategory] ?? op.category}
                     </div>
                   )}
                 </div>

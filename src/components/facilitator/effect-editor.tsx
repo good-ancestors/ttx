@@ -22,48 +22,34 @@ import {
 import type { Id } from "@convex/_generated/dataModel";
 import type { StructuredEffect, Confidence } from "@/lib/ai-prompts";
 
-/** Compact label + icon per effect type. Icons: Lucide only (no emoji). */
-function typeMeta(type: StructuredEffect["type"]): { label: string; Icon: typeof GitMerge; tone: string } {
-  switch (type) {
-    case "merge":              return { label: "Merge",              Icon: GitMerge,        tone: "text-viz-warning" };
-    case "decommission":       return { label: "Decommission",       Icon: CircleX,         tone: "text-viz-danger" };
-    case "breakthrough":       return { label: "Breakthrough",       Icon: Rocket,          tone: "text-viz-capability" };
-    case "modelRollback":      return { label: "Model rollback",     Icon: TrendingDown,    tone: "text-viz-warning" };
-    case "computeDestroyed":   return { label: "Compute destroyed",  Icon: Flame,           tone: "text-viz-danger" };
-    case "researchDisruption": return { label: "Disruption",         Icon: ShieldAlert,     tone: "text-viz-warning" };
-    case "researchBoost":      return { label: "Boost",              Icon: Zap,             tone: "text-viz-safety" };
-    case "transferOwnership":  return { label: "Transfer ownership", Icon: Landmark,        tone: "text-viz-warning" };
-    case "computeTransfer":    return { label: "Compute transfer",   Icon: ArrowRightLeft,  tone: "text-viz-capability" };
-    case "foundLab":           return { label: "Found lab",          Icon: Plus,            tone: "text-viz-safety" };
-    case "narrativeOnly":      return { label: "Narrative only",     Icon: MessageSquare,   tone: "text-text-light" };
-  }
-}
-
-/** One-line summary of an effect for the collapsed badge. */
-function effectSummary(e: StructuredEffect): string {
+/** Label + icon + tone + one-line summary per effect. One switch over the
+ *  discriminant. Icons: Lucide only (no emoji). */
+function describeEffect(e: StructuredEffect): { label: string; Icon: typeof GitMerge; tone: string; summary: string } {
   switch (e.type) {
     case "merge":
-      return `${e.absorbed} → ${e.survivor}${e.newName ? ` (${e.newName})` : ""}`;
+      return { label: "Merge", Icon: GitMerge, tone: "text-viz-warning",
+        summary: `${e.absorbed} → ${e.survivor}${e.newName ? ` (${e.newName})` : ""}` };
     case "decommission":
-      return e.labName;
+      return { label: "Decommission", Icon: CircleX, tone: "text-viz-danger", summary: e.labName };
     case "breakthrough":
-      return `${e.labName} (new model)`;
+      return { label: "Breakthrough", Icon: Rocket, tone: "text-viz-capability", summary: `${e.labName} (new model)` };
     case "modelRollback":
-      return `${e.labName} (prior model)`;
+      return { label: "Model rollback", Icon: TrendingDown, tone: "text-viz-warning", summary: `${e.labName} (prior model)` };
     case "computeDestroyed":
-      return `${e.labName} −${e.amount}u`;
+      return { label: "Compute destroyed", Icon: Flame, tone: "text-viz-danger", summary: `${e.labName} −${e.amount}u` };
     case "researchDisruption":
-      return `${e.labName} (one round)`;
+      return { label: "Disruption", Icon: ShieldAlert, tone: "text-viz-warning", summary: `${e.labName} (one round)` };
     case "researchBoost":
-      return `${e.labName} (one round)`;
+      return { label: "Boost", Icon: Zap, tone: "text-viz-safety", summary: `${e.labName} (one round)` };
     case "transferOwnership":
-      return `${e.labName} → ${e.controllerRoleId}`;
+      return { label: "Transfer ownership", Icon: Landmark, tone: "text-viz-warning", summary: `${e.labName} → ${e.controllerRoleId}` };
     case "computeTransfer":
-      return `${e.fromRoleId} → ${e.toRoleId}: ${e.amount}u`;
+      return { label: "Compute transfer", Icon: ArrowRightLeft, tone: "text-viz-capability",
+        summary: `${e.fromRoleId} → ${e.toRoleId}: ${e.amount}u` };
     case "foundLab":
-      return `${e.name} (${e.seedCompute}u)`;
+      return { label: "Found lab", Icon: Plus, tone: "text-viz-safety", summary: `${e.name} (${e.seedCompute}u)` };
     case "narrativeOnly":
-      return "no mechanical effect";
+      return { label: "Narrative only", Icon: MessageSquare, tone: "text-text-light", summary: "no mechanical effect" };
   }
 }
 
@@ -94,13 +80,10 @@ interface EffectEditorProps {
 /** Compact badge + click-to-edit popover. If the effect is absent, shows
  *  nothing — the grader always emits one. */
 export function EffectEditor(props: EffectEditorProps) {
-  const { effect, confidence, isProjector, locked } = props;
+  const { effect, isProjector, locked } = props;
   if (!effect) return null;
 
-  const { label, Icon, tone } = typeMeta(effect.type);
-  const summary = effectSummary(effect);
-  // Unused in projector/locked paths; the editable badge below reads confidence itself.
-  void confidence;
+  const { label, Icon, tone, summary } = describeEffect(effect);
 
   if (isProjector) {
     return (
@@ -163,8 +146,7 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
 
   if (!effect) return null;
 
-  const { label, Icon, tone } = typeMeta(effect.type);
-  const summary = effectSummary(effect);
+  const { label, Icon, tone, summary } = describeEffect(effect);
   const lowConfidence = confidence === "low";
 
   return (

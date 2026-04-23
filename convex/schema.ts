@@ -274,7 +274,7 @@ export default defineSchema({
     // before the deterministic R&D growth + compute acquisition runs. Written at the end of
     // the effect-application phase; cleared on re-resolve.
     appliedOps: v.optional(v.array(v.object({
-      type: v.string(),              // merge | decommission | transferOwnership | breakthrough | modelRollback | computeDestroyed | researchDisruption | researchBoost | computeTransfer | foundLab | rejected
+      type: v.string(),              // merge | decommission | transferOwnership | multiplierUpdate | productivityMod | computeDestroyed | computeTransfer | foundLab | rejected
       status: v.union(v.literal("applied"), v.literal("rejected")),
       summary: v.string(),           // human-readable one-line description of what happened
       reason: v.optional(v.string()),// LLM's reason for the op (applied ops) or why it was rejected

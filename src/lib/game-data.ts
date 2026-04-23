@@ -762,7 +762,7 @@ export function computeLabGrowth<T extends {
     if (baselineTarget) {
       const baselineStock = getBaselineStockBeforeRound(lab.name, roundNumber);
       const baselineMultiplier = getBaselineMultiplierBeforeRound(lab.name, roundNumber);
-      const defaultAlloc = ROLES.find((role) => role.id === lab.roleId)?.defaultCompute;
+      const defaultAlloc = lab.roleId ? ROLE_MAP.get(lab.roleId)?.defaultCompute : undefined;
       const baselineResearchPct = defaultAlloc?.research ?? 50;
       // Baseline effectiveRd — productivity baseline is 1.0 (no mods assumed).
       const baselineEffectiveRd = baselineStock * (baselineResearchPct / 100) * baselineMultiplier;

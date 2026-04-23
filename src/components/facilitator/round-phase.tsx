@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { TOTAL_ROUNDS, isSubmittedAction, countUnacknowledgedLowConfidence, type Lab } from "@/lib/game-data";
+import { hasNarrativeContent } from "@/lib/narrative-sections";
 import { NarrativeEditor } from "@/components/manual-controls";
 import { AttemptedSection } from "./resolve-sections/attempted-section";
 import { HappenedSection } from "./resolve-sections/happened-section";
@@ -14,17 +15,11 @@ import {
   ChevronRight,
   MessageSquareText,
 } from "lucide-react";
-import type { FacilitatorPhaseProps, Round, Submission, Proposal } from "./types";
+import type { FacilitatorPhaseProps, Round, Submission, Proposal, RoundLite } from "./types";
 import type { StructuredEffect } from "@/lib/ai-prompts";
 import type { Id } from "@convex/_generated/dataModel";
 
 // ─── Main unified round phase ───────────────────────────────────────────────
-
-interface RoundLite {
-  number: number;
-  label: string;
-  labsAfter?: Lab[];
-}
 
 interface RoundPhaseProps extends FacilitatorPhaseProps {
   submissions: Submission[];
@@ -132,15 +127,7 @@ export function RoundPhase({
   const [editModal, setEditModal] = useState<"narrative" | "addlab" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
 
-  const hasNarrative = !!currentRound?.summary && (
-    !!currentRound.summary.outcomes ||
-    !!currentRound.summary.stateOfPlay ||
-    !!currentRound.summary.pressures ||
-    (currentRound.summary.labs?.length ?? 0) > 0 ||
-    (currentRound.summary.geopolitics?.length ?? 0) > 0 ||
-    (currentRound.summary.publicAndMedia?.length ?? 0) > 0 ||
-    (currentRound.summary.aiSystems?.length ?? 0) > 0
-  );
+  const hasNarrative = hasNarrativeContent(currentRound?.summary);
 
   return (
     <div className="space-y-4">

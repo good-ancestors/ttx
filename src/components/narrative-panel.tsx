@@ -24,36 +24,20 @@ const LOADING_VERBS = [
   "Updating world model...",
 ];
 
+import {
+  PROSE_SECTIONS,
+  LEGACY_SECTIONS,
+  hasProseNarrative,
+  hasLegacyNarrative,
+  type NarrativeSummary,
+} from "@/lib/narrative-sections";
+
 interface Round {
   _id: string;
   number: number;
   label: string;
-  summary?: {
-    // Current shape — three paragraphs
-    outcomes?: string;
-    stateOfPlay?: string;
-    pressures?: string;
-    facilitatorNotes?: string;
-    // Legacy shape (older rounds) — four bucketed bullet arrays
-    labs?: string[];
-    geopolitics?: string[];
-    publicAndMedia?: string[];
-    aiSystems?: string[];
-  };
+  summary?: NarrativeSummary;
 }
-
-const PROSE_SECTIONS: { key: "outcomes" | "stateOfPlay" | "pressures"; label: string }[] = [
-  { key: "outcomes", label: "Outcomes" },
-  { key: "stateOfPlay", label: "State of Play" },
-  { key: "pressures", label: "Pressures" },
-];
-
-const LEGACY_SECTIONS: { key: "labs" | "geopolitics" | "publicAndMedia" | "aiSystems"; label: string }[] = [
-  { key: "labs", label: "Labs" },
-  { key: "geopolitics", label: "Geopolitics" },
-  { key: "publicAndMedia", label: "Public & Media" },
-  { key: "aiSystems", label: "AI Systems" },
-];
 
 type ResolveDebugData = FunctionReturnType<typeof api.rounds.getResolveDebug>;
 
@@ -75,8 +59,8 @@ export function NarrativePanel({
   const [verbIdx, setVerbIdx] = useState(0);
   const [expanded, setExpanded] = useState(defaultExpanded);
   const summary = round?.summary;
-  const hasProse = !!(summary?.outcomes || summary?.stateOfPlay || summary?.pressures);
-  const hasLegacy = !!summary && LEGACY_SECTIONS.some(({ key }) => (summary[key] ?? []).length > 0);
+  const hasProse = hasProseNarrative(summary);
+  const hasLegacy = hasLegacyNarrative(summary);
   const hasContent = hasProse || hasLegacy;
 
   useEffect(() => {

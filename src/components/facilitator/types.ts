@@ -1,5 +1,6 @@
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import type { StructuredEffect, Confidence } from "@/lib/ai-prompts";
+import type { Lab } from "@/lib/game-data";
 
 /** Game document from Convex */
 export type Game = Doc<"games">;
@@ -21,6 +22,15 @@ export type Table = {
 
 /** Round document from Convex */
 export type Round = Doc<"rounds">;
+
+/** Lightweight round summary for R&D chart history — number + label + labsAfter
+ *  snapshot. Used by resolve-sections and the facilitator shell when the full
+ *  Round doc is overkill. */
+export interface RoundLite {
+  number: number;
+  label: string;
+  labsAfter?: Lab[];
+}
 
 /** Lightweight submission summary — excludes aiMeta, artifact, computeAllocation.
  *  Used by facilitator panels that only need action data for display. */

@@ -9,14 +9,8 @@ import { RdProgressChart } from "@/components/rd-progress-chart";
 import { ExpandableSection } from "../expandable-section";
 import { NewComputeAcquired } from "../new-compute-acquired";
 import { LabStateCard } from "./lab-state-card";
-import type { Round } from "../types";
+import type { Round, RoundLite } from "../types";
 import type { Id } from "@convex/_generated/dataModel";
-
-interface RoundLite {
-  number: number;
-  label: string;
-  labsAfter?: Lab[];
-}
 
 /** Section 3 — "Where things are at". Only renders in narrate phase, once growth +
  *  acquisition have run (post-P7). Hidden during discuss/submit/rolling and the P7
@@ -56,7 +50,6 @@ export function StateSection({
     <>
       <LabStateAndAllocations
         gameId={gameId}
-        currentRound={currentRound}
         currentRoundNumber={currentRoundNumber}
         isProjector={isProjector}
         labs={labs}
@@ -81,7 +74,6 @@ function LabStateAndAllocations({
   onAddLab,
 }: {
   gameId: Id<"games">;
-  currentRound: Round;
   currentRoundNumber: number;
   isProjector: boolean;
   labs: Lab[];
@@ -100,6 +92,9 @@ function LabStateAndAllocations({
 
   const holderView = useQuery(api.rounds.getComputeHolderView, { gameId, roundNumber: currentRoundNumber });
   const totalAcquired = (holderView ?? []).reduce((s, h) => s + Math.max(0, h.acquired), 0);
+  // O(1) roleId lookup so the activeLabs.map below doesn't quadratically scan
+  // holderView on every render tick.
+  const holderByRoleId = new Map((holderView ?? []).map((h) => [h.roleId, h] as const));
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
@@ -118,7 +113,7 @@ function LabStateAndAllocations({
 
         <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           {activeLabs.map((lab) => {
-            const holder = lab.roleId ? holderView?.find((h) => h.roleId === lab.roleId) : undefined;
+            const holder = lab.roleId ? holderByRoleId.get(lab.roleId) : undefined;
             return (
               <LabStateCard
                 key={lab.labId ?? lab.name}

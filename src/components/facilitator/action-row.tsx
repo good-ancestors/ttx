@@ -9,7 +9,7 @@ import {
   ChevronRight,
   MessageSquare,
 } from "lucide-react";
-import { PROBABILITY_CARDS } from "@/lib/game-data";
+import { PROBABILITY_CARDS, getProbabilityCard } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { ProbabilityBadge } from "@/components/action-card";
 import { EffectEditor } from "./effect-editor";
@@ -204,7 +204,7 @@ function ProbabilityDropdown({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; right: number } | null>(null);
-  const card = current == null ? null : (PROBABILITY_CARDS.find((p) => p.pct === current) ?? PROBABILITY_CARDS[2]);
+  const card = current == null ? null : getProbabilityCard(current);
 
   useEffect(() => {
     if (!open) return;

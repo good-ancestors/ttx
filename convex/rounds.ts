@@ -400,13 +400,16 @@ export const setAiMetaInternal = internalMutation({
 export const getComputeHolderView = query({
   args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
-    // All settled rows up to and including this round, for stockAfter computation.
+    // Range-scan settled rows in this round or earlier. Narrower than a full
+    // game scan, which matters as games accumulate transactions round-over-round.
     const allTx = await ctx.db
       .query("computeTransactions")
-      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId))
+      .withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", args.gameId).lte("roundNumber", args.roundNumber),
+      )
       .collect();
     // `starting` rows are emitted at roundNumber=1 but represent seed stock present before
-    // the first round's activity — include them in stockBefore regardless of target round.
+    // the first round's activity — always in priorRounds regardless of target.
     const priorRounds = allTx.filter((t) =>
       t.status === "settled" &&
       (t.roundNumber < args.roundNumber || t.type === "starting")

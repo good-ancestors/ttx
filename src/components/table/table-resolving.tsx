@@ -1,6 +1,13 @@
 "use client";
 
 import { ResultActionCard, type ResultAction } from "./result-action-card";
+import {
+  PROSE_SECTIONS,
+  LEGACY_SECTIONS,
+  hasProseNarrative,
+  hasLegacyNarrative,
+  type NarrativeSummary,
+} from "@/lib/narrative-sections";
 
 interface TableResolvingProps {
   // effect-review is a facilitator-only pause; from the player table view it
@@ -8,35 +15,12 @@ interface TableResolvingProps {
   phase: "rolling" | "effect-review" | "narrate";
   round: {
     label: string;
-    summary?: {
-      // Current shape
-      outcomes?: string;
-      stateOfPlay?: string;
-      pressures?: string;
-      // Legacy shape (older rounds)
-      labs?: string[];
-      geopolitics?: string[];
-      publicAndMedia?: string[];
-      aiSystems?: string[];
-    };
+    summary?: NarrativeSummary;
   };
   sortedResultActions: ResultAction[];
   showNarrative?: boolean;
   showResults?: boolean;
 }
-
-const PROSE_SECTIONS: { key: "outcomes" | "stateOfPlay" | "pressures"; label: string }[] = [
-  { key: "outcomes", label: "Outcomes" },
-  { key: "stateOfPlay", label: "State of Play" },
-  { key: "pressures", label: "Pressures" },
-];
-
-const LEGACY_SECTIONS: { key: "labs" | "geopolitics" | "publicAndMedia" | "aiSystems"; label: string }[] = [
-  { key: "labs", label: "Labs" },
-  { key: "geopolitics", label: "Geopolitics" },
-  { key: "publicAndMedia", label: "Public & Media" },
-  { key: "aiSystems", label: "AI Systems" },
-];
 
 export function TableResolving({
   phase,
@@ -46,8 +30,8 @@ export function TableResolving({
   showResults = true,
 }: TableResolvingProps) {
   const summary = round?.summary;
-  const hasProse = !!(summary?.outcomes || summary?.stateOfPlay || summary?.pressures);
-  const hasLegacy = !!summary && LEGACY_SECTIONS.some(({ key }) => (summary[key] ?? []).length > 0);
+  const hasProse = hasProseNarrative(summary);
+  const hasLegacy = hasLegacyNarrative(summary);
   const hasSummary = hasProse || hasLegacy;
   return (
     <div>
