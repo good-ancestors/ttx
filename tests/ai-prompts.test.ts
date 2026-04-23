@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildResolveDecidePrompt, buildResolveNarrativePrompt } from "@/lib/ai-prompts";
+import { buildBatchedGradingPrompt, buildResolveNarrativePrompt } from "@/lib/ai-prompts";
 
 const LAB = {
   name: "OpenBrain",
@@ -29,51 +29,82 @@ const ACTIONS = [
   },
 ];
 
-describe("buildResolveDecidePrompt", () => {
-  it("focuses on structural operations and excludes narrative prose rules", () => {
-    const prompt = buildResolveDecidePrompt({
+describe("buildBatchedGradingPrompt", () => {
+  const BASIC_ROLE = {
+    roleId: "us-president",
+    roleName: "US President",
+    roleDescription: "Commander in chief.",
+    roleTags: ["government"],
+    actions: [
+      { actionId: "a1", text: "Invoke the DPA to consolidate OpenBrain.", priority: 5 },
+      { actionId: "a2", text: "Hold a press conference about AI safety.", priority: 2 },
+    ],
+  };
+
+  it("is a single-call batched prompt that emits all four per-action fields", () => {
+    const prompt = buildBatchedGradingPrompt({
       round: 2,
       roundLabel: "Q2",
+      enabledRoles: ["US President", "OpenBrain CEO"],
       labs: [LAB],
-      resolvedActions: ACTIONS,
+      roles: [BASIC_ROLE],
     });
 
-    // Decide pass outputs operations only — no prose.
-    expect(prompt).toContain("DECIDE pass");
-    expect(prompt).toContain("LAB OPERATIONS — output any that apply:");
-    expect(prompt).toContain("IDENTIFIERS — this is load-bearing:");
-    expect(prompt).toContain("Only output operations DIRECTLY caused by successful actions.");
-
-    // The narrative pass handles summary / trajectories — decide should NOT mention them.
-    expect(prompt).not.toContain("outcomes:");
-    expect(prompt).not.toContain("stateOfPlay");
-    expect(prompt).not.toContain("pressures");
-    expect(prompt).not.toContain("LAB TRAJECTORIES");
-    expect(prompt).not.toContain("SUMMARY STYLE");
+    // Per-action output contract
+    expect(prompt).toContain("probability");
+    expect(prompt).toContain("reasoning");
+    expect(prompt).toContain("confidence");
+    expect(prompt).toContain("structuredEffect");
+    // Effect taxonomy
+    expect(prompt).toContain('"merge"');
+    expect(prompt).toContain('"decommission"');
+    expect(prompt).toContain('"computeChange"');
+    expect(prompt).toContain('"multiplierOverride"');
+    expect(prompt).toContain('"transferOwnership"');
+    expect(prompt).toContain('"computeTransfer"');
+    expect(prompt).toContain('"narrativeOnly"');
+    // actionId matching rule
+    expect(prompt).toContain("Match each output entry to its input by actionId");
   });
 
-  it("lists the action log (successes + failures)", () => {
-    const prompt = buildResolveDecidePrompt({
+  it("surfaces pinned effects inline so the grader knows shapes are fixed", () => {
+    const prompt = buildBatchedGradingPrompt({
+      round: 2,
+      roundLabel: "Q2",
+      enabledRoles: ["US President"],
+      labs: [LAB],
+      roles: [{
+        ...BASIC_ROLE,
+        actions: [{
+          actionId: "m1",
+          text: "Announce merger with Anthropic.",
+          priority: 8,
+          pinnedEffect: {
+            kind: "merge",
+            absorbedLabName: "Anthropic",
+            survivorLabName: "OpenBrain",
+            submitterIsAbsorbed: false,
+          },
+        }],
+      }],
+    });
+    expect(prompt).toContain("PINNED merge");
+    expect(prompt).toContain("Anthropic");
+    expect(prompt).toContain("OpenBrain");
+  });
+
+  it("lists all submitted actions grouped by role with stable actionIds", () => {
+    const prompt = buildBatchedGradingPrompt({
       round: 1,
       roundLabel: "Q1",
+      enabledRoles: ["US President"],
       labs: [LAB],
-      resolvedActions: ACTIONS,
+      roles: [BASIC_ROLE],
     });
-    expect(prompt).toContain("SUCCESSFUL PUBLIC ACTIONS:");
-    expect(prompt).toContain("FAILED PUBLIC ACTIONS:");
-    expect(prompt).toContain("DPA");
-    expect(prompt).toContain("Redomicile");
-  });
-
-  it("surfaces conflict guidance for simultaneous successes", () => {
-    const prompt = buildResolveDecidePrompt({
-      round: 2,
-      roundLabel: "Q2",
-      labs: [LAB],
-      resolvedActions: ACTIONS,
-    });
-    expect(prompt).toContain("CONFLICTS:");
-    expect(prompt).toContain("one successful action can block, overtake, or redirect another");
+    expect(prompt).toContain("a1.");
+    expect(prompt).toContain("a2.");
+    expect(prompt).toContain("Invoke the DPA");
+    expect(prompt).toContain("press conference");
   });
 });
 

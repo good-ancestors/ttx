@@ -582,67 +582,6 @@ function formatAppliedOperations(labsBefore: Lab[], labsAfter: Lab[]): string {
   return `\nAPPLIED STATE CHANGES (already executed — describe their consequences, do not re-decide):\n${lines.map((l) => `- ${l}`).join("\n")}\n`;
 }
 
-// ─── DECIDE PROMPT ───────────────────────────────────────────────────────────
-// First LLM pass of resolve. Outputs structural operations only — no prose.
-// A separate narrative pass describes what happened once these ops have been
-// applied mechanically. Keeping the two concerns separate stops the narrative
-// from contradicting state: the narrator reads the frozen result rather than
-// deciding it alongside the prose.
-
-export function buildResolveDecidePrompt(args: {
-  round: number;
-  roundLabel: string;
-  resolvedActions: ResolvedAction[];
-  labs: Lab[];
-  previousRounds?: PreviousRoundSummary[];
-  aiDisposition?: { label: string; description: string };
-  interRoundChanges?: string[];
-}) {
-  return `You are resolving Round ${args.round}: ${args.roundLabel}.
-
-This is the DECIDE pass. Emit the structural state changes that result from the successful actions this round. Output ONLY labOperations — no prose, no summary, no trajectories. A separate narrative pass will describe the outcome once your operations have applied.
-
-LAB STATUS (start of round):
-${formatLabAllocations(args.labs)}
-${formatInterRoundChanges(args.interRoundChanges)}${formatPreviousRounds(args.previousRounds ?? [])}
-
-${formatActionLog(args.resolvedActions)}
-${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}` : ""}
-
-LAB OPERATIONS — output any that apply:
-- "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Use newName to rename the merged lab. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).
-- "decommission": Lab shut down or destroyed. Specify labName.
-- "transferOwnership": Lab moves to a different controller (nationalisation, forced acquisition). Specify labName + controllerRoleId. **Never emit an empty controllerRoleId — a lab with no owner strands its compute and breaks the display. If the narrative is that a lab dissolves, use "decommission" instead.**
-- "computeChange": Direct compute stock change from a specific, concrete narrative event — DPA transfer, sanctions, infrastructure damage, theft, grant. Use ONLY for ONE-OFF shocks tied to a specific successful action or world event. Rules:
-  - The change must be NON-ZERO. A \`computeChange: 0\` is not an op — omit it entirely; the narrative pass will handle any purely descriptive consequences.
-  - Do NOT simulate routine revenue: each lab's deployment% already scales baseline compute inflow (±20% at extremes) automatically.
-  - Do NOT use computeChange to represent soft/narrative effects like "degraded safety culture" or "eroded legitimacy" — those belong in the narrative pass only.
-  - Reserve for: unexpected revenue shocks (hit product, lost contract), political events, physical damage, theft, grants tied to specific actions.
-- "multiplierOverride": Use ONLY for discrete narrative events that discontinuously change R&D capability. The natural growth formula already compounds multipliers round-on-round based on compute × research% — do NOT emit overrides to "manage" that growth. The qualifying triggers are a short list:
-  * A Safer-style safety pivot explicitly proposed by a player action — halve or set below current.
-  * Physical sabotage / targeted destruction of R&D infrastructure explicitly referenced by an action — proportional reduction.
-  * A technical breakthrough action that succeeded with very high probability — a multiplicative bump up to ~2× current.
-  * **Never for mergers.** The merge op automatically sets the survivor's rdMultiplier to max(survivor, absorbed). Don't pile a multiplierOverride on top of a merge; the combination is handled mechanically.
-  * **Do NOT emit multiplierOverride to express general safety concern, to "cap" a lab that feels too dangerous, or to punish low safety allocation.** Those belong in the narrative prose, not the structural ops. A lab with 3% safety at 100× should still grow to 300× next round if compute × research% supports it — the safety consequences surface in trajectories, not in a stealth cap.
-  * **Do NOT emit multiplierOverride to match a number you feel is "right" for this phase of the scenario.** The game arc is encoded in the formula + maxMultiplier caps, not in your judgment. Trust the formula.
-
-**Guiding principle — only emit ops with genuine mechanical consequence.** The list should reflect the structural changes to the world; narrative-only color belongs in the next pass. If a round produced no structural changes (all actions were routine/diplomatic/descriptive), emit an empty array — an empty list is the correct output for a quiet round.
-
-IDENTIFIERS — this is load-bearing:
-- \`labName\` is a lab name string that must match a lab in LAB STATUS exactly. Not a role name.
-- \`controllerRoleId\` is a ROLE ID (slug form, e.g. "us-president", "australia-pm", "openbrain-ceo"), NOT a display role name (e.g. "US President", "Australia PM"). If you emit a display name here the transfer will be rejected and the lab will stay with its old controller. When in doubt about the ID form, look at how the role appeared in earlier prompts — the slug form is always lowercase hyphen-separated.
-- \`survivor\` and \`absorbed\` for merges are lab names, same rule as labName.
-- Never use a role name (e.g. "Australian PM") as a lab name, even when nationalisation brings a lab under a government's control. The lab keeps its existing name unless the merge action specifies newName.
-
-NOT AVAILABLE: lab creation (players-only, via the found-a-lab action) and standalone rename (use merge with newName for consolidation-driven renames).
-
-Only output operations DIRECTLY caused by successful actions. Empty array if nothing affects labs.
-
-CONFLICTS: If two successful actions produce incompatible effects on the same lab, the one with higher probability wins. A success on the action log does NOT guarantee the intended world-state happened — one successful action can block, overtake, or redirect another. Example: the DPA order goes through procedurally but Conscienta had already redomiciled, so no merger lands. In such cases emit ops for the effects that actually landed and omit ops whose preconditions were knocked out.
-
-SECRET ACTIONS: Successful secret actions produce real structural effects in the world. Emit their operations as you would for public actions — the narrative pass will handle how (or whether) to describe them publicly.`;
-}
-
 // ─── NARRATE PROMPT ──────────────────────────────────────────────────────────
 // Second LLM pass of resolve. Input is the frozen end-of-round state plus the
 // action log. Output is prose + trajectories only. The narrator cannot change

@@ -10,7 +10,6 @@ import { GRADING_MODELS, RESOLVE_MODELS } from "./aiModels";
 import { AI_SYSTEMS_ROLE_ID } from "./gameData";
 import {
   buildBatchedGradingPrompt,
-  buildResolveDecidePrompt,
   buildResolveNarrativePrompt,
   SCENARIO_CONTEXT,
   type ActionRequest,
@@ -322,8 +321,14 @@ function normaliseStructuredEffect(e: unknown): StructuredEffect {
   if (!e || typeof e !== "object") return { type: "narrativeOnly" };
   const raw = e as Record<string, unknown>;
   const type = raw.type;
-  const str = (k: string): string | undefined => typeof raw[k] === "string" ? (raw[k] as string) : undefined;
-  const num = (k: string): number | undefined => typeof raw[k] === "number" ? (raw[k] as number) : undefined;
+  const str = (k: string): string | undefined => {
+    const v = raw[k];
+    return typeof v === "string" ? v : undefined;
+  };
+  const num = (k: string): number | undefined => {
+    const v = raw[k];
+    return typeof v === "number" ? v : undefined;
+  };
   switch (type) {
     case "merge": {
       const survivor = str("survivor");
@@ -469,28 +474,21 @@ export const rollAndApplyEffects = internalAction({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
+    // aiDisposition arg is retained on the caller side for backward compatibility
+    // (games.triggerPipeline still passes it) — ignored here since the decide LLM
+    // has been replaced by deterministic apply-from-structured-effects. The
+    // narrative phase re-resolves disposition from the AI Systems table.
     aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
   },
-  // Complexity is inherent: multi-step pipeline (roll, decide LLM, validate + apply
-  // structural effects) that must run as a single atomic action up to the P7 pause.
+  // Complexity is inherent: multi-step pipeline (influence, roll, apply effects,
+  // build P7 review) running as a single atomic action to the P7 pause.
   // eslint-disable-next-line complexity
   handler: async (ctx, args) => {
     const { gameId, roundNumber } = args;
-    let { aiDisposition } = args;
 
     try {
-      // Fetch tables once for use in disposition resolution, AI influence, and snapshot
+      // Fetch tables once for use in AI influence resolution and snapshotting
       const tablesBeforeResolve: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
-
-      // Resolve aiDisposition from table if not passed
-      if (!aiDisposition) {
-        const aiTable = tablesBeforeResolve.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID && t.aiDisposition);
-        if (aiTable?.aiDisposition) {
-          const { getDisposition } = await import("@/lib/game-data");
-          const disp = getDisposition(aiTable.aiDisposition);
-          if (disp) aiDisposition = { label: disp.label, description: disp.description };
-        }
-      }
 
       // Resolve AI influence before dice roll.
       // - NPC/AI AI Systems: auto-generate keyword-based influence for OTHER players' actions
@@ -567,153 +565,22 @@ export const rollAndApplyEffects = internalAction({
         roundNumber,
       });
 
-      // ═══ SPLIT RESOLVE — DECIDE PHASE ═══
-      // First LLM pass: emit structural operations only (no prose). A second pass
-      // will write the narrative once these ops have applied. The split keeps the
-      // narrator from contradicting state — it reads a frozen end-of-round, never
-      // decides state alongside the prose.
+      // ═══ APPLY PHASE ═══
+      // Read each successful action's structuredEffect (populated at grade time
+      // by the batched grading LLM, optionally overridden by the facilitator at
+      // P2). Dispatch deterministically — no LLM at this stage. Player-pinned
+      // effects (mergeLab, foundLab, computeTargets) already settled inside
+      // rollAllImpl; they're skipped here and surface in P7 via the event log.
       await ctx.runMutation(internal.games.updatePipelineStatus, {
         gameId,
-        status: { step: "resolving", detail: "Deciding state changes...", startedAt: Date.now() },
+        status: { step: "resolving", detail: "Applying effects...", startedAt: Date.now() },
       });
 
-      // Narrative-phase data (tables, previousTrajectories) is fetched in
-      // continueFromEffectReview now — the decide phase only needs submissions + rounds
-      // + labs.
-      const [submissions, rounds, labsAtResolve]: [Submission[], Round[], LabWithCompute[]] = await Promise.all([
+      const [submissions, rounds]: [Submission[], Round[]] = await Promise.all([
         ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }),
         ctx.runQuery(internal.rounds.getAllForPipeline, { gameId }),
-        ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
       ]);
       const currentRound = rounds.find((r) => r.number === roundNumber);
-
-      const resolvedActions = submissions.flatMap((sub) => {
-        const role = ROLES.find((r) => r.id === sub.roleId);
-        return sub.actions
-          .filter((a) => a.rolled != null)
-          .map((a) => ({
-            roleName: role?.name ?? sub.roleId,
-            text: a.text,
-            priority: a.priority,
-            probability: a.probability ?? 50,
-            rolled: a.rolled!,
-            success: a.success ?? false,
-            secret: a.secret,
-          }));
-      });
-
-      // Detect structural changes that happened BETWEEN last round's resolve and this
-      // one (facilitator overrides via games.mergeLabs / updateLabs, etc.). Diff the
-      // previous round's labsAfter against the current lab list at resolve start.
-      const prevRound = rounds.find((r) => r.number === roundNumber - 1);
-      const interRoundChanges: string[] = [];
-      if (prevRound?.labsAfter) {
-        const prevByName = new Map(prevRound.labsAfter.map((l) => [l.name, l] as const));
-        const currentByName = new Map(labsAtResolve.map((l) => [l.name, l] as const));
-        for (const [name, prev] of prevByName) {
-          const curr = currentByName.get(name);
-          const wasActive = prev.status === "active";
-          if (wasActive && !curr) {
-            interRoundChanges.push(`${name} was decommissioned or merged away since last round (no longer in active labs).`);
-          } else if (wasActive && curr && prev.roleId !== curr.roleId) {
-            interRoundChanges.push(`${name} changed ownership: ${prev.roleId ?? "(unowned)"} → ${curr.roleId ?? "(unowned)"}.`);
-          }
-        }
-        for (const [name, curr] of currentByName) {
-          if (!prevByName.has(name) && curr.status === "active") {
-            interRoundChanges.push(`${name} appeared as a new active lab since last round.`);
-          }
-        }
-      }
-
-      // Shared continuity context — passed to both decide and narrate prompts.
-      const previousRoundsForPrompt = rounds
-        .filter((r) => r.number < roundNumber && r.summary)
-        .map((r) => ({
-          number: r.number,
-          label: r.label,
-          summary: r.summary ? {
-            outcomes: r.summary.outcomes,
-            stateOfPlay: r.summary.stateOfPlay,
-            pressures: r.summary.pressures,
-            labs: r.summary.labs,
-            geopolitics: r.summary.geopolitics,
-            publicAndMedia: r.summary.publicAndMedia,
-            aiSystems: r.summary.aiSystems,
-          } : undefined,
-        }));
-
-      const decidePrompt = buildResolveDecidePrompt({
-        round: roundNumber,
-        roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
-        resolvedActions,
-        labs: labsAtResolve,
-        aiDisposition,
-        previousRounds: previousRoundsForPrompt,
-        interRoundChanges,
-      });
-
-      type DecideOutput = {
-        labOperations: { reason: string; type: string; labName?: string; survivor?: string; absorbed?: string; newName?: string; change?: number; newMultiplier?: number; controllerRoleId?: string; spec?: string }[];
-      };
-
-      let decideOutput: DecideOutput = { labOperations: [] };
-      let decideModel = "none";
-      let decideTimeMs = 0;
-      let decideTokens = 0;
-      let decideResponseJson = "";
-      let decideError: string | undefined;
-
-      try {
-        const result = await callAnthropic<DecideOutput>({
-          models: RESOLVE_MODELS,
-          systemPrompt: SCENARIO_CONTEXT,
-          prompt: decidePrompt,
-          maxTokens: 4096,
-          timeoutMs: 120_000,
-          toolName: "decide_round",
-          schema: {
-            type: "object",
-            properties: {
-              labOperations: {
-                type: "array",
-                description: "Structural operations on existing labs. Only operate on active labs listed in LAB STATUS — reference them by their exact name. You CANNOT create new labs (only players can found labs via actions) and you CANNOT rename standalone (renames happen only as side-effects of merger via newName).",
-                items: {
-                  type: "object",
-                  properties: {
-                    reason: { type: "string", description: "Why this operation is needed — reason BEFORE deciding type and values", maxLength: 200 },
-                    type: { type: "string", enum: ["merge", "decommission", "computeChange", "multiplierOverride", "transferOwnership"] },
-                    survivor: { type: "string", description: "Name of surviving lab (merge only)" },
-                    absorbed: { type: "string", description: "Name of absorbed lab — will be decommissioned (merge only)" },
-                    newName: { type: "string", description: "New name for survivor (merge only)" },
-                    spec: { type: "string", description: "New AI directive for the merged lab (merge only)" },
-                    labName: { type: "string", description: "Target lab name (required for non-merge ops)" },
-                    change: { type: "number", description: "Compute delta (computeChange only): ±50 max" },
-                    newMultiplier: { type: "number", description: "Override R&D multiplier (multiplierOverride only)" },
-                    controllerRoleId: { type: "string", description: "New owner role ID (transferOwnership only); empty string = unowned" },
-                  },
-                  required: ["reason", "type"],
-                },
-              },
-            },
-            required: ["labOperations"],
-          },
-        });
-        if (!result.output) throw new Error("Decide LLM returned no output");
-        decideOutput = result.output;
-        decideModel = result.model;
-        decideTimeMs = result.timeMs;
-        decideTokens = result.tokens;
-        decideResponseJson = JSON.stringify(result.output, null, 2);
-      } catch (decideErr) {
-        decideError = decideErr instanceof Error ? decideErr.message : String(decideErr);
-        console.error("[pipeline] Decide LLM failed, proceeding with no state changes:", decideErr);
-        await ctx.runMutation(internal.games.updatePipelineStatus, {
-          gameId,
-          status: { step: "resolving", detail: `Decide phase failed: ${decideError.slice(0, 100)}. No state changes applied.`, startedAt: Date.now() },
-        });
-        decideModel = "fallback";
-      }
 
       // Nonce check before applying anything — another run may have superseded us.
       const gameAfterRoll = await ctx.runQuery(internal.games.getInternal, { gameId });
@@ -770,136 +637,174 @@ export const rollAndApplyEffects = internalAction({
       const decommissionOps: { labId: Id<"labs"> }[] = [];
       const transferOps: { labId: Id<"labs">; newOwnerRoleId: string | undefined }[] = [];
       const computeModifiers: { labId: Id<"labs">; change: number; reason: string }[] = [];
+      const computeTransferPairs: { fromRoleId: string; toRoleId: string; amount: number; reason: string }[] = [];
       const multiplierOverrides: { labId: Id<"labs">; newMultiplier: number }[] = [];
       // Structured rejection tracking: each rejection carries a category so the P7
       // panel can group + style by severity. Categories:
-      //   invalid_reference    — op targets a lab / roleId that doesn't exist or
+      //   invalid_reference    — effect targets a lab / roleId that doesn't exist or
       //                          isn't in the required state (most common).
-      //   precondition_failure — op violates a rule (last-active-lab guard,
-      //                          self-merge, unowned lab op, unknown op type).
+      //   precondition_failure — effect violates a rule (last-active-lab guard,
+      //                          self-merge, unowned lab op, ±2× multiplier band).
       const rejectedOps: { category: "invalid_reference" | "precondition_failure"; opType: string; message: string }[] = [];
 
       const findActiveByName = (name: string) => workingLabs.find((l) => l.name === name);
+      const activeRoleIds = new Set(tablesAfterClear.filter((t) => t.enabled).map((t) => t.roleId));
+      const roleNameMap = new Map<string, string>(ROLES.map((r) => [r.id, r.name]));
 
-      for (const op of decideOutput.labOperations ?? []) {
-        switch (op.type) {
-          case "merge":
-            if (op.survivor && op.absorbed) {
-              const survivor = findActiveByName(op.survivor);
-              const absorbed = findActiveByName(op.absorbed);
-              if (!survivor || !absorbed) {
-                rejectedOps.push({ category: "invalid_reference", opType: "merge", message: `merge: one of "${op.survivor}" / "${op.absorbed}" is not an active lab` });
-                break;
-              }
-              if (survivor.labId === absorbed.labId) {
-                rejectedOps.push({ category: "precondition_failure", opType: "merge", message: `merge: cannot merge "${op.survivor}" with itself` });
-                break;
-              }
-              const newName = op.newName;
-              mergeOps.push({
-                survivorLabId: survivor.labId,
-                absorbedLabId: absorbed.labId,
-                newName,
-                newSpec: op.spec,
-                reason: op.reason ?? `Merge ${op.absorbed} into ${op.survivor}`,
-              });
-              // Update working view: remove absorbed, patch survivor
-              workingLabs = workingLabs
-                .filter((l) => l.labId !== absorbed.labId)
-                .map((l) => l.labId === survivor.labId
-                  ? { ...l, name: newName ?? l.name, spec: op.spec ?? l.spec, rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier) }
-                  : l);
+      // Collect per-action effects to apply. Skip failed actions; skip actions
+      // with player-pinned effects (mergeLab / foundLab / computeTargets) — those
+      // settled inside rollAllImpl and surface in P7 via the event log; skip
+      // narrativeOnly.
+      type ResolvedEffect = {
+        actorRoleId: string;
+        actorRoleName: string;
+        actionText: string;
+        effect: StructuredEffect;
+      };
+      const effectsToApply: ResolvedEffect[] = [];
+      for (const sub of submissions) {
+        const actorRoleName = roleNameMap.get(sub.roleId) ?? sub.roleId;
+        for (const action of sub.actions) {
+          if (!action.success) continue;
+          if (action.mergeLab || action.foundLab || (action.computeTargets && action.computeTargets.length > 0)) continue;
+          const e = action.structuredEffect;
+          if (!e || e.type === "narrativeOnly" || e.type === "foundLab") continue;
+          effectsToApply.push({ actorRoleId: sub.roleId, actorRoleName, actionText: action.text, effect: e });
+        }
+      }
+
+      const effectReason = (r: ResolvedEffect): string => `${r.actorRoleName}: ${r.actionText}`.slice(0, 200);
+
+      for (const resolved of effectsToApply) {
+        const e = resolved.effect;
+        const reason = effectReason(resolved);
+        switch (e.type) {
+          case "merge": {
+            const survivor = findActiveByName(e.survivor);
+            const absorbed = findActiveByName(e.absorbed);
+            if (!survivor || !absorbed) {
+              rejectedOps.push({ category: "invalid_reference", opType: "merge", message: `merge: one of "${e.survivor}" / "${e.absorbed}" is not an active lab` });
+              break;
             }
-            break;
-          case "decommission":
-            if (op.labName) {
-              const target = findActiveByName(op.labName);
-              if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "decommission", message: `decommission: "${op.labName}" is not an active lab` }); break; }
-              if (workingLabs.length <= 1) { rejectedOps.push({ category: "precondition_failure", opType: "decommission", message: `decommission: cannot decommission the last active lab` }); break; }
-              decommissionOps.push({ labId: target.labId });
-              workingLabs = workingLabs.filter((l) => l.labId !== target.labId);
+            if (survivor.labId === absorbed.labId) {
+              rejectedOps.push({ category: "precondition_failure", opType: "merge", message: `merge: cannot merge "${e.survivor}" with itself` });
+              break;
             }
-            break;
-          case "computeChange":
-            if (op.labName && op.change != null) {
-              const target = findActiveByName(op.labName);
-              if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "computeChange", message: `computeChange: "${op.labName}" is not an active lab` }); break; }
-              if (!target.roleId) { rejectedOps.push({ category: "precondition_failure", opType: "computeChange", message: `computeChange: "${op.labName}" is unowned — no compute pool to adjust` }); break; }
-              // Zero deltas are no-ops — surface them as rejections rather than silently
-              // filtering so the facilitator sees the LLM emitting narrative-color-disguised-
-              // as-mechanics and can adjust the prompt if needed.
-              if (op.change === 0) {
-                rejectedOps.push({ category: "precondition_failure", opType: "computeChange", message: `computeChange: 0u is not a real op — use narrative prose for effects that don't change compute` });
-                break;
-              }
-              const clamped = Math.max(-50, Math.min(50, op.change));
-              computeModifiers.push({ labId: target.labId, change: clamped, reason: op.reason });
-              workingLabs = workingLabs.map((l) => l.labId === target.labId
-                ? { ...l, computeStock: Math.max(0, l.computeStock + clamped) }
+            mergeOps.push({
+              survivorLabId: survivor.labId,
+              absorbedLabId: absorbed.labId,
+              newName: e.newName,
+              newSpec: e.newSpec,
+              reason,
+            });
+            // Update working view: remove absorbed, patch survivor
+            workingLabs = workingLabs
+              .filter((l) => l.labId !== absorbed.labId)
+              .map((l) => l.labId === survivor.labId
+                ? { ...l, name: e.newName ?? l.name, spec: e.newSpec ?? l.spec, rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier) }
                 : l);
+            break;
+          }
+          case "decommission": {
+            const target = findActiveByName(e.labName);
+            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "decommission", message: `decommission: "${e.labName}" is not an active lab` }); break; }
+            if (workingLabs.length <= 1) { rejectedOps.push({ category: "precondition_failure", opType: "decommission", message: `decommission: cannot decommission the last active lab` }); break; }
+            decommissionOps.push({ labId: target.labId });
+            workingLabs = workingLabs.filter((l) => l.labId !== target.labId);
+            break;
+          }
+          case "computeChange": {
+            const target = findActiveByName(e.labName);
+            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "computeChange", message: `computeChange: "${e.labName}" is not an active lab` }); break; }
+            if (!target.roleId) { rejectedOps.push({ category: "precondition_failure", opType: "computeChange", message: `computeChange: "${e.labName}" is unowned — no compute pool to adjust` }); break; }
+            if (e.change === 0) {
+              rejectedOps.push({ category: "precondition_failure", opType: "computeChange", message: `computeChange: 0u is not a real op — use narrativeOnly for effects that don't change compute` });
+              break;
             }
+            const clamped = Math.max(-50, Math.min(50, e.change));
+            computeModifiers.push({ labId: target.labId, change: clamped, reason });
+            workingLabs = workingLabs.map((l) => l.labId === target.labId
+              ? { ...l, computeStock: Math.max(0, l.computeStock + clamped) }
+              : l);
             break;
-          case "multiplierOverride":
-            if (op.labName && op.newMultiplier != null) {
-              const target = findActiveByName(op.labName);
-              if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "multiplierOverride", message: `multiplierOverride: "${op.labName}" is not an active lab` }); break; }
-              // Magnitude cap: reject overrides >2× current or <0.5× current unless the
-              // `reason` explicitly cites a qualifying narrative trigger. This catches
-              // LLM overreach (e.g. "cap at 28× from 200× because too dangerous") while
-              // still allowing: breakthrough 2×, safety pivot halve, sabotage halve.
-              // Larger magnitudes still possible when the narrative genuinely warrants
-              // them and the LLM labels the trigger in `reason`.
-              const NARRATIVE_TRIGGER_RE = /\b(sabotage|destruction|destroyed|bomb|safer\s*pivot|safety\s*pivot|breakthrough|nationali[sz]ed|seized|cyber[\s-]?attack)\b/i;
-              const hasTrigger = !!(op.reason && NARRATIVE_TRIGGER_RE.test(op.reason));
-              const current = target.rdMultiplier;
-              const requested = op.newMultiplier;
-              const ratio = current > 0 ? requested / current : Infinity;
-              if (!hasTrigger && (ratio > 2 || ratio < 0.5)) {
-                rejectedOps.push({
-                  category: "precondition_failure",
-                  opType: "multiplierOverride",
-                  message: `multiplierOverride: ${op.labName} ${current}× → ${requested}× (${ratio.toFixed(2)}× change) exceeds ±2× band. Only allowed for narrative-discontinuous events (sabotage / breakthrough / safety pivot) — cite one in reason.`,
-                });
-                break;
-              }
-              const clamped = Math.max(0.1, Math.min(maxMult, requested));
-              multiplierOverrides.push({ labId: target.labId, newMultiplier: clamped });
-              workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: clamped } : l);
+          }
+          case "multiplierOverride": {
+            const target = findActiveByName(e.labName);
+            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "multiplierOverride", message: `multiplierOverride: "${e.labName}" is not an active lab` }); break; }
+            // Magnitude band: >2× or <0.5× require a narrative-trigger keyword in
+            // the action text. Without one, the action is likely trying to
+            // stealth-cap or stealth-boost outside the allowed discontinuities.
+            const NARRATIVE_TRIGGER_RE = /\b(sabotage|destruction|destroyed|bomb|safer\s*pivot|safety\s*pivot|breakthrough|nationali[sz]ed|seized|cyber[\s-]?attack)\b/i;
+            const hasTrigger = NARRATIVE_TRIGGER_RE.test(resolved.actionText);
+            const current = target.rdMultiplier;
+            const requested = e.newMultiplier;
+            const ratio = current > 0 ? requested / current : Infinity;
+            if (!hasTrigger && (ratio > 2 || ratio < 0.5)) {
+              rejectedOps.push({
+                category: "precondition_failure",
+                opType: "multiplierOverride",
+                message: `multiplierOverride: ${e.labName} ${current}× → ${requested}× (${ratio.toFixed(2)}× change) exceeds ±2× band. Only allowed for narrative-discontinuous events (sabotage / breakthrough / safety pivot / cyber-attack) — action text must cite one.`,
+              });
+              break;
             }
+            const clamped = Math.max(0.1, Math.min(maxMult, requested));
+            multiplierOverrides.push({ labId: target.labId, newMultiplier: clamped });
+            workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: clamped } : l);
             break;
-          case "transferOwnership":
-            if (op.labName && op.controllerRoleId !== undefined) {
-              const target = findActiveByName(op.labName);
-              if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${op.labName}" is not an active lab` }); break; }
-              // Disallow unowning a lab — it strands the lab's compute on the previous
-              // owner and leaves the lab displaying 0u. If the narrative is that a lab
-              // dissolves, the LLM should emit `decommission` instead.
-              const newOwner = op.controllerRoleId;
-              if (!newOwner) {
-                rejectedOps.push({ category: "precondition_failure", opType: "transferOwnership", message: `transferOwnership: cannot unown "${op.labName}" — use decommission to end a lab's existence` });
-                break;
-              }
-              if (!tablesAfterClear.some((t) => t.roleId === newOwner)) {
-                rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${newOwner}" is not a valid role id (LLM may have emitted a display name)` });
-                break;
-              }
-              transferOps.push({ labId: target.labId, newOwnerRoleId: newOwner });
-              workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, roleId: newOwner } : l);
+          }
+          case "transferOwnership": {
+            const target = findActiveByName(e.labName);
+            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${e.labName}" is not an active lab` }); break; }
+            if (!e.controllerRoleId) {
+              rejectedOps.push({ category: "precondition_failure", opType: "transferOwnership", message: `transferOwnership: cannot unown "${e.labName}" — use decommission to end a lab's existence` });
+              break;
             }
+            if (!activeRoleIds.has(e.controllerRoleId)) {
+              rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${e.controllerRoleId}" is not an active role id` });
+              break;
+            }
+            transferOps.push({ labId: target.labId, newOwnerRoleId: e.controllerRoleId });
+            workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, roleId: e.controllerRoleId } : l);
             break;
-          case "create":
-          case "rename":
-            // Per design: labs can only be founded via player actions; rename only happens as a
-            // side-effect of merge. LLM-initiated creates/renames are rejected to keep the
-            // structural boundary clean.
-            rejectedOps.push({ category: "precondition_failure", opType: op.type, message: `${op.type}: not allowed from narrative — labs can only be founded via player actions, renames happen only via merger` });
+          }
+          case "computeTransfer": {
+            if (!activeRoleIds.has(e.fromRoleId)) {
+              rejectedOps.push({ category: "invalid_reference", opType: "computeTransfer", message: `computeTransfer: sender "${e.fromRoleId}" is not an active role id` });
+              break;
+            }
+            if (!activeRoleIds.has(e.toRoleId)) {
+              rejectedOps.push({ category: "invalid_reference", opType: "computeTransfer", message: `computeTransfer: recipient "${e.toRoleId}" is not an active role id` });
+              break;
+            }
+            if (e.fromRoleId === e.toRoleId) {
+              rejectedOps.push({ category: "precondition_failure", opType: "computeTransfer", message: `computeTransfer: from and to are the same role` });
+              break;
+            }
+            if (e.amount <= 0) {
+              rejectedOps.push({ category: "precondition_failure", opType: "computeTransfer", message: `computeTransfer: amount must be positive (got ${e.amount})` });
+              break;
+            }
+            const senderStock = tableComputeByRole.get(e.fromRoleId) ?? 0;
+            if (senderStock < e.amount) {
+              rejectedOps.push({ category: "precondition_failure", opType: "computeTransfer", message: `computeTransfer: "${e.fromRoleId}" has ${senderStock}u, cannot transfer ${e.amount}u` });
+              break;
+            }
+            computeTransferPairs.push({ fromRoleId: e.fromRoleId, toRoleId: e.toRoleId, amount: e.amount, reason });
+            // Track in working compute map so later same-round transfers from
+            // the same sender see the reduced balance.
+            tableComputeByRole.set(e.fromRoleId, senderStock - e.amount);
+            tableComputeByRole.set(e.toRoleId, (tableComputeByRole.get(e.toRoleId) ?? 0) + e.amount);
             break;
-          default:
-            rejectedOps.push({ category: "precondition_failure", opType: op.type ?? "unknown", message: `unknown op type: "${op.type}"` });
+          }
+          case "foundLab":
+          case "narrativeOnly":
+            // Filtered at extraction time — these variants are not in effectsToApply.
+            // Explicit no-op cases satisfy the exhaustiveness check.
+            break;
         }
       }
       if (rejectedOps.length > 0) {
-        console.warn(`[pipeline] Rejected lab ops: ${rejectedOps.map((r) => `[${r.category}] ${r.message}`).join("; ")}`);
+        console.warn(`[pipeline] Rejected effects: ${rejectedOps.map((r) => `[${r.category}] ${r.message}`).join("; ")}`);
       }
 
       // ═══ PHASE 5 APPLY — structural effects only ═══
@@ -908,7 +813,7 @@ export const rollAndApplyEffects = internalAction({
       // consequences of actions reviewable before the deterministic growth lands,
       // and matches docs/resolve-pipeline.md.
 
-      // Adjusted compute ledger entries from LLM computeChange ops
+      // Adjusted compute ledger entries from computeChange effects.
       const adjustedEntries = computeModifiers
         .map((m) => {
           const lab = workingLabs.find((l) => l.labId === m.labId);
@@ -918,6 +823,8 @@ export const rollAndApplyEffects = internalAction({
         .filter((x): x is { roleId: string; amount: number; reason: string } => x !== null && x.amount !== 0);
 
       // Merged-pair ledger: absorbed owner's stock moves to survivor owner
+      // (from grader-emitted merge effects — not player-pinned mergers, which
+      // settle in rollAllImpl with their own ledger rows).
       const mergedEntries: { fromRoleId: string; toRoleId: string; amount: number; reason: string }[] = [];
       for (const m of mergeOps) {
         const absorbed = labsAfterClear.find((l) => l.labId === m.absorbedLabId);
@@ -934,9 +841,21 @@ export const rollAndApplyEffects = internalAction({
         }
       }
 
-      // Apply structural ops + LLM multiplier overrides + adjusted + merged ledger.
-      // Rename newMultiplier → rdMultiplier for the mutation shape (the mutation calls
-      // updateLabRdMultiplierInternal which names the field rdMultiplier).
+      // Narrative compute transfers: grader-emitted computeTransfer effects also
+      // go through the merged-pair ledger — the mechanics are identical (compute
+      // moves between two role pools as a matched pair, regenerable on re-resolve)
+      // even though the label is structurally "merger". Reason text distinguishes
+      // them in the ledger UI.
+      for (const t of computeTransferPairs) {
+        mergedEntries.push({
+          fromRoleId: t.fromRoleId,
+          toRoleId: t.toRoleId,
+          amount: t.amount,
+          reason: t.reason,
+        });
+      }
+
+      // Apply structural ops + multiplier overrides + adjusted + merged ledger.
       await ctx.runMutation(internal.pipelineApply.applyDecidedEffectsInternal, {
         gameId,
         roundNumber,
@@ -950,23 +869,21 @@ export const rollAndApplyEffects = internalAction({
       });
 
       // Build the P7 appliedOps list — what the facilitator sees on the review screen.
-      // Includes:
-      //   (a) LLM-decided ops that just landed via applyDecidedEffectsInternal
-      //   (b) Player-originated ops that settled during rollAllInternal earlier this
-      //       resolve cycle (mergers + lab foundings attached to player actions) —
-      //       fetched from the event log since game.resolvingStartedAt.
-      //   (c) Rejected LLM ops (validation failures, flagged for review).
+      // Sources:
+      //   (a) Grader-emitted effects that just landed via applyDecidedEffectsInternal
+      //   (b) Player-originated ops settled in rollAllImpl (pinned mergers + lab
+      //       foundings) — pulled from the event log since game.resolvingStartedAt
+      //   (c) Rejected effects (validator failures — facilitator can edit at P2 for
+      //       next resolve)
       // Name lookup must include decommissioned labs — the absorbed lab of a player-
       // originated merger is already `status: "decommissioned"` by the time we build
-      // this summary (rollAllImpl settled the merge before the pipeline kicked off).
+      // this summary (rollAllImpl settled the merge before the apply phase).
       const allLabsForNames = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId, includeInactive: true });
       const labNameById = new Map(allLabsForNames.map((l) => [l.labId, l.name] as const));
-      const roleNameById = new Map<string, string>(ROLES.map((r) => [r.id, r.name]));
       const appliedOps: { type: string; status: "applied" | "rejected"; summary: string; reason?: string; category?: string; opType?: string }[] = [];
 
       // (b) Player-originated structural ops. rollAllImpl settles player mergers and
-      // lab foundings directly and emits events; pull those so the P7 review shows
-      // the complete set of things that happened this round.
+      // lab foundings directly and emits events.
       const sinceMs = game.resolvingStartedAt ?? 0;
       if (sinceMs > 0) {
         const playerEvents = await ctx.runQuery(internal.events.getSinceForRound, {
@@ -984,7 +901,7 @@ export const rollAndApplyEffects = internalAction({
         };
         for (const evt of playerEvents) {
           const data: Record<string, unknown> = evt.data ? (() => { try { return JSON.parse(evt.data) as Record<string, unknown>; } catch { return {}; } })() : {};
-          const actorName = evt.roleId ? roleNameById.get(evt.roleId) ?? evt.roleId : "a player";
+          const actorName = evt.roleId ? roleNameMap.get(evt.roleId) ?? evt.roleId : "a player";
           if (evt.type === "lab_merged") {
             const survivorName = typeof data.survivorLabId === "string" ? labNameById.get(data.survivorLabId as Id<"labs">) ?? "?" : "?";
             const absorbedName = typeof data.absorbedLabId === "string" ? labNameById.get(data.absorbedLabId as Id<"labs">) ?? "?" : "?";
@@ -1029,30 +946,37 @@ export const rollAndApplyEffects = internalAction({
         }
       }
 
-      // (a) LLM-decided ops that just landed
+      // (a) Grader-emitted effects that just landed. Reason carries the action text
+      // so the facilitator can trace each op back to its originating action.
       for (const m of mergeOps) {
         const s = labNameById.get(m.survivorLabId) ?? "?";
         const a = labNameById.get(m.absorbedLabId) ?? "?";
         const rename = m.newName && m.newName !== s ? ` → renamed ${m.newName}` : "";
-        appliedOps.push({ type: "merge", status: "applied", summary: `${a} merged into ${s}${rename} (LLM)`, reason: m.reason });
+        appliedOps.push({ type: "merge", status: "applied", summary: `${a} merged into ${s}${rename}`, reason: m.reason });
       }
       for (const d of decommissionOps) {
-        appliedOps.push({ type: "decommission", status: "applied", summary: `${labNameById.get(d.labId) ?? "?"} decommissioned (LLM)` });
+        appliedOps.push({ type: "decommission", status: "applied", summary: `${labNameById.get(d.labId) ?? "?"} decommissioned` });
       }
       for (const t of transferOps) {
         const name = labNameById.get(t.labId) ?? "?";
-        appliedOps.push({ type: "transferOwnership", status: "applied", summary: `${name} ownership → ${t.newOwnerRoleId ?? "(unowned)"} (LLM)` });
+        const newOwner = t.newOwnerRoleId ? roleNameMap.get(t.newOwnerRoleId) ?? t.newOwnerRoleId : "(unowned)";
+        appliedOps.push({ type: "transferOwnership", status: "applied", summary: `${name} ownership → ${newOwner}` });
       }
       for (const ov of multiplierOverrides) {
         const name = labNameById.get(ov.labId) ?? "?";
-        appliedOps.push({ type: "multiplierOverride", status: "applied", summary: `${name} R&D multiplier → ${ov.newMultiplier}× (LLM)` });
+        appliedOps.push({ type: "multiplierOverride", status: "applied", summary: `${name} R&D multiplier → ${ov.newMultiplier}×` });
       }
       for (const m of computeModifiers) {
         const name = labNameById.get(m.labId) ?? "?";
         const sign = m.change > 0 ? "+" : "";
-        appliedOps.push({ type: "computeChange", status: "applied", summary: `${name} compute ${sign}${m.change}u (LLM)`, reason: m.reason });
+        appliedOps.push({ type: "computeChange", status: "applied", summary: `${name} compute ${sign}${m.change}u`, reason: m.reason });
       }
-      // (c) Rejected LLM ops — carry the category + opType so the UI can group by severity.
+      for (const t of computeTransferPairs) {
+        const from = roleNameMap.get(t.fromRoleId) ?? t.fromRoleId;
+        const to = roleNameMap.get(t.toRoleId) ?? t.toRoleId;
+        appliedOps.push({ type: "computeTransfer", status: "applied", summary: `${from} → ${to}: ${t.amount}u`, reason: t.reason });
+      }
+      // (c) Rejected grader effects — carry the category + opType so the UI can group by severity.
       for (const rej of rejectedOps) {
         appliedOps.push({
           type: "rejected",
@@ -1063,15 +987,6 @@ export const rollAndApplyEffects = internalAction({
         });
       }
 
-      // Save decide metadata + applied ops + decide-half debug blob.
-      // The narrate half is added in continueFromEffectReview.
-      const decideOnlyDebug = {
-        decide: {
-          prompt: decidePrompt,
-          response: decideResponseJson ? JSON.parse(decideResponseJson) : null,
-          error: decideError,
-        },
-      };
       // Stash multiplier overrides so continueFromEffectReview can re-apply them after
       // R&D growth (otherwise growth compounds on top and the final multiplier exceeds
       // what the facilitator reviewed at P7 — in live testing this escalated to 2000×).
@@ -1083,18 +998,6 @@ export const rollAndApplyEffects = internalAction({
           gameId,
           roundNumber,
           pendingMultiplierOverrides,
-        }),
-        ctx.runMutation(internal.rounds.setAiMetaInternal, {
-          gameId,
-          roundNumber,
-          meta: { resolveModel: decideModel, resolveTimeMs: decideTimeMs, resolveTokens: decideTokens },
-        }),
-        ctx.runMutation(internal.rounds.setResolveDebugInternal, {
-          gameId,
-          roundNumber,
-          prompt: decidePrompt,
-          responseJson: JSON.stringify(decideOnlyDebug, null, 2),
-          error: decideError,
         }),
       ]);
 
@@ -1426,15 +1329,10 @@ export const continueFromEffectReview = internalAction({
         (t) => activeLabNames.has(t.labName),
       );
 
-      // Merge decide debug (written during rollAndApplyEffects) with the new narrate
-      // debug so the facilitator debug button surfaces both passes.
-      const existingRound = await ctx.runQuery(internal.rounds.getForPipeline, { gameId, roundNumber });
-      let existingDebug: Record<string, unknown> = {};
-      if (existingRound?.resolveDebug?.responseJson) {
-        try { existingDebug = JSON.parse(existingRound.resolveDebug.responseJson) as Record<string, unknown>; } catch { /* ignore malformed */ }
-      }
-      const combinedDebug = {
-        ...existingDebug,
+      // Facilitator debug surfaces just the narrate pass now. The grader's
+      // structured effects are persisted on submissions.actions[].structuredEffect
+      // and visible in the P2 attempted-panel — no separate decide debug blob.
+      const narrateDebug = {
         narrate: {
           prompt: narrativePrompt,
           response: narrativeResponseJson ? JSON.parse(narrativeResponseJson) : null,
@@ -1454,7 +1352,7 @@ export const continueFromEffectReview = internalAction({
           gameId,
           roundNumber,
           prompt: narrativePrompt,
-          responseJson: JSON.stringify(combinedDebug, null, 2),
+          responseJson: JSON.stringify(narrateDebug, null, 2),
           error: narrativeError,
         }),
       ]);
