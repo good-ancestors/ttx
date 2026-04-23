@@ -25,6 +25,7 @@ import type * as rounds from "../rounds.js";
 import type * as sampleActionsData from "../sampleActionsData.js";
 import type * as submissions from "../submissions.js";
 import type * as tables from "../tables.js";
+import type * as validators from "../validators.js";
 
 import type {
   ApiFromModules,
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   sampleActionsData: typeof sampleActionsData;
   submissions: typeof submissions;
   tables: typeof tables;
+  validators: typeof validators;
 }>;
 
 /**
