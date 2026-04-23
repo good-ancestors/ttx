@@ -127,9 +127,10 @@ export function HappenedSection({
   );
 }
 
-/** Button that triggers narrative generation from effect-review. The name —
- *  "Continue to Narrative" — matches the mental model: effects have been
- *  reviewed, now generate the prose for them. */
+/** Button that wraps up the round from the effect-review pause — triggers R&D
+ *  growth, compute acquisition, and the prose summary in one click. "Finalise
+ *  Round" reads plainly to a facilitator and avoids the pipeline-jargon word
+ *  "narrative" that the code uses internally. */
 function ContinueToNarrativeBar({
   gameId,
   roundNumber,
@@ -168,16 +169,16 @@ function ContinueToNarrativeBar({
         {submitting ? (
           <>
             <Loader2 className="w-5 h-5 animate-spin" />
-            Generating narrative&hellip;
+            Finalising&hellip;
           </>
         ) : (
           <>
-            Continue to Narrative <ChevronRight className="w-5 h-5" />
+            Finalise Round <ChevronRight className="w-5 h-5" />
           </>
         )}
       </button>
       <p className="text-[11px] text-navy-muted text-center mt-2">
-        Applies R&amp;D growth, distributes new compute, and generates the prose summary.
+        Applies R&amp;D growth, distributes new compute, and writes the round summary.
       </p>
     </div>
   );

@@ -127,7 +127,7 @@ export function NarrativePanel({
         <button
           onClick={onEditNarrative}
           className="absolute top-4 right-10 text-text-light/60 hover:text-text-light transition-colors"
-          title="Edit narrative"
+          title="Edit summary"
         >
           <Pencil className="w-3.5 h-3.5" />
         </button>

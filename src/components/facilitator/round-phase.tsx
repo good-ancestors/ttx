@@ -396,7 +396,7 @@ function EditModal({
       <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
           <span className="text-sm font-bold text-white capitalize">
-            {editModal === "addlab" ? "Add Lab" : "Edit Narrative"}
+            {editModal === "addlab" ? "Add Lab" : "Edit Round Summary"}
           </span>
           <button onClick={onClose} className="text-text-light hover:text-white text-sm">Close</button>
         </div>

@@ -312,7 +312,7 @@ export function AttemptedPanel({
           {narrativeStale && hasNarrative && !isProjector && (
             <div className="mt-3 rounded-lg border border-viz-warning/30 bg-viz-warning/10 px-3 py-2 flex items-center justify-between gap-2">
               <span className="text-[11px] text-viz-warning">
-                Results changed since narrative was generated
+                Results changed since the summary was generated
               </span>
               <button
                 onClick={handleReResolve}
@@ -329,7 +329,7 @@ export function AttemptedPanel({
               disabled={resolving}
               className="text-[11px] px-3 py-1.5 rounded font-medium transition-colors flex items-center gap-1 mt-3 disabled:opacity-50 bg-viz-warning/20 text-viz-warning hover:bg-viz-warning/30 border border-viz-warning/30"
             >
-              <RefreshCw className="w-3 h-3" /> Regenerate narrative
+              <RefreshCw className="w-3 h-3" /> Regenerate summary
             </button>
           )}
         </>
