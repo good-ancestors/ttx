@@ -627,6 +627,48 @@ export const rollAndApplyEffects = internalAction({
       /** Random factor in [min, max], rounded to 2dp for readable mechanicsLog reasons. */
       const factor = (min: number, max: number): number => Math.round((min + Math.random() * (max - min)) * 100) / 100;
 
+      /** Position-layer bump — used by breakthrough (ceil maxMult) and modelRollback (floor 1).
+       *  Reject if target isn't an active lab; otherwise pick a random factor, apply the clamp,
+       *  stash the post-effect multiplier, mutate workingLabs in place, and log the change. */
+      const applyMultiplierBump = (
+        e: { type: "breakthrough" | "modelRollback"; labName: string },
+        range: { min: number; max: number },
+        clamp: { fn: (next: number) => number; label: string },
+      ) => {
+        const target = findActiveByName(e.labName);
+        if (!target) {
+          rejectedOps.push({ category: "invalid_reference", opType: e.type, message: `${e.type}: "${e.labName}" is not an active lab` });
+          return;
+        }
+        const f = factor(range.min, range.max);
+        const current = target.rdMultiplier;
+        const next = clamp.fn(current * f);
+        multiplierUpdates.push({ labId: target.labId, newMultiplier: next });
+        workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: next } : l);
+        logEntry(target.name, "rdMultiplier", current, next, `${e.type} ×${f} (${clamp.label})`);
+      };
+
+      /** Productivity-layer mod — used by researchDisruption and researchBoost. Composes
+       *  multiplicatively with any existing mod this round (one round only; cleared by
+       *  continueFromEffectReview after consumption). */
+      const applyProductivityMod = (
+        e: { type: "researchDisruption" | "researchBoost"; labName: string },
+        range: { min: number; max: number },
+      ) => {
+        const target = findActiveByName(e.labName);
+        if (!target) {
+          rejectedOps.push({ category: "invalid_reference", opType: e.type, message: `${e.type}: "${e.labName}" is not an active lab` });
+          return;
+        }
+        const f = factor(range.min, range.max);
+        const existing = productivityMods.find((p) => p.labId === target.labId);
+        const before = existing?.modifier ?? 1;
+        const after = before * f;
+        if (existing) existing.modifier = after;
+        else productivityMods.push({ labId: target.labId, modifier: after });
+        logEntry(target.name, "productivity", before, after, `${e.type} ×${f} (one round)`);
+      };
+
       for (const resolved of effectsToApply) {
         const e = resolved.effect;
         const reason = effectReason(resolved);
@@ -669,28 +711,12 @@ export const rollAndApplyEffects = internalAction({
             workingLabs = workingLabs.filter((l) => l.labId !== target.labId);
             break;
           }
-          case "breakthrough": {
-            const target = findActiveByName(e.labName);
-            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "breakthrough", message: `breakthrough: "${e.labName}" is not an active lab` }); break; }
-            const f = factor(1.4, 1.6);
-            const current = target.rdMultiplier;
-            const next = Math.min(maxMult, current * f);
-            multiplierUpdates.push({ labId: target.labId, newMultiplier: next });
-            workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: next } : l);
-            logEntry(target.name, "rdMultiplier", current, next, `breakthrough ×${f} (ceil maxMult ${maxMult})`);
+          case "breakthrough":
+            applyMultiplierBump(e, { min: 1.4, max: 1.6 }, { fn: (n) => Math.min(maxMult, n), label: `ceil maxMult ${maxMult}` });
             break;
-          }
-          case "modelRollback": {
-            const target = findActiveByName(e.labName);
-            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "modelRollback", message: `modelRollback: "${e.labName}" is not an active lab` }); break; }
-            const f = factor(0.4, 0.6);
-            const current = target.rdMultiplier;
-            const next = Math.max(1, current * f);
-            multiplierUpdates.push({ labId: target.labId, newMultiplier: next });
-            workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: next } : l);
-            logEntry(target.name, "rdMultiplier", current, next, `modelRollback ×${f} (floor 1)`);
+          case "modelRollback":
+            applyMultiplierBump(e, { min: 0.4, max: 0.6 }, { fn: (n) => Math.max(1, n), label: "floor 1" });
             break;
-          }
           case "computeDestroyed": {
             const target = findActiveByName(e.labName);
             if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "computeDestroyed", message: `computeDestroyed: "${e.labName}" is not an active lab` }); break; }
@@ -713,31 +739,12 @@ export const rollAndApplyEffects = internalAction({
             logEntry(target.name, "computeStock", available, available - destroyed, `computeDestroyed ${destroyed}u (requested ${e.amount}u, capped)`);
             break;
           }
-          case "researchDisruption": {
-            const target = findActiveByName(e.labName);
-            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "researchDisruption", message: `researchDisruption: "${e.labName}" is not an active lab` }); break; }
-            const f = factor(0.5, 0.8);
-            // Compose with any existing productivity mod this round (multiplicative).
-            const existing = productivityMods.find((p) => p.labId === target.labId);
-            const before = existing?.modifier ?? 1;
-            const after = before * f;
-            if (existing) existing.modifier = after;
-            else productivityMods.push({ labId: target.labId, modifier: after });
-            logEntry(target.name, "productivity", before, after, `researchDisruption ×${f} (one round)`);
+          case "researchDisruption":
+            applyProductivityMod(e, { min: 0.5, max: 0.8 });
             break;
-          }
-          case "researchBoost": {
-            const target = findActiveByName(e.labName);
-            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "researchBoost", message: `researchBoost: "${e.labName}" is not an active lab` }); break; }
-            const f = factor(1.2, 1.5);
-            const existing = productivityMods.find((p) => p.labId === target.labId);
-            const before = existing?.modifier ?? 1;
-            const after = before * f;
-            if (existing) existing.modifier = after;
-            else productivityMods.push({ labId: target.labId, modifier: after });
-            logEntry(target.name, "productivity", before, after, `researchBoost ×${f} (one round)`);
+          case "researchBoost":
+            applyProductivityMod(e, { min: 1.2, max: 1.5 });
             break;
-          }
           case "transferOwnership": {
             const target = findActiveByName(e.labName);
             if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${e.labName}" is not an active lab` }); break; }

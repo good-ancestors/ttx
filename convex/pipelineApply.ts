@@ -23,6 +23,25 @@ import {
 } from "./labs";
 import { emitTransaction, emitPair, clearRegenerableRows } from "./computeLedger";
 
+/** One entry on round.mechanicsLog. Shared by both apply mutations so the schema
+ *  stays in sync — phase-5 writes fresh (overwrite), phase-9/10 appends to existing. */
+const mechanicsLogEntryValidator = v.object({
+  sequence: v.number(),
+  phase: v.union(v.literal(5), v.literal(9), v.literal(10)),
+  source: v.union(
+    v.literal("player-pinned"),
+    v.literal("grader-effect"),
+    v.literal("natural-growth"),
+    v.literal("acquisition"),
+    v.literal("facilitator-edit"),
+  ),
+  subject: v.string(),
+  field: v.union(v.literal("rdMultiplier"), v.literal("computeStock"), v.literal("productivity")),
+  before: v.number(),
+  after: v.number(),
+  reason: v.string(),
+});
+
 export const applyDecidedEffectsInternal = internalMutation({
   args: {
     gameId: v.id("games"),
@@ -49,22 +68,7 @@ export const applyDecidedEffectsInternal = internalMutation({
     productivityMods: v.array(v.object({ labId: v.id("labs"), modifier: v.number() })),
     // Phase-5 mechanics log entries. Written as the initial slice of round.mechanicsLog
     // (overwrites any stale entries from a prior resolve run). Phase 9 + 10 append.
-    mechanicsLog: v.array(v.object({
-      sequence: v.number(),
-      phase: v.union(v.literal(5), v.literal(9), v.literal(10)),
-      source: v.union(
-        v.literal("player-pinned"),
-        v.literal("grader-effect"),
-        v.literal("natural-growth"),
-        v.literal("acquisition"),
-        v.literal("facilitator-edit"),
-      ),
-      subject: v.string(),
-      field: v.union(v.literal("rdMultiplier"), v.literal("computeStock"), v.literal("productivity")),
-      before: v.number(),
-      after: v.number(),
-      reason: v.string(),
-    })),
+    mechanicsLog: v.array(mechanicsLogEntryValidator),
   },
   handler: async (ctx, args) => {
     // Re-verify the resolve nonce inside the atomic mutation.
@@ -172,22 +176,7 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
     acquired: v.array(v.object({ roleId: v.string(), amount: v.number() })),
     // Phase 9 + 10 mechanics log entries to append to the existing phase-5 slice.
     // Sequence numbers are already offset by the caller.
-    mechanicsLog: v.array(v.object({
-      sequence: v.number(),
-      phase: v.union(v.literal(5), v.literal(9), v.literal(10)),
-      source: v.union(
-        v.literal("player-pinned"),
-        v.literal("grader-effect"),
-        v.literal("natural-growth"),
-        v.literal("acquisition"),
-        v.literal("facilitator-edit"),
-      ),
-      subject: v.string(),
-      field: v.union(v.literal("rdMultiplier"), v.literal("computeStock"), v.literal("productivity")),
-      before: v.number(),
-      after: v.number(),
-      reason: v.string(),
-    })),
+    mechanicsLog: v.array(mechanicsLogEntryValidator),
   },
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
