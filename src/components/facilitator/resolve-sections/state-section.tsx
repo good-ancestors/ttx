@@ -139,8 +139,10 @@ function LabStateAndAllocations({
         </div>
 
         {/* R&D progress chart — inside the "Where We Are Now" card, above the
-         *  capability block so the trajectory precedes the "so what" interpretation. */}
-        <div className="bg-navy rounded-lg p-3 border border-navy-light mb-3">
+         *  capability block so the trajectory precedes the "so what" interpretation.
+         *  Rendered flat (no inner card) — the outer ExpandableSection already
+         *  carries the panel framing. */}
+        <div className="mb-3">
           <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={currentRoundNumber} />
         </div>
 
