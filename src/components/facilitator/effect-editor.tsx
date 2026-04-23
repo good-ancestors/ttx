@@ -50,12 +50,6 @@ function describeEffect(e: StructuredEffect): { label: string; Icon: typeof GitM
       return { label: "Found lab", Icon: Plus, tone: "text-viz-safety", summary: `${e.name} (${e.seedCompute}u)` };
     case "narrativeOnly":
       return { label: "Narrative only", Icon: MessageSquare, tone: "text-text-light", summary: "no mechanical effect" };
-    case "computeChange":
-    case "multiplierOverride":
-      // Legacy variants — only reachable on pre-redesign persisted docs.
-      // Render a neutral "legacy" label; the facilitator edit flow lets them
-      // replace it with a current-taxonomy effect.
-      return { label: "Legacy effect", Icon: MessageSquare, tone: "text-text-light", summary: "pre-redesign (edit to replace)" };
   }
 }
 
@@ -409,12 +403,6 @@ function buildEffect(type: EffectType, f: Record<string, string>): StructuredEff
     }
     case "narrativeOnly":
       return { type: "narrativeOnly" };
-    case "computeChange":
-    case "multiplierOverride":
-      // Legacy variants — not selectable from the dropdown; if an initial
-      // effect is legacy, the facilitator must pick a current-taxonomy
-      // replacement before saving. Drop these cases once prod data is cleaned.
-      return "Legacy effect type — pick a current-taxonomy replacement from the dropdown";
   }
 }
 
@@ -566,15 +554,6 @@ function FieldsForType({
       return (
         <p className="text-[11px] text-text-light/70 italic">
           Action rolls and logs to the narrative but produces no mechanical state change.
-        </p>
-      );
-    case "computeChange":
-    case "multiplierOverride":
-      return (
-        <p className="text-[11px] text-viz-warning italic">
-          Legacy effect type from before the four-layer redesign. Pick a current-taxonomy
-          replacement from the dropdown (breakthrough / modelRollback / computeDestroyed /
-          researchDisruption / researchBoost) and save.
         </p>
       );
   }

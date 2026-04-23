@@ -630,8 +630,9 @@ export const rollAndApplyEffects = internalAction({
       // Collect per-action effects to apply. Skip failed actions; skip actions
       // with player-pinned effects (mergeLab / foundLab / computeTargets) — those
       // settled inside rollAllImpl and surface in P7 via the event log; skip
-      // narrativeOnly, foundLab, and legacy types.
-      type ApplyableEffect = Exclude<StructuredEffect, { type: "narrativeOnly" } | { type: "foundLab" } | { type: "computeChange" } | { type: "multiplierOverride" }>;
+      // narrativeOnly and foundLab at the grader-effect layer (foundLab is
+      // player-pinned only).
+      type ApplyableEffect = Exclude<StructuredEffect, { type: "narrativeOnly" } | { type: "foundLab" }>;
       type ResolvedEffect = {
         actorRoleId: string;
         actorRoleName: string;
@@ -645,10 +646,7 @@ export const rollAndApplyEffects = internalAction({
           if (!action.success) continue;
           if (action.mergeLab || action.foundLab || (action.computeTargets && action.computeTargets.length > 0)) continue;
           const e = action.structuredEffect;
-          // Legacy variants (persisted before the four-layer redesign) skipped
-          // here; apply switch below is the post-redesign taxonomy only.
-          if (!e || e.type === "narrativeOnly" || e.type === "foundLab"
-            || e.type === "computeChange" || e.type === "multiplierOverride") continue;
+          if (!e || e.type === "narrativeOnly" || e.type === "foundLab") continue;
           effectsToApply.push({ actorRoleId: sub.roleId, actorRoleName, actionText: action.text, effect: e });
         }
       }
