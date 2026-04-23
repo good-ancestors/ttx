@@ -60,23 +60,23 @@ export function StateSection({
         currentRoundNumber={currentRoundNumber}
         isProjector={isProjector}
         labs={labs}
+        rounds={rounds}
         onMerge={onMerge}
         onAddLab={onAddLab}
       />
-
-      <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={currentRoundNumber} />
 
       <NewComputeAcquired gameId={gameId} roundNumber={currentRoundNumber} />
     </>
   );
 }
 
-/** Combined lab state + allocations + AI capabilities. One expandable card. */
+/** Combined lab state + allocations + R&D chart + AI capabilities. One expandable card. */
 function LabStateAndAllocations({
   gameId,
   currentRoundNumber,
   isProjector,
   labs,
+  rounds,
   onMerge,
   onAddLab,
 }: {
@@ -85,6 +85,7 @@ function LabStateAndAllocations({
   currentRoundNumber: number;
   isProjector: boolean;
   labs: Lab[];
+  rounds: RoundLite[];
   onMerge?: (survivorName: string, absorbedName: string) => Promise<void>;
   onAddLab?: () => void;
 }) {
@@ -137,29 +138,31 @@ function LabStateAndAllocations({
           })}
         </div>
 
+        {/* R&D progress chart — inside the "Where We Are Now" card, above the
+         *  capability block so the trajectory precedes the "so what" interpretation. */}
+        <div className="bg-navy rounded-lg p-3 border border-navy-light mb-3">
+          <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={currentRoundNumber} />
+        </div>
+
         {cap && (
-          <>
-            <div className="bg-navy rounded-lg p-4 border border-navy-light mb-3">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm font-bold text-white">How Capable is AI?</span>
-                <span className="text-xs text-viz-capability font-mono ml-auto">{cap.agent} · {cap.rdRange}</span>
-              </div>
-              <p className={`${isProjector ? "text-base" : "text-sm"} text-[#E2E8F0] mb-2`}>{cap.generalCapability}</p>
-              <div className="space-y-1 mb-2">
-                {cap.specificCapabilities.map((c: string, i: number) => (
-                  <p key={`cap-${i}`} className={`${isProjector ? "text-base" : "text-sm"} text-text-light flex items-start gap-1.5`}>
-                    <span className="text-viz-capability mt-0.5">●</span> {c}
-                  </p>
-                ))}
-              </div>
-              <div className="flex items-center gap-2 pt-2 border-t border-navy-light">
-                <span className="text-base font-bold text-white">{cap.timeCompression}</span>
-              </div>
+          <div className="bg-navy rounded-lg p-4 border border-navy-light">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-sm font-bold text-white">How Capable is AI?</span>
+              <span className="text-xs text-viz-capability font-mono ml-auto">{cap.agent} · {cap.rdRange}</span>
             </div>
-            <div className="bg-navy rounded-lg p-3 border border-navy-light">
-              <p className={`${isProjector ? "text-base" : "text-sm"} text-[#E2E8F0]`}>{cap.implication}</p>
+            <p className={`${isProjector ? "text-base" : "text-sm"} text-[#E2E8F0] mb-2`}>{cap.generalCapability}</p>
+            <div className="space-y-1 mb-2">
+              {cap.specificCapabilities.map((c: string, i: number) => (
+                <p key={`cap-${i}`} className={`${isProjector ? "text-base" : "text-sm"} text-text-light flex items-start gap-1.5`}>
+                  <span className="text-viz-capability mt-0.5">●</span> {c}
+                </p>
+              ))}
             </div>
-          </>
+            <div className="pt-2 border-t border-navy-light space-y-1">
+              <div className="text-base font-bold text-white">{cap.timeCompression}</div>
+              <div className={`${isProjector ? "text-sm" : "text-[11px]"} text-text-light/80 italic`}>{cap.implication}</div>
+            </div>
+          </div>
         )}
       </ExpandableSection>
     </div>

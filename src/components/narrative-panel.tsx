@@ -6,7 +6,7 @@ import { useConvex } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { Loader2, CheckCircle, ChevronDown, Bug, X } from "lucide-react";
+import { Loader2, CheckCircle, ChevronDown, Bug, X, Pencil } from "lucide-react";
 import { useFacilitatorToken } from "@/lib/hooks";
 
 const LOADING_VERBS = [
@@ -62,12 +62,15 @@ export function NarrativePanel({
   defaultExpanded = true,
   isProjector = false,
   debugContext,
+  onEditNarrative,
 }: {
   round: Round | undefined;
   defaultExpanded?: boolean;
   isProjector?: boolean;
   /** Enables facilitator-only bug-icon overlay with the round's resolve LLM prompt+response. */
   debugContext?: { gameId: Id<"games"> };
+  /** Facilitator-only edit action — renders a small pencil next to the debug button. */
+  onEditNarrative?: () => void;
 }) {
   const [verbIdx, setVerbIdx] = useState(0);
   const [expanded, setExpanded] = useState(defaultExpanded);
@@ -120,6 +123,15 @@ export function NarrativePanel({
           <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
         )}
       </button>
+      {onEditNarrative && (
+        <button
+          onClick={onEditNarrative}
+          className="absolute top-4 right-10 text-text-light/60 hover:text-text-light transition-colors"
+          title="Edit narrative"
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      )}
       {debugContext && (
         <ResolveDebugButton gameId={debugContext.gameId} roundNumber={round.number} />
       )}
