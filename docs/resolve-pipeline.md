@@ -12,30 +12,47 @@ Canonical reference for round resolution — phase order, who owns each step, sc
 ## Phase order
 
 1. **Close round** **[FAC]** — facilitator locks submissions.
-2. **Grading** **[LLM + FAC review]** — LLM emits `{probability, structuredEffect, confidence}` per action. Facilitator can override. Low confidence or missing probability → flag.
+2. **Batched grading** **[LLM + FAC review]** — ONE LLM call across all roles' submissions emits `{probability, reasoning, confidence, structuredEffect}` per action, matched back by stable `actionId`. Facilitator reviews in the attempted-panel: probability chip + effect badge per action. Low confidence auto-expands the effect editor for click-through acknowledgement. Player-pinned effects (`mergeLab` / `foundLab` / `computeTargets` on the submission) bind the effect shape; grader only assigns probability for those.
 3. **AI influence resolution** **[AUTO + CHAIN]** — auto-boost AI Systems own actions; keyword influence on others.
 4. **Dice roll** **[AUTO + CHAIN]** — ungraded actions fail silently → narrative-only, no mechanical effect.
-5. **Effect application (ordered)** **[AUTO + CHAIN]**
-   1. Inter-role compute transfers
-   2. Lab foundings
-   3. Lab splits
-   4. Ownership transfers
-   5. Mergers
-   6. Decommissions
-   7. Lab-internal changes (redomicile, allocation, spec)
-   - Preconditions checked between steps; failures marked with a reason, not silently dropped.
-6. **Flag collection** **[AUTO + CHAIN]** — conflicts, blocked preconditions, low-confidence extractions, over-commits.
+5. **Effect application (ordered, deterministic — no LLM)** **[AUTO + CHAIN]**
+   1. Player-pinned settlements (foundLab, mergeLab, computeTargets) — already materialised in rollAllImpl before this phase runs.
+   2. Grader-emitted structured effects for successful actions:
+      - Inter-role compute transfers
+      - Ownership transfers
+      - Mergers
+      - Decommissions
+      - R&D multiplier overrides (±2× band unless action text cites a narrative trigger)
+      - One-off compute shocks (computeChange)
+   3. Lab-internal changes (redomicile, allocation, spec)
+   - Preconditions checked between steps; failures collected as `rejectedOps` with a category + message, not silently dropped.
+6. **Flag collection** **[AUTO + CHAIN]** — rejected effects surface in the P7 panel alongside applied ones. Categories: `invalid_reference` (lab / role doesn't exist), `precondition_failure` (rule violation, e.g. ±2× band without trigger).
 7. **Facilitator review** **[FAC]** ← mandatory pause
-   - Applied effects (collapsed) + flags (expanded) + manual tools.
-   - Most rounds: zero flags, one-click continue.
+   - Applied effects + rejections + manual tools.
+   - Most rounds: zero rejections, one-click continue.
 8. **Share % changes recorded** **[AUTO + CHAIN]** — derived from effects + facilitator overrides; affects step 10.
 9. **R&D posts** **[AUTO + CHAIN]** — for each active lab in final state: `compute × allocation × multiplier → progress`.
-10. **New compute acquired** **[AUTO + CHAIN]** — per updated shares, distributed to role pools. Tail of this round, becomes start state for next round.
+10. **New compute acquired** **[AUTO + CHAIN]** — per updated shares, distributed to role pools. Tail of this round, materialises at Advance (stashed in `round.pendingAcquired` until then).
 11. **Narrative + trajectories** **[LLM]** — reads frozen `(startState, actionLog, transactionLog, endState)`. Emits summary + facilitatorNotes + labTrajectories. Cannot contradict state because state is input.
 12. **Facilitator narrative review** **[FAC]** ← optional — edit prose, regenerate (free).
 13. **Publish + snapshot** **[AUTO]** — round marked complete, snapshot written.
 
-Two mandatory pauses (P2 grading review, P7 effect review) and one optional (P12 narrative review). Everything else auto-chains.
+Two mandatory pauses (P2 grading review, P7 effect review) and one optional (P12 narrative review). Everything else auto-chains. **One LLM call for grading, one for narrative** — no decide pass.
+
+## Structured effect taxonomy
+
+Emitted by the grader at P2, applied deterministically at P5. Discriminated by `type`:
+
+| Type | Fields | Produced by |
+|---|---|---|
+| `merge` | `survivor`, `absorbed`, `newName?`, `newSpec?` | DPA / Manhattan Project / forced consolidation; or player `mergeLab` (pinned) |
+| `decommission` | `labName` | Explicit destruction, nationalise-to-dissolve |
+| `computeChange` | `labName`, `change` (±, ≠0) | Narrative shock: theft, grant, sanctions, physical damage |
+| `multiplierOverride` | `labName`, `newMultiplier` | Safer pivot (halve), sabotage (halve), breakthrough (~2×). Outside ±2× band requires narrative-trigger keyword in action text |
+| `transferOwnership` | `labName`, `controllerRoleId` | Nationalisation, forced acquisition. Empty controllerRoleId rejected — use decommission |
+| `computeTransfer` | `fromRoleId`, `toRoleId`, `amount` | Narrative compute move between two role pools |
+| `foundLab` | `name`, `seedCompute`, `spec?` | Only pinned from player `foundLab` submission — grader doesn't invent these |
+| `narrativeOnly` | — | Default. Action rolls + logs to narrative, no mechanical op |
 
 ## Merger semantics
 

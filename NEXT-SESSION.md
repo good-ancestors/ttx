@@ -1,82 +1,97 @@
-# Next Session — Resolve Pipeline + UI Polish
+# Next Session — Post-refactor playtest readiness
 
-## State at handoff (2026-04-23 late morning)
+## State at handoff (2026-04-23 afternoon)
 
-**Open PR:** [#21 — Resolve pipeline refactor + three-section UI](https://github.com/good-ancestors/ttx/pull/21)
+**Open PR:** [#21 — Resolve pipeline refactor + three-section UI + structured-effect grader](https://github.com/good-ancestors/ttx/pull/21)
 **Branch:** `t3code/clarify-attempted-versus-happened`
-**HEAD:** `b585cff`
 
-Prod Convex backend: `compassionate-hyena-205` — deployed with all shipping fixes.
+Prod Convex backend: `compassionate-hyena-205` — needs redeploy after this PR merges.
 Dev Convex backend: `oceanic-lapwing-232`.
 Passphrase: `coral-ember-drift-sage`.
 
-## What landed this session (PR #21)
+## What landed in the structured-effect refactor
 
-**Pipeline + architecture**
-- Split `rollAndNarrate` → `rollAndApplyEffects` + `continueFromEffectReview` with P7 facilitator pause
-- R&D growth ordering (phase 9 post-P7); multiplierOverride compounding fix via `pendingMultiplierOverrides`
-- Deferred new-compute acquisition to Advance click via `pendingAcquired`
-- `transferOwnership` with empty `controllerRoleId` rejected (structural orphan prevention)
-- Decommissioned lab names resolved in player-origin merger summaries
-- `decommissionLabInternal` only touches `mergedIntoLabId` when explicitly passed (B2)
-- `forceClearResolvingLock` rewinds phase + clears `resolveNonce` + pending fields (B4)
-- `advanceRound` phase/resolving guards + re-snapshots `labsAfter` post-materialisation (B1, B5)
-- `updateLabs` server-side allocation sum=100 validation (B3)
-- Re-resolve resets each lab's `rdMultiplier` + `allocation` to `labsBefore` snapshot (B7)
-- `computeChange: 0` now rejected as `precondition_failure` (validator-backed, surfaces in P7)
-- Dice-roll failures no longer leak into P7 "Flagged & Rejected"
-- Decide-LLM prompt narrowed: `multiplierOverride` forbidden for mergers, safety-governance stealth caps, "feels right" nudges
+Replaces the two-pass grade→decide-LLM pipeline with a single batched grading call that emits `{probability, reasoning, confidence, structuredEffect}` per action. Apply phase now reads submission fields deterministically — no second LLM.
+
+**Backend**
+- Schema: `submissions.actions[].structuredEffect` (discriminated union, 8 variants) + `confidence` (`"high"|"medium"|"low"`)
+- Prompt: `buildBatchedGradingPrompt` — single prompt across all roles with effect taxonomy, preconditions, confidence semantics
+- Grading call: `gradeAllBatched` — one Anthropic tool-use call, matches results by stable `actionId`
+- Apply path: reads each successful action's effect, dispatches through existing mutations; skips pinned-effect actions (already settled in rollAllImpl)
+- New effect variant: `computeTransfer` (narrative compute moves between two role pools)
+- Deleted: `buildResolveDecidePrompt`, `DecideOutput`, decide debug save, decide-half of aiMeta
+- Validator: `normaliseStructuredEffect` projects the flat LLM payload to the typed union; malformed shapes collapse to `narrativeOnly`
 
 **UI**
-- Three-section progressive-reveal layout: `AttemptedSection` / `HappenedSection` / `StateSection`
-- Lab cards + new-compute-acquired editable (R&D multiplier, stock, allocation, per-role %)
-- `updatePendingAcquired` mutation for in-place acquisition edits that land at Advance
-- Auto-expand "What Was Attempted" on timer expire
-- Narrative prompt rewritten to emit bullets; panel renders `<ul>` when newline-dash format
-- Edit-narrative affordance moved to a small pencil inside `NarrativePanel` header next to debug button
-- R&D progress chart moved inside "Where We Are Now" card above "How Capable is AI?"
-- `cap.implication` folded into main capability card (no more orphan box)
-- `ComputeDotsViz` is still 1-block-per-unit (see #1 below)
+- `EffectEditor` component — compact badge showing effect type + summary, click to open popover with type dropdown + type-specific field editor (merge / decommission / computeChange / multiplierOverride / transferOwnership / computeTransfer / foundLab / narrativeOnly)
+- Low-confidence effects render with warning tint; popover offers "Looks good" acknowledgement
+- Post-dice the badge is locked (change via Re-resolve)
+- Projector-view is read-only
+- `overrideStructuredEffect` mutation threads the edit + acknowledgement
 
-**Tooling + tests**
-- Reusable scenario harness (`tests/scenarios/harness.ts`) with example forced-merger fixture
-- Sample-action generator script (`scripts/generate-sample-actions-data.mjs`)
-- Dead `adjustHolderCompute` mutation removed
+**Tests**
+- 26 new unit tests for `normaliseStructuredEffect` covering every variant + all malformed inputs
+- Batched grading prompt has 3 new tests
+- 153 total passing
 
-## Outstanding work (priority order)
+## Prod deploy checklist
 
-### P0 — Polish the playtest
+1. Merge PR #21 to main
+2. Vercel auto-builds the frontend
+3. `npx convex deploy` for prod backend
+4. Create a fresh test game on prod (old games have no `structuredEffect` on actions — they'll render fine in archives but can't be re-resolved)
+5. Smoke-test one round end-to-end:
+   - Start game, open submissions
+   - NPC tables auto-submit
+   - Human table submits a mix: one obvious mechanical action, one narrative action, one borderline
+   - Grade Remaining
+   - Verify effect badges appear on rows, confidence indicators show
+   - Try editing one effect (change type, save)
+   - Try acknowledging a low-confidence one
+   - Roll Dice
+   - Verify applied ops in P7 match what was shown at P2
+   - Continue to narrative
+6. Tear down test game, create real playtest game
 
-1. **Allocation-block scale cap** — `ComputeDotsViz` renders 1 block per compute unit. At 200u+ the block cluster dominates the lab card and overflows visually. Cap to ~50 blocks; each block represents `ceil(stock/50)` units; render "(×N)" multiplier tag if scaled. File: `src/components/lab-tracker.tsx`.
+## Outstanding follow-ups (priority order)
 
-2. **multiplierOverride magnitude validator** (continuation of LLM-scope tightening) — prompt now forbids most uses but the validator still accepts any value in `[0.1, maxMult]`. Consider rejecting overrides that exceed ±50% of the current multiplier unless tagged with a narrative-trigger keyword in `reason`. Adds a P7 rejection surface for LLM overreach.
+### P1 — Playtest polish (if signal appears during smoke test)
 
-3. **Projector view audit** — load `?projector=true` and confirm no facilitator-only affordances leak (Continue bar, edit pencils on lab cards + narrative panel, Add-lab button, Regenerate, debug button, merge buttons). Tighten `isProjector` guards as needed.
+1. **Player-side structured-effect detection** — when a player types freeform text that smells mechanical ("merge", "nationalize", "transfer X compute"), nudge them toward the structured UI (mergeLab picker, compute-send panel). Prevents the grader from having to guess and catches intent-shape mismatches at submit time.
 
-4. **Section-header visual hierarchy** — S1 "What Was Attempted", S2 "What Happened", S3 "Where We Are Now" currently each have their own card title. Consider a single band/header per section so the three-part structure is obvious on projection. Or a subtle background tint per section.
+2. **Pre-fill structured effects in NPC sample data** — `convex/sampleActionsData.ts` action texts can hand-carry their intended `structuredEffect` + `confidence: "high"`. NPC rounds become fully deterministic and free (no LLM call needed for grading NPCs), and the facilitator gets a consistent signal each playtest. Requires augmenting the generator script + the sample JSON. Generator already exists at `scripts/generate-sample-actions-data.mjs`.
 
-### P1 — Tests + future work
+3. **Continue-button click-through gate for low-confidence effects** — currently the low-confidence badge draws attention and auto-expands the editor, but the facilitator can still hit Roll Dice without reviewing. Add a gate: if any low-confidence action has not been acknowledged (confidence upgraded to high via Save or "Looks good"), the Grade / Roll button is disabled with a "Review {N} flagged effects" tooltip.
 
-5. **First real scenarios** — `tests/scenarios/` has the harness + one example. Add:
-   - TSMC bombed (large negative computeChange across all labs; next round's new-compute totals drop)
-   - Cyber takedown (compute transfer attacker→target)
-   - Forced merger under duress
-   - Lab splits (foundLab after spec divergence)
-   - Chained consequences in one round
+### P2 — Integration scenarios
 
-6. **Structured-effect grader output** (`docs/resolve-pipeline.md` phase 2) — grader emits `{probability, structuredEffect, confidence}` per action so phase 5 can derive ops deterministically from grader output, skipping the decide LLM. Big change, own PR.
+4. **Effect-path scenario harness fixtures.** `tests/scenarios/` has the harness + one `example-forced-merger` fixture. That one still works because `mergeLab` is a pinned effect. New fixtures for the grader-emitted paths need real-LLM runs to exercise end-to-end — expensive to run but each round-worth of real output is a regression-safety investment:
+   - TSMC bombed (computeChange cascade + decommission)
+   - Cyber takedown (computeTransfer attacker → target)
+   - Successful hostile merger without pinned mergeLab (grader must emit merge effect from freeform text)
+   - Low-confidence acknowledgement flow
+   - Lab founding + compute seed via `foundLab` pinned effect
 
-7. **Split `labOperation` type into discriminated union** — flat type with every field optional today (`convex/pipeline.ts`). Mechanical refactor to `{type: "merge", ...} | {type: "decommission", ...} | ...`.
+### P3 — Architecture cleanup
+
+5. **Lab split effect type.** Today lab splits aren't in the taxonomy — fold into `foundLab` + `computeTransfer` pair or add a dedicated `splitLab` variant. Blocks a class of narrative: a lab disputes internally and its safety team spins off a new competitor. Needs UI + prompt + apply-path work.
+
+6. **Split `labOperation` / `StructuredEffect` union consistency.** The apply phase internally builds flat arrays of per-type op records (`mergeOps`, `decommissionOps`, `computeTransferPairs`, etc.) then dispatches to mutations. Could collapse to a single discriminated union shared with the validator for a cleaner apply-path call site.
+
+7. **Section-header visual hierarchy** (from prior session). S1/S2/S3 each have their own card title; a unified band or tint would make the three-part structure obvious on projection. Low value, low urgency.
 
 ## How to resume
 
 ```
-Read /Users/lukefreeman/code/ttx/app/NEXT-SESSION.md,
-  /Users/lukefreeman/.claude/projects/-Users-lukefreeman-code-ttx/memory/feedback_orchestration.md,
-  docs/resolve-pipeline.md.
+Read NEXT-SESSION.md,
+  docs/resolve-pipeline.md,
+  tests/structured-effects.test.ts (pattern for future shape-level tests).
 
-The resolve pipeline + UI refactor (PR #21) is open. Pick up from the
-priority list. `temp-review-correctness.md` + `temp-review-design.md` +
-`temp-investigate-rd.md` + `temp-simplify-21.md` are the background
-context for the fixes that already shipped this session.
+Smoke-test the PR #21 branch on prod. If the grader-emitted structured
+effects match facilitator expectations across a playtest round, the
+refactor is ready. If the effect editor UI needs polish after a real
+session, that feedback should shape P1 priorities before the next
+playtest. The decide LLM is gone — all mechanical state changes come
+from either (a) player-pinned submission fields or (b) grader-emitted
+structuredEffect, optionally edited by the facilitator at P2.
 ```
