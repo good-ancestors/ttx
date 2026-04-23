@@ -71,6 +71,22 @@ const mergeLabValidator = v.object({
   newSpec: v.optional(v.string()),
 });
 
+// Structured effect emitted by the batched grading LLM (and editable by the
+// facilitator at P2 via overrideStructuredEffect). Matches the discriminated
+// union in ai-prompts.ts / schema.ts. Applied deterministically at resolve.
+const structuredEffectValidator = v.union(
+  v.object({ type: v.literal("merge"), survivor: v.string(), absorbed: v.string(), newName: v.optional(v.string()), newSpec: v.optional(v.string()) }),
+  v.object({ type: v.literal("decommission"), labName: v.string() }),
+  v.object({ type: v.literal("computeChange"), labName: v.string(), change: v.number() }),
+  v.object({ type: v.literal("multiplierOverride"), labName: v.string(), newMultiplier: v.number() }),
+  v.object({ type: v.literal("transferOwnership"), labName: v.string(), controllerRoleId: v.string() }),
+  v.object({ type: v.literal("computeTransfer"), fromRoleId: v.string(), toRoleId: v.string(), amount: v.number() }),
+  v.object({ type: v.literal("foundLab"), name: v.string(), spec: v.optional(v.string()), seedCompute: v.number(), allocation: v.optional(v.object({ deployment: v.number(), research: v.number(), safety: v.number() })) }),
+  v.object({ type: v.literal("narrativeOnly") }),
+);
+
+const confidenceValidator = v.union(v.literal("high"), v.literal("medium"), v.literal("low"));
+
 const actionValidator = v.object({
   text: v.string(),
   priority: v.number(),
@@ -84,6 +100,8 @@ const actionValidator = v.object({
   computeTargets: v.optional(v.array(computeTargetValidator)),
   foundLab: v.optional(foundLabValidator),
   mergeLab: v.optional(mergeLabValidator),
+  structuredEffect: v.optional(structuredEffectValidator),
+  confidence: v.optional(confidenceValidator),
 });
 
 // Validator for actions that already have actionStatus set (e.g. grading pipeline output).
@@ -101,6 +119,8 @@ const persistedActionValidator = v.object({
   computeTargets: v.optional(v.array(computeTargetValidator)),
   foundLab: v.optional(foundLabValidator),
   mergeLab: v.optional(mergeLabValidator),
+  structuredEffect: v.optional(structuredEffectValidator),
+  confidence: v.optional(confidenceValidator),
 });
 
 // Full query — includes secret text and reasoning. Requires facilitator token.

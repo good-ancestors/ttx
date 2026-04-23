@@ -7,13 +7,16 @@ import { internal } from "./_generated/api";
 import type { Id, Doc } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS, RESOLVE_MODELS } from "./aiModels";
-import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
+import { AI_SYSTEMS_ROLE_ID } from "./gameData";
 import {
-  buildGradingPrompt,
+  buildBatchedGradingPrompt,
   buildResolveDecidePrompt,
   buildResolveNarrativePrompt,
   SCENARIO_CONTEXT,
   type ActionRequest,
+  type BatchedGradingRole,
+  type GradedActionOutput,
+  type StructuredEffect,
 } from "@/lib/ai-prompts";
 import handoutData from "../public/role-handouts.json" with { type: "json" };
 import type { RoleHandout } from "@/lib/role-handouts";
@@ -64,178 +67,319 @@ function generateNonce(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-async function gradeSubmissionBatch(
+/** Batched grading — single LLM call across all roles per round. Emits
+ *  probability + reasoning + structuredEffect + confidence per action, matched
+ *  back to submissions by actionId. Replaces the pre-refactor per-role loop
+ *  and the separate decide-LLM pass. Apply phase consumes structuredEffect
+ *  deterministically; there is no second LLM.
+ *
+ *  Failure mode: up to 2 retries with exponential backoff. Hard-fail on
+ *  exhaustion — the pipeline surfaces "Grading failed" to the facilitator
+ *  rather than silently defaulting (silent fallback would give every action
+ *  narrativeOnly + a default probability, degrading game quality invisibly). */
+async function gradeAllBatched(
   ctx: ActionCtx,
   opts: {
     gameId: Id<"games">;
+    roundNumber: number;
     labs: LabWithCompute[];
-    ungraded: Submission[];
-    allSubmissions: Submission[];
+    submissions: Submission[];
     rounds: Round[];
     requests: { fromRoleId: string; toRoleId: string; actionText: string; fromRoleName: string; toRoleName: string; requestType: string; computeAmount?: number; status: string }[];
     enabledRoleNames: string[];
-    roundNumber: number;
-    onlyUngraded?: boolean; // If true, only grade actions without probability
+    onlyUngraded: boolean;
   },
 ) {
-  const { gameId, labs, ungraded, allSubmissions, rounds, requests, enabledRoleNames, roundNumber, onlyUngraded } = opts;
-  const GRADING_CONCURRENCY = 6;
-  let completed = 0;
-  const total = ungraded.length;
+  const { gameId, roundNumber, labs, submissions, rounds, requests, enabledRoleNames, onlyUngraded } = opts;
 
-  // Pre-build lookup maps to avoid repeated .find() calls inside the loop
   const roleMap = new Map(ROLES.map((r) => [r.id, r]));
   const labMap = new Map(labs.filter((l) => l.roleId).map((l) => [l.roleId!, l]));
   const labByLabId = new Map(labs.map((l) => [String(l.labId), l] as const));
   const roundMap = new Map(rounds.map((r) => [r.number, r]));
-  const allSubsSummary = allSubmissions.map((s) => ({
-    roleId: s.roleId,
-    roleName: roleMap.get(s.roleId)?.name ?? s.roleId,
-    actions: s.actions.map((a) => ({ text: a.text, priority: a.priority })),
-  }));
 
-  for (let batch = 0; batch < ungraded.length; batch += GRADING_CONCURRENCY) {
-    const batchSubs = ungraded.slice(batch, batch + GRADING_CONCURRENCY);
-    const batchResults = await Promise.allSettled(batchSubs.map(async (sub) => {
-      const role = roleMap.get(sub.roleId);
-      if (!role) return;
+  // Build one BatchedGradingRole per submission that has at least one action
+  // still needing grading. Fully-graded submissions are skipped — the batched
+  // prompt doesn't need to re-see them (the facilitator's manual grades stand).
+  const batchedRoles: BatchedGradingRole[] = [];
+  const actionIdToSubmission = new Map<string, { submissionId: Id<"submissions">; actionIndex: number }>();
 
-      // Defensive guard: skip submissions where all actions are already graded
-      if (sub.actions.every((a) => a.probability != null)) return;
+  for (const sub of submissions) {
+    const role = roleMap.get(sub.roleId);
+    if (!role) continue;
 
-      const otherSubs = allSubsSummary.filter((s) => s.roleId !== sub.roleId);
+    const actionsNeedingGrade = onlyUngraded
+      ? sub.actions.map((a, i) => ({ a, i })).filter(({ a }) => a.probability == null)
+      : sub.actions.map((a, i) => ({ a, i }));
+    if (actionsNeedingGrade.length === 0) continue;
 
-      const actionRequests: ActionRequest[] = (requests ?? [])
-        .filter((r) => r.fromRoleId === sub.roleId || r.toRoleId === sub.roleId)
+    const roleRequests = requests.filter((r) => r.fromRoleId === sub.roleId || r.toRoleId === sub.roleId);
+
+    const actions = actionsNeedingGrade.map(({ a, i }) => {
+      actionIdToSubmission.set(a.actionId, { submissionId: sub._id, actionIndex: i });
+
+      let pinnedEffect: BatchedGradingRole["actions"][number]["pinnedEffect"];
+      if (a.mergeLab) {
+        const absorbedLab = labByLabId.get(String(a.mergeLab.absorbedLabId));
+        const survivorLab = labByLabId.get(String(a.mergeLab.survivorLabId));
+        if (absorbedLab && survivorLab) {
+          pinnedEffect = {
+            kind: "merge",
+            absorbedLabName: absorbedLab.name,
+            survivorLabName: survivorLab.name,
+            submitterIsAbsorbed: absorbedLab.roleId === sub.roleId,
+            newName: a.mergeLab.newName,
+            newSpec: a.mergeLab.newSpec,
+          };
+        }
+      } else if (a.foundLab) {
+        pinnedEffect = { kind: "foundLab", name: a.foundLab.name, spec: a.foundLab.spec, seedCompute: a.foundLab.seedCompute };
+      } else if (a.computeTargets && a.computeTargets.length > 0) {
+        pinnedEffect = {
+          kind: "computeTransfer",
+          targets: a.computeTargets.map((t) => ({
+            toRoleName: roleMap.get(t.roleId)?.name ?? t.roleId,
+            amount: t.amount,
+            direction: t.direction ?? "send",
+          })),
+        };
+      }
+
+      const actionRequests: ActionRequest[] = roleRequests
+        .filter((r) => r.actionText === a.text)
         .map((r) => ({
           actionText: r.actionText, fromRoleName: r.fromRoleName, toRoleName: r.toRoleName,
           requestType: r.requestType, computeAmount: r.computeAmount, status: r.status,
         }));
 
-      const mergeContextFor = (a: (typeof sub.actions)[number]) => {
-        if (!a.mergeLab) return undefined;
-        const absorbedLab = labByLabId.get(String(a.mergeLab.absorbedLabId));
-        const survivorLab = labByLabId.get(String(a.mergeLab.survivorLabId));
-        if (!absorbedLab || !survivorLab) return undefined;
-        return {
-          absorbedLabName: absorbedLab.name,
-          survivorLabName: survivorLab.name,
-          submitterIsAbsorbed: absorbedLab.roleId === sub.roleId,
-          newName: a.mergeLab.newName,
-          newSpec: a.mergeLab.newSpec,
-        };
+      return {
+        actionId: a.actionId,
+        text: a.text,
+        priority: a.priority,
+        secret: a.secret,
+        pinnedEffect,
+        actionRequests: actionRequests.length > 0 ? actionRequests : undefined,
       };
-      const actionsToGrade = onlyUngraded
-        ? sub.actions.filter((a) => a.probability == null).map((a) => ({ text: a.text, priority: a.priority, mergeLab: mergeContextFor(a) }))
-        : sub.actions.map((a) => ({ text: a.text, priority: a.priority, mergeLab: mergeContextFor(a) }));
-      // When grading only ungraded actions, still give the LLM the full picture of this role's
-      // other actions — including any the facilitator has already manually graded — so competition,
-      // priority budgets and narrative coherence are evaluated against the complete submission.
-      const preGradedSibling = onlyUngraded
-        ? sub.actions.filter((a) => a.probability != null).map((a) => ({ text: a.text, priority: a.priority }))
-        : [];
+    });
 
-      const prevRoundForGrading = roundMap.get(roundNumber - 1);
-      const prompt = buildGradingPrompt({
-        round: roundNumber,
-        roundLabel: roundMap.get(roundNumber)?.label ?? `Round ${roundNumber}`,
-        roleName: role.name,
-        roleDescription: getRoleDescription(sub.roleId, role.brief ?? ""),
-        roleTags: [...role.tags],
-        actions: actionsToGrade,
-        siblingPreGraded: preGradedSibling,
-        labs,
-        actionRequests,
-        enabledRoles: enabledRoleNames,
-        // Disposition deliberately excluded from grading — it biases probability
-        // even when instructed not to. Disposition is passed to narrative phase only.
-        otherSubmissions: otherSubs,
-        labSpec: labMap.get(sub.roleId)?.spec,
-        previousTrajectories: prevRoundForGrading?.labTrajectories as
-          { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[] | undefined,
-      });
+    batchedRoles.push({
+      roleId: sub.roleId,
+      roleName: role.name,
+      roleDescription: getRoleDescription(sub.roleId, role.brief ?? ""),
+      roleTags: [...role.tags],
+      labSpec: labMap.get(sub.roleId)?.spec,
+      actions,
+    });
+  }
 
-      const gradedActions = await callGradingLLM(sub, prompt, onlyUngraded);
-      await ctx.runMutation(internal.submissions.applyGradingInternal, {
-        submissionId: sub._id,
-        actions: gradedActions,
-      });
+  if (batchedRoles.length === 0) return; // Nothing to grade
+
+  const currentRound = roundMap.get(roundNumber);
+  const prevRound = roundMap.get(roundNumber - 1);
+  const previousRoundsForPrompt = rounds
+    .filter((r) => r.number < roundNumber && r.summary)
+    .map((r) => ({
+      number: r.number,
+      label: r.label,
+      summary: r.summary ? {
+        outcomes: r.summary.outcomes,
+        stateOfPlay: r.summary.stateOfPlay,
+        pressures: r.summary.pressures,
+      } : undefined,
     }));
 
-    let failedCount = 0;
-    for (const r of batchResults) {
-      if (r.status === "rejected") {
-        console.error(`[pipeline] Grading failed for submission:`, r.reason);
-        failedCount++;
-      } else {
-        completed++;
-      }
-    }
+  const prompt = buildBatchedGradingPrompt({
+    round: roundNumber,
+    roundLabel: currentRound?.label ?? `Round ${roundNumber}`,
+    enabledRoles: enabledRoleNames,
+    labs,
+    roles: batchedRoles,
+    previousRounds: previousRoundsForPrompt,
+    previousTrajectories: prevRound?.labTrajectories as
+      { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[] | undefined,
+  });
 
-    const failedSuffix = failedCount > 0 ? ` (${failedCount} used defaults)` : "";
-    await ctx.runMutation(internal.games.updatePipelineStatus, {
-      gameId,
-      status: { step: "grading", detail: `Evaluating actions...${failedSuffix}`, progress: `${completed}/${total}`, startedAt: Date.now() },
-    });
-  }
-}
+  const totalActions = batchedRoles.reduce((sum, r) => sum + r.actions.length, 0);
+  await ctx.runMutation(internal.games.updatePipelineStatus, {
+    gameId,
+    status: { step: "grading", detail: `Evaluating ${totalActions} action${totalActions === 1 ? "" : "s"}...`, progress: `0/${totalActions}`, startedAt: Date.now() },
+  });
 
-// Call LLM for grading, with fallback to default probabilities
-async function callGradingLLM(
-  sub: Submission,
-  prompt: string,
-  onlyUngraded?: boolean,
-): Promise<Submission["actions"]> {
-  try {
-    const { output } = await callAnthropic<{ actions: { text: string; probability: number; reasoning?: string }[] }>({
-      models: GRADING_MODELS,
-      systemPrompt: SCENARIO_CONTEXT,
-      prompt,
-      maxTokens: 2048,
-      toolName: "grade_actions",
-      schema: {
-        type: "object",
-        properties: {
-          actions: {
-            type: "array",
-            items: {
-              type: "object",
-              properties: {
-                text: { type: "string" },
-                probability: { type: "number", enum: [10, 30, 50, 70, 90] },
-                reasoning: { type: "string" },
+  // Schema for Claude tool-use. structuredEffect is a flat object with all
+  // fields optional, discriminated by `type` enum — the grader's prompt names
+  // which fields go with which type. Claude handles this shape reliably; a
+  // strict JSON Schema oneOf would be cleaner but produces worse compliance.
+  const result = await callAnthropic<{ actions: GradedActionOutput[] }>({
+    models: GRADING_MODELS,
+    systemPrompt: SCENARIO_CONTEXT,
+    prompt,
+    maxTokens: 8192,
+    timeoutMs: 180_000,
+    toolName: "grade_all_actions",
+    schema: {
+      type: "object",
+      properties: {
+        actions: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              actionId: { type: "string", description: "The actionId from the input — match exactly" },
+              probability: { type: "number", enum: [10, 30, 50, 70, 90] },
+              reasoning: { type: "string", description: "1–2 sentences explaining the grade" },
+              confidence: { type: "string", enum: ["high", "medium", "low"] },
+              structuredEffect: {
+                type: "object",
+                description: "Discriminated by `type`. Set only the fields relevant to the chosen type — see prompt taxonomy.",
+                properties: {
+                  type: { type: "string", enum: ["merge", "decommission", "computeChange", "multiplierOverride", "transferOwnership", "computeTransfer", "foundLab", "narrativeOnly"] },
+                  // merge
+                  survivor: { type: "string" },
+                  absorbed: { type: "string" },
+                  newName: { type: "string" },
+                  newSpec: { type: "string" },
+                  // decommission / computeChange / multiplierOverride / transferOwnership / foundLab
+                  labName: { type: "string" },
+                  change: { type: "number" },
+                  newMultiplier: { type: "number" },
+                  controllerRoleId: { type: "string" },
+                  // foundLab
+                  name: { type: "string" },
+                  spec: { type: "string" },
+                  seedCompute: { type: "number" },
+                  // computeTransfer
+                  fromRoleId: { type: "string" },
+                  toRoleId: { type: "string" },
+                  amount: { type: "number" },
+                },
+                required: ["type"],
               },
-              required: ["text", "probability", "reasoning"],
             },
+            required: ["actionId", "probability", "reasoning", "confidence", "structuredEffect"],
           },
         },
-        required: ["actions"],
       },
-    });
+      required: ["actions"],
+    },
+    // Built-in retry (the callAnthropic wrapper handles transient failures).
+  });
 
-    if (output?.actions) {
-      if (onlyUngraded) {
-        let gradedIdx = 0;
-        return sub.actions.map((action) => {
-          if (action.probability != null) return action;
-          const graded = output.actions[gradedIdx++];
-          return { ...action, probability: graded?.probability ?? defaultProbability(action.priority), reasoning: graded?.reasoning };
-        });
-      }
-      return sub.actions.map((action, i) => ({
-        ...action,
-        probability: output.actions[i]?.probability ?? defaultProbability(action.priority),
-        reasoning: output.actions[i]?.reasoning,
-      }));
+  if (!result.output?.actions) throw new Error("Grading LLM returned no actions");
+  const graded = result.output.actions;
+
+  // Group returned grades by submissionId so we patch each submission once.
+  const updatesBySubmission = new Map<Id<"submissions">, Map<number, GradedActionOutput>>();
+  for (const g of graded) {
+    const ref = actionIdToSubmission.get(g.actionId);
+    if (!ref) {
+      console.warn(`[pipeline] Grading returned unknown actionId: ${g.actionId}`);
+      continue;
     }
-  } catch (err) {
-    console.error(`[pipeline] Grading LLM failed for ${sub.roleId}, using defaults:`, err);
+    const perSub = updatesBySubmission.get(ref.submissionId) ?? new Map<number, GradedActionOutput>();
+    perSub.set(ref.actionIndex, g);
+    updatesBySubmission.set(ref.submissionId, perSub);
   }
-  // Fallback
-  return sub.actions.map((action) => ({
-    ...action,
-    probability: action.probability ?? defaultProbability(action.priority),
-  }));
+
+  // For each submission that had any graded actions, merge grades into the
+  // action array and persist. Ungraded actions retain their existing fields.
+  for (const sub of submissions) {
+    const updates = updatesBySubmission.get(sub._id);
+    if (!updates) continue;
+    const nextActions = sub.actions.map((a, i) => {
+      const g = updates.get(i);
+      if (!g) return a;
+      return {
+        ...a,
+        probability: g.probability,
+        reasoning: g.reasoning,
+        confidence: g.confidence,
+        structuredEffect: normaliseStructuredEffect(g.structuredEffect),
+      };
+    });
+    await ctx.runMutation(internal.submissions.applyGradingInternal, {
+      submissionId: sub._id,
+      actions: nextActions,
+    });
+  }
+
+  await ctx.runMutation(internal.games.updatePipelineStatus, {
+    gameId,
+    status: { step: "grading", detail: "Grading complete", progress: `${totalActions}/${totalActions}`, startedAt: Date.now() },
+  });
+
+  return { model: result.model, timeMs: result.timeMs, tokens: result.tokens };
+}
+
+/** Normalise a structured effect emitted by the LLM to the discriminated union
+ *  shape. The LLM sends a flat object with many fields; we project to the
+ *  variant matching `type` and drop unused fields so the Convex validator
+ *  accepts it. Invalid / malformed shapes collapse to narrativeOnly.
+ *
+ *  Validation of apply-time preconditions (lab exists, role exists, ±2×
+ *  multiplier band, non-zero change, etc.) happens downstream in the apply
+ *  path — there they produce rejectedOps surfaced at P7. Here we just shape
+ *  the payload. */
+function normaliseStructuredEffect(e: unknown): StructuredEffect {
+  if (!e || typeof e !== "object") return { type: "narrativeOnly" };
+  const raw = e as Record<string, unknown>;
+  const type = raw.type;
+  const str = (k: string): string | undefined => typeof raw[k] === "string" ? (raw[k] as string) : undefined;
+  const num = (k: string): number | undefined => typeof raw[k] === "number" ? (raw[k] as number) : undefined;
+  switch (type) {
+    case "merge": {
+      const survivor = str("survivor");
+      const absorbed = str("absorbed");
+      if (!survivor || !absorbed) return { type: "narrativeOnly" };
+      const out: StructuredEffect = { type: "merge", survivor, absorbed };
+      const newName = str("newName");
+      const newSpec = str("newSpec");
+      if (newName) out.newName = newName;
+      if (newSpec) out.newSpec = newSpec;
+      return out;
+    }
+    case "decommission": {
+      const labName = str("labName");
+      if (!labName) return { type: "narrativeOnly" };
+      return { type: "decommission", labName };
+    }
+    case "computeChange": {
+      const labName = str("labName");
+      const change = num("change");
+      if (!labName || change == null) return { type: "narrativeOnly" };
+      return { type: "computeChange", labName, change };
+    }
+    case "multiplierOverride": {
+      const labName = str("labName");
+      const newMultiplier = num("newMultiplier");
+      if (!labName || newMultiplier == null) return { type: "narrativeOnly" };
+      return { type: "multiplierOverride", labName, newMultiplier };
+    }
+    case "transferOwnership": {
+      const labName = str("labName");
+      const controllerRoleId = str("controllerRoleId");
+      if (!labName || !controllerRoleId) return { type: "narrativeOnly" };
+      return { type: "transferOwnership", labName, controllerRoleId };
+    }
+    case "computeTransfer": {
+      const fromRoleId = str("fromRoleId");
+      const toRoleId = str("toRoleId");
+      const amount = num("amount");
+      if (!fromRoleId || !toRoleId || amount == null) return { type: "narrativeOnly" };
+      return { type: "computeTransfer", fromRoleId, toRoleId, amount };
+    }
+    case "foundLab": {
+      const name = str("name");
+      const seedCompute = num("seedCompute");
+      if (!name || seedCompute == null) return { type: "narrativeOnly" };
+      const out: StructuredEffect = { type: "foundLab", name, seedCompute };
+      const spec = str("spec");
+      if (spec) out.spec = spec;
+      return out;
+    }
+    case "narrativeOnly":
+      return { type: "narrativeOnly" };
+    default:
+      return { type: "narrativeOnly" };
+  }
 }
 
 // ─── Grade Only (no roll/narrate after) ──────────────────────────────────────
@@ -274,17 +418,11 @@ export const gradeOnly = internalAction({
         ? await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber })
         : existingSubs;
 
-      // Only grade actions that don't have a probability yet
-      const ungraded = submissions.filter((s) =>
+      // Are there any actions still needing a probability?
+      const hasUngraded = submissions.some((s) =>
         s.actions.some((a) => a.actionStatus === "submitted" && a.probability == null)
       );
-      const totalActions = ungraded.reduce(
-        (sum, s) => sum + s.actions.filter((a) => a.actionStatus === "submitted" && a.probability == null).length,
-        0,
-      );
-      const total = ungraded.length;
-
-      if (total === 0) {
+      if (!hasUngraded) {
         // Nothing to grade — done. Skip fetching game, rounds, requests.
         await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
         await ctx.runMutation(internal.games.updatePipelineStatus, {
@@ -303,14 +441,9 @@ export const gradeOnly = internalAction({
       const labs = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
       const enabledRoleNames = tables.filter((t) => t.enabled).map((t) => t.roleName);
 
-      await ctx.runMutation(internal.games.updatePipelineStatus, {
-        gameId,
-        status: { step: "grading", detail: `Evaluating ${totalActions} action${totalActions === 1 ? "" : "s"}...`, progress: `0/${total}`, startedAt: Date.now() },
-      });
-
-      await gradeSubmissionBatch(ctx, {
-        gameId, labs, ungraded, allSubmissions: submissions, rounds, requests: requests ?? [],
-        enabledRoleNames, roundNumber, onlyUngraded: true,
+      await gradeAllBatched(ctx, {
+        gameId, roundNumber, labs, submissions, rounds, requests: requests ?? [],
+        enabledRoleNames, onlyUngraded: true,
       });
 
       // Done grading — release lock, don't proceed to roll

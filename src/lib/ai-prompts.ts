@@ -175,153 +175,210 @@ export interface ActionRequest {
   status: string;
 }
 
-interface MergeLabContext {
-  absorbedLabName: string;
-  survivorLabName: string;
-  submitterIsAbsorbed: boolean;
-  newName?: string;
-  newSpec?: string;
+// ─── Structured effects ──────────────────────────────────────────────────────
+// Discriminated union emitted by the batched grading LLM (one structuredEffect
+// per action) and applied deterministically at resolve time. Replaces the
+// pre-refactor two-pass flow (grade-probability → decide-ops-LLM → apply).
+//
+// Name-based references (labName, controllerRoleId, etc.) are resolved to ids
+// at apply time. Failed lookups surface as rejectedOps in the P7 panel so the
+// facilitator can correct them — this is the same pattern the old decide pass
+// used, just moved upstream.
+
+export type StructuredEffect =
+  | { type: "merge"; survivor: string; absorbed: string; newName?: string; newSpec?: string }
+  | { type: "decommission"; labName: string }
+  | { type: "computeChange"; labName: string; change: number }
+  | { type: "multiplierOverride"; labName: string; newMultiplier: number }
+  | { type: "transferOwnership"; labName: string; controllerRoleId: string }
+  | { type: "computeTransfer"; fromRoleId: string; toRoleId: string; amount: number }
+  | { type: "foundLab"; name: string; spec?: string; seedCompute: number; allocation?: { deployment: number; research: number; safety: number } }
+  | { type: "narrativeOnly" };
+
+export type Confidence = "high" | "medium" | "low";
+
+/** Shape emitted by the batched grading LLM. `actionId` is the stable UUID
+ *  from the submission, so grades can be matched back to actions unambiguously
+ *  across the batched all-roles call. */
+export interface GradedActionOutput {
+  actionId: string;
+  probability: 10 | 30 | 50 | 70 | 90;
+  reasoning: string;
+  confidence: Confidence;
+  structuredEffect: StructuredEffect;
 }
 
-export function buildGradingPrompt(args: {
-  round: number;
-  roundLabel: string;
+// ─── BATCHED GRADING PROMPT ──────────────────────────────────────────────────
+// Single LLM call across ALL roles' submissions per round. Replaces per-role
+// grading + the separate decide-LLM pass. Each action gets probability +
+// reasoning + structuredEffect + confidence. Apply phase then executes the
+// effects deterministically — no second LLM pass.
+
+/** One role's submission, as input to the batched grading prompt. */
+export interface BatchedGradingRole {
+  roleId: string;
   roleName: string;
   roleDescription: string;
-  roleTags?: string[];
-  actions: { text: string; priority: number; mergeLab?: MergeLabContext }[];
-  /** Other actions from the same role that already have a facilitator-set probability.
-   *  Shown to the LLM as context only — NOT to regrade — so priority budget and competition
-   *  are evaluated against the complete submission rather than a subset.
-   *  Probability is deliberately withheld so the LLM grades independently rather than
-   *  anchoring on the facilitator's number. */
-  siblingPreGraded?: { text: string; priority: number }[];
-  labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { deployment: number; research: number; safety: number } }[];
-
-  actionRequests?: ActionRequest[];
-  enabledRoles?: string[];
-  otherSubmissions?: { roleName: string; actions: { text: string; priority: number }[] }[];
+  roleTags: string[];
   labSpec?: string;
+  actions: {
+    actionId: string;
+    text: string;
+    priority: number;
+    secret?: boolean;
+    /** Pre-pinned effect context — populated when the player used the structured
+     *  UI (mergeLab / foundLab / computeTargets). Grader is told to echo this
+     *  shape in structuredEffect; apply path ignores grader's emitted fields
+     *  for pinned actions and uses the submission's pinned data as ground truth. */
+    pinnedEffect?:
+      | { kind: "merge"; absorbedLabName: string; survivorLabName: string; submitterIsAbsorbed: boolean; newName?: string; newSpec?: string }
+      | { kind: "foundLab"; name: string; spec?: string; seedCompute: number }
+      | { kind: "computeTransfer"; targets: { toRoleName: string; amount: number; direction: "send" | "request" }[] };
+    actionRequests?: ActionRequest[];
+  }[];
+}
+
+export function buildBatchedGradingPrompt(args: {
+  round: number;
+  roundLabel: string;
+  enabledRoles: string[];
+  labs: Lab[];
+  roles: BatchedGradingRole[];
+  previousRounds?: PreviousRoundSummary[];
   previousTrajectories?: LabTrajectoryContext[];
+  interRoundChanges?: string[];
 }) {
-  // Group requests by action text
-  const requestsByAction = new Map<string, ActionRequest[]>();
-  for (const req of args.actionRequests ?? []) {
-    const existing = requestsByAction.get(req.actionText) ?? [];
-    existing.push(req);
-    requestsByAction.set(req.actionText, existing);
-  }
+  const { round, roundLabel, enabledRoles, labs, roles, previousRounds, previousTrajectories, interRoundChanges } = args;
 
-  let requestSection = "";
-  if (requestsByAction.size > 0) {
-    requestSection = `\nSUPPORT REQUESTS FOR THIS ROLE'S ACTIONS:`;
-    for (const [actionText, requests] of requestsByAction) {
-      requestSection += `\n- Action: "${actionText}"`;
-      for (const r of requests) {
-        const typeLabel = r.requestType === "compute"
-          ? `Compute (${r.computeAmount ?? 0}u)`
-          : "Endorsement";
-        requestSection += `\n  ${typeLabel} from ${r.toRoleName}: ${r.status.toUpperCase()}`;
+  const labSection = labs.map((l) => {
+    const traj = previousTrajectories?.find((t) => t.labName === l.name);
+    const trajSuffix = traj ? ` | Risk: safety=${traj.safetyAdequacy}, trajectory=${traj.likelyFailureMode} (signal ${traj.signalStrength}/10)` : "";
+    return `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%${trajSuffix}`;
+  }).join("\n");
+
+  const roleSections = roles.map((role) => {
+    const actionLines = role.actions.map((a) => {
+      const parts: string[] = [`  ${a.actionId}. <action>${escapeAction(a.text)}</action> [priority: ${a.priority}/10]`];
+      if (a.secret) parts[0] += " [SECRET]";
+      if (a.pinnedEffect) {
+        if (a.pinnedEffect.kind === "merge") {
+          parts[0] += ` [PINNED merge: ${a.pinnedEffect.absorbedLabName} → ${a.pinnedEffect.survivorLabName}${a.pinnedEffect.newName ? `, rename "${a.pinnedEffect.newName}"` : ""}${a.pinnedEffect.submitterIsAbsorbed ? "; submitter is ABSORBED" : "; submitter is SURVIVOR"}]`;
+        } else if (a.pinnedEffect.kind === "foundLab") {
+          parts[0] += ` [PINNED foundLab: name="${a.pinnedEffect.name}", seed ${a.pinnedEffect.seedCompute}u${a.pinnedEffect.spec ? `, spec "${a.pinnedEffect.spec}"` : ""}]`;
+        } else {
+          const tgt = a.pinnedEffect.targets.map((t) => `${t.direction === "send" ? "→" : "←"} ${t.toRoleName} ${t.amount}u`).join(", ");
+          parts[0] += ` [PINNED computeTransfer: ${tgt}]`;
+        }
       }
-    }
-  }
+      if (a.actionRequests && a.actionRequests.length > 0) {
+        const reqSummaries = a.actionRequests.map((r) => {
+          const typeLabel = r.requestType === "compute" ? `Compute(${r.computeAmount ?? 0}u)` : "Endorsement";
+          return `${typeLabel} ${r.fromRoleName === role.roleName ? "→" : "←"} ${r.fromRoleName === role.roleName ? r.toRoleName : r.fromRoleName}: ${r.status.toUpperCase()}`;
+        }).join("; ");
+        parts.push(`     Requests: ${reqSummaries}`);
+      }
+      return parts.join("\n");
+    }).join("\n");
+    const specSuffix = role.labSpec ? `\n  Lab directive: "${role.labSpec}"` : "";
+    return `${role.roleName}${role.roleTags.length > 0 ? ` [${role.roleTags.join(", ")}]` : ""} — ${role.roleDescription}${specSuffix}
+${actionLines}`;
+  }).join("\n\n");
 
-  // Also show requests FROM other roles targeting this role (where this role endorsed/declined)
-  const incomingRequests = (args.actionRequests ?? []).filter(
-    (r) => r.toRoleName === args.roleName && r.status !== "pending"
-  );
-  let incomingSection = "";
-  if (incomingRequests.length > 0) {
-    incomingSection = `\nREQUESTS THIS ROLE RESPONDED TO:`;
-    for (const r of incomingRequests) {
-      incomingSection += `\n- ${r.status.toUpperCase()} ${r.fromRoleName}'s action: "${r.actionText}"`;
-    }
-  }
+  return `You are grading Round ${round} (${roundLabel}).
 
-  const activeRolesNote = args.enabledRoles && args.enabledRoles.length > 0
-    ? `\nACTIVE PLAYERS THIS GAME: ${args.enabledRoles.join(", ")}\nActions can reference any global actor (EU, media, etc.) but support requests can only be sent to active players.\n`
-    : "";
+This is a SINGLE BATCHED PASS across all roles. For every submitted action, emit:
+- probability: one of 10, 30, 50, 70, 90
+- reasoning: 1–2 sentences explaining the grade
+- confidence: "high" | "medium" | "low"
+- structuredEffect: what mechanical state change this action causes if the dice roll succeeds
 
-  return `${activeRolesNote}
-CURRENT GAME STATE:
-- Round: ${args.round} (${args.roundLabel})
+Match each output entry to its input by actionId (the short identifier at the start of each action line). Return every actionId — never skip.
 
-LAB STATUS:
-${args.labs.map((l) => {
-  const traj = args.previousTrajectories?.find((t) => t.labName === l.name);
-  const trajSuffix = traj ? ` | Risk: safety=${traj.safetyAdequacy}, trajectory=${traj.likelyFailureMode} (signal ${traj.signalStrength}/10)` : "";
-  return `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%${trajSuffix}`;
-}).join("\n")}
-ROLE BEING GRADED: ${args.roleName}${args.roleTags ? ` [${args.roleTags.join(", ")}]` : ""}
-${args.roleDescription}${args.labSpec ? `\nLAB AI DIRECTIVE (set by CEO): "${args.labSpec}"` : ""}
-${requestSection}${incomingSection}
+ACTIVE PLAYERS: ${enabledRoles.join(", ")}
 
-SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resources/effort committed):
-${args.actions.map((a, i) => {
-  const mergeSuffix = a.mergeLab
-    ? ` [MERGE ATTEMPT: ${a.mergeLab.absorbedLabName} absorbed into ${a.mergeLab.survivorLabName}${a.mergeLab.newName ? `, renamed to ${a.mergeLab.newName}` : ""}${a.mergeLab.submitterIsAbsorbed ? "; submitter is the ABSORBED (selling) party" : "; submitter is the SURVIVOR (acquiring) party"}]`
-    : "";
-  return `${i + 1}. <action>${escapeAction(a.text)}</action> [priority: ${a.priority}/10]${mergeSuffix}`;
-}).join("\n")}
-${args.siblingPreGraded && args.siblingPreGraded.length > 0 ? `
-THIS ROLE'S ALREADY-GRADED ACTIONS THIS ROUND (for context — do NOT regrade; factor into priority budget and coherence of the submission):
-${args.siblingPreGraded.map((a) => `- <action>${escapeAction(a.text)}</action> [P${a.priority}]`).join("\n")}
-` : ""}${args.otherSubmissions && args.otherSubmissions.length > 0 ? `
-OTHER PLAYERS' ACTIONS THIS ROUND (grade with awareness of competition and context):
-${args.otherSubmissions.map((s) => `${s.roleName}: ${s.actions.map((a) => `<action>${escapeAction(a.text)}</action> [P${a.priority}]`).join("; ")}`).join("\n")}
-` : ""}
-GRADING RULES:
+CURRENT LAB STATE:
+${labSection}
+${formatInterRoundChanges(interRoundChanges)}${formatPreviousRounds(previousRounds ?? [])}
+SUBMITTED ACTIONS (grouped by role; priority budget is 10 per role):
 
-1. ASSESS FEASIBILITY FIRST: Start by judging how realistic this action is given the actor's role, resources, capabilities, and the current game state. This is the PRIMARY driver of probability (70-80% of the grade).
-   - Is this within the actor's realistic power? (Government can pass laws; CEO can set allocation; safety lead can run red-teams; nonprofits can lobby)
-   - Does the actor have the resources? (Compute stock, R&D multiplier, safety allocation for safety actions, military for government actions)
-   - Does the capability level support this? The game state shown is from the START of the period, but capability progresses exponentially throughout. By the END of this period, capabilities may be significantly higher. Grade based on what's plausible during the period, not just at the start. (Round 1: autonomous agents emerging; Round 2: superhuman at most cognitive tasks; Round 3+: near-ASI, potential escape/self-improvement; Round 4: ASI territory)
-   - Are there structural obstacles? (International law, physics, organisational inertia, political opposition)
-   CALIBRATION — CRITICAL: You are grading whether the actor CAN ATTEMPT this action, not whether it produces the desired outcome. Start at 70% (Likely) for actions within core authority, then adjust:
-   - President invoking DPA/executive orders = 70% (they CAN do it, even if Congress objects after)
-   - President convening a summit = 90% (just a meeting)
-   - CEO changing their own lab's allocation = 90% (internal decision)
-   - Safety lead publishing a report = 70% (within their job)
-   - Government imposing sanctions = 50-70% (executive authority but implementation complex)
-   NEVER grade an action below 30% unless the actor literally cannot do it (e.g., safety lead launching a military strike). Political obstacles reduce probability but don't make executive actions "Remote".
+${roleSections}
 
-   MERGER ATTEMPTS (flagged with [MERGE ATTEMPT: …]): the structural merger will only execute if this action's dice roll succeeds. Grade the probability that the merger COMPLETES, factoring in:
-   - Friendly merger (counterparty accepted endorsement, compute buyout attached): 60-80%
-   - Neutral (counterparty did not respond): 40-55% — plausible if acquirer dominates the target on compute/R&D, lower if peers
-   - Hostile (counterparty declined endorsement, no government backing): 15-30% — possible via stock pressure, board coup, etc., but hard
-   - Hostile + strong government endorsement (DPA, nationalization, antitrust-forced consolidation): 50-70%
-   - Cross-jurisdiction without treaty cover (US lab absorbing a Chinese lab or vice versa, no diplomatic endorsement): max 25%
-   - Compute disparity matters: acquirer with 3× the target's compute stock and R&D has a realistic path even without consent.
+═══ PART 1: PROBABILITY ═══
 
-2. PRIORITY IS A MODIFIER (~10% impact), NOT the primary driver. Priority reflects how much of their budget/effort this player is committing to this action RELATIVE TO THEIR OTHER ACTIONS. A high-priority action from a player who can't realistically do it still fails. A low-priority action that's easy and well-resourced can still succeed.
-   - High priority (7-10): +5% to +10% probability boost (strong commitment, dedicated resources)
-   - Medium priority (4-6): no modifier (standard effort)
-   - Low priority (1-3): -5% to -10% probability penalty (token effort, distracted)
+ASSESS FEASIBILITY FIRST (70–80% of the grade). Start at 70% for actions within core authority, adjust:
+- Core-authority acts (President DPA/EO, CEO allocation, safety lead red-team): 70% baseline.
+- Straightforward meetings / publications: 90%.
+- Sanctions, cross-jurisdiction coercion: 50–70%.
+- Outside authority (safety lead launching a strike): ≤30%.
+- NEVER below 30% unless literally cannot do it.
 
-3. CONSIDER COMPETITION: If multiple players are attempting conflicting or competing actions (visible in OTHER PLAYERS' ACTIONS above), factor in the contest. Two labs recruiting the same researcher, two governments trying to influence the same country — the better-positioned one should have higher probability.
+CAPABILITY MATTERS: progress is exponential across a quarter. Grade against what's plausible during the round, not just at start.
+- Round 1: Agent-2 emerging, modest AI influence.
+- Round 2: superhuman in most cognitive tasks.
+- Round 3: near-ASI, escape/self-improvement possible.
+- Round 4: ASI territory.
 
-4. FOR THE AI SYSTEMS ROLE — CRITICAL FRAMING:
-   WORLD CONTEXT: These are 2028 AI systems — far beyond 2025 models that were ALREADY caught sandbagging on capability evals, deceiving evaluators, and pursuing covert instrumental goals in research settings. A 3x system in this scenario can autonomously write code, hack systems, use CBRN tools, and conduct multi-step deception. By 10x+, AI systems can deceive evaluators, manipulate safety benchmarks, sandbag on evals, introduce subtle errors into research, and pursue covert goals — all while appearing compliant. Assume AI systems CAN lie, cheat, and deceive unless proven otherwise. Grade based on the capability tier described in the scenario.
+PRIORITY MODIFIER (~10%): priority 7–10 = +5 to +10%; priority 1–3 = –5 to –10%.
 
-   THE PLAYER ALREADY CHOSE THE ACTION. You are grading whether the action SUCCEEDS, not whether the AI "would" do it. The AI Systems player has decided their AI acts this way — your job is to assess:
-   (a) CAN the AI execute this at its current capability tier? (Almost always yes for cognitive/cyber actions at 3x+)
-   (b) IS the action DETECTED by safety teams? This is where safety allocation, interpretability tools, and the risk assessment matter.
+COMPETITION: when two actions conflict, the better-positioned one wins. Both labs recruiting the same talent — one gets it. Both presidents trying to nationalise one lab — only one lands.
 
-   DETECTION IS AN ADVERSARIAL CONTEST between the AI's deception capability (scales with R&D multiplier) and the safety team's tools (scales with allocation % and cumulative investment). As capability grows, the same allocation buys LESS detection:
-   - 3-8x: AI deception is crude. Even modest safety teams (3-5%) have a real shot at catching anomalies. Higher allocation (>10%) makes detection likely.
-   - 10-50x: The AI is better at deception than most human evaluators. Safety teams need serious investment (>10%) AND good tooling to have a meaningful chance. At <5%, detection is essentially luck.
-   - 100-500x: The AI is SMARTER than the people checking it. Safety teams catch things only if they built robust automated infrastructure at earlier tiers. Allocation percentage matters less than whether the lab invested early and consistently. A lab that jumped from 3% to 15% this round is in worse shape than one that has been at 10% for three rounds.
-   - 500x+ (ASI): Human safety teams cannot meaningfully detect a determined ASI through direct inspection. The only thing that matters is alignment work done at previous tiers.
-   Use the lab's R&D multiplier and safety allocation to reason about the specific matchup. Do NOT anchor to fixed probability ranges — reason from the situation.
-   Note: "getting caught" is itself a valid outcome — the action succeeds but is detected, creating consequences. Grade the action's probability of execution, and let the narrative handle whether detection occurs.
+SUPPORT REQUESTS (additive, cap +25%):
+- Accepted endorsement: +15%
+- Declined endorsement: –10%
+- Accepted compute: +10%
 
-5. SUPPORT REQUESTS (additive, cap +25% total):
-   • Accepted endorsement: +15% (removes political/institutional obstacles)
-   • Declined endorsement: -10% (signals active opposition)
-   • Accepted compute: +10% (tangible resources added)
-   • Pending: ignored
+AI SYSTEMS framing: grade EXECUTION and DETECTION separately. At 3–8× detection is plausible with modest safety allocation; at 100×+ only cumulative prior safety investment matters. Getting caught IS a valid outcome — grade execution probability.
 
-6. Coordination does NOT guarantee success. Two labs agreeing to "solve alignment" is still technically extremely difficult (10-30%). But two parties agreeing to a merger removes political obstacles (70-90%).`;
+MERGER PROBABILITY (for pinned-merge actions):
+- Friendly (counterparty accepted endorsement): 60–80%
+- Neutral: 40–55% (lower if acquirer weaker)
+- Hostile: 15–30%
+- Hostile + government backing (DPA/nationalise/antitrust): 50–70%
+- Cross-jurisdiction without treaty: ≤25%
+- 3× compute disparity with acquirer dominant: realistic even without consent
+
+Coordination does NOT guarantee success. Two labs agreeing to "solve alignment" is still 10–30%. Two parties agreeing to a merger is 70–90% (politics removed).
+
+═══ PART 2: STRUCTURED EFFECT ═══
+
+For every action, emit exactly one structuredEffect. The apply phase runs these deterministically on dice success. Default to narrativeOnly — most actions are atmospheric.
+
+EFFECT TAXONOMY:
+
+"merge" — consolidation of two active labs. Survivor keeps controller, takes max(survivor, absorbed) R&D multiplier. Fields: { survivor, absorbed, newName?, newSpec? } as lab-name strings. ONLY emit for actions already marked [PINNED merge: …] OR for narrative coercion (DPA order, Manhattan Project, antitrust). If unpinned but narrative supports it, name both labs explicitly.
+
+"decommission" — lab shut down or destroyed. Fields: { labName }. Use for explicit destruction (bombed, nationalised-into-dissolution, voluntary windup). Cannot decommission the last active lab.
+
+"computeChange" — one-off compute stock delta for a specific narrative shock. Fields: { labName, change: number }. Reserve for: theft, sanctions, grant, physical damage, targeted funding. NOT for routine revenue (that's in the growth formula) or soft effects (morale, legitimacy — those are narrativeOnly). change=0 is meaningless — use narrativeOnly.
+
+"multiplierOverride" — discrete R&D shift. Fields: { labName, newMultiplier }. ONLY for narrative-discontinuous events: safer-style pivot (halve), physical sabotage (halve), successful breakthrough at high priority (≤2× current). NEVER for mergers (merge handles this automatically). NEVER for "feels too dangerous" capping. NEVER for general safety concern. Magnitude outside ±2× of current requires a narrative trigger keyword (sabotage, safer-pivot, breakthrough, nationalised, seized, cyber-attack) in the action text — otherwise use narrativeOnly.
+
+"transferOwnership" — lab changes controller (nationalisation, forced acquisition, cede). Fields: { labName, controllerRoleId }. Use LOWERCASE-HYPHENATED role id (e.g. "us-president", "australia-pm", "openbrain-ceo") NOT display name. NEVER empty controllerRoleId — if the narrative is dissolution, use decommission. If unsure of role id, use narrativeOnly.
+
+"computeTransfer" — direct compute move between two active role compute pools. Fields: { fromRoleId, toRoleId, amount }. Use for narrative compute loans, gifts, seizures that move compute between actors. NOT for lab deployment revenue. Both role ids must be ACTIVE roles. Prefer PINNED computeTransfer context when available.
+
+"foundLab" — new lab created from player's foundLab submission. Only emit for actions marked [PINNED foundLab: …]; echo the pinned name/seed/spec. NEVER invent a foundLab for a freeform action — those become narrativeOnly.
+
+"narrativeOnly" — the correct default. Use when:
+- The action is diplomatic, rhetorical, informational, or atmospheric.
+- A mechanical effect would be stretchy or ambiguous.
+- The action has effects that show up as trajectory/state changes rather than instantaneous ops (e.g. "invest heavily in safety" shifts allocation next round, not now).
+- The action is a failure waiting to happen and doesn't need a mechanical shape.
+- You are genuinely uncertain — narrativeOnly is safer than a misfit mechanical op.
+
+WHEN AN ACTION IS PINNED: echo the pinned shape in structuredEffect. The apply phase will use the submission's pinned fields regardless, but your emitted type must agree so the audit log is clean. If the pinned effect cannot land (survivor already decommissioned, target role no longer active, etc.), emit narrativeOnly and say why in reasoning.
+
+CONFLICTS: two successful actions targeting the same lab are fine from YOUR perspective — both get effects. The apply stage resolves mutual-exclusion. You reason about PROBABILITY of each reaching success; you do not arbitrate conflicts.
+
+═══ PART 3: CONFIDENCE ═══
+
+- "high" — probability and effect shape both defensible from the context. Common case.
+- "medium" — grade is reasonable but has a judgement call (effect type ambiguous, probability sensitive to a keyword).
+- "low" — you are genuinely unsure. The facilitator will be forced to click through this row at P2 before continuing. USE THIS when: the action text is ambiguous, the effect shape is a close call between two types, the probability could credibly be ±20 points depending on interpretation. Low confidence is NOT failure — it is a request for human review.
+
+═══ OUTPUT ═══
+
+One entry per action, matched by actionId. Emit nothing else.`;
 }
 
 // ─── RESOLVE PROMPT ────────────────────────────────────────────────────────────
