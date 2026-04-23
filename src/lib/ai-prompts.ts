@@ -235,88 +235,49 @@ export interface GradedActionOutput {
  *  computeDestroyed amount, etc.) lives in the pipeline apply path — there
  *  they produce rejectedOps surfaced at P7. This function only reshapes the
  *  payload; it doesn't validate against world state. */
+/** Per-variant shape spec — required + optional fields by JS type. Drives
+ *  normaliseStructuredEffect so the variant list lives as data, not a
+ *  22-case switch. Keep in sync with the StructuredEffect union above. */
+const EFFECT_SHAPES: Record<StructuredEffect["type"], {
+  requiredStrings?: readonly string[];
+  requiredNumbers?: readonly string[];
+  optionalStrings?: readonly string[];
+}> = {
+  merge:              { requiredStrings: ["survivor", "absorbed"], optionalStrings: ["newName", "newSpec"] },
+  decommission:       { requiredStrings: ["labName"] },
+  breakthrough:       { requiredStrings: ["labName"] },
+  modelRollback:      { requiredStrings: ["labName"] },
+  computeDestroyed:   { requiredStrings: ["labName"], requiredNumbers: ["amount"] },
+  researchDisruption: { requiredStrings: ["labName"] },
+  researchBoost:      { requiredStrings: ["labName"] },
+  transferOwnership:  { requiredStrings: ["labName", "controllerRoleId"] },
+  computeTransfer:    { requiredStrings: ["fromRoleId", "toRoleId"], requiredNumbers: ["amount"] },
+  foundLab:           { requiredStrings: ["name"], requiredNumbers: ["seedCompute"], optionalStrings: ["spec"] },
+  narrativeOnly:      {},
+};
+
 export function normaliseStructuredEffect(e: unknown): StructuredEffect {
   if (!e || typeof e !== "object") return { type: "narrativeOnly" };
   const raw = e as Record<string, unknown>;
   const type = raw.type;
-  const str = (k: string): string | undefined => {
-    const v = raw[k];
-    return typeof v === "string" ? v : undefined;
-  };
-  const num = (k: string): number | undefined => {
-    const v = raw[k];
-    return typeof v === "number" ? v : undefined;
-  };
-  switch (type) {
-    case "merge": {
-      const survivor = str("survivor");
-      const absorbed = str("absorbed");
-      if (!survivor || !absorbed) return { type: "narrativeOnly" };
-      const out: StructuredEffect = { type: "merge", survivor, absorbed };
-      const newName = str("newName");
-      const newSpec = str("newSpec");
-      if (newName) out.newName = newName;
-      if (newSpec) out.newSpec = newSpec;
-      return out;
-    }
-    case "decommission": {
-      const labName = str("labName");
-      if (!labName) return { type: "narrativeOnly" };
-      return { type: "decommission", labName };
-    }
-    case "breakthrough": {
-      const labName = str("labName");
-      if (!labName) return { type: "narrativeOnly" };
-      return { type: "breakthrough", labName };
-    }
-    case "modelRollback": {
-      const labName = str("labName");
-      if (!labName) return { type: "narrativeOnly" };
-      return { type: "modelRollback", labName };
-    }
-    case "computeDestroyed": {
-      const labName = str("labName");
-      const amount = num("amount");
-      if (!labName || amount == null) return { type: "narrativeOnly" };
-      return { type: "computeDestroyed", labName, amount };
-    }
-    case "researchDisruption": {
-      const labName = str("labName");
-      if (!labName) return { type: "narrativeOnly" };
-      return { type: "researchDisruption", labName };
-    }
-    case "researchBoost": {
-      const labName = str("labName");
-      if (!labName) return { type: "narrativeOnly" };
-      return { type: "researchBoost", labName };
-    }
-    case "transferOwnership": {
-      const labName = str("labName");
-      const controllerRoleId = str("controllerRoleId");
-      if (!labName || !controllerRoleId) return { type: "narrativeOnly" };
-      return { type: "transferOwnership", labName, controllerRoleId };
-    }
-    case "computeTransfer": {
-      const fromRoleId = str("fromRoleId");
-      const toRoleId = str("toRoleId");
-      const amount = num("amount");
-      if (!fromRoleId || !toRoleId || amount == null) return { type: "narrativeOnly" };
-      return { type: "computeTransfer", fromRoleId, toRoleId, amount };
-    }
-    case "foundLab": {
-      const name = str("name");
-      const seedCompute = num("seedCompute");
-      if (!name || seedCompute == null) return { type: "narrativeOnly" };
-      const out: StructuredEffect = { type: "foundLab", name, seedCompute };
-      const spec = str("spec");
-      if (spec) out.spec = spec;
-      return out;
-    }
-    case "narrativeOnly":
-      return { type: "narrativeOnly" };
-    default:
-      return { type: "narrativeOnly" };
+  if (typeof type !== "string" || !(type in EFFECT_SHAPES)) return { type: "narrativeOnly" };
+  const shape = EFFECT_SHAPES[type as StructuredEffect["type"]];
+  const out: Record<string, unknown> = { type };
+  for (const key of shape.requiredStrings ?? []) {
+    const v = raw[key];
+    if (typeof v !== "string" || v === "") return { type: "narrativeOnly" };
+    out[key] = v;
   }
+  for (const key of shape.requiredNumbers ?? []) {
+    const v = raw[key];
+    if (typeof v !== "number") return { type: "narrativeOnly" };
+    out[key] = v;
+  }
+  for (const key of shape.optionalStrings ?? []) {
+    const v = raw[key];
+    if (typeof v === "string" && v !== "") out[key] = v;
+  }
+  return out as StructuredEffect;
 }
 
 // ─── BATCHED GRADING PROMPT ──────────────────────────────────────────────────
