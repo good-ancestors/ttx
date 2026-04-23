@@ -358,7 +358,12 @@ export default defineSchema({
     type: v.string(),
     roleId: v.optional(v.string()),
     data: v.optional(v.string()),
-  }).index("by_game", ["gameId"]),
+  })
+    .index("by_game", ["gameId"])
+    // Composite index so the resolve pipeline's "events since timestamp T"
+    // lookup can range-scan instead of collecting every event for the game
+    // and filtering in memory (O(events-in-round) vs O(events-in-game)).
+    .index("by_game_and_timestamp", ["gameId", "timestamp"]),
 
   // Ledger of compute movements — the single source of truth for stock over time.
   // table.computeStock is a cache of settled rows (sum of amount where roleId=X, status=settled).

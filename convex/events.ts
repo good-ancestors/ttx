@@ -89,11 +89,13 @@ export const getSinceForRound = internalQuery({
   },
   handler: async (ctx, args) => {
     const typeSet = new Set(args.types);
+    // Range-scan from sinceTimestamp forward — avoids collecting every event
+    // logged for the game and filtering in-memory.
     const events = await ctx.db
       .query("events")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .withIndex("by_game_and_timestamp", (q) => q.eq("gameId", args.gameId).gte("timestamp", args.sinceTimestamp))
       .collect();
-    return events.filter((e) => e.timestamp >= args.sinceTimestamp && typeSet.has(e.type));
+    return events.filter((e) => typeSet.has(e.type));
   },
 });
 
