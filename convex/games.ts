@@ -1119,6 +1119,7 @@ export const getFacilitatorState = query({
         roleId: sub.roleId,
         status: sub.status,
         actions: sub.actions.map((a) => ({
+          actionId: a.actionId,
           text: a.text,
           priority: a.priority,
           secret: a.secret,
@@ -1128,6 +1129,15 @@ export const getFacilitatorState = query({
           rolled: a.rolled,
           success: a.success,
           aiInfluence: a.aiInfluence,
+          // Structured-effect refactor fields — must be projected through so
+          // the facilitator action-row can render the effect badge + editor
+          // and detect pinned effects. Without these, the UI silently shows
+          // no badges even though the grader populated them correctly.
+          structuredEffect: a.structuredEffect,
+          confidence: a.confidence,
+          mergeLab: a.mergeLab,
+          foundLab: a.foundLab,
+          computeTargets: a.computeTargets,
         })),
       })),
       proposals: requests,
