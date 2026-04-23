@@ -23,9 +23,11 @@ import { TrendingUp, Pencil, Save, X } from "lucide-react";
 export function NewComputeAcquired({
   gameId,
   roundNumber,
+  isProjector,
 }: {
   gameId: Id<"games">;
   roundNumber: number;
+  isProjector?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const rows = useQuery(api.rounds.getPendingAcquired, { gameId, roundNumber });
@@ -38,6 +40,7 @@ export function NewComputeAcquired({
 
   const total = acquired.reduce((s, e) => s + e.amount, 0);
   const isPending = rows.some((r) => r.pending);
+  const canEdit = !isProjector && isPending;
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">
@@ -49,7 +52,7 @@ export function NewComputeAcquired({
         <span className="ml-auto text-xs font-mono text-text-light">
           {total}u total
         </span>
-        {!editing && isPending && (
+        {!editing && canEdit && (
           <button
             onClick={() => setEditing(true)}
             className="text-[10px] p-1 rounded bg-navy-light text-text-light hover:bg-navy-muted"

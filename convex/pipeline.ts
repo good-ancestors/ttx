@@ -710,7 +710,26 @@ export const rollAndApplyEffects = internalAction({
             if (op.labName && op.newMultiplier != null) {
               const target = findActiveByName(op.labName);
               if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "multiplierOverride", message: `multiplierOverride: "${op.labName}" is not an active lab` }); break; }
-              const clamped = Math.max(0.1, Math.min(maxMult, op.newMultiplier));
+              // Magnitude cap: reject overrides >2× current or <0.5× current unless the
+              // `reason` explicitly cites a qualifying narrative trigger. This catches
+              // LLM overreach (e.g. "cap at 28× from 200× because too dangerous") while
+              // still allowing: breakthrough 2×, safety pivot halve, sabotage halve.
+              // Larger magnitudes still possible when the narrative genuinely warrants
+              // them and the LLM labels the trigger in `reason`.
+              const NARRATIVE_TRIGGER_RE = /\b(sabotage|destruction|destroyed|bomb|safer\s*pivot|safety\s*pivot|breakthrough|nationali[sz]ed|seized|cyber[\s-]?attack)\b/i;
+              const hasTrigger = !!(op.reason && NARRATIVE_TRIGGER_RE.test(op.reason));
+              const current = target.rdMultiplier;
+              const requested = op.newMultiplier;
+              const ratio = current > 0 ? requested / current : Infinity;
+              if (!hasTrigger && (ratio > 2 || ratio < 0.5)) {
+                rejectedOps.push({
+                  category: "precondition_failure",
+                  opType: "multiplierOverride",
+                  message: `multiplierOverride: ${op.labName} ${current}× → ${requested}× (${ratio.toFixed(2)}× change) exceeds ±2× band. Only allowed for narrative-discontinuous events (sabotage / breakthrough / safety pivot) — cite one in reason.`,
+                });
+                break;
+              }
+              const clamped = Math.max(0.1, Math.min(maxMult, requested));
               multiplierOverrides.push({ labId: target.labId, newMultiplier: clamped });
               workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: clamped } : l);
             }

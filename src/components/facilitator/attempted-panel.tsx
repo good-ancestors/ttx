@@ -242,7 +242,7 @@ export function AttemptedPanel({
             </span>
           )}
         </div>
-        {isExpanded && hasSecrets && (
+        {!isProjector && isExpanded && hasSecrets && (
           <button
             onClick={allSecretsRevealed ? hideAllSecrets : revealAllSecrets}
             className="text-[10px] text-viz-warning hover:text-white transition-colors flex items-center gap-1"

@@ -65,7 +65,7 @@ export function StateSection({
         onAddLab={onAddLab}
       />
 
-      <NewComputeAcquired gameId={gameId} roundNumber={currentRoundNumber} />
+      <NewComputeAcquired gameId={gameId} roundNumber={currentRoundNumber} isProjector={isProjector} />
     </>
   );
 }
