@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import { TOTAL_ROUNDS, isSubmittedAction, countUnacknowledgedLowConfidence, type Lab } from "@/lib/game-data";
 import { hasNarrativeContent } from "@/lib/narrative-sections";
 import { NarrativeEditor } from "@/components/manual-controls";
-import { AttemptedSection } from "./resolve-sections/attempted-section";
+import { AttemptedPanel } from "./attempted-panel";
 import { HappenedSection } from "./resolve-sections/happened-section";
 import { StateSection } from "./resolve-sections/state-section";
 import {
@@ -215,33 +215,33 @@ export function RoundPhase({
         </div>
       )}
 
-      {/* ─── Section 1: What Was Attempted ─── */}
-      <AttemptedSection
-        gameId={gameId}
-        roundNumber={game.currentRound}
-        phase={phase}
-        currentRound={currentRound}
-        submissions={submissions}
-        proposals={proposals}
-        isProjector={isProjector}
-        resolving={resolving}
-        revealedCount={revealedCount}
-        revealedSecrets={revealedSecrets}
-        toggleReveal={toggleReveal}
-        revealAllSecrets={revealAllSecrets}
-        hideAllSecrets={hideAllSecrets}
-        handleReResolve={handleReResolve}
-        rerollAction={rerollAction}
-        overrideProbability={overrideProbability}
-        overrideStructuredEffect={overrideStructuredEffect}
-        ungradeAction={ungradeAction}
-        hasNarrative={hasNarrative}
-        narrativeStale={narrativeStale}
-        onDiceChanged={onDiceChanged}
-        isTimerExpired={!!isTimerExpired}
-        labs={labs}
-        tables={tables}
-      />
+      {/* ─── Section 1: What Was Attempted (hidden during discuss) ─── */}
+      {phase !== "discuss" && (
+        <AttemptedPanel
+          phase={phase}
+          currentRound={currentRound}
+          submissions={submissions}
+          proposals={proposals}
+          isProjector={isProjector}
+          resolving={resolving}
+          revealedCount={revealedCount}
+          revealedSecrets={revealedSecrets}
+          toggleReveal={toggleReveal}
+          revealAllSecrets={revealAllSecrets}
+          hideAllSecrets={hideAllSecrets}
+          handleReResolve={handleReResolve}
+          rerollAction={rerollAction}
+          overrideProbability={overrideProbability}
+          overrideStructuredEffect={overrideStructuredEffect}
+          ungradeAction={ungradeAction}
+          hasNarrative={hasNarrative}
+          narrativeStale={narrativeStale}
+          onDiceChanged={onDiceChanged}
+          isTimerExpired={!!isTimerExpired}
+          labs={labs}
+          tables={tables}
+        />
+      )}
 
       {/* ─── Grade/Roll buttons (submit phase, timer expired) ─── */}
       {phase === "submit" && !isProjector && (isTimerExpired || !game.phaseEndsAt) && (

@@ -25,6 +25,7 @@ import { plainEventReason } from "./events";
 import {
   ROLES,
   LAB_PROGRESSION,
+  clampProductivity,
   getAiInfluencePower,
   autoGenerateInfluence,
   computeLabGrowth,
@@ -300,26 +301,28 @@ async function gradeAllBatched(
   }
 
   // For each submission that had any graded actions, merge grades into the
-  // action array and persist. Ungraded actions retain their existing fields.
-  for (const sub of submissions) {
-    const updates = updatesBySubmission.get(sub._id);
-    if (!updates) continue;
-    const nextActions = sub.actions.map((a, i) => {
-      const g = updates.get(i);
-      if (!g) return a;
-      return {
-        ...a,
-        probability: g.probability,
-        reasoning: g.reasoning,
-        confidence: g.confidence,
-        structuredEffect: normaliseStructuredEffect(g.structuredEffect),
-      };
-    });
-    await ctx.runMutation(internal.submissions.applyGradingInternal, {
-      submissionId: sub._id,
-      actions: nextActions,
-    });
-  }
+  // action array and persist. Independent writes — run in parallel so a 10-role
+  // batched grade doesn't serialize 10 round trips.
+  await Promise.all(submissions
+    .filter((sub) => updatesBySubmission.has(sub._id))
+    .map((sub) => {
+      const updates = updatesBySubmission.get(sub._id)!;
+      const nextActions = sub.actions.map((a, i) => {
+        const g = updates.get(i);
+        if (!g) return a;
+        return {
+          ...a,
+          probability: g.probability,
+          reasoning: g.reasoning,
+          confidence: g.confidence,
+          structuredEffect: normaliseStructuredEffect(g.structuredEffect),
+        };
+      });
+      return ctx.runMutation(internal.submissions.applyGradingInternal, {
+        submissionId: sub._id,
+        actions: nextActions,
+      });
+    }));
 
   await ctx.runMutation(internal.games.updatePipelineStatus, {
     gameId,
@@ -551,18 +554,23 @@ export const rollAndApplyEffects = internalAction({
       await ctx.runMutation(internal.computeLedger.clearRegenerableRowsInternal, { gameId, roundNumber });
 
       // Also reset lab structural state to the pre-round snapshot so a re-resolve
-      // doesn't carry forward earlier effects (breakthrough/modelRollback) applied
-      // during a previous run of this same round. Without this, `labs.rdMultiplier`
-      // still reflects the previous apply and this apply piles another factor on
-      // top or suppresses natural growth.
+      // doesn't carry forward earlier effects (breakthrough/modelRollback/merge/
+      // decommission) applied during a previous run of this same round. Passes
+      // the full structural state so merges/decommissions can be re-applied
+      // idempotently from the cleared-ledger baseline.
       const labsBefore = currentRound?.labsBefore;
       if (labsBefore && labsBefore.length > 0) {
         await ctx.runMutation(internal.labs.resetLabsToSnapshotInternal, {
           gameId,
           snapshot: labsBefore.map((s) => ({
             labId: s.labId,
+            name: s.name,
+            spec: s.spec,
+            roleId: s.roleId,
             rdMultiplier: s.rdMultiplier,
             allocation: s.allocation,
+            status: s.status,
+            mergedIntoLabId: s.mergedIntoLabId,
           })),
         });
       }
@@ -622,12 +630,13 @@ export const rollAndApplyEffects = internalAction({
       // Collect per-action effects to apply. Skip failed actions; skip actions
       // with player-pinned effects (mergeLab / foundLab / computeTargets) — those
       // settled inside rollAllImpl and surface in P7 via the event log; skip
-      // narrativeOnly.
+      // narrativeOnly, foundLab, and legacy types.
+      type ApplyableEffect = Exclude<StructuredEffect, { type: "narrativeOnly" } | { type: "foundLab" } | { type: "computeChange" } | { type: "multiplierOverride" }>;
       type ResolvedEffect = {
         actorRoleId: string;
         actorRoleName: string;
         actionText: string;
-        effect: StructuredEffect;
+        effect: ApplyableEffect;
       };
       const effectsToApply: ResolvedEffect[] = [];
       for (const sub of submissions) {
@@ -636,7 +645,10 @@ export const rollAndApplyEffects = internalAction({
           if (!action.success) continue;
           if (action.mergeLab || action.foundLab || (action.computeTargets && action.computeTargets.length > 0)) continue;
           const e = action.structuredEffect;
-          if (!e || e.type === "narrativeOnly" || e.type === "foundLab") continue;
+          // Legacy variants (persisted before the four-layer redesign) skipped
+          // here; apply switch below is the post-redesign taxonomy only.
+          if (!e || e.type === "narrativeOnly" || e.type === "foundLab"
+            || e.type === "computeChange" || e.type === "multiplierOverride") continue;
           effectsToApply.push({ actorRoleId: sub.roleId, actorRoleName, actionText: action.text, effect: e });
         }
       }
@@ -682,10 +694,14 @@ export const rollAndApplyEffects = internalAction({
         const f = factor(range.min, range.max);
         const existing = productivityMods.find((p) => p.labId === target.labId);
         const before = existing?.modifier ?? 1;
-        const after = before * f;
+        // Compose multiplicatively with any existing productivity mod this
+        // round, then clamp so repeated emissions can't nuke or rocket a lab.
+        // Symmetric with the rdMultiplier clamps on breakthrough (ceil
+        // maxMult) and modelRollback (floor 1).
+        const after = clampProductivity(before * f);
         if (existing) existing.modifier = after;
         else productivityMods.push({ labId: target.labId, modifier: after });
-        logEntry(target.name, "productivity", before, after, `${e.type} ×${f} (one round)`);
+        logEntry(target.name, "productivity", before, after, `${e.type} ×${f} (one round, clamped [${LAB_PROGRESSION.PRODUCTIVITY_MIN}, ${LAB_PROGRESSION.PRODUCTIVITY_MAX}])`);
       };
 
       for (const resolved of effectsToApply) {
@@ -808,11 +824,6 @@ export const rollAndApplyEffects = internalAction({
             tableComputeByRole.set(e.toRoleId, (tableComputeByRole.get(e.toRoleId) ?? 0) + e.amount);
             break;
           }
-          case "foundLab":
-          case "narrativeOnly":
-            // Filtered at extraction time — these variants are not in effectsToApply.
-            // Explicit no-op cases satisfy the exhaustiveness check.
-            break;
         }
       }
       if (rejectedOps.length > 0) {
@@ -1048,98 +1059,114 @@ export const continueFromEffectReview = internalAction({
         if (disp) aiDisposition = { label: disp.label, description: disp.description };
       }
 
-      const tableComputeByRole = new Map(
-        tables.filter((t) => t.computeStock != null).map((t) => [t.roleId, t.computeStock!] as const),
-      );
       const maxMult = LAB_PROGRESSION.maxMultiplier(roundNumber);
 
-      // ═══ PHASE 9 — R&D GROWTH ═══
-      // Start mechanicsLog for phases 9 + 10 at the phase-5 offset.
-      const phase5LogLen = currentRound.mechanicsLog?.length ?? 0;
-      type MechLog = { sequence: number; phase: 5 | 9 | 10; source: "player-pinned" | "grader-effect" | "natural-growth" | "acquisition" | "facilitator-edit"; subject: string; field: "rdMultiplier" | "computeStock" | "productivity"; before: number; after: number; reason: string };
-      const mechLog: MechLog[] = [];
-      const pushLog = (entry: Omit<MechLog, "sequence">) => {
-        mechLog.push({ sequence: phase5LogLen + mechLog.length, ...entry });
-      };
+      // Idempotency guard. If the previous run of continueFromEffectReview
+      // landed phase-9+10 apply but then failed (e.g. crashed during the
+      // narrate LLM call, or snapshotAfter write errored), phase stays
+      // "effect-review" and the facilitator may retry. Re-running the phase-9
+      // growth would compound on top of the already-grown multipliers and
+      // silently skip productivity mods (which were cleared on first run).
+      // Detect the prior run via any phase-9 entry in mechanicsLog and skip
+      // straight to narrate.
+      const phase9AlreadyApplied = (currentRound.mechanicsLog ?? []).some((e) => e.phase === 9);
 
-      // O(1) lookup maps — all sites below previously scanned labsNow linearly.
-      const labsByRoleId = new Map(labsNow.map((l) => [l.roleId, l] as const));
-      const labsByLabId = new Map(labsNow.map((l) => [l.labId, l] as const));
+      if (!phase9AlreadyApplied) {
+        const tableComputeByRole = new Map(
+          tables.filter((t) => t.computeStock != null).map((t) => [t.roleId, t.computeStock!] as const),
+        );
 
-      const ceoAllocations = new Map<string, { deployment: number; research: number; safety: number }>();
-      for (const sub of submissions) {
-        if (!sub.computeAllocation) continue;
-        const lab = labsByRoleId.get(sub.roleId);
-        if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
-      }
-      // One-round productivity modifiers from researchDisruption / researchBoost
-      // stashed by applyDecidedEffectsInternal. Cleared in applyGrowthAndAcquisitionInternal
-      // so they don't persist into next round.
-      const productivityModsByLab = new Map<string, number>();
-      if (currentRound.pendingProductivityMods) {
-        for (const mod of currentRound.pendingProductivityMods) {
-          const lab = labsByLabId.get(mod.labId);
-          if (lab) {
-            productivityModsByLab.set(lab.name, mod.modifier);
-            pushLog({ phase: 9, source: "grader-effect", subject: lab.name, field: "productivity", before: 1, after: mod.modifier, reason: `productivity mod applied to R${roundNumber} growth` });
+        // ═══ PHASE 9 — R&D GROWTH ═══
+        // Start mechanicsLog for phases 9 + 10 at the phase-5 offset.
+        const phase5LogLen = currentRound.mechanicsLog?.length ?? 0;
+        type MechLog = { sequence: number; phase: 5 | 9 | 10; source: "player-pinned" | "grader-effect" | "natural-growth" | "acquisition" | "facilitator-edit"; subject: string; field: "rdMultiplier" | "computeStock" | "productivity"; before: number; after: number; reason: string };
+        const mechLog: MechLog[] = [];
+        const pushLog = (entry: Omit<MechLog, "sequence">) => {
+          mechLog.push({ sequence: phase5LogLen + mechLog.length, ...entry });
+        };
+
+        // O(1) lookup maps — all sites below previously scanned labsNow linearly.
+        const labsByRoleId = new Map(labsNow.map((l) => [l.roleId, l] as const));
+        const labsByLabId = new Map(labsNow.map((l) => [l.labId, l] as const));
+
+        const ceoAllocations = new Map<string, { deployment: number; research: number; safety: number }>();
+        for (const sub of submissions) {
+          if (!sub.computeAllocation) continue;
+          const lab = labsByRoleId.get(sub.roleId);
+          if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
+        }
+        // One-round productivity modifiers from researchDisruption / researchBoost
+        // stashed by applyDecidedEffectsInternal. Cleared in applyGrowthAndAcquisitionInternal
+        // so they don't persist into next round.
+        const productivityModsByLab = new Map<string, number>();
+        if (currentRound.pendingProductivityMods) {
+          for (const mod of currentRound.pendingProductivityMods) {
+            const lab = labsByLabId.get(mod.labId);
+            if (lab) {
+              productivityModsByLab.set(lab.name, mod.modifier);
+              pushLog({ phase: 9, source: "grader-effect", subject: lab.name, field: "productivity", before: 1, after: mod.modifier, reason: `productivity mod applied to R${roundNumber} growth` });
+            }
           }
         }
-      }
-      const grownLabs = computeLabGrowth(labsNow, ceoAllocations, roundNumber, maxMult, productivityModsByLab);
-      const multiplierUpdates: { labId: Id<"labs">; rdMultiplier: number }[] = [];
-      for (const lab of grownLabs) {
-        const pre = labsByLabId.get(lab.labId);
-        if (!pre) continue;
-        if (lab.rdMultiplier !== pre.rdMultiplier) {
-          multiplierUpdates.push({ labId: pre.labId, rdMultiplier: lab.rdMultiplier });
-          pushLog({ phase: 9, source: "natural-growth", subject: lab.name, field: "rdMultiplier", before: pre.rdMultiplier, after: lab.rdMultiplier, reason: `R${roundNumber} natural growth` });
+        const grownLabs = computeLabGrowth(labsNow, ceoAllocations, roundNumber, maxMult, productivityModsByLab);
+        const multiplierUpdates: { labId: Id<"labs">; rdMultiplier: number }[] = [];
+        for (const lab of grownLabs) {
+          const pre = labsByLabId.get(lab.labId);
+          if (!pre) continue;
+          if (lab.rdMultiplier !== pre.rdMultiplier) {
+            multiplierUpdates.push({ labId: pre.labId, rdMultiplier: lab.rdMultiplier });
+            pushLog({ phase: 9, source: "natural-growth", subject: lab.name, field: "rdMultiplier", before: pre.rdMultiplier, after: lab.rdMultiplier, reason: `R${roundNumber} natural growth` });
+          }
         }
-      }
 
-      // ═══ PHASE 10 — NEW COMPUTE ACQUIRED ═══
-      const acquiredEntries: { roleId: string; amount: number }[] = [];
-      for (const lab of grownLabs) {
-        if (!lab.roleId) continue;
-        const pre = labsByLabId.get(lab.labId);
-        if (!pre) continue;
-        const preStock = pre.roleId ? tableComputeByRole.get(pre.roleId) ?? 0 : 0;
-        const acquired = lab.computeStock - preStock;
-        if (acquired > 0) acquiredEntries.push({ roleId: lab.roleId, amount: acquired });
-      }
-      const activeOwnerRoleIds = new Set(grownLabs.map((l) => l.roleId).filter((r): r is string => !!r));
-      const enabledRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
-      const { calculatePoolNewCompute, NEW_COMPUTE_PER_GAME_ROUND } = await import("./gameData");
-      for (const t of tables) {
-        if (!t.enabled || activeOwnerRoleIds.has(t.roleId)) continue;
-        const overridePct = game.computeShareOverrides?.[t.roleId];
-        let produced: number;
-        if (overridePct != null) {
-          const baseTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
-          produced = Math.round(baseTotal * overridePct / 100);
-        } else {
-          produced = calculatePoolNewCompute(t.roleId, roundNumber, enabledRoleIds);
+        // ═══ PHASE 10 — NEW COMPUTE ACQUIRED ═══
+        const acquiredEntries: { roleId: string; amount: number }[] = [];
+        for (const lab of grownLabs) {
+          if (!lab.roleId) continue;
+          const pre = labsByLabId.get(lab.labId);
+          if (!pre) continue;
+          const preStock = pre.roleId ? tableComputeByRole.get(pre.roleId) ?? 0 : 0;
+          const acquired = lab.computeStock - preStock;
+          if (acquired > 0) acquiredEntries.push({ roleId: lab.roleId, amount: acquired });
         }
-        if (produced !== 0) acquiredEntries.push({ roleId: t.roleId, amount: produced });
+        const activeOwnerRoleIds = new Set(grownLabs.map((l) => l.roleId).filter((r): r is string => !!r));
+        const enabledRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
+        const { calculatePoolNewCompute, NEW_COMPUTE_PER_GAME_ROUND } = await import("./gameData");
+        for (const t of tables) {
+          if (!t.enabled || activeOwnerRoleIds.has(t.roleId)) continue;
+          const overridePct = game.computeShareOverrides?.[t.roleId];
+          let produced: number;
+          if (overridePct != null) {
+            const baseTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
+            produced = Math.round(baseTotal * overridePct / 100);
+          } else {
+            produced = calculatePoolNewCompute(t.roleId, roundNumber, enabledRoleIds);
+          }
+          if (produced !== 0) acquiredEntries.push({ roleId: t.roleId, amount: produced });
+        }
+
+        // Phase 10 mechanicsLog — acquisition deltas per role. The before/after value
+        // is the role's stock pre- and post-acquisition (for a lab owner, the lab's
+        // growth stock IS the acquisition; for non-lab roles, it's pool share).
+        for (const entry of acquiredEntries) {
+          const pre = tableComputeByRole.get(entry.roleId) ?? 0;
+          pushLog({ phase: 10, source: "acquisition", subject: entry.roleId, field: "computeStock", before: pre, after: pre + entry.amount, reason: `R${roundNumber + 1} acquisition +${entry.amount}u` });
+        }
+
+        await ctx.runMutation(internal.pipelineApply.applyGrowthAndAcquisitionInternal, {
+          gameId,
+          roundNumber,
+          nonce,
+          multiplierUpdates,
+          acquired: acquiredEntries,
+          mechanicsLog: mechLog,
+        });
       }
 
-      // Phase 10 mechanicsLog — acquisition deltas per role. The before/after value
-      // is the role's stock pre- and post-acquisition (for a lab owner, the lab's
-      // growth stock IS the acquisition; for non-lab roles, it's pool share).
-      for (const entry of acquiredEntries) {
-        const pre = tableComputeByRole.get(entry.roleId) ?? 0;
-        pushLog({ phase: 10, source: "acquisition", subject: entry.roleId, field: "computeStock", before: pre, after: pre + entry.amount, reason: `R${roundNumber + 1} acquisition +${entry.amount}u` });
-      }
-
-      await ctx.runMutation(internal.pipelineApply.applyGrowthAndAcquisitionInternal, {
-        gameId,
-        roundNumber,
-        nonce,
-        multiplierUpdates,
-        acquired: acquiredEntries,
-        mechanicsLog: mechLog,
-      });
       // Snapshot labs-after (narrator's frozen ground truth) + update pipeline
-      // status for the UI — independent writes, run in parallel.
+      // status for the UI — independent writes, run in parallel. Both are
+      // idempotent: snapshotAfter overwrites labsAfter from fresh lab state;
+      // updatePipelineStatus is a single patch.
       await Promise.all([
         ctx.runMutation(internal.rounds.snapshotAfterInternal, { gameId, roundNumber }),
         ctx.runMutation(internal.games.updatePipelineStatus, {

@@ -614,17 +614,23 @@ export const restoreSnapshot = mutation({
       }
     }
 
-    // Clear resolution data on this round if restoring to "before". Also clear
-    // resolveNonce unconditionally so any in-flight pipeline run tied to this
-    // round can't land post-restore (mirrors the game-level clear above).
-    // pendingAcquired is cleared on "before" so the next roll/continue
-    // re-derives it cleanly.
+    // Clear resolution data on this round. `resolveNonce` is cleared
+    // unconditionally so any in-flight pipeline run tied to this round can't
+    // land post-restore (mirrors the game-level clear above). All other
+    // per-round pipeline residue — summary, snapshots, pending-*, mechanicsLog,
+    // appliedOps, labTrajectories — is cleared on "before" so the next
+    // roll/continue re-derives from clean state. On "after" we leave those
+    // alone (they describe the post-resolve state the user wants to restore).
     if (args.useBefore) {
       await ctx.db.patch(round._id, {
         summary: undefined,
         labsAfter: undefined,
         resolveNonce: undefined,
         pendingAcquired: undefined,
+        pendingProductivityMods: undefined,
+        mechanicsLog: undefined,
+        appliedOps: undefined,
+        labTrajectories: undefined,
       });
     } else {
       await ctx.db.patch(round._id, { resolveNonce: undefined });
@@ -1155,6 +1161,12 @@ export const assignLabController = mutation({
   },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
+    // Symmetric with the pipeline's transferOwnership guard: reject empty
+    // newRoleId so the facilitator can't orphan a lab via direct API call.
+    // Use decommission to end a lab's existence, not ownership-to-nobody.
+    if (!args.newRoleId) {
+      throw new Error("assignLabController: newRoleId is required — use decommission to end a lab");
+    }
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
     const activeLabs = await getActiveLabsForGame(ctx, args.gameId);

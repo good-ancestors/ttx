@@ -210,7 +210,16 @@ export type StructuredEffect =
   | { type: "transferOwnership"; labName: string; controllerRoleId: string }
   | { type: "computeTransfer"; fromRoleId: string; toRoleId: string; amount: number }
   | { type: "foundLab"; name: string; spec?: string; seedCompute: number; allocation?: { deployment: number; research: number; safety: number } }
-  | { type: "narrativeOnly" };
+  | { type: "narrativeOnly" }
+  // Legacy — read-only tolerance for pre-redesign persisted docs. The grader
+  // never emits these; the apply path filters them out at effect-extraction
+  // time; normaliseStructuredEffect's default case maps them to narrativeOnly
+  // when encountered via the grader parse path. They exist in the TS union
+  // only so Convex-inferred Doc types (which include them via the schema
+  // validator's legacy tolerance) flow through without TS errors. Drop once
+  // prod data has been cleaned and the validator tolerance is removed.
+  | { type: "computeChange"; labName: string; change: number }
+  | { type: "multiplierOverride"; labName: string; newMultiplier: number };
 
 export type Confidence = "high" | "medium" | "low";
 

@@ -2,6 +2,8 @@ import { describe, it, expect } from "vitest";
 import {
   DEFAULT_LABS,
   BASELINE_RD_TARGETS,
+  LAB_PROGRESSION,
+  clampProductivity,
   computeLabGrowth,
   getBaselineStockBeforeRound,
 } from "@/lib/game-data";
@@ -175,6 +177,49 @@ describe("computeLabGrowth — productivity modifier (researchDisruption / resea
       expect(first[i].rdMultiplier).toBe(second[i].rdMultiplier);
       expect(first[i].computeStock).toBe(second[i].computeStock);
     }
+  });
+});
+
+describe("clampProductivity — bounds composition of repeat researchDisruption/researchBoost", () => {
+  // Repeated grader emissions of productivity effects on the same lab compose
+  // multiplicatively (see pipeline.ts:applyProductivityMod). Without clamping,
+  // two disruption × 0.5 would floor at 0.25 and two boost × 1.5 would climb
+  // to 2.25 — not catastrophic, but three emissions could escalate further.
+  // The clamp matches symmetric bounds on rdMultiplier (breakthrough ceils at
+  // maxMult, modelRollback floors at 1).
+
+  it("exports the clamp range as LAB_PROGRESSION constants", () => {
+    expect(LAB_PROGRESSION.PRODUCTIVITY_MIN).toBe(0.25);
+    expect(LAB_PROGRESSION.PRODUCTIVITY_MAX).toBe(2.5);
+  });
+
+  it("passes through values inside the clamp range", () => {
+    expect(clampProductivity(1)).toBe(1);
+    expect(clampProductivity(0.5)).toBe(0.5);
+    expect(clampProductivity(2.0)).toBe(2.0);
+  });
+
+  it("floors at PRODUCTIVITY_MIN when value would go below", () => {
+    expect(clampProductivity(0.1)).toBe(0.25);
+    expect(clampProductivity(0.5 * 0.5 * 0.5)).toBe(0.25); // three disruptions
+    expect(clampProductivity(0)).toBe(0.25);
+    expect(clampProductivity(-1)).toBe(0.25);
+  });
+
+  it("ceils at PRODUCTIVITY_MAX when value would go above", () => {
+    expect(clampProductivity(3)).toBe(2.5);
+    expect(clampProductivity(1.5 * 1.5 * 1.5)).toBe(2.5); // three boosts = 3.375
+    expect(clampProductivity(100)).toBe(2.5);
+  });
+
+  it("NaN / Infinity clamp to MAX (defensive)", () => {
+    // Math.max(min, Math.min(max, NaN)) = NaN, so actually NaN propagates.
+    // The apply path generates `before * f` where both inputs are finite
+    // numbers (f is from factor() which returns a rounded number in [min,max]).
+    // This test pins the current behaviour so a future "guard non-finite"
+    // change is a conscious break.
+    expect(clampProductivity(Infinity)).toBe(2.5);
+    expect(Number.isNaN(clampProductivity(NaN))).toBe(true);
   });
 });
 

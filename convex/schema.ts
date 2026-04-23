@@ -284,6 +284,14 @@ export default defineSchema({
       labId: v.id("labs"),
       modifier: v.number(),
     }))),
+    // Legacy — read-only tolerance for pre-redesign persisted round docs. The
+    // field is never read or written by current code; it exists here purely so
+    // `npx convex deploy` doesn't fail validation on rounds that were resolved
+    // before the four-layer redesign. Drop once prod data has been cleaned.
+    pendingMultiplierOverrides: v.optional(v.array(v.object({
+      labId: v.id("labs"),
+      rdMultiplier: v.number(),
+    }))),
     // Chronological audit log of mechanical state mutations during this round's
     // resolve — every write to lab.rdMultiplier, lab owner's computeStock, or
     // productivity during phases 5, 9, and 10. Rendered under Applied Effects in

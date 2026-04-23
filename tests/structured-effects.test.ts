@@ -203,4 +203,20 @@ describe("normaliseStructuredEffect", () => {
     });
   });
 
+  describe("legacy variants normalise to narrativeOnly (read-only tolerance for pre-redesign docs)", () => {
+    // Old round docs may carry structuredEffect.type === "computeChange" or
+    // "multiplierOverride" from before the four-layer redesign. The normaliser's
+    // default case maps anything unrecognised to narrativeOnly — including these
+    // legacy shapes — so the apply path treats them as no-ops rather than
+    // crashing or picking up a numerical magnitude the grader no longer emits.
+    it("computeChange → narrativeOnly", () => {
+      expect(normaliseStructuredEffect({ type: "computeChange", labName: "OpenBrain", change: 30 }))
+        .toEqual({ type: "narrativeOnly" });
+    });
+    it("multiplierOverride → narrativeOnly", () => {
+      expect(normaliseStructuredEffect({ type: "multiplierOverride", labName: "OpenBrain", newMultiplier: 5 }))
+        .toEqual({ type: "narrativeOnly" });
+    });
+  });
+
 });

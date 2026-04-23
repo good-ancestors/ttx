@@ -342,6 +342,14 @@ export const updatePendingAcquired = mutation({
     assertFacilitator(args.facilitatorToken);
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (!round) throw new Error(`Round ${args.roundNumber} not found`);
+    // Acquisition is conserved non-negative compute flowing in. Reject non-finite
+    // values (NaN/Infinity pass v.number()) and any negative amount — a negative
+    // "acquired" row would violate the ledger invariant that `acquired` entries
+    // only ever add compute.
+    for (const r of args.amounts) {
+      if (!Number.isFinite(r.amount)) throw new Error(`updatePendingAcquired: amount for ${r.roleId} is not a finite number`);
+      if (r.amount < 0) throw new Error(`updatePendingAcquired: amount for ${r.roleId} must be >= 0 (got ${r.amount})`);
+    }
     const nonZero = args.amounts.filter((r) => r.amount !== 0);
     await ctx.db.patch(round._id, { pendingAcquired: nonZero });
   },

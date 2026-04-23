@@ -659,7 +659,18 @@ export const LAB_PROGRESSION = {
   MIN_MULTIPLIER: 0.1,
   /** Max multiplier caps per round range. */
   maxMultiplier: (round: number) => round <= 2 ? 200 : round === 3 ? 2000 : 15000,
+  /** Productivity modifier clamps for researchDisruption / researchBoost.
+   *  Symmetric with the multiplier clamps (ceil maxMultiplier, floor 1) so
+   *  repeated emissions of either effect can't nuke or rocket a lab beyond
+   *  these bounds. Consumed by the pipeline's applyProductivityMod helper. */
+  PRODUCTIVITY_MIN: 0.25,
+  PRODUCTIVITY_MAX: 2.5,
 };
+
+/** Clamp a productivity modifier to [PRODUCTIVITY_MIN, PRODUCTIVITY_MAX]. */
+export function clampProductivity(mod: number): number {
+  return Math.max(LAB_PROGRESSION.PRODUCTIVITY_MIN, Math.min(LAB_PROGRESSION.PRODUCTIVITY_MAX, mod));
+}
 
 /** Baseline compute stock at the START of `roundNumber` — i.e. starting stock
  *  plus acquisitions from rounds 1 .. (roundNumber - 1). Used for the baseline

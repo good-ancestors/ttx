@@ -278,33 +278,44 @@ export const getLabs = query({
   },
 });
 
-/** Reset each lab's rdMultiplier + allocation to a supplied pre-round snapshot. Used by
- *  the pipeline on re-resolve to undo any LLM-decided overrides from the previous run
- *  of the same round before the decide pass runs again. Only touches fields that might
- *  have been mutated mid-round — NOT name, spec, ownerRoleId, or status (structural
- *  events like mergers should be idempotently re-applied from the cleared-ledger state). */
+/** Reset labs to a pre-round snapshot so re-resolve starts from a clean slate.
+ *  Restores the full structural state: rdMultiplier, allocation, name, spec,
+ *  ownerRoleId, status, mergedIntoLabId. Without restoring status/mergedIntoLabId,
+ *  a re-resolve of a round that previously merged Lab A into Lab B would fail
+ *  to re-apply the merge (A is still decommissioned) — the re-resolve would
+ *  silently diverge from the first run. */
 export const resetLabsToSnapshotInternal = internalMutation({
   args: {
     gameId: v.id("games"),
     snapshot: v.array(v.object({
       labId: v.id("labs"),
+      name: v.string(),
+      spec: v.optional(v.string()),
+      roleId: v.optional(v.string()),
       rdMultiplier: v.number(),
       allocation: v.object({
         deployment: v.number(),
         research: v.number(),
         safety: v.number(),
       }),
+      status: v.union(v.literal("active"), v.literal("decommissioned")),
+      mergedIntoLabId: v.optional(v.id("labs")),
     })),
   },
   handler: async (ctx, args) => {
-    for (const s of args.snapshot) {
+    await Promise.all(args.snapshot.map(async (s) => {
       const lab = await ctx.db.get(s.labId);
-      if (!lab || lab.gameId !== args.gameId) continue;
+      if (!lab || lab.gameId !== args.gameId) return;
       await ctx.db.patch(s.labId, {
+        name: s.name,
+        spec: s.spec,
+        ownerRoleId: s.roleId,
         rdMultiplier: s.rdMultiplier,
         allocation: s.allocation,
+        status: s.status,
+        mergedIntoLabId: s.mergedIntoLabId,
       });
-    }
+    }));
   },
 });
 
