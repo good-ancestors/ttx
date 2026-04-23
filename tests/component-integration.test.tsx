@@ -406,6 +406,9 @@ describe("AttemptedPanel", () => {
     handleReResolve: vi.fn().mockResolvedValue(undefined),
     rerollAction: vi.fn().mockResolvedValue(undefined),
     overrideProbability: vi.fn().mockResolvedValue(undefined),
+    overrideStructuredEffect: vi.fn().mockResolvedValue(undefined),
+    labs: [],
+    tables: [],
   };
 
   function makeSubmission(roleId: string, actions: Record<string, unknown>[] = []) {

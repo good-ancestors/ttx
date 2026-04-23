@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback } from "react";
-import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, isSubmittedAction, isResolvingPhase } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, isSubmittedAction, isResolvingPhase, type Lab } from "@/lib/game-data";
 import { useAuthMutation } from "@/lib/hooks";
 import { api } from "@convex/_generated/api";
 import {
@@ -16,7 +16,8 @@ import {
   ChevronRight,
   Loader2,
 } from "lucide-react";
-import type { Submission, Proposal, Round } from "./types";
+import type { Submission, Proposal, Round, Table } from "./types";
+import type { StructuredEffect } from "@/lib/ai-prompts";
 import type { Id } from "@convex/_generated/dataModel";
 import { ActionRow, InlineRollStatus } from "./action-row";
 
@@ -54,6 +55,7 @@ export function AttemptedPanel({
   handleReResolve,
   rerollAction,
   overrideProbability,
+  overrideStructuredEffect,
   ungradeAction,
   phase,
   hasNarrative,
@@ -61,6 +63,8 @@ export function AttemptedPanel({
   onDiceChanged,
   currentRound,
   isTimerExpired,
+  labs,
+  tables,
 }: {
   gameId: Id<"games">;
   roundNumber: number;
@@ -76,6 +80,12 @@ export function AttemptedPanel({
   handleReResolve: () => Promise<void>;
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+  overrideStructuredEffect: (args: {
+    submissionId: Id<"submissions">;
+    actionIndex: number;
+    structuredEffect?: StructuredEffect;
+    acknowledge?: boolean;
+  }) => Promise<unknown>;
   ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   phase: string;
   hasNarrative: boolean;
@@ -83,6 +93,8 @@ export function AttemptedPanel({
   onDiceChanged: () => void;
   currentRound: Round | undefined;
   isTimerExpired: boolean;
+  labs: Lab[];
+  tables: Table[];
 }) {
   // Tri-state: null = follow default (open during rolling/narrate, closed otherwise);
   // boolean = user's explicit choice for the current resolving cycle.
@@ -195,6 +207,19 @@ export function AttemptedPanel({
   [currentRound]);
   const showReviewBadges = phase === "effect-review" && reviewableApplied.length > 0;
 
+  // Derive the lab/role option lists used by the effect editor dropdowns.
+  // Labs are filtered to active-only — the editor forbids operating on
+  // decommissioned labs. Roles are from enabled tables. Memoised above the
+  // early return below so hook order stays consistent across renders.
+  const labOptions = useMemo(
+    () => labs.filter((l) => l.status !== "decommissioned").map((l) => ({ labId: String(l.labId), name: l.name })),
+    [labs],
+  );
+  const roleOptions = useMemo(
+    () => tables.filter((t) => t.enabled).map((t) => ({ roleId: t.roleId, name: t.roleName })),
+    [tables],
+  );
+
   if (!hasSubmissions) return null;
 
   const rowProps = {
@@ -206,7 +231,10 @@ export function AttemptedPanel({
     getEndorsements,
     rerollAction: wrappedReroll,
     overrideProbability: wrappedOverrideProbability,
+    overrideStructuredEffect,
     ungradeAction,
+    labs: labOptions,
+    roles: roleOptions,
     allowPregrade: !isProjector && !isRollingOrNarrate,
   };
 
@@ -345,7 +373,15 @@ function SucceededFailedSplit({
     getEndorsements: (roleId: string, actionText: string) => Proposal[];
     rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
     overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+    overrideStructuredEffect: (args: {
+      submissionId: Id<"submissions">;
+      actionIndex: number;
+      structuredEffect?: StructuredEffect;
+      acknowledge?: boolean;
+    }) => Promise<unknown>;
     ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
+    labs: { labId: string; name: string }[];
+    roles: { roleId: string; name: string }[];
     allowPregrade: boolean;
   };
   showReviewBadges: boolean;

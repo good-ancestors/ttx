@@ -15,6 +15,7 @@ import {
   MessageSquareText,
 } from "lucide-react";
 import type { FacilitatorPhaseProps, Round, Submission, Proposal } from "./types";
+import type { StructuredEffect } from "@/lib/ai-prompts";
 import type { Id } from "@convex/_generated/dataModel";
 
 // ─── Main unified round phase ───────────────────────────────────────────────
@@ -45,6 +46,12 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   openSubmissions: (args: { gameId: Id<"games">; durationSeconds: number }) => Promise<unknown>;
   skipTimer: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+  overrideStructuredEffect: (args: {
+    submissionId: Id<"submissions">;
+    actionIndex: number;
+    structuredEffect?: StructuredEffect;
+    acknowledge?: boolean;
+  }) => Promise<unknown>;
   ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   narrativeStale: boolean;
@@ -91,6 +98,7 @@ export function RoundPhase({
   openSubmissions,
   skipTimer,
   overrideProbability,
+  overrideStructuredEffect,
   ungradeAction,
   rerollAction,
   narrativeStale,
@@ -240,11 +248,14 @@ export function RoundPhase({
         handleReResolve={handleReResolve}
         rerollAction={rerollAction}
         overrideProbability={overrideProbability}
+        overrideStructuredEffect={overrideStructuredEffect}
         ungradeAction={ungradeAction}
         hasNarrative={hasNarrative}
         narrativeStale={narrativeStale}
         onDiceChanged={onDiceChanged}
         isTimerExpired={!!isTimerExpired}
+        labs={labs}
+        tables={tables}
       />
 
       {/* ─── Grade/Roll buttons (submit phase, timer expired) ─── */}

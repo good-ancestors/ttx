@@ -1,7 +1,9 @@
 "use client";
 
 import { AttemptedPanel } from "../attempted-panel";
-import type { Submission, Proposal, Round } from "../types";
+import type { Submission, Proposal, Round, Table } from "../types";
+import type { Lab } from "@/lib/game-data";
+import type { StructuredEffect } from "@/lib/ai-prompts";
 import type { Id } from "@convex/_generated/dataModel";
 
 /** Section 1 — "What was attempted". Wraps AttemptedPanel.
@@ -24,11 +26,19 @@ export function AttemptedSection(props: {
   handleReResolve: () => Promise<void>;
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
+  overrideStructuredEffect: (args: {
+    submissionId: Id<"submissions">;
+    actionIndex: number;
+    structuredEffect?: StructuredEffect;
+    acknowledge?: boolean;
+  }) => Promise<unknown>;
   ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   hasNarrative: boolean;
   narrativeStale: boolean;
   onDiceChanged: () => void;
   isTimerExpired: boolean;
+  labs: Lab[];
+  tables: Table[];
 }) {
   if (props.phase === "discuss") return null;
 
@@ -48,6 +58,7 @@ export function AttemptedSection(props: {
       handleReResolve={props.handleReResolve}
       rerollAction={props.rerollAction}
       overrideProbability={props.overrideProbability}
+      overrideStructuredEffect={props.overrideStructuredEffect}
       ungradeAction={props.ungradeAction}
       phase={props.phase}
       hasNarrative={props.hasNarrative}
@@ -55,6 +66,8 @@ export function AttemptedSection(props: {
       onDiceChanged={props.onDiceChanged}
       currentRound={props.currentRound}
       isTimerExpired={props.isTimerExpired}
+      labs={props.labs}
+      tables={props.tables}
     />
   );
 }

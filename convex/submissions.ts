@@ -983,6 +983,42 @@ export const overrideProbability = mutation({
   },
 });
 
+/** Facilitator edit of a graded action's structured effect at P2. Mirrors
+ *  overrideProbability: validates the action exists, replaces the effect in
+ *  place. The facilitator can also upgrade confidence to "high" (implicit
+ *  acknowledgement that they reviewed the effect). Accepts `null` to mean
+ *  narrativeOnly — simplifies the UI call-site when the facilitator wants to
+ *  strip mechanics without opening an editor for each field. */
+export const overrideStructuredEffect = mutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actionIndex: v.number(),
+    structuredEffect: v.optional(structuredEffectValidator),
+    acknowledge: v.optional(v.boolean()),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    const sub = await ctx.db.get(args.submissionId);
+    if (!sub) return;
+
+    const actions = [...sub.actions];
+    const action = actions[args.actionIndex];
+    if (!action) return;
+
+    const nextEffect = args.structuredEffect ?? { type: "narrativeOnly" as const };
+    actions[args.actionIndex] = {
+      ...action,
+      structuredEffect: nextEffect,
+      // Acknowledging an effect (either via edit or explicit click-through)
+      // upgrades confidence to "high" so the P2 click-through gate clears.
+      confidence: args.acknowledge ? "high" : action.confidence,
+    };
+
+    await ctx.db.patch(args.submissionId, { actions });
+  },
+});
+
 export const ungradeAction = mutation({
   args: {
     submissionId: v.id("submissions"),

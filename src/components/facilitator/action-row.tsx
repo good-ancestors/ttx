@@ -12,6 +12,8 @@ import {
 import { PROBABILITY_CARDS } from "@/lib/game-data";
 import { redactSecretAction } from "@/lib/secret-actions";
 import { ProbabilityBadge } from "@/components/action-card";
+import { EffectEditor } from "./effect-editor";
+import type { StructuredEffect } from "@/lib/ai-prompts";
 import type { Submission, Proposal } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 
@@ -32,6 +34,9 @@ export function ActionRow({
   rerollAction,
   overrideProbability,
   ungradeAction,
+  overrideStructuredEffect,
+  labs,
+  roles,
   allowPregrade,
   needsReview,
 }: {
@@ -49,6 +54,18 @@ export function ActionRow({
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
   ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
+  /** Facilitator edit of the grader-emitted effect. Pre-dice this just updates the
+   *  submission field; post-dice the facilitator should click Re-resolve to re-apply. */
+  overrideStructuredEffect?: (args: {
+    submissionId: Id<"submissions">;
+    actionIndex: number;
+    structuredEffect?: StructuredEffect;
+    acknowledge?: boolean;
+  }) => Promise<unknown>;
+  /** Active labs (names) — for effect editor dropdowns. */
+  labs?: { labId: string; name: string }[];
+  /** Active roles — for effect editor dropdowns. */
+  roles?: { roleId: string; name: string }[];
   allowPregrade: boolean;
   needsReview?: boolean;
 }) {
@@ -126,6 +143,26 @@ export function ActionRow({
           allowPregrade={allowPregrade}
         />
       </div>
+      {/* Structured effect — grader's mechanical interpretation of this action.
+       *  Hidden for ungraded actions (no effect yet emitted). Shown inline
+       *  below the action text so the facilitator can scan the effect at the
+       *  same height as the probability chip above. */}
+      {action.structuredEffect && overrideStructuredEffect && (
+        <div className="pl-4 mt-1">
+          <EffectEditor
+            effect={action.structuredEffect}
+            confidence={action.confidence}
+            submissionId={sub._id}
+            actionIndex={i}
+            labs={labs ?? []}
+            roles={roles ?? []}
+            overrideStructuredEffect={overrideStructuredEffect}
+            isProjector={isProjector}
+            locked={action.rolled != null}
+          />
+        </div>
+      )}
+
       {/* Reasoning — facilitator click-to-reveal for inspecting AI grading */}
       {!isProjector && action.reasoning && (
         <div className="pl-4 mt-0.5">

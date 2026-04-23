@@ -1,0 +1,513 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import {
+  ArrowRightLeft,
+  ChevronDown,
+  CircleX,
+  Edit3,
+  GitMerge,
+  Landmark,
+  MessageSquare,
+  PencilLine,
+  Plus,
+  Save,
+  TrendingUp,
+  X,
+} from "lucide-react";
+import type { Id } from "@convex/_generated/dataModel";
+import type { StructuredEffect, Confidence } from "@/lib/ai-prompts";
+
+/** Compact label + icon per effect type. Icons: Lucide only (no emoji). */
+function typeMeta(type: StructuredEffect["type"]): { label: string; Icon: typeof GitMerge; tone: string } {
+  switch (type) {
+    case "merge":              return { label: "Merge",              Icon: GitMerge,        tone: "text-viz-warning" };
+    case "decommission":       return { label: "Decommission",       Icon: CircleX,         tone: "text-viz-danger" };
+    case "computeChange":      return { label: "Compute shock",      Icon: Edit3,           tone: "text-viz-capability" };
+    case "multiplierOverride": return { label: "R&D multiplier",     Icon: TrendingUp,      tone: "text-viz-capability" };
+    case "transferOwnership":  return { label: "Transfer ownership", Icon: Landmark,        tone: "text-viz-warning" };
+    case "computeTransfer":    return { label: "Compute transfer",   Icon: ArrowRightLeft,  tone: "text-viz-capability" };
+    case "foundLab":           return { label: "Found lab",          Icon: Plus,            tone: "text-viz-safety" };
+    case "narrativeOnly":      return { label: "Narrative only",     Icon: MessageSquare,   tone: "text-text-light" };
+  }
+}
+
+/** One-line summary of an effect for the collapsed badge. */
+function effectSummary(e: StructuredEffect): string {
+  switch (e.type) {
+    case "merge":
+      return `${e.absorbed} → ${e.survivor}${e.newName ? ` (${e.newName})` : ""}`;
+    case "decommission":
+      return e.labName;
+    case "computeChange": {
+      const sign = e.change > 0 ? "+" : "";
+      return `${e.labName} ${sign}${e.change}u`;
+    }
+    case "multiplierOverride":
+      return `${e.labName} → ${e.newMultiplier}×`;
+    case "transferOwnership":
+      return `${e.labName} → ${e.controllerRoleId}`;
+    case "computeTransfer":
+      return `${e.fromRoleId} → ${e.toRoleId}: ${e.amount}u`;
+    case "foundLab":
+      return `${e.name} (${e.seedCompute}u)`;
+    case "narrativeOnly":
+      return "no mechanical effect";
+  }
+}
+
+interface LabOption { labId: string; name: string }
+interface RoleOption { roleId: string; name: string }
+
+/** Props the editor needs. `overrideStructuredEffect` is the Convex mutation. */
+interface EffectEditorProps {
+  effect: StructuredEffect | undefined;
+  confidence: Confidence | undefined;
+  submissionId: Id<"submissions">;
+  actionIndex: number;
+  labs: LabOption[];
+  roles: RoleOption[];
+  overrideStructuredEffect: (args: {
+    submissionId: Id<"submissions">;
+    actionIndex: number;
+    structuredEffect?: StructuredEffect;
+    acknowledge?: boolean;
+  }) => Promise<unknown>;
+  /** Facilitator-only editor; hidden in projector mode. */
+  isProjector: boolean;
+  /** Optional: disables edits while dice have been rolled (effects are locked
+   *  post-roll — use Re-resolve to change them). */
+  locked?: boolean;
+}
+
+/** Compact badge + click-to-edit popover. If the effect is absent, shows
+ *  nothing — the grader always emits one, so a missing badge is only possible
+ *  on legacy pre-refactor rounds. */
+export function EffectEditor(props: EffectEditorProps) {
+  const { effect, confidence, isProjector, locked } = props;
+  if (!effect) return null;
+
+  const { label, Icon, tone } = typeMeta(effect.type);
+  const summary = effectSummary(effect);
+  // Unused in projector/locked paths; the editable badge below reads confidence itself.
+  void confidence;
+
+  if (isProjector) {
+    return (
+      <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${tone}`}>
+        <Icon className="w-3 h-3" />
+        <span className="truncate">{label}{effect.type !== "narrativeOnly" ? `: ${summary}` : ""}</span>
+      </span>
+    );
+  }
+
+  if (locked) {
+    return (
+      <span
+        className={`inline-flex items-center gap-1 text-[10px] font-medium ${tone} opacity-75`}
+        title="Effect locked — dice already rolled. Use Re-resolve to change."
+      >
+        <Icon className="w-3 h-3" />
+        <span className="truncate">{label}{effect.type !== "narrativeOnly" ? `: ${summary}` : ""}</span>
+      </span>
+    );
+  }
+
+  return <EffectBadgeWithPopover {...props} />;
+}
+
+function EffectBadgeWithPopover(props: EffectEditorProps) {
+  const { effect, confidence, submissionId, actionIndex, labs, roles, overrideStructuredEffect } = props;
+
+  // Hooks must run unconditionally (Rules of Hooks). The parent EffectEditor
+  // already guards on effect, but we still guard here defensively — the render
+  // body handles the undefined case by returning null after hooks initialise.
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const update = () => {
+      const r = triggerRef.current?.getBoundingClientRect();
+      if (!r) return;
+      setMenuPos({ top: r.bottom + 4, left: r.left });
+    };
+    update();
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (triggerRef.current?.contains(t)) return;
+      if (menuRef.current?.contains(t)) return;
+      setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("scroll", update, true);
+    window.addEventListener("resize", update);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", update, true);
+      window.removeEventListener("resize", update);
+    };
+  }, [open]);
+
+  if (!effect) return null;
+
+  const { label, Icon, tone } = typeMeta(effect.type);
+  const summary = effectSummary(effect);
+  const lowConfidence = confidence === "low";
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        onClick={() => setOpen(!open)}
+        className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md border transition-colors ${
+          lowConfidence
+            ? "border-viz-warning/60 bg-viz-warning/10 text-viz-warning hover:bg-viz-warning/20"
+            : `border-navy-light bg-navy-dark ${tone} hover:bg-navy-light`
+        }`}
+        title={lowConfidence ? "Low confidence — click to review or edit" : "Click to edit effect"}
+      >
+        <Icon className="w-3 h-3" />
+        <span className="truncate max-w-[200px]">{label}{effect.type !== "narrativeOnly" ? `: ${summary}` : ""}</span>
+        <ChevronDown className="w-3 h-3" />
+      </button>
+      {open && menuPos && typeof document !== "undefined" && createPortal(
+        <div
+          ref={menuRef}
+          className="fixed z-[1000] bg-navy-dark border border-navy-light rounded-lg shadow-xl p-3 min-w-[320px]"
+          style={{ top: menuPos.top, left: menuPos.left }}
+        >
+          <EffectForm
+            initialEffect={effect}
+            labs={labs}
+            roles={roles}
+            onSubmit={async (next) => {
+              await overrideStructuredEffect({
+                submissionId,
+                actionIndex,
+                structuredEffect: next,
+                acknowledge: true,
+              });
+              setOpen(false);
+            }}
+            onAcknowledge={lowConfidence ? async () => {
+              await overrideStructuredEffect({
+                submissionId,
+                actionIndex,
+                structuredEffect: effect,
+                acknowledge: true,
+              });
+              setOpen(false);
+            } : undefined}
+            onCancel={() => setOpen(false)}
+          />
+        </div>,
+        document.body,
+      )}
+    </>
+  );
+}
+
+type EffectType = StructuredEffect["type"];
+
+function EffectForm({
+  initialEffect,
+  labs,
+  roles,
+  onSubmit,
+  onAcknowledge,
+  onCancel,
+}: {
+  initialEffect: StructuredEffect;
+  labs: LabOption[];
+  roles: RoleOption[];
+  onSubmit: (effect: StructuredEffect) => Promise<void>;
+  /** Only present when confidence is "low" — lets facilitator accept without edits. */
+  onAcknowledge?: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const [type, setType] = useState<EffectType>(initialEffect.type);
+  const [fields, setFields] = useState<Record<string, string>>(() => stringifyFields(initialEffect));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const labNames = labs.map((l) => l.name);
+  const roleIds = roles.map((r) => ({ id: r.roleId, name: r.name }));
+
+  const save = async () => {
+    setError(null);
+    const built = buildEffect(type, fields);
+    if (typeof built === "string") { setError(built); return; }
+    setSaving(true);
+    try {
+      await onSubmit(built);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2.5">
+      <div className="flex items-center gap-2">
+        <PencilLine className="w-3.5 h-3.5 text-text-light" />
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-text-light">Effect</span>
+      </div>
+
+      <label className="block text-[10px] text-text-light">
+        Type
+        <select
+          value={type}
+          onChange={(e) => { setType(e.target.value as EffectType); setFields({}); }}
+          className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white"
+        >
+          <option value="merge">Merge</option>
+          <option value="decommission">Decommission</option>
+          <option value="computeChange">Compute shock</option>
+          <option value="multiplierOverride">R&D multiplier override</option>
+          <option value="transferOwnership">Transfer ownership</option>
+          <option value="computeTransfer">Compute transfer (role → role)</option>
+          <option value="foundLab">Found lab (rare — usually pinned)</option>
+          <option value="narrativeOnly">Narrative only (no mechanics)</option>
+        </select>
+      </label>
+
+      <FieldsForType type={type} fields={fields} setFields={setFields} labNames={labNames} roleIds={roleIds} />
+
+      {error && <div className="text-[11px] text-viz-danger">{error}</div>}
+
+      <div className="flex gap-1.5 pt-1">
+        <button
+          onClick={() => void save()}
+          disabled={saving}
+          className="flex-1 text-[11px] px-2 py-1 bg-white text-navy rounded font-bold hover:bg-off-white disabled:opacity-40 flex items-center justify-center gap-1"
+        >
+          <Save className="w-3 h-3" /> Save
+        </button>
+        {onAcknowledge && (
+          <button
+            onClick={() => void onAcknowledge()}
+            className="text-[11px] px-2 py-1 bg-viz-warning/20 text-viz-warning rounded font-semibold hover:bg-viz-warning/30 border border-viz-warning/40"
+            title="Accept as-is and clear the low-confidence flag"
+          >
+            Looks good
+          </button>
+        )}
+        <button
+          onClick={onCancel}
+          className="text-[11px] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted flex items-center justify-center gap-1"
+        >
+          <X className="w-3 h-3" /> Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Serialise effect fields to string form for <input>/<select>. Only the
+ *  string + number scalar fields on the effect union are relevant — nested
+ *  objects (e.g. foundLab.allocation) aren't surfaced in the editor form,
+ *  so we skip them here. */
+function stringifyFields(e: StructuredEffect): Record<string, string> {
+  const f: Record<string, string> = {};
+  for (const [k, v] of Object.entries(e)) {
+    if (k === "type") continue;
+    if (v == null) continue;
+    if (typeof v === "string") {
+      f[k] = v;
+    } else if (typeof v === "number") {
+      f[k] = String(v);
+    }
+    // Objects (allocation) and other shapes are intentionally dropped — the
+    // facilitator can't edit them inline and the grader's pinned shape still
+    // stands if the effect type isn't changed.
+  }
+  return f;
+}
+
+/** Build a validated StructuredEffect from the form fields. Returns the effect
+ *  or an error message string. */
+function buildEffect(type: EffectType, f: Record<string, string>): StructuredEffect | string {
+  const get = (k: string): string | undefined => {
+    const v = f[k]?.trim();
+    return v ? v : undefined;
+  };
+  const getNum = (k: string): number | undefined => {
+    const raw = f[k]?.trim();
+    if (!raw) return undefined;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : undefined;
+  };
+
+  switch (type) {
+    case "merge": {
+      const survivor = get("survivor");
+      const absorbed = get("absorbed");
+      if (!survivor || !absorbed) return "Merge requires both survivor and absorbed lab names";
+      if (survivor === absorbed) return "Survivor and absorbed cannot be the same lab";
+      return { type: "merge", survivor, absorbed, newName: get("newName"), newSpec: get("newSpec") };
+    }
+    case "decommission": {
+      const labName = get("labName");
+      if (!labName) return "Decommission requires a lab name";
+      return { type: "decommission", labName };
+    }
+    case "computeChange": {
+      const labName = get("labName");
+      const change = getNum("change");
+      if (!labName || change == null) return "Compute shock requires lab name and non-zero change";
+      if (change === 0) return "Change must be non-zero — use narrative only for no-op effects";
+      return { type: "computeChange", labName, change };
+    }
+    case "multiplierOverride": {
+      const labName = get("labName");
+      const newMultiplier = getNum("newMultiplier");
+      if (!labName || newMultiplier == null) return "R&D override requires lab name and multiplier";
+      if (newMultiplier <= 0) return "Multiplier must be positive";
+      return { type: "multiplierOverride", labName, newMultiplier };
+    }
+    case "transferOwnership": {
+      const labName = get("labName");
+      const controllerRoleId = get("controllerRoleId");
+      if (!labName || !controllerRoleId) return "Transfer requires lab and new controller role";
+      return { type: "transferOwnership", labName, controllerRoleId };
+    }
+    case "computeTransfer": {
+      const fromRoleId = get("fromRoleId");
+      const toRoleId = get("toRoleId");
+      const amount = getNum("amount");
+      if (!fromRoleId || !toRoleId || amount == null) return "Transfer requires from, to, and amount";
+      if (fromRoleId === toRoleId) return "From and to must differ";
+      if (amount <= 0) return "Amount must be positive";
+      return { type: "computeTransfer", fromRoleId, toRoleId, amount };
+    }
+    case "foundLab": {
+      const name = get("name");
+      const seedCompute = getNum("seedCompute");
+      if (!name || seedCompute == null) return "Found lab requires name and seed compute";
+      return { type: "foundLab", name, seedCompute, spec: get("spec") };
+    }
+    case "narrativeOnly":
+      return { type: "narrativeOnly" };
+  }
+}
+
+function FieldsForType({
+  type,
+  fields,
+  setFields,
+  labNames,
+  roleIds,
+}: {
+  type: EffectType;
+  fields: Record<string, string>;
+  setFields: (f: Record<string, string>) => void;
+  labNames: string[];
+  roleIds: { id: string; name: string }[];
+}) {
+  const set = (k: string, v: string) => setFields({ ...fields, [k]: v });
+
+  const labSelect = (key: string, placeholder = "Select lab") => (
+    <select
+      value={fields[key] ?? ""}
+      onChange={(e) => set(key, e.target.value)}
+      className="w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white"
+    >
+      <option value="">{placeholder}</option>
+      {labNames.map((n) => <option key={n} value={n}>{n}</option>)}
+    </select>
+  );
+
+  const roleSelect = (key: string, placeholder = "Select role") => (
+    <select
+      value={fields[key] ?? ""}
+      onChange={(e) => set(key, e.target.value)}
+      className="w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white"
+    >
+      <option value="">{placeholder}</option>
+      {roleIds.map((r) => <option key={r.id} value={r.id}>{r.name} ({r.id})</option>)}
+    </select>
+  );
+
+  switch (type) {
+    case "merge":
+      return (
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-text-light">Survivor{labSelect("survivor")}</label>
+          <label className="block text-[10px] text-text-light">Absorbed{labSelect("absorbed")}</label>
+          <label className="block text-[10px] text-text-light">
+            Rename survivor (optional)
+            <input type="text" value={fields.newName ?? ""} onChange={(e) => set("newName", e.target.value)}
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white" />
+          </label>
+        </div>
+      );
+    case "decommission":
+      return <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>;
+    case "computeChange":
+      return (
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>
+          <label className="block text-[10px] text-text-light">
+            Change (u, can be negative)
+            <input type="number" value={fields.change ?? ""} onChange={(e) => set("change", e.target.value)}
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono" />
+          </label>
+        </div>
+      );
+    case "multiplierOverride":
+      return (
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>
+          <label className="block text-[10px] text-text-light">
+            New R&D multiplier
+            <input type="number" step="0.1" value={fields.newMultiplier ?? ""} onChange={(e) => set("newMultiplier", e.target.value)}
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono" />
+          </label>
+        </div>
+      );
+    case "transferOwnership":
+      return (
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>
+          <label className="block text-[10px] text-text-light">New controller{roleSelect("controllerRoleId")}</label>
+        </div>
+      );
+    case "computeTransfer":
+      return (
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-text-light">From role{roleSelect("fromRoleId")}</label>
+          <label className="block text-[10px] text-text-light">To role{roleSelect("toRoleId")}</label>
+          <label className="block text-[10px] text-text-light">
+            Amount (u)
+            <input type="number" value={fields.amount ?? ""} onChange={(e) => set("amount", e.target.value)}
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono" />
+          </label>
+        </div>
+      );
+    case "foundLab":
+      return (
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-text-light">
+            Lab name
+            <input type="text" value={fields.name ?? ""} onChange={(e) => set("name", e.target.value)}
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white" />
+          </label>
+          <label className="block text-[10px] text-text-light">
+            Seed compute (u)
+            <input type="number" value={fields.seedCompute ?? ""} onChange={(e) => set("seedCompute", e.target.value)}
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono" />
+          </label>
+        </div>
+      );
+    case "narrativeOnly":
+      return (
+        <p className="text-[11px] text-text-light/70 italic">
+          Action rolls and logs to the narrative but produces no mechanical state change.
+        </p>
+      );
+  }
+}

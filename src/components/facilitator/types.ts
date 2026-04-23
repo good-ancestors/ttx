@@ -1,4 +1,5 @@
 import type { Doc, Id } from "@convex/_generated/dataModel";
+import type { StructuredEffect, Confidence } from "@/lib/ai-prompts";
 
 /** Game document from Convex */
 export type Game = Doc<"games">;
@@ -28,6 +29,7 @@ export type Submission = Pick<
   "_id" | "_creationTime" | "tableId" | "gameId" | "roundNumber" | "roleId" | "status"
 > & {
   actions: {
+    actionId?: string;
     text: string;
     priority: number;
     secret?: boolean;
@@ -37,6 +39,8 @@ export type Submission = Pick<
     rolled?: number;
     success?: boolean;
     aiInfluence?: number;
+    structuredEffect?: StructuredEffect;
+    confidence?: Confidence;
   }[];
 };
 

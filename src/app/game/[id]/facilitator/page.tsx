@@ -87,6 +87,7 @@ export default function FacilitatorPage({
   const advanceRound = useAuthMutation(api.games.advanceRound);
   const finishGame = useAuthMutation(api.games.finishGame);
   const overrideProbability = useAuthMutation(api.submissions.overrideProbability);
+  const overrideStructuredEffect = useAuthMutation(api.submissions.overrideStructuredEffect);
   const ungradeAction = useAuthMutation(api.submissions.ungradeAction);
   const rerollAction = useAuthMutation(api.submissions.rerollAction);
   const setControlMode = useAuthMutation(api.tables.setControlMode);
@@ -449,6 +450,7 @@ export default function FacilitatorPage({
           openSubmissions={openSubmissions}
           skipTimer={skipTimer}
           overrideProbability={overrideProbability}
+          overrideStructuredEffect={overrideStructuredEffect}
           ungradeAction={ungradeAction}
           rerollAction={rerollAction}
           narrativeStale={narrativeStale}
