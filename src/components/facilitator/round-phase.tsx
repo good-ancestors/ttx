@@ -7,7 +7,6 @@ import { NarrativeEditor } from "@/components/manual-controls";
 import { AttemptedSection } from "./resolve-sections/attempted-section";
 import { HappenedSection } from "./resolve-sections/happened-section";
 import { StateSection } from "./resolve-sections/state-section";
-import { AddLabForm } from "./add-lab-form";
 import {
   Loader2,
   Dices,
@@ -53,7 +52,6 @@ interface RoundPhaseProps extends FacilitatorPhaseProps {
   onDiceChanged: () => void;
   advanceRound: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   finishGame: (args: { gameId: Id<"games"> }) => Promise<unknown>;
-  addLab: (args: { gameId: Id<"games">; name: string; roleId: string; rdMultiplier: number }) => Promise<unknown>;
   forceClearLock: (args: { gameId: Id<"games"> }) => Promise<unknown>;
   isTimerExpired?: boolean;
   timerDisplay?: string;
@@ -100,7 +98,6 @@ export function RoundPhase({
   onDiceChanged,
   advanceRound,
   finishGame,
-  addLab,
   forceClearLock,
   isTimerExpired,
   timerDisplay,
@@ -124,7 +121,7 @@ export function RoundPhase({
     };
   }, [submissions]);
 
-  const [editModal, setEditModal] = useState<"narrative" | "addlab" | null>(null);
+  const [editModal, setEditModal] = useState<"narrative" | null>(null);
   const [pendingConfirm, setPendingConfirm] = useState<"advance" | "end" | null>(null);
 
   const hasNarrative = hasNarrativeContent(currentRound?.summary);
@@ -352,56 +349,38 @@ export function RoundPhase({
         )}
       </div>)}
 
-      {/* ─── Edit modal overlay ─── */}
-      {!isProjector && editModal && (
-        <EditModal
-          editModal={editModal}
+      {/* ─── Edit modal overlay (narrative only; Add Lab has its own modal in page.tsx) ─── */}
+      {!isProjector && editModal === "narrative" && (
+        <NarrativeEditModal
           onClose={() => setEditModal(null)}
           gameId={gameId}
-          game={game}
-          tables={tables}
+          roundNumber={game.currentRound}
           currentRound={currentRound}
-          addLab={addLab}
         />
       )}
     </div>
   );
 }
 
-// ─── Edit modal ─────────────────────────────────────────────────────────────
-
-function EditModal({
-  editModal,
+function NarrativeEditModal({
   onClose,
   gameId,
-  game,
-  tables,
+  roundNumber,
   currentRound,
-  addLab,
 }: {
-  editModal: "narrative" | "addlab";
   onClose: () => void;
   gameId: Id<"games">;
-  game: RoundPhaseProps["game"];
-  tables: RoundPhaseProps["tables"];
+  roundNumber: number;
   currentRound: Round | undefined;
-  addLab: (args: { gameId: Id<"games">; name: string; roleId: string; rdMultiplier: number }) => Promise<unknown>;
 }) {
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8" onClick={onClose}>
       <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <span className="text-sm font-bold text-white capitalize">
-            {editModal === "addlab" ? "Add Lab" : "Edit Round Summary"}
-          </span>
+          <span className="text-sm font-bold text-white">Edit Round Summary</span>
           <button onClick={onClose} className="text-text-light hover:text-white text-sm">Close</button>
         </div>
-        {editModal === "narrative" && (
-          <NarrativeEditor gameId={gameId} roundNumber={game.currentRound} currentSummary={currentRound?.summary ?? undefined} startOpen />
-        )}
-        {editModal === "addlab" && (
-          <AddLabForm gameId={gameId} tables={tables} addLab={addLab} onDone={onClose} />
-        )}
+        <NarrativeEditor gameId={gameId} roundNumber={roundNumber} currentSummary={currentRound?.summary ?? undefined} startOpen />
       </div>
     </div>
   );

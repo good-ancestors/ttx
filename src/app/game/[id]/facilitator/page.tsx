@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState, useEffect, useRef } from "react";
+import { use, useMemo, useState, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -39,20 +39,23 @@ export default function FacilitatorPage({
   const game = useQuery(api.games.get, { gameId });
   const activeLabsRaw = useQuery(api.labs.getActiveLabs, isVisible ? { gameId } : "skip");
   const labTables = useQuery(api.tables.getByGame, isVisible ? { gameId } : "skip");
-  const labs: Lab[] = (activeLabsRaw ?? []).map((l) => {
-    const table = labTables?.find((t) => t.roleId === l.ownerRoleId);
-    return {
+  // Memoised: without this, every Convex reactive tick re-ran an O(labs × tables)
+  // scan inside the join. O(1) Map lookup instead; stable reference across ticks
+  // when the upstream data hasn't changed.
+  const labs: Lab[] = useMemo(() => {
+    const tableByRoleId = new Map((labTables ?? []).map((t) => [t.roleId, t] as const));
+    return (activeLabsRaw ?? []).map((l) => ({
       labId: l._id,
       name: l.name,
       roleId: l.ownerRoleId,
-      computeStock: table?.computeStock ?? 0,
+      computeStock: (l.ownerRoleId ? tableByRoleId.get(l.ownerRoleId) : undefined)?.computeStock ?? 0,
       rdMultiplier: l.rdMultiplier,
       allocation: l.allocation,
       spec: l.spec,
       colour: l.colour,
       status: l.status,
-    };
-  });
+    }));
+  }, [activeLabsRaw, labTables]);
 
   // Full tables query — needed for lobby (all 17 tables, including disabled)
   const gamePhase = game?.phase;
@@ -216,35 +219,14 @@ export default function FacilitatorPage({
     ? { label: aiDispositionData.label, description: aiDispositionData.description }
     : undefined;
 
-  // ─── Grade Remaining: AI grades only ungraded submitted actions ──────────
-  const handleGradeRemaining = async () => {
-    setActionError(null);
-    try {
-      await triggerGrading({
-        gameId,
-        roundNumber: game.currentRound,
-        aiDisposition: aiDispositionPayload,
-      });
-    } catch (err) {
-      console.error("Grading failed:", err);
-      setActionError(`Grading failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  };
-
-  // ─── Roll Dice: roll all graded actions + generate narrative ────────────
-  const handleRollDice = async () => {
-    setActionError(null);
-    try {
-      await triggerRoll({
-        gameId,
-        roundNumber: game.currentRound,
-        aiDisposition: aiDispositionPayload,
-      });
-    } catch (err) {
-      console.error("Roll failed:", err);
-      setActionError(`Roll failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  };
+  // Grade Remaining + Roll Dice both wrap a single trigger mutation with the
+  // same try/catch shell — safeAction handles both uniformly.
+  const handleGradeRemaining = safeAction("Grading", () =>
+    triggerGrading({ gameId, roundNumber: game.currentRound, aiDisposition: aiDispositionPayload }),
+  );
+  const handleRollDice = safeAction("Roll", () =>
+    triggerRoll({ gameId, roundNumber: game.currentRound, aiDisposition: aiDispositionPayload }),
+  );
 
   const handleReResolve = async () => {
     try {
@@ -457,7 +439,6 @@ export default function FacilitatorPage({
           onDiceChanged={() => setNarrativeStale(true)}
           advanceRound={advanceRound}
           finishGame={finishGame}
-          addLab={addLab}
           forceClearLock={forceClearLock}
           isTimerExpired={isExpired}
           timerDisplay={timerDisplay}

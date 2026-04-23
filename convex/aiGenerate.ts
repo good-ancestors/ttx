@@ -11,7 +11,6 @@ import { AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
 import { getSampleActions, pickRandom } from "@/lib/sample-actions";
 
-type Round = Doc<"rounds">;
 type Request = Doc<"requests">;
 
 
@@ -77,12 +76,14 @@ export const generateAll = internalAction({
   handler: async (ctx, args) => {
     const { gameId, roundNumber } = args;
 
-    const game = await ctx.runQuery(internal.games.getInternal, { gameId });
-    const labs = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
+    // Four independent reads — parallelise to save ~3 RTTs per AI-generation run.
+    const [game, labs, tables, submissions] = await Promise.all([
+      ctx.runQuery(internal.games.getInternal, { gameId }),
+      ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
+      ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
+      ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }),
+    ]);
     if (!game) return;
-
-    const tables: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
-    const submissions: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
     const submittedRoles = new Set(submissions.map((s) => s.roleId));
     const enabledTables = tables.filter((t) => t.enabled);
     const nonHumanTables = enabledTables.filter((t) => t.controlMode !== "human" && !submittedRoles.has(t.roleId));
@@ -244,15 +245,15 @@ export const generateAll = internalAction({
       aiTables = [...aiTables, ...npcFallback];
     }
 
-    // AI tables: use LLM
-    const rounds: Round[] = await ctx.runQuery(internal.rounds.getAllForPipeline, { gameId });
+    // AI tables: use LLM. Three independent reads — parallelise.
     const enabledRoleNames = enabledTables.map((t) => t.roleName);
-
-    // Fetch previous round data for context
-    const prevSubs = roundNumber > 1
-      ? await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber: roundNumber - 1 })
-      : [];
-    const allRequests: Request[] = await ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber });
+    const [rounds, prevSubs, allRequests] = await Promise.all([
+      ctx.runQuery(internal.rounds.getAllForPipeline, { gameId }),
+      roundNumber > 1
+        ? ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber: roundNumber - 1 })
+        : Promise.resolve<Submission[]>([]),
+      ctx.runQuery(internal.requests.getByGameAndRoundInternal, { gameId, roundNumber }),
+    ]);
 
     // Complexity is inherent: builds rich context per AI table (previous round,
     // safety lead info, proposals, disposition) for realistic LLM-generated actions.

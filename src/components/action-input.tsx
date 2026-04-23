@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY } from "@/lib/game-data";
-import { EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send, Zap, FlaskConical, GitMerge } from "lucide-react";
+import { Check, EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send, Zap, FlaskConical, GitMerge } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
 
 
@@ -463,7 +463,7 @@ function EndorsementPicker({
                   : "bg-warm-gray text-text-muted hover:bg-border"
               }`}
             >
-              {selected && <span className="mr-0.5">✓</span>}
+              {selected && <Check className="w-3 h-3 mr-0.5" />}
               {r.name}
             </button>
           );

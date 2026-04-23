@@ -309,9 +309,6 @@ export function AttemptedPanel({
             </div>
           )}
 
-          {/* The "Continue to Narrative" button now lives in the What Happened
-           *  section, alongside the Applied Effects list it's reviewing. */}
-
           {narrativeStale && hasNarrative && !isProjector && (
             <div className="mt-3 rounded-lg border border-viz-warning/30 bg-viz-warning/10 px-3 py-2 flex items-center justify-between gap-2">
               <span className="text-[11px] text-viz-warning">

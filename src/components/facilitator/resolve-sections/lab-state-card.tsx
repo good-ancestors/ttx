@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Merge, Pencil, Save, X } from "lucide-react";
+import { Check, Merge, Pencil, Save, X } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { COMPUTE_CATEGORIES, ROLE_MAP } from "@/lib/game-data";
 import { ComputeDotsViz } from "@/components/lab-tracker";
@@ -287,8 +287,9 @@ function LabStateEditor({
           />
         </label>
       </div>
-      <div className={`text-[10px] ${allocOK ? "text-text-light/60" : "text-viz-danger"}`}>
-        Total: {totalAlloc}% {allocOK ? "✓" : "(must = 100)"}
+      <div className={`flex items-center gap-1 text-[10px] ${allocOK ? "text-text-light/60" : "text-viz-danger"}`}>
+        <span>Total: {totalAlloc}%</span>
+        {allocOK ? <Check className="w-3 h-3" /> : <span>(must = 100)</span>}
       </div>
       {error && (
         <div className="text-[11px] text-viz-danger">{error}</div>

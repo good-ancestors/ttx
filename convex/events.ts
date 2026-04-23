@@ -66,6 +66,17 @@ export async function logEvent(
   });
 }
 
+/** Plain-English rendering for event `data.reason` codes emitted by the player
+ *  action path (lab_merge_failed etc.). Used by P7 applied-ops summaries. */
+export function plainEventReason(code: string): string {
+  switch (code) {
+    case "rolled_failure": return "dice roll failed";
+    case "lab_already_decommissioned": return "target lab was already absorbed earlier this round";
+    case "unknown": return "unknown reason";
+    default: return code.replace(/_/g, " ");
+  }
+}
+
 /** Internal query for the resolve pipeline: fetch events logged since a timestamp,
  *  filtered by type. Used by rollAndApplyEffects to surface player-originated
  *  structural ops (lab_founded / lab_merged / lab_merge_failed) that landed during

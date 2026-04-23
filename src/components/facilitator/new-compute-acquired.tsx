@@ -5,7 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useAuthMutation } from "@/lib/hooks";
 import type { Id } from "@convex/_generated/dataModel";
-import { TrendingUp, Pencil, Save, X } from "lucide-react";
+import { TrendingUp, Pencil, Save, X, Check } from "lucide-react";
 
 /**
  * New Compute Acquired — previews each role's acquired compute for this round.
@@ -191,8 +191,9 @@ function AcquiredEditor({
           );
         })}
       </div>
-      <div className={`text-[10px] ${pctOK ? "text-text-light/60" : "text-viz-danger"}`}>
-        Share total: {totalPct.toFixed(1)}% {pctOK ? "✓" : "(must = 100)"}
+      <div className={`flex items-center gap-1 text-[10px] ${pctOK ? "text-text-light/60" : "text-viz-danger"}`}>
+        <span>Share total: {totalPct.toFixed(1)}%</span>
+        {pctOK ? <Check className="w-3 h-3" /> : <span>(must = 100)</span>}
       </div>
       {error && (
         <div className="text-[11px] text-viz-danger">{error}</div>

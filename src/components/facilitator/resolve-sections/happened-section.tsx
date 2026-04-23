@@ -229,9 +229,6 @@ function AppliedOpsPanel({
         <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
           Applied Effects
         </span>
-        {applied.length === 0 && rejected.length === 0 && (
-          <span className="text-xs text-navy-muted">Routine round — no structural changes</span>
-        )}
       </div>
 
       {applied.length > 0 && (

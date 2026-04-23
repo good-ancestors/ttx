@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Id, Doc } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator, assertNotResolving } from "./events";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
@@ -71,24 +71,7 @@ const mergeLabValidator = v.object({
   newSpec: v.optional(v.string()),
 });
 
-// Structured effect emitted by the batched grading LLM (and editable by the
-// facilitator at P2 via overrideStructuredEffect). Matches the discriminated
-// union in ai-prompts.ts / schema.ts. Applied deterministically at resolve.
-const structuredEffectValidator = v.union(
-  v.object({ type: v.literal("merge"), survivor: v.string(), absorbed: v.string(), newName: v.optional(v.string()), newSpec: v.optional(v.string()) }),
-  v.object({ type: v.literal("decommission"), labName: v.string() }),
-  v.object({ type: v.literal("breakthrough"), labName: v.string() }),
-  v.object({ type: v.literal("modelRollback"), labName: v.string() }),
-  v.object({ type: v.literal("computeDestroyed"), labName: v.string(), amount: v.number() }),
-  v.object({ type: v.literal("researchDisruption"), labName: v.string() }),
-  v.object({ type: v.literal("researchBoost"), labName: v.string() }),
-  v.object({ type: v.literal("transferOwnership"), labName: v.string(), controllerRoleId: v.string() }),
-  v.object({ type: v.literal("computeTransfer"), fromRoleId: v.string(), toRoleId: v.string(), amount: v.number() }),
-  v.object({ type: v.literal("foundLab"), name: v.string(), spec: v.optional(v.string()), seedCompute: v.number(), allocation: v.optional(v.object({ deployment: v.number(), research: v.number(), safety: v.number() })) }),
-  v.object({ type: v.literal("narrativeOnly") }),
-);
-
-const confidenceValidator = v.union(v.literal("high"), v.literal("medium"), v.literal("low"));
+import { structuredEffectValidator, confidenceValidator } from "./validators";
 
 const actionValidator = v.object({
   text: v.string(),
@@ -125,6 +108,16 @@ const persistedActionValidator = v.object({
   structuredEffect: v.optional(structuredEffectValidator),
   confidence: v.optional(confidenceValidator),
 });
+
+/** Strip grading byproducts from a persisted action. `reasoning` is always
+ *  stripped (stale once the grade is overridden or discarded).
+ *  `resetRoll: true` also drops `probability` / `rolled` / `success` — used by
+ *  ungradeAction to fully reset to the pre-graded state. */
+type PersistedAction = Doc<"submissions">["actions"][number];
+function stripGradingFields(action: PersistedAction, { resetRoll = false } = {}): PersistedAction {
+  const { reasoning: _reasoning, probability, rolled, success, ...rest } = action;
+  return resetRoll ? rest : { ...rest, probability, rolled, success };
+}
 
 // Full query — includes secret text and reasoning. Requires facilitator token.
 export const getByGameAndRound = query({
@@ -962,25 +955,12 @@ export const overrideProbability = mutation({
     const action = actions[args.actionIndex];
     if (!action) return;
 
-    // When probability changes, stale LLM reasoning no longer applies to the new value.
-    // Strip it so the facilitator-visible "Show reasoning" tooltip doesn't misleadingly
-    // justify a number that has since been overridden.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { reasoning: _reasoning, ...actionWithoutReasoning } = action;
-
-    // If dice have already been rolled, auto-reroll at the new probability
-    if (action.rolled != null) {
-      actions[args.actionIndex] = {
-        ...actionWithoutReasoning,
-        probability: args.probability,
-        ...rollDice(args.probability, action.aiInfluence),
-      };
-    } else {
-      actions[args.actionIndex] = {
-        ...actionWithoutReasoning,
-        probability: args.probability,
-      };
-    }
+    // stripGradingFields drops stale reasoning; if dice were already rolled we
+    // auto-reroll at the new probability.
+    const stripped = stripGradingFields(action);
+    actions[args.actionIndex] = action.rolled != null
+      ? { ...stripped, probability: args.probability, ...rollDice(args.probability, action.aiInfluence) }
+      : { ...stripped, probability: args.probability };
 
     await ctx.db.patch(args.submissionId, { actions });
   },
@@ -1037,11 +1017,8 @@ export const ungradeAction = mutation({
     const action = actions[args.actionIndex];
     if (!action) return;
 
-    // Strip grading/rolling fields AND stale reasoning — once the grade is
-    // discarded, the LLM rationale behind it is no longer meaningful.
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { probability: _p, rolled: _r, success: _s, reasoning: _reason, ...rest } = action;
-    actions[args.actionIndex] = rest;
+    // Full reset: drop reasoning AND probability/rolled/success.
+    actions[args.actionIndex] = stripGradingFields(action, { resetRoll: true });
 
     await ctx.db.patch(args.submissionId, { actions });
   },

@@ -5,28 +5,21 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAuthMutation } from "@/lib/hooks";
 import { Pencil, Save, AlertTriangle } from "lucide-react";
+import { LEGACY_SECTIONS, type NarrativeSummary } from "@/lib/narrative-sections";
 
-type DomainKey = "labs" | "geopolitics" | "publicAndMedia" | "aiSystems";
+type DomainKey = (typeof LEGACY_SECTIONS)[number]["key"];
 
-type Summary = {
-  labs?: string[];
-  geopolitics?: string[];
-  publicAndMedia?: string[];
-  aiSystems?: string[];
-  facilitatorNotes?: string;
-  // Transitional 3-field shape from prior prompt version — still present on
-  // older round docs. Seeded into the four-domain editor for continuity.
-  outcomes?: string;
-  stateOfPlay?: string;
-  pressures?: string;
+type Summary = NarrativeSummary;
+
+/** Editor-only metadata per domain — hint + row count. Keys + labels come
+ *  from LEGACY_SECTIONS (single source of truth for the domain list). */
+const EDITOR_META: Record<DomainKey, { hint: string; rows: number }> = {
+  labs:           { hint: "Lab-level outcomes: mergers, transfers, safety moves, revenue shocks.", rows: 4 },
+  geopolitics:    { hint: "Government actions, diplomacy, regulation, intel ops, alliances.",      rows: 4 },
+  publicAndMedia: { hint: "Press framing, public sentiment, NGO / protest / civil-society.",       rows: 3 },
+  aiSystems:      { hint: "Observable AI behaviour: evals, incidents, pauses, demonstrations.",    rows: 3 },
 };
-
-const SECTION_ORDER: { key: DomainKey; label: string; hint: string; rows: number }[] = [
-  { key: "labs",           label: "Labs",             hint: "Lab-level outcomes: mergers, transfers, safety moves, revenue shocks.", rows: 4 },
-  { key: "geopolitics",    label: "Geopolitics",      hint: "Government actions, diplomacy, regulation, intel ops, alliances.",      rows: 4 },
-  { key: "publicAndMedia", label: "Public & Media",   hint: "Press framing, public sentiment, NGO / protest / civil-society.",       rows: 3 },
-  { key: "aiSystems",      label: "AI Systems",       hint: "Observable AI behaviour: evals, incidents, pauses, demonstrations.",    rows: 3 },
-];
+const SECTION_ORDER = LEGACY_SECTIONS.map(({ key, label }) => ({ key, label, ...EDITOR_META[key] }));
 
 /** Seed one textarea per domain as a newline-separated bullet list. If the
  *  round only has legacy 3-field data, dump the old fields into labs so edits

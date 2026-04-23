@@ -21,6 +21,7 @@ import {
 import handoutData from "../public/role-handouts.json" with { type: "json" };
 import type { RoleHandout } from "@/lib/role-handouts";
 import type { LabWithCompute } from "./labs";
+import { plainEventReason } from "./events";
 import {
   ROLES,
   LAB_PROGRESSION,
@@ -64,6 +65,29 @@ async function failPipeline(ctx: ActionCtx, gameId: Id<"games">, stage: string, 
 
 function generateNonce(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
+/** Shape the prior rounds into the prompt input. Includes both prose
+ *  (outcomes/stateOfPlay/pressures) and legacy 4-domain buckets;
+ *  `formatPreviousRounds` in ai-prompts.ts prefers prose when present and
+ *  falls back to legacy. Consumers can pass the result to either the grading
+ *  or narrate prompt without re-munging. */
+function previousRoundsForPrompt(rounds: Round[], roundNumber: number) {
+  return rounds
+    .filter((r) => r.number < roundNumber && r.summary)
+    .map((r) => ({
+      number: r.number,
+      label: r.label,
+      summary: r.summary ? {
+        outcomes: r.summary.outcomes,
+        stateOfPlay: r.summary.stateOfPlay,
+        pressures: r.summary.pressures,
+        labs: r.summary.labs,
+        geopolitics: r.summary.geopolitics,
+        publicAndMedia: r.summary.publicAndMedia,
+        aiSystems: r.summary.aiSystems,
+      } : undefined,
+    }));
 }
 
 /** Batched grading — single LLM call across all roles per round. Emits
@@ -174,17 +198,6 @@ async function gradeAllBatched(
 
   const currentRound = roundMap.get(roundNumber);
   const prevRound = roundMap.get(roundNumber - 1);
-  const previousRoundsForPrompt = rounds
-    .filter((r) => r.number < roundNumber && r.summary)
-    .map((r) => ({
-      number: r.number,
-      label: r.label,
-      summary: r.summary ? {
-        outcomes: r.summary.outcomes,
-        stateOfPlay: r.summary.stateOfPlay,
-        pressures: r.summary.pressures,
-      } : undefined,
-    }));
 
   const prompt = buildBatchedGradingPrompt({
     round: roundNumber,
@@ -192,7 +205,7 @@ async function gradeAllBatched(
     enabledRoles: enabledRoleNames,
     labs,
     roles: batchedRoles,
-    previousRounds: previousRoundsForPrompt,
+    previousRounds: previousRoundsForPrompt(rounds, roundNumber),
     previousTrajectories: prevRound?.labTrajectories as
       { labName: string; safetyAdequacy: string; likelyFailureMode: string; reasoning: string; signalStrength: number }[] | undefined,
   });
@@ -812,10 +825,14 @@ export const rollAndApplyEffects = internalAction({
       // consequences of actions reviewable before the deterministic growth lands,
       // and matches docs/resolve-pipeline.md.
 
+      // O(1) labId lookup maps for the ledger builds below.
+      const workingLabsById = new Map(workingLabs.map((l) => [l.labId, l] as const));
+      const labsAfterClearById = new Map(labsAfterClear.map((l) => [l.labId, l] as const));
+
       // Adjusted compute ledger entries from computeDestroyed effects.
       const adjustedEntries = computeDestructions
         .map((m) => {
-          const lab = workingLabs.find((l) => l.labId === m.labId);
+          const lab = workingLabsById.get(m.labId);
           if (!lab?.roleId) return null;
           return { roleId: lab.roleId, amount: m.change, reason: m.reason };
         })
@@ -826,8 +843,8 @@ export const rollAndApplyEffects = internalAction({
       // settle in rollAllImpl with their own ledger rows).
       const mergedEntries: { fromRoleId: string; toRoleId: string; amount: number; reason: string }[] = [];
       for (const m of mergeOps) {
-        const absorbed = labsAfterClear.find((l) => l.labId === m.absorbedLabId);
-        const survivor = labsAfterClear.find((l) => l.labId === m.survivorLabId);
+        const absorbed = labsAfterClearById.get(m.absorbedLabId);
+        const survivor = labsAfterClearById.get(m.survivorLabId);
         if (!absorbed?.roleId || !survivor?.roleId) continue;
         const absorbedStock = tableComputeByRole.get(absorbed.roleId) ?? 0;
         if (absorbedStock > 0) {
@@ -893,14 +910,6 @@ export const rollAndApplyEffects = internalAction({
           sinceTimestamp: sinceMs,
           types: ["lab_merged", "lab_merge_failed", "lab_founded", "lab_founding_failed"],
         });
-        const plainReason = (r: string): string => {
-          switch (r) {
-            case "rolled_failure": return "dice roll failed";
-            case "lab_already_decommissioned": return "target lab was already absorbed earlier this round";
-            case "unknown": return "unknown reason";
-            default: return r.replace(/_/g, " ");
-          }
-        };
         for (const evt of playerEvents) {
           const data: Record<string, unknown> = evt.data ? (() => { try { return JSON.parse(evt.data) as Record<string, unknown>; } catch { return {}; } })() : {};
           const actorName = evt.roleId ? roleNameMap.get(evt.roleId) ?? evt.roleId : "a player";
@@ -922,11 +931,10 @@ export const rollAndApplyEffects = internalAction({
             }
             const survivorName = typeof data.survivorLabId === "string" ? labNameById.get(data.survivorLabId as Id<"labs">) ?? "?" : "?";
             const absorbedName = typeof data.absorbedLabId === "string" ? labNameById.get(data.absorbedLabId as Id<"labs">) ?? "?" : "?";
-            const plainReason_text = plainReason(reason);
             appliedOps.push({
               type: "rejected",
               status: "rejected",
-              summary: `${actorName} tried to merge ${absorbedName} into ${survivorName} — ${plainReason_text}`,
+              summary: `${actorName} tried to merge ${absorbedName} into ${survivorName} — ${plainEventReason(reason)}`,
               category: "precondition_failure",
               opType: "merge",
             });
@@ -993,16 +1001,13 @@ export const rollAndApplyEffects = internalAction({
         });
       }
 
-      // No post-growth multiplier re-apply: breakthrough / modelRollback produce a
-      // final multiplier at phase 5, and phase-9 growth grows from that new base.
-      // Productivity mods were stashed inside applyDecidedEffectsInternal; phase 9
-      // will consume them.
-      await ctx.runMutation(internal.rounds.setAppliedOpsInternal, { gameId, roundNumber, appliedOps });
-
-      // P7 — transition to effect-review, release resolving lock. Facilitator reviews
-      // applied ops + any flagged rejections, then clicks "Continue to Narrative" to
-      // trigger continueFromEffectReview.
-      await ctx.runMutation(internal.games.setPhaseEffectReviewInternal, { gameId });
+      // P7 — stash appliedOps for the review panel and transition to effect-review.
+      // Independent patches on different docs, so run in parallel. Phase-9 growth
+      // will consume the productivity mods stashed earlier by applyDecidedEffectsInternal.
+      await Promise.all([
+        ctx.runMutation(internal.rounds.setAppliedOpsInternal, { gameId, roundNumber, appliedOps }),
+        ctx.runMutation(internal.games.setPhaseEffectReviewInternal, { gameId }),
+      ]);
     } catch (err) {
       await failPipeline(ctx, gameId, "Resolve", err);
     }
@@ -1057,12 +1062,15 @@ export const continueFromEffectReview = internalAction({
         mechLog.push({ sequence: phase5LogLen + mechLog.length, ...entry });
       };
 
+      // O(1) lookup maps — all sites below previously scanned labsNow linearly.
+      const labsByRoleId = new Map(labsNow.map((l) => [l.roleId, l] as const));
+      const labsByLabId = new Map(labsNow.map((l) => [l.labId, l] as const));
+
       const ceoAllocations = new Map<string, { deployment: number; research: number; safety: number }>();
       for (const sub of submissions) {
-        if (sub.computeAllocation) {
-          const lab = labsNow.find((l) => l.roleId === sub.roleId);
-          if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
-        }
+        if (!sub.computeAllocation) continue;
+        const lab = labsByRoleId.get(sub.roleId);
+        if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
       }
       // One-round productivity modifiers from researchDisruption / researchBoost
       // stashed by applyDecidedEffectsInternal. Cleared in applyGrowthAndAcquisitionInternal
@@ -1070,7 +1078,7 @@ export const continueFromEffectReview = internalAction({
       const productivityModsByLab = new Map<string, number>();
       if (currentRound.pendingProductivityMods) {
         for (const mod of currentRound.pendingProductivityMods) {
-          const lab = labsNow.find((l) => l.labId === mod.labId);
+          const lab = labsByLabId.get(mod.labId);
           if (lab) {
             productivityModsByLab.set(lab.name, mod.modifier);
             pushLog({ phase: 9, source: "grader-effect", subject: lab.name, field: "productivity", before: 1, after: mod.modifier, reason: `productivity mod applied to R${roundNumber} growth` });
@@ -1080,7 +1088,7 @@ export const continueFromEffectReview = internalAction({
       const grownLabs = computeLabGrowth(labsNow, ceoAllocations, roundNumber, maxMult, productivityModsByLab);
       const multiplierUpdates: { labId: Id<"labs">; rdMultiplier: number }[] = [];
       for (const lab of grownLabs) {
-        const pre = labsNow.find((l) => l.labId === lab.labId);
+        const pre = labsByLabId.get(lab.labId);
         if (!pre) continue;
         if (lab.rdMultiplier !== pre.rdMultiplier) {
           multiplierUpdates.push({ labId: pre.labId, rdMultiplier: lab.rdMultiplier });
@@ -1088,15 +1096,11 @@ export const continueFromEffectReview = internalAction({
         }
       }
 
-      // (No post-growth multiplier re-apply. Breakthrough / modelRollback finalise
-      // rdMultiplier at phase 5, and computeLabGrowth grows from that base — the old
-      // override compound bug is gone with the four-layer redesign.)
-
       // ═══ PHASE 10 — NEW COMPUTE ACQUIRED ═══
       const acquiredEntries: { roleId: string; amount: number }[] = [];
       for (const lab of grownLabs) {
         if (!lab.roleId) continue;
-        const pre = labsNow.find((l) => l.labId === lab.labId);
+        const pre = labsByLabId.get(lab.labId);
         if (!pre) continue;
         const preStock = pre.roleId ? tableComputeByRole.get(pre.roleId) ?? 0 : 0;
         const acquired = lab.computeStock - preStock;
@@ -1134,14 +1138,15 @@ export const continueFromEffectReview = internalAction({
         acquired: acquiredEntries,
         mechanicsLog: mechLog,
       });
-      // Snapshot labs-after — the narrator's frozen ground truth.
-      await ctx.runMutation(internal.rounds.snapshotAfterInternal, { gameId, roundNumber });
-
-      // ═══ PHASE 11 — NARRATE ═══
-      await ctx.runMutation(internal.games.updatePipelineStatus, {
-        gameId,
-        status: { step: "narrating", detail: "Writing the story...", startedAt: Date.now() },
-      });
+      // Snapshot labs-after (narrator's frozen ground truth) + update pipeline
+      // status for the UI — independent writes, run in parallel.
+      await Promise.all([
+        ctx.runMutation(internal.rounds.snapshotAfterInternal, { gameId, roundNumber }),
+        ctx.runMutation(internal.games.updatePipelineStatus, {
+          gameId,
+          status: { step: "narrating", detail: "Writing the story...", startedAt: Date.now() },
+        }),
+      ]);
 
       const labsAfterApply: LabWithCompute[] = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId });
 
@@ -1202,22 +1207,6 @@ export const continueFromEffectReview = internalAction({
         }
       }
 
-      const previousRoundsForPrompt = rounds
-        .filter((r) => r.number < roundNumber && r.summary)
-        .map((r) => ({
-          number: r.number,
-          label: r.label,
-          summary: r.summary ? {
-            outcomes: r.summary.outcomes,
-            stateOfPlay: r.summary.stateOfPlay,
-            pressures: r.summary.pressures,
-            labs: r.summary.labs,
-            geopolitics: r.summary.geopolitics,
-            publicAndMedia: r.summary.publicAndMedia,
-            aiSystems: r.summary.aiSystems,
-          } : undefined,
-        }));
-
       const narrativePrompt = buildResolveNarrativePrompt({
         round: roundNumber,
         roundLabel: currentRound.label ?? `Round ${roundNumber}`,
@@ -1225,7 +1214,7 @@ export const continueFromEffectReview = internalAction({
         labsBefore,
         labsAfter: labsAfterApply,
         aiDisposition,
-        previousRounds: previousRoundsForPrompt,
+        previousRounds: previousRoundsForPrompt(rounds, roundNumber),
         previousTrajectories,
         interRoundChanges,
       });
@@ -1245,7 +1234,6 @@ export const continueFromEffectReview = internalAction({
       let narrativeModel = "none";
       let narrativeTimeMs = 0;
       let narrativeTokens = 0;
-      let narrativeResponseJson = "";
       let narrativeError: string | undefined;
 
       try {
@@ -1322,7 +1310,6 @@ export const continueFromEffectReview = internalAction({
         narrativeModel = result.model;
         narrativeTimeMs = result.timeMs;
         narrativeTokens = result.tokens;
-        narrativeResponseJson = JSON.stringify(result.output, null, 2);
       } catch (narrativeErr) {
         narrativeError = narrativeErr instanceof Error ? narrativeErr.message : String(narrativeErr);
         console.error("[pipeline] Narrative LLM failed, using fallback:", narrativeErr);
@@ -1367,7 +1354,7 @@ export const continueFromEffectReview = internalAction({
       const narrateDebug = {
         narrate: {
           prompt: narrativePrompt,
-          response: narrativeResponseJson ? JSON.parse(narrativeResponseJson) : null,
+          response: narrativeOutput,
           error: narrativeError,
         },
       };

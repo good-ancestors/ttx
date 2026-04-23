@@ -77,6 +77,11 @@ interface EffectEditorProps {
   locked?: boolean;
 }
 
+/** "Merge: X → Y" style label; narrativeOnly hides the colon+summary. */
+function formatEffectLabel(label: string, summary: string, type: StructuredEffect["type"]): string {
+  return type === "narrativeOnly" ? label : `${label}: ${summary}`;
+}
+
 /** Compact badge + click-to-edit popover. If the effect is absent, shows
  *  nothing — the grader always emits one. */
 export function EffectEditor(props: EffectEditorProps) {
@@ -84,24 +89,18 @@ export function EffectEditor(props: EffectEditorProps) {
   if (!effect) return null;
 
   const { label, Icon, tone, summary } = describeEffect(effect);
+  const text = formatEffectLabel(label, summary, effect.type);
 
-  if (isProjector) {
-    return (
-      <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${tone}`}>
-        <Icon className="w-3 h-3" />
-        <span className="truncate">{label}{effect.type !== "narrativeOnly" ? `: ${summary}` : ""}</span>
-      </span>
-    );
-  }
-
-  if (locked) {
+  // Read-only surfaces (projector + post-roll locked) render the same badge
+  // without a popover; locked gets a muted tone and a tooltip.
+  if (isProjector || locked) {
     return (
       <span
-        className={`inline-flex items-center gap-1 text-[10px] font-medium ${tone} opacity-75`}
-        title="Effect locked — dice already rolled. Use Re-resolve to change."
+        className={`inline-flex items-center gap-1 text-[10px] font-medium ${tone}${locked ? " opacity-75" : ""}`}
+        title={locked ? "Effect locked — dice already rolled. Use Re-resolve to change." : undefined}
       >
         <Icon className="w-3 h-3" />
-        <span className="truncate">{label}{effect.type !== "narrativeOnly" ? `: ${summary}` : ""}</span>
+        <span className="truncate">{text}</span>
       </span>
     );
   }
@@ -112,9 +111,6 @@ export function EffectEditor(props: EffectEditorProps) {
 function EffectBadgeWithPopover(props: EffectEditorProps) {
   const { effect, confidence, submissionId, actionIndex, labs, roles, overrideStructuredEffect } = props;
 
-  // Hooks must run unconditionally (Rules of Hooks). The parent EffectEditor
-  // already guards on effect, but we still guard here defensively — the render
-  // body handles the undefined case by returning null after hooks initialise.
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -162,7 +158,7 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
         title={lowConfidence ? "Low confidence — click to review or edit" : "Click to edit effect"}
       >
         <Icon className="w-3 h-3" />
-        <span className="truncate max-w-[200px]">{label}{effect.type !== "narrativeOnly" ? `: ${summary}` : ""}</span>
+        <span className="truncate max-w-[200px]">{formatEffectLabel(label, summary, effect.type)}</span>
         <ChevronDown className="w-3 h-3" />
       </button>
       {open && menuPos && typeof document !== "undefined" && createPortal(

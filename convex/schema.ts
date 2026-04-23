@@ -1,5 +1,6 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
+import { structuredEffectValidator, confidenceValidator } from "./validators";
 
 /** Lab snapshot captured on round resolve. The lab's canonical state lives in the labs table;
  *  this snapshot is a point-in-time copy used for restoreSnapshot and post-game timeline views.
@@ -183,22 +184,10 @@ export default defineSchema({
          *    Stock    — computeDestroyed / computeTransfer / merge move compute.
          *    Velocity — derived at resolve time, never an effect.
          *    Productivity — researchDisruption / researchBoost (one-round throughput mod). */
-        structuredEffect: v.optional(v.union(
-          v.object({ type: v.literal("merge"), survivor: v.string(), absorbed: v.string(), newName: v.optional(v.string()), newSpec: v.optional(v.string()) }),
-          v.object({ type: v.literal("decommission"), labName: v.string() }),
-          v.object({ type: v.literal("breakthrough"), labName: v.string() }),
-          v.object({ type: v.literal("modelRollback"), labName: v.string() }),
-          v.object({ type: v.literal("computeDestroyed"), labName: v.string(), amount: v.number() }),
-          v.object({ type: v.literal("researchDisruption"), labName: v.string() }),
-          v.object({ type: v.literal("researchBoost"), labName: v.string() }),
-          v.object({ type: v.literal("transferOwnership"), labName: v.string(), controllerRoleId: v.string() }),
-          v.object({ type: v.literal("computeTransfer"), fromRoleId: v.string(), toRoleId: v.string(), amount: v.number() }),
-          v.object({ type: v.literal("foundLab"), name: v.string(), spec: v.optional(v.string()), seedCompute: v.number(), allocation: v.optional(v.object({ deployment: v.number(), research: v.number(), safety: v.number() })) }),
-          v.object({ type: v.literal("narrativeOnly") }),
-        )),
+        structuredEffect: v.optional(structuredEffectValidator),
         /** Grader's confidence in its grade + effect. `low` forces P2 click-through before
          *  Continue unlocks — facilitator must acknowledge (or edit) each low-confidence row. */
-        confidence: v.optional(v.union(v.literal("high"), v.literal("medium"), v.literal("low"))),
+        confidence: v.optional(confidenceValidator),
       })
     ),
     computeAllocation: v.optional(
