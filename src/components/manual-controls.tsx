@@ -6,48 +6,56 @@ import type { Id } from "@convex/_generated/dataModel";
 import { useAuthMutation } from "@/lib/hooks";
 import { Pencil, Save, AlertTriangle } from "lucide-react";
 
-type ProseSummary = {
-  outcomes?: string;
-  stateOfPlay?: string;
-  pressures?: string;
-  // Legacy 4-domain fields accepted for backward compat; the editor writes prose
-  // fields only, but preserves legacy data on round documents that have it.
+type DomainKey = "labs" | "geopolitics" | "publicAndMedia" | "aiSystems";
+
+type Summary = {
   labs?: string[];
   geopolitics?: string[];
   publicAndMedia?: string[];
   aiSystems?: string[];
+  facilitatorNotes?: string;
+  // Transitional 3-field shape from prior prompt version — still present on
+  // older round docs. Seeded into the four-domain editor for continuity.
+  outcomes?: string;
+  stateOfPlay?: string;
+  pressures?: string;
 };
 
-const SECTION_ORDER: { key: "outcomes" | "stateOfPlay" | "pressures"; label: string; hint: string; rows: number }[] = [
-  { key: "outcomes", label: "Outcomes", hint: "2-3 sentences: what the successful actions produced, meaning-level.", rows: 4 },
-  { key: "stateOfPlay", label: "State of Play", hint: "1-2 sentences: where key players sit now, in relative terms.", rows: 3 },
-  { key: "pressures", label: "Pressures", hint: "1-2 sentences: what's set up, contested, or at stake next round.", rows: 3 },
+const SECTION_ORDER: { key: DomainKey; label: string; hint: string; rows: number }[] = [
+  { key: "labs",           label: "Labs",             hint: "Lab-level outcomes: mergers, transfers, safety moves, revenue shocks.", rows: 4 },
+  { key: "geopolitics",    label: "Geopolitics",      hint: "Government actions, diplomacy, regulation, intel ops, alliances.",      rows: 4 },
+  { key: "publicAndMedia", label: "Public & Media",   hint: "Press framing, public sentiment, NGO / protest / civil-society.",       rows: 3 },
+  { key: "aiSystems",      label: "AI Systems",       hint: "Observable AI behaviour: evals, incidents, pauses, demonstrations.",    rows: 3 },
 ];
 
-/** Seed the prose editor when the round only has legacy 4-domain data. Joins the
- *  bullet arrays into starting text the facilitator can edit down to the new shape. */
-function seedFromLegacy(summary: ProseSummary | undefined): { outcomes: string; stateOfPlay: string; pressures: string } {
-  if (!summary) return { outcomes: "", stateOfPlay: "", pressures: "" };
-  if (summary.outcomes || summary.stateOfPlay || summary.pressures) {
+/** Seed one textarea per domain as a newline-separated bullet list. If the
+ *  round only has legacy 3-field data, dump the old fields into labs so edits
+ *  have a starting point rather than a blank slate. */
+function seedFromSummary(summary: Summary | undefined): Record<DomainKey, string> {
+  if (!summary) return { labs: "", geopolitics: "", publicAndMedia: "", aiSystems: "" };
+  const hasFourDomain = SECTION_ORDER.some(({ key }) => (summary[key] ?? []).length > 0);
+  if (hasFourDomain) {
     return {
-      outcomes: summary.outcomes ?? "",
-      stateOfPlay: summary.stateOfPlay ?? "",
-      pressures: summary.pressures ?? "",
+      labs: (summary.labs ?? []).join("\n"),
+      geopolitics: (summary.geopolitics ?? []).join("\n"),
+      publicAndMedia: (summary.publicAndMedia ?? []).join("\n"),
+      aiSystems: (summary.aiSystems ?? []).join("\n"),
     };
   }
-  // Legacy-only round: best-effort seeding so edits have a starting point.
-  const labs = (summary.labs ?? []).join(" ");
-  const geo = (summary.geopolitics ?? []).join(" ");
-  const media = (summary.publicAndMedia ?? []).join(" ");
-  const ai = (summary.aiSystems ?? []).join(" ");
-  return {
-    outcomes: [labs, geo].filter(Boolean).join(" ").trim(),
-    stateOfPlay: media.trim(),
-    pressures: ai.trim(),
-  };
+  // Legacy 3-field prose — dump everything into labs for manual re-bucketing.
+  const merged = [summary.outcomes, summary.stateOfPlay, summary.pressures]
+    .filter(Boolean)
+    .join("\n");
+  return { labs: merged, geopolitics: "", publicAndMedia: "", aiSystems: "" };
 }
 
-// Manual narrative editor — facilitator types the situation-briefing shape.
+/** Textarea value (newline-separated) → array of non-empty bullet strings. */
+function bullets(raw: string): string[] {
+  return raw.split("\n").map((l) => l.replace(/^[-•*]\s+/, "").trim()).filter(Boolean);
+}
+
+// Manual narrative editor — facilitator types one bullet per line for each of
+// the four domain buckets. Bullets are normalised at save time.
 export function NarrativeEditor({
   gameId,
   roundNumber,
@@ -56,31 +64,24 @@ export function NarrativeEditor({
 }: {
   gameId: Id<"games">;
   roundNumber: number;
-  currentSummary?: ProseSummary;
+  currentSummary?: Summary;
   startOpen?: boolean;
 }) {
   const applySummary = useAuthMutation(api.rounds.applySummary);
   const [editing, setEditing] = useState(startOpen);
-  const seed = seedFromLegacy(currentSummary);
-  const [outcomes, setOutcomes] = useState(seed.outcomes);
-  const [stateOfPlay, setStateOfPlay] = useState(seed.stateOfPlay);
-  const [pressures, setPressures] = useState(seed.pressures);
+  const seed = seedFromSummary(currentSummary);
+  const [values, setValues] = useState<Record<DomainKey, string>>(seed);
 
   // Sync when summary updates reactively (e.g. AI regenerates after editor was opened)
-  const snapshotKey = `${seed.outcomes}|${seed.stateOfPlay}|${seed.pressures}`;
+  const snapshotKey = SECTION_ORDER.map(({ key }) => seed[key]).join("||");
   const [lastSynced, setLastSynced] = useState(snapshotKey);
   if (snapshotKey !== lastSynced) {
-    setOutcomes(seed.outcomes);
-    setStateOfPlay(seed.stateOfPlay);
-    setPressures(seed.pressures);
+    setValues(seed);
     setLastSynced(snapshotKey);
   }
 
-  const values: Record<"outcomes" | "stateOfPlay" | "pressures", string> = {
-    outcomes, stateOfPlay, pressures,
-  };
-  const setters: Record<"outcomes" | "stateOfPlay" | "pressures", (v: string) => void> = {
-    outcomes: setOutcomes, stateOfPlay: setStateOfPlay, pressures: setPressures,
+  const setField = (key: DomainKey, next: string) => {
+    setValues((prev) => ({ ...prev, [key]: next }));
   };
 
   const handleSave = async () => {
@@ -88,9 +89,10 @@ export function NarrativeEditor({
       gameId,
       roundNumber,
       summary: {
-        outcomes: outcomes.trim() || undefined,
-        stateOfPlay: stateOfPlay.trim() || undefined,
-        pressures: pressures.trim() || undefined,
+        labs: bullets(values.labs),
+        geopolitics: bullets(values.geopolitics),
+        publicAndMedia: bullets(values.publicAndMedia),
+        aiSystems: bullets(values.aiSystems),
       },
     });
     setEditing(false);
@@ -124,6 +126,9 @@ export function NarrativeEditor({
         </button>
       </div>
 
+      <p className="text-[11px] text-text-muted mb-3">
+        One bullet per line in each section. Leave a section empty if nothing fits.
+      </p>
       <div className="space-y-3">
         {SECTION_ORDER.map(({ key, label, hint, rows }) => (
           <div key={key}>
@@ -133,7 +138,7 @@ export function NarrativeEditor({
             </label>
             <textarea
               value={values[key]}
-              onChange={(e) => setters[key](e.target.value)}
+              onChange={(e) => setField(key, e.target.value)}
               rows={rows}
               className="w-full p-2 bg-navy-dark border border-navy-light rounded text-sm text-white resize-none outline-none"
               placeholder={hint}

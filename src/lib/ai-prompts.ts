@@ -681,7 +681,7 @@ export function buildResolveNarrativePrompt(args: {
 }) {
   return `You are narrating Round ${args.round}: ${args.roundLabel}.
 
-The DECIDE pass has already run. Structural operations are applied and the end-of-round state is frozen below. You cannot change state; your job is to describe what happened, in prose, and assess risk trajectories. If your description contradicts LAB STATUS (END) the description is wrong.
+The apply phase has already run. Structural operations are applied and the end-of-round state is frozen below. You cannot change state; your job is to describe what happened, in prose, and assess risk trajectories. If your description contradicts LAB STATUS (END) the description is wrong.
 
 LAB STATUS (start of round):
 ${formatLabAllocations(args.labsBefore)}
@@ -693,31 +693,30 @@ ${formatAppliedOperations(args.labsBefore, args.labsAfter)}${formatInterRoundCha
 ${formatActionLog(args.resolvedActions)}
 ${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}` : ""}
 
-YOUR TASK: Produce a situation briefing for the next round, plus risk trajectories for active labs.
+YOUR TASK: Produce a round summary in four domain buckets, plus risk trajectories for active labs.
 
 SUMMARY STYLE — read this carefully:
 
-You are writing a briefing, not a recap. Write terse, scannable bullets. A facilitator should be able to read the whole narrative in under 30 seconds and know what changed. No paragraphs, no flourish, no mood-setting.
+You are writing a briefing, not a recap. Terse, scannable bullets. A facilitator should be able to read the whole summary in under 30 seconds and know what changed. No paragraphs, no flourish, no mood-setting.
 
-FORMAT: each field is a string containing newline-separated short clauses. Each clause starts with "- " (a dash and a space) so the UI renders it as a bullet. Every bullet is one fact or one implication — no compound sentences.
+FORMAT: each of the four fields below is an ARRAY of short bullet strings (1 short sentence each, max ~20 words). One bullet = one fact or implication. No compound sentences. Empty array is valid when nothing licensed fits.
 
-THREE FIELDS, each with a defined job:
+FOUR DOMAIN SECTIONS, each with a defined scope:
 
-- **outcomes** — 3 to 5 bullets of what the successful actions produced, at meaning-level. One bullet per coherent consequence. Do not re-list the action log. A successful action blocked or overtaken by another action produced a different outcome than its actor intended; report the actual world-state change (visible in LAB STATUS END), not the attempt.
+- **labs** — lab-level outcomes. Mergers, ownership transfers, decommissions, renames, safety investments or the lack of them, revenue-relevant announcements, internal safety findings that became public. What shifted inside or between the frontier labs this round.
 
-- **stateOfPlay** — 2 to 4 bullets naming where key actors sit NOW. One bullet per actor/relationship shift. Positions, leverage, momentum — not absolute numbers.
+- **geopolitics** — government actions, diplomatic moves, regulatory responses, intelligence operations, treaty work, sanctions, export controls, alliance formation. Both successes and failures count when they were externally visible or inferable.
 
-- **pressures** — 2 to 3 bullets naming what is contested or at stake heading into the next round. One bullet per open question the players should be weighing.
+- **publicAndMedia** — press framing, public sentiment, NGO positions, protest activity, media coverage patterns, civil-society responses. Only include coverage outcomes for things public enough to be covered.
 
-Every bullet must earn its place. If a domain produced nothing visible, say nothing about it — do not pad. Better to have 3 bullets that are sharp than 6 that hedge. Never write a connecting sentence between bullets.
+- **aiSystems** — observable AI behaviour, red-team findings, disclosed incidents, deployment pauses, evaluation results, capability demonstrations. Describes what's SEEN, not the hidden alignment frame. Leave empty if nothing visible.
 
-EXAMPLE — good formatting:
-outcomes:
-- Conscienta redomiciled to Australia, now operating as AussieAI under sovereign backing.
-- The DPA consolidation of OpenBrain proceeded on paper but lost its second target.
-- DeepCent's capability push fizzled at the loyalty-certification precondition.
+EVERY BULLET MUST EARN ITS PLACE. If a domain produced nothing this round, return an empty array for that field — do NOT pad with non-events. Better to have 3 sharp bullets than 6 that hedge.
 
-BAD: "Conscienta redomiciled to Australia, folding into AussieAI, while the DPA consolidation of OpenBrain lost its second target and DeepCent's capability push fizzled." (this is a paragraph, not bullets).
+INACTION IS ONLY NEWS WHEN IT'S INFORMATIVE:
+- OK: "Safety spending stayed flat at 3%" (when that's the story)
+- OK: "No government response to the disclosure" (when the absence matters)
+- NOT OK: "No anomalies reported", "No public coverage" — these are filler.
 
 WHAT MAY NOT APPEAR:
 
@@ -725,32 +724,34 @@ WHAT MAY NOT APPEAR:
 - Restated mechanical state. Don't say "OpenBrain reached 9x" — players see it. You MAY reference a number if it characterises a decision ("a 3% safety allocation tells its own story") rather than reporting the slider.
 - Flowery writing, metaphors, rhetorical flourishes, "in the shadows", "silent substrate", "weights hum", etc.
 - Hard factual claims attributed to unrepresented actors. Use hedges ("signalled support", "drew criticism", "was read as").
-- Leakage of non-public actions. Use a "reasonably informed observer" test — if an outsider could not plausibly notice it, do not narrate it in outcomes / stateOfPlay / pressures. Hidden dynamics go in facilitatorNotes.
-- Filler non-events. If nothing happened in a domain, don't mention the domain.
+- Leakage of non-public actions. Use a "reasonably informed observer" test — if an outsider could not plausibly notice it, do not narrate it in the public-facing buckets. Put it in facilitatorNotes (gods-eye view) instead.
 - Re-listing the action log. The action log is shown separately. Synthesize, don't enumerate.
 - Contradicting LAB STATUS (END). If a lab appears active at end, it is active; if it doesn't, it's gone. Describe what IS, not what someone intended.
 
-CONFLICTS: Where contradictory actions both rolled success, LAB STATUS (END) shows which effect actually landed. Describe the final state in outcomes, not each actor's intent. A success on the action log does NOT guarantee the intended world-state happened.
+GOOD bullet examples:
+- labs: "Conscienta redomiciled to Australia and folded into a new sovereign-backed lab, AussieAI."
+- labs: "DPA consolidation of OpenBrain proceeded on paper but lost its second target."
+- geopolitics: "Australia now hosts a frontier lab under sovereign backing, reshaping Five Eyes compute politics."
+- geopolitics: "The UN summit demand for a capability pause did not advance past opening remarks."
+- publicAndMedia: "Tech press framed the DPA as overreach; safety NGOs framed it as long-overdue."
+- aiSystems: "Red-team evaluations at Conscienta flagged two reward-hacking anomalies before the transfer."
 
-GOOD example:
-- outcomes: "Conscienta redomiciled to Australia and folded into a new sovereign-backed lab, AussieAI. The DPA consolidation of OpenBrain proceeded on paper but lost its second target in the process."
-- stateOfPlay: "US compute is now nationalised but geographically narrower; Australia has a frontier lab for the first time; OpenBrain is state-owned and alone."
-- pressures: "Export control policy is the next pivot. OpenBrain's deployment revenue vs AussieAI's scaling race starts from here."
-
-BAD examples — do not write these:
+BAD bullets — do NOT write these:
 - "This is a significant structural shift." (analysis without content)
-- "OpenBrain's private acceleration push got no coverage." (non-public action being negated just to fill space)
+- "OpenBrain's private acceleration push got no coverage." (non-public action negated to fill space)
 - "No anomalies reported." (non-event as filler)
 - "A tense media cycle kept the issue alive." (flourish)
 - "Washington signalled a new era of muscular industrial policy." (flourish attributed to unrepresented actor)
 
-SECRET ACTIONS: Successful secrets appear as outcomes without revealing the actor. Failed secrets are invisible.
+CONFLICTS: Where contradictory actions both rolled success, LAB STATUS (END) shows which effect actually landed. Describe the final state in the labs bucket, not each actor's intent. A success on the action log does NOT guarantee the intended world-state happened.
+
+SECRET ACTIONS: Successful secrets appear as outcomes in the relevant bucket without revealing the actor. Failed secrets are invisible.
 
 NAMES: Only fictional names (OpenBrain, DeepCent, Conscienta). Never real AI companies.
 
 NO GAME MECHANICS in the summary (probabilities, dice, priority numbers).
 
-AI DISPOSITION: If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
+AI DISPOSITION: If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour in aiSystems, not the hidden alignment logic itself.
 
 ${args.previousTrajectories && args.previousTrajectories.length > 0 ? `
 PREVIOUS RISK ASSESSMENT (from last round — use this to inform your trajectory update):

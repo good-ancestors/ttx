@@ -1138,9 +1138,10 @@ export const continueFromEffectReview = internalAction({
 
       type NarrativeOutput = {
         summary: {
-          outcomes: string;
-          stateOfPlay: string;
-          pressures: string;
+          labs: string[];
+          geopolitics: string[];
+          publicAndMedia: string[];
+          aiSystems: string[];
           facilitatorNotes?: string;
         };
         labTrajectories: { labName: string; safetyAdequacy: "adequate" | "concerning" | "dangerous" | "catastrophic"; likelyFailureMode: "aligned" | "deceptive" | "spec-gaming" | "power-concentration" | "benevolent-override" | "loss-of-control" | "misuse"; reasoning: string; signalStrength: number }[];
@@ -1166,26 +1167,34 @@ export const continueFromEffectReview = internalAction({
             properties: {
               summary: {
                 type: "object",
-                description: "Situation briefing for the next round. Outcome-first, forward-looking. Follow the SUMMARY STYLE rules in the prompt exactly: describe outcomes and meaning (not attempts), skip anything that didn't produce a visible change in LAB STATUS (END), don't restate numbers, and write toward the next round's setup.",
+                description: "Round summary split by domain. Each field is an array of short bullet strings. Follow the SUMMARY STYLE rules in the prompt exactly: bullets are terse single-sentence outcomes, empty arrays are valid when a domain had nothing licensed, do not pad with non-events.",
                 properties: {
-                  outcomes: {
-                    type: "string",
-                    description: "2-3 sentences. What the successful actions produced, at meaning-level. Synthesize — connect effects into coherent outcomes; do not re-list the action log. Include blocked / failed-to-land outcomes where relevant (action succeeded procedurally but LAB STATUS (END) shows the intended world change didn't happen because another effect overtook it).",
+                  labs: {
+                    type: "array",
+                    items: { type: "string", maxLength: 200 },
+                    description: "Lab-level outcomes: mergers, ownership transfers, decommissions, renames, safety investments (or lack thereof), revenue-relevant announcements, public safety findings. What shifted inside or between the frontier labs this round.",
                   },
-                  stateOfPlay: {
-                    type: "string",
-                    description: "1-2 sentences. Where key players sit now, in relative terms. Positions, leverage, momentum — not absolute numbers. Who gained, who lost, who's now exposed.",
+                  geopolitics: {
+                    type: "array",
+                    items: { type: "string", maxLength: 200 },
+                    description: "Government actions, diplomatic moves, regulatory responses, intelligence operations, treaty work, sanctions, export controls, alliance formation. Both successes and failures where externally visible.",
                   },
-                  pressures: {
-                    type: "string",
-                    description: "1-2 sentences. What's set up, contested, or at stake heading into the next round. The questions players should be thinking about between rounds.",
+                  publicAndMedia: {
+                    type: "array",
+                    items: { type: "string", maxLength: 200 },
+                    description: "Press framing, public sentiment, NGO positions, protest activity, media coverage patterns, civil-society responses. Only coverage outcomes for things public enough to be covered.",
+                  },
+                  aiSystems: {
+                    type: "array",
+                    items: { type: "string", maxLength: 200 },
+                    description: "Observable AI behaviour: red-team findings, disclosed incidents, deployment pauses, evaluation results, capability demonstrations. What's SEEN, not the hidden alignment frame.",
                   },
                   facilitatorNotes: {
                     type: "string",
                     description: "Optional gods-eye notes for facilitator only. Hidden action dynamics, trajectory reasoning, what's true vs what players can observe. Players never see this.",
                   },
                 },
-                required: ["outcomes", "stateOfPlay", "pressures"],
+                required: ["labs", "geopolitics", "publicAndMedia", "aiSystems"],
               },
               labTrajectories: {
                 type: "array",
@@ -1228,19 +1237,25 @@ export const continueFromEffectReview = internalAction({
           status: { step: "narrating", detail: `Narrative generation failed: ${narrativeError.slice(0, 100)}. Using fallback.`, startedAt: Date.now() },
         });
 
+        // Fallback summary: drop the succeeded actions into the labs bucket as
+        // minimal outcome placeholders so the facilitator can edit from there
+        // instead of a blank slate. Other buckets stay empty — better to be
+        // quiet than to manufacture geopolitics/media/AI events the model
+        // never actually reasoned about.
         const succeeded: typeof resolvedActions = [];
         const failed: typeof resolvedActions = [];
         for (const a of resolvedActions) (a.success ? succeeded : failed).push(a);
-        const fallbackOutcomes = succeeded.length > 0
-          ? `${succeeded.slice(0, 3).map(a => `${a.roleName} succeeded: "${a.text}"`).join(". ")}.`
-          : "[AI narrative generation failed — use Edit Narrative to rewrite.]";
+        const fallbackLabsBullets = succeeded.length > 0
+          ? succeeded.slice(0, 5).map(a => `${a.roleName} succeeded: "${a.text}"`)
+          : ["[AI summary generation failed — use Edit Summary to rewrite.]"];
         narrativeOutput = {
           summary: {
-            outcomes: fallbackOutcomes,
-            stateOfPlay: "",
-            pressures: failed.length > 0
-              ? `${failed.length} action(s) failed. [AI narrative generation failed — use Edit Narrative to rewrite.]`
-              : "[AI narrative generation failed — use Edit Narrative to rewrite.]",
+            labs: fallbackLabsBullets,
+            geopolitics: [],
+            publicAndMedia: [],
+            aiSystems: failed.length > 0
+              ? [`${failed.length} action(s) failed.`]
+              : [],
           },
           labTrajectories: [],
         };

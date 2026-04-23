@@ -195,7 +195,7 @@ describe("buildResolveNarrativePrompt", () => {
     expect(prompt).not.toContain("APPLIED STATE CHANGES");
   });
 
-  it("teaches the three-field situation-briefing shape", () => {
+  it("teaches the four-domain summary shape", () => {
     const prompt = buildResolveNarrativePrompt({
       round: 2,
       roundLabel: "Q2",
@@ -204,9 +204,10 @@ describe("buildResolveNarrativePrompt", () => {
       resolvedActions: ACTIONS,
     });
 
-    expect(prompt).toContain("**outcomes**");
-    expect(prompt).toContain("**stateOfPlay**");
-    expect(prompt).toContain("**pressures**");
+    expect(prompt).toContain("**labs**");
+    expect(prompt).toContain("**geopolitics**");
+    expect(prompt).toContain("**publicAndMedia**");
+    expect(prompt).toContain("**aiSystems**");
     expect(prompt).toContain('Contradicting LAB STATUS (END).');
   });
 
@@ -220,8 +221,8 @@ describe("buildResolveNarrativePrompt", () => {
     });
 
     expect(prompt).toContain('"No anomalies reported."');
-    expect(prompt).toContain("non-public action being negated");
-    expect(prompt).toContain("Filler non-events.");
+    expect(prompt).toContain("non-public action negated");
+    expect(prompt).toContain("Flowery writing");
   });
 
   it("does not include the old combined-prompt guidance that predates the split", () => {
