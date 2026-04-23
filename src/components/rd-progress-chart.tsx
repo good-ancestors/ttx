@@ -94,7 +94,16 @@ function buildChartData(
   currentRound: number,
   compact: boolean,
 ): ChartData {
-  const snapshotLabs = rounds.flatMap((round) => round.labsAfter ?? []);
+  // Filter out decommissioned snapshot entries. decommissionLabInternal clears
+  // ownerRoleId on the live doc before snapshotAfter runs, so the post-merger
+  // snapshot of the absorbed lab has roleId: undefined. Without this filter
+  // the chart sees two Conscienta entries — one from DEFAULT_LABS (roleId
+  // "conscienta-ceo") and one from the roleId-less post-decommission snapshot
+  // — neither dedupes against the other. The historical line we want is
+  // already carried by DEFAULT_LABS + earlier rounds' active snapshots.
+  const snapshotLabs = rounds.flatMap((round) =>
+    (round.labsAfter ?? []).filter((l) => l.status !== "decommissioned"),
+  );
   // Deduplicate by roleId (stable identity) — keeps DEFAULT_LABS entry first
   // so Pre/Start points use the original starting values, not current values.
   const allLabs = [
