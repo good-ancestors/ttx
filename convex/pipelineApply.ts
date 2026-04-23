@@ -37,11 +37,34 @@ export const applyDecidedEffectsInternal = internalMutation({
     })),
     decommissionOps: v.array(v.object({ labId: v.id("labs") })),
     transferOps: v.array(v.object({ labId: v.id("labs"), newOwnerRoleId: v.optional(v.string()) })),
-    // multiplierOverrides are LLM-initiated and apply in this phase. Growth-derived
-    // multiplier updates land in applyGrowthAndAcquisitionInternal.
-    multiplierOverrides: v.array(v.object({ labId: v.id("labs"), rdMultiplier: v.number() })),
+    // Final rdMultiplier values from breakthrough / modelRollback (four-layer
+    // redesign). Growth-derived updates land later in applyGrowthAndAcquisitionInternal.
+    // The value here is the POST-effect multiplier — growth in phase 9 grows from
+    // this base and there is no re-apply step.
+    multiplierUpdates: v.array(v.object({ labId: v.id("labs"), rdMultiplier: v.number() })),
     adjusted: v.array(v.object({ roleId: v.string(), amount: v.number(), reason: v.string() })),
     merged: v.array(v.object({ fromRoleId: v.string(), toRoleId: v.string(), amount: v.number(), reason: v.string() })),
+    // One-round productivity modifiers from researchDisruption / researchBoost.
+    // Stashed on round.pendingProductivityMods for phase-9 growth to consume.
+    productivityMods: v.array(v.object({ labId: v.id("labs"), modifier: v.number() })),
+    // Phase-5 mechanics log entries. Written as the initial slice of round.mechanicsLog
+    // (overwrites any stale entries from a prior resolve run). Phase 9 + 10 append.
+    mechanicsLog: v.array(v.object({
+      sequence: v.number(),
+      phase: v.union(v.literal(5), v.literal(9), v.literal(10)),
+      source: v.union(
+        v.literal("player-pinned"),
+        v.literal("grader-effect"),
+        v.literal("natural-growth"),
+        v.literal("acquisition"),
+        v.literal("facilitator-edit"),
+      ),
+      subject: v.string(),
+      field: v.union(v.literal("rdMultiplier"), v.literal("computeStock"), v.literal("productivity")),
+      before: v.number(),
+      after: v.number(),
+      reason: v.string(),
+    })),
   },
   handler: async (ctx, args) => {
     // Re-verify the resolve nonce inside the atomic mutation.
@@ -66,7 +89,7 @@ export const applyDecidedEffectsInternal = internalMutation({
         throw new Error(`Lab ${id} (${lab.name}) is not active — structural op rejected (likely facilitator-decommissioned since resolve started)`);
       }
     }
-    for (const u of args.multiplierOverrides) {
+    for (const u of args.multiplierUpdates) {
       const lab = await ctx.db.get(u.labId);
       if (!lab || lab.gameId !== args.gameId) {
         throw new Error(`Lab ${u.labId} not found or wrong game — aborting resolve apply`);
@@ -117,10 +140,21 @@ export const applyDecidedEffectsInternal = internalMutation({
     for (const t of args.transferOps) {
       await transferLabOwnershipInternal(ctx, t.labId, t.newOwnerRoleId);
     }
-    // LLM-initiated multiplier overrides apply here so the facilitator sees the final
-    // override value during P7 review. Growth-derived updates land later.
-    for (const u of args.multiplierOverrides) {
+    // Breakthrough / modelRollback final multiplier values. Growth in phase 9
+    // grows from this value; there is no post-growth re-apply.
+    for (const u of args.multiplierUpdates) {
       await updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier);
+    }
+
+    // Stash productivity mods + write initial mechanicsLog slice on the round doc.
+    const round = await ctx.db.query("rounds")
+      .withIndex("by_game_and_number", (q) => q.eq("gameId", args.gameId).eq("number", args.roundNumber))
+      .first();
+    if (round) {
+      await ctx.db.patch(round._id, {
+        pendingProductivityMods: args.productivityMods.length > 0 ? args.productivityMods : undefined,
+        mechanicsLog: args.mechanicsLog,
+      });
     }
   },
 });
@@ -136,6 +170,24 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
     // Stashed on round.pendingAcquired, not yet written to the ledger: acquisition
     // materialises when the facilitator clicks Advance (see games.advanceRound).
     acquired: v.array(v.object({ roleId: v.string(), amount: v.number() })),
+    // Phase 9 + 10 mechanics log entries to append to the existing phase-5 slice.
+    // Sequence numbers are already offset by the caller.
+    mechanicsLog: v.array(v.object({
+      sequence: v.number(),
+      phase: v.union(v.literal(5), v.literal(9), v.literal(10)),
+      source: v.union(
+        v.literal("player-pinned"),
+        v.literal("grader-effect"),
+        v.literal("natural-growth"),
+        v.literal("acquisition"),
+        v.literal("facilitator-edit"),
+      ),
+      subject: v.string(),
+      field: v.union(v.literal("rdMultiplier"), v.literal("computeStock"), v.literal("productivity")),
+      before: v.number(),
+      after: v.number(),
+      reason: v.string(),
+    })),
   },
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
@@ -155,12 +207,19 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
     }
 
     // Stash acquired amounts on the round doc for materialisation at Advance.
+    // Also clear pendingProductivityMods (consumed by phase-9 growth) and append
+    // phase 9+10 entries to mechanicsLog.
     const round = await ctx.db.query("rounds")
       .withIndex("by_game_and_number", (q) => q.eq("gameId", args.gameId).eq("number", args.roundNumber))
       .first();
     if (round) {
       const nonZero = args.acquired.filter((r) => r.amount !== 0);
-      await ctx.db.patch(round._id, { pendingAcquired: nonZero });
+      const priorLog = round.mechanicsLog ?? [];
+      await ctx.db.patch(round._id, {
+        pendingAcquired: nonZero,
+        pendingProductivityMods: undefined,
+        mechanicsLog: [...priorLog, ...args.mechanicsLog],
+      });
     }
   },
 });

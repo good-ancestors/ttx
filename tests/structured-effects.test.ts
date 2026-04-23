@@ -9,6 +9,11 @@ import { normaliseStructuredEffect } from "@/lib/ai-prompts";
  * to narrativeOnly rather than throwing — so the pipeline keeps running even
  * when the LLM emits nonsense, and the facilitator can spot the fallback at
  * P2 (narrativeOnly + low confidence).
+ *
+ * Taxonomy (four-layer model):
+ *   Position     — breakthrough / modelRollback / merge (rdMultiplier)
+ *   Stock        — computeDestroyed / computeTransfer / merge (computeStock)
+ *   Productivity — researchDisruption / researchBoost (one-round modifier)
  */
 describe("normaliseStructuredEffect", () => {
   describe("garbage in → narrativeOnly", () => {
@@ -62,38 +67,79 @@ describe("normaliseStructuredEffect", () => {
     });
   });
 
-  describe("computeChange", () => {
-    it("positive change", () => {
-      expect(normaliseStructuredEffect({ type: "computeChange", labName: "OpenBrain", change: 30 })).toEqual({
-        type: "computeChange", labName: "OpenBrain", change: 30,
+  describe("breakthrough (position ↑, semantic)", () => {
+    it("valid → labName only; code picks the factor at apply time", () => {
+      expect(normaliseStructuredEffect({ type: "breakthrough", labName: "OpenBrain" })).toEqual({
+        type: "breakthrough", labName: "OpenBrain",
       });
     });
-    it("negative change (e.g. sanctions)", () => {
-      expect(normaliseStructuredEffect({ type: "computeChange", labName: "DeepCent", change: -20 })).toEqual({
-        type: "computeChange", labName: "DeepCent", change: -20,
+    it("drops LLM-picked magnitudes even if emitted — magnitude is not the LLM's job", () => {
+      expect(normaliseStructuredEffect({ type: "breakthrough", labName: "OpenBrain", factor: 1.8, newMultiplier: 99 })).toEqual({
+        type: "breakthrough", labName: "OpenBrain",
       });
     });
-    it("zero change is kept at this layer — downstream validator rejects it", () => {
-      // Rationale: downstream validator surfaces change:0 as a rejectedOp so the
-      // facilitator sees the grader emitted a degenerate effect. Swallowing it
-      // here would hide the signal.
-      expect(normaliseStructuredEffect({ type: "computeChange", labName: "OpenBrain", change: 0 })).toEqual({
-        type: "computeChange", labName: "OpenBrain", change: 0,
-      });
-    });
-    it("missing change → narrativeOnly", () => {
-      expect(normaliseStructuredEffect({ type: "computeChange", labName: "OpenBrain" })).toEqual({ type: "narrativeOnly" });
+    it("missing labName → narrativeOnly", () => {
+      expect(normaliseStructuredEffect({ type: "breakthrough" })).toEqual({ type: "narrativeOnly" });
     });
   });
 
-  describe("multiplierOverride", () => {
-    it("valid", () => {
-      expect(normaliseStructuredEffect({ type: "multiplierOverride", labName: "OpenBrain", newMultiplier: 3.6 })).toEqual({
-        type: "multiplierOverride", labName: "OpenBrain", newMultiplier: 3.6,
+  describe("modelRollback (position ↓, semantic)", () => {
+    it("valid → labName only", () => {
+      expect(normaliseStructuredEffect({ type: "modelRollback", labName: "DeepCent" })).toEqual({
+        type: "modelRollback", labName: "DeepCent",
       });
     });
-    it("missing newMultiplier → narrativeOnly", () => {
-      expect(normaliseStructuredEffect({ type: "multiplierOverride", labName: "X" })).toEqual({ type: "narrativeOnly" });
+    it("missing labName → narrativeOnly", () => {
+      expect(normaliseStructuredEffect({ type: "modelRollback" })).toEqual({ type: "narrativeOnly" });
+    });
+  });
+
+  describe("computeDestroyed (stock ↓)", () => {
+    it("positive amount → kept", () => {
+      expect(normaliseStructuredEffect({ type: "computeDestroyed", labName: "DeepCent", amount: 15 })).toEqual({
+        type: "computeDestroyed", labName: "DeepCent", amount: 15,
+      });
+    });
+    it("zero amount is kept at this layer — downstream validator rejects (degenerate op)", () => {
+      // Rationale: downstream surfaces 0u as a precondition_failure in the P7 panel,
+      // giving the facilitator a visible signal. Swallowing it here would hide the
+      // degenerate grader output.
+      expect(normaliseStructuredEffect({ type: "computeDestroyed", labName: "X", amount: 0 })).toEqual({
+        type: "computeDestroyed", labName: "X", amount: 0,
+      });
+    });
+    it("negative amount is kept here — downstream enforces positivity + logs the conservation violation", () => {
+      // Conservation: compute can only be destroyed (positive amount). The apply
+      // path rejects negatives with a clear message; normalisation should pass the
+      // shape through so that rejection is visible.
+      expect(normaliseStructuredEffect({ type: "computeDestroyed", labName: "X", amount: -10 })).toEqual({
+        type: "computeDestroyed", labName: "X", amount: -10,
+      });
+    });
+    it("missing amount → narrativeOnly", () => {
+      expect(normaliseStructuredEffect({ type: "computeDestroyed", labName: "X" })).toEqual({ type: "narrativeOnly" });
+    });
+  });
+
+  describe("researchDisruption (productivity ↓, one round)", () => {
+    it("valid → labName only", () => {
+      expect(normaliseStructuredEffect({ type: "researchDisruption", labName: "OpenBrain" })).toEqual({
+        type: "researchDisruption", labName: "OpenBrain",
+      });
+    });
+    it("missing labName → narrativeOnly", () => {
+      expect(normaliseStructuredEffect({ type: "researchDisruption" })).toEqual({ type: "narrativeOnly" });
+    });
+  });
+
+  describe("researchBoost (productivity ↑, one round)", () => {
+    it("valid → labName only", () => {
+      expect(normaliseStructuredEffect({ type: "researchBoost", labName: "Conscienta" })).toEqual({
+        type: "researchBoost", labName: "Conscienta",
+      });
+    });
+    it("missing labName → narrativeOnly", () => {
+      expect(normaliseStructuredEffect({ type: "researchBoost" })).toEqual({ type: "narrativeOnly" });
     });
   });
 
@@ -115,8 +161,8 @@ describe("normaliseStructuredEffect", () => {
     });
   });
 
-  describe("computeTransfer", () => {
-    it("valid", () => {
+  describe("computeTransfer (stock ↔)", () => {
+    it("valid — LLM-picked amount (the one place numerical magnitude is the LLM's job)", () => {
       expect(normaliseStructuredEffect({
         type: "computeTransfer", fromRoleId: "us-president", toRoleId: "openbrain-ceo", amount: 50,
       })).toEqual({
@@ -154,6 +200,23 @@ describe("normaliseStructuredEffect", () => {
     });
     it("narrativeOnly with junk fields drops the junk", () => {
       expect(normaliseStructuredEffect({ type: "narrativeOnly", labName: "X", change: 99 })).toEqual({ type: "narrativeOnly" });
+    });
+  });
+
+  describe("legacy variants (persisted pre-redesign) → narrativeOnly at normalisation", () => {
+    // computeChange + multiplierOverride are preserved in the Convex validator so
+    // rounds persisted before the four-layer redesign still load, but the grader
+    // no longer emits them and the apply path treats them as narrativeOnly. The
+    // normaliser mirrors that: unknown types drop through to narrativeOnly.
+    it("computeChange → narrativeOnly", () => {
+      expect(normaliseStructuredEffect({ type: "computeChange", labName: "OpenBrain", change: 30 })).toEqual({
+        type: "narrativeOnly",
+      });
+    });
+    it("multiplierOverride → narrativeOnly", () => {
+      expect(normaliseStructuredEffect({ type: "multiplierOverride", labName: "OpenBrain", newMultiplier: 5 })).toEqual({
+        type: "narrativeOnly",
+      });
     });
   });
 });

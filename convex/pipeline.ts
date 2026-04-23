@@ -229,27 +229,35 @@ async function gradeAllBatched(
               confidence: { type: "string", enum: ["high", "medium", "low"] },
               structuredEffect: {
                 type: "object",
-                description: "Discriminated by `type`. Set only the fields relevant to the chosen type — see prompt taxonomy.",
+                description: "Discriminated by `type`. Set only the fields relevant to the chosen type — see prompt taxonomy. Four-layer model: position (breakthrough/modelRollback/merge), stock (computeDestroyed/computeTransfer/merge), productivity (researchDisruption/researchBoost).",
                 properties: {
-                  type: { type: "string", enum: ["merge", "decommission", "computeChange", "multiplierOverride", "transferOwnership", "computeTransfer", "foundLab", "narrativeOnly"] },
+                  type: {
+                    type: "string",
+                    enum: [
+                      "merge", "decommission",
+                      "breakthrough", "modelRollback",
+                      "computeDestroyed", "researchDisruption", "researchBoost",
+                      "transferOwnership", "computeTransfer",
+                      "foundLab", "narrativeOnly",
+                    ],
+                  },
                   // merge
                   survivor: { type: "string" },
                   absorbed: { type: "string" },
                   newName: { type: "string" },
                   newSpec: { type: "string" },
-                  // decommission / computeChange / multiplierOverride / transferOwnership / foundLab
+                  // decommission / breakthrough / modelRollback / computeDestroyed /
+                  // researchDisruption / researchBoost / transferOwnership
                   labName: { type: "string" },
-                  change: { type: "number" },
-                  newMultiplier: { type: "number" },
                   controllerRoleId: { type: "string" },
                   // foundLab
                   name: { type: "string" },
                   spec: { type: "string" },
                   seedCompute: { type: "number" },
-                  // computeTransfer
+                  // computeTransfer (fromRoleId/toRoleId/amount) + computeDestroyed (amount)
                   fromRoleId: { type: "string" },
                   toRoleId: { type: "string" },
-                  amount: { type: "number" },
+                  amount: { type: "number", description: "For computeTransfer: positive units to move from fromRoleId → toRoleId. For computeDestroyed: positive units of compute physically destroyed (emitted as a negative ledger adjustment under the hood)." },
                 },
                 required: ["type"],
               },
@@ -559,15 +567,34 @@ export const rollAndApplyEffects = internalAction({
       const mergeOps: { survivorLabId: Id<"labs">; absorbedLabId: Id<"labs">; newName?: string; newSpec?: string; reason: string }[] = [];
       const decommissionOps: { labId: Id<"labs"> }[] = [];
       const transferOps: { labId: Id<"labs">; newOwnerRoleId: string | undefined }[] = [];
+      // computeModifiers carries signed deltas; computeDestroyed pushes a NEGATIVE
+      // entry (destruction). No positive entries ever originate here — compute is
+      // conserved (see conservation principle in ai-prompts.ts / NEXT-SESSION.md).
       const computeModifiers: { labId: Id<"labs">; change: number; reason: string }[] = [];
       const computeTransferPairs: { fromRoleId: string; toRoleId: string; amount: number; reason: string }[] = [];
-      const multiplierOverrides: { labId: Id<"labs">; newMultiplier: number }[] = [];
+      // multiplierUpdates holds final rdMultiplier values derived from breakthrough /
+      // modelRollback effects. Growth in phase 9 starts from these post-effect values
+      // — there is NO post-growth re-apply (that was the old multiplierOverride bug
+      // that suppressed DeepCent's trajectory).
+      const multiplierUpdates: { labId: Id<"labs">; newMultiplier: number }[] = [];
+      // One-round productivity modifiers from researchDisruption / researchBoost.
+      // Stashed on round.pendingProductivityMods; consumed by phase 9 growth.
+      const productivityMods: { labId: Id<"labs">; modifier: number }[] = [];
+      // Phase-5 mechanics audit log. Every mutation of rdMultiplier / computeStock /
+      // productivity appends an entry — the facilitator reads these at P7 to trace
+      // why a number moved the way it did. Phase 9/10 entries are appended later in
+      // continueFromEffectReview.
+      type Phase5LogEntry = { sequence: number; phase: 5; source: "grader-effect"; subject: string; field: "rdMultiplier" | "computeStock" | "productivity"; before: number; after: number; reason: string };
+      const mechanicsLogPhase5: Phase5LogEntry[] = [];
+      const logEntry = (subject: string, field: Phase5LogEntry["field"], before: number, after: number, reason: string) => {
+        mechanicsLogPhase5.push({ sequence: mechanicsLogPhase5.length, phase: 5, source: "grader-effect", subject, field, before, after, reason });
+      };
       // Structured rejection tracking: each rejection carries a category so the P7
       // panel can group + style by severity. Categories:
       //   invalid_reference    — effect targets a lab / roleId that doesn't exist or
       //                          isn't in the required state (most common).
       //   precondition_failure — effect violates a rule (last-active-lab guard,
-      //                          self-merge, unowned lab op, ±2× multiplier band).
+      //                          self-merge, unowned lab op, conservation violation).
       const rejectedOps: { category: "invalid_reference" | "precondition_failure"; opType: string; message: string }[] = [];
 
       const findActiveByName = (name: string) => workingLabs.find((l) => l.name === name);
@@ -598,6 +625,9 @@ export const rollAndApplyEffects = internalAction({
 
       const effectReason = (r: ResolvedEffect): string => `${r.actorRoleName}: ${r.actionText}`.slice(0, 200);
 
+      /** Random factor in [min, max], rounded to 2dp for readable mechanicsLog reasons. */
+      const factor = (min: number, max: number): number => Math.round((min + Math.random() * (max - min)) * 100) / 100;
+
       for (const resolved of effectsToApply) {
         const e = resolved.effect;
         const reason = effectReason(resolved);
@@ -621,10 +651,14 @@ export const rollAndApplyEffects = internalAction({
               reason,
             });
             // Update working view: remove absorbed, patch survivor
+            const newMult = Math.max(survivor.rdMultiplier, absorbed.rdMultiplier);
+            if (newMult !== survivor.rdMultiplier) {
+              logEntry(survivor.name, "rdMultiplier", survivor.rdMultiplier, newMult, `merge absorbed ${absorbed.name} (inherited higher multiplier)`);
+            }
             workingLabs = workingLabs
               .filter((l) => l.labId !== absorbed.labId)
               .map((l) => l.labId === survivor.labId
-                ? { ...l, name: e.newName ?? l.name, spec: e.newSpec ?? l.spec, rdMultiplier: Math.max(l.rdMultiplier, absorbed.rdMultiplier) }
+                ? { ...l, name: e.newName ?? l.name, spec: e.newSpec ?? l.spec, rdMultiplier: newMult }
                 : l);
             break;
           }
@@ -636,45 +670,81 @@ export const rollAndApplyEffects = internalAction({
             workingLabs = workingLabs.filter((l) => l.labId !== target.labId);
             break;
           }
-          case "computeChange": {
+          case "breakthrough": {
             const target = findActiveByName(e.labName);
-            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "computeChange", message: `computeChange: "${e.labName}" is not an active lab` }); break; }
-            if (!target.roleId) { rejectedOps.push({ category: "precondition_failure", opType: "computeChange", message: `computeChange: "${e.labName}" is unowned — no compute pool to adjust` }); break; }
-            if (e.change === 0) {
-              rejectedOps.push({ category: "precondition_failure", opType: "computeChange", message: `computeChange: 0u is not a real op — use narrativeOnly for effects that don't change compute` });
-              break;
-            }
-            const clamped = Math.max(-50, Math.min(50, e.change));
-            computeModifiers.push({ labId: target.labId, change: clamped, reason });
-            workingLabs = workingLabs.map((l) => l.labId === target.labId
-              ? { ...l, computeStock: Math.max(0, l.computeStock + clamped) }
-              : l);
-            break;
-          }
-          case "multiplierOverride": {
-            const target = findActiveByName(e.labName);
-            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "multiplierOverride", message: `multiplierOverride: "${e.labName}" is not an active lab` }); break; }
-            // Magnitude band: >2× or <0.5× require a narrative-trigger keyword in
-            // the action text. Without one, the action is likely trying to
-            // stealth-cap or stealth-boost outside the allowed discontinuities.
-            const NARRATIVE_TRIGGER_RE = /\b(sabotage|destruction|destroyed|bomb|safer\s*pivot|safety\s*pivot|breakthrough|nationali[sz]ed|seized|cyber[\s-]?attack)\b/i;
-            const hasTrigger = NARRATIVE_TRIGGER_RE.test(resolved.actionText);
+            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "breakthrough", message: `breakthrough: "${e.labName}" is not an active lab` }); break; }
+            const f = factor(1.4, 1.6);
             const current = target.rdMultiplier;
-            const requested = e.newMultiplier;
-            const ratio = current > 0 ? requested / current : Infinity;
-            if (!hasTrigger && (ratio > 2 || ratio < 0.5)) {
-              rejectedOps.push({
-                category: "precondition_failure",
-                opType: "multiplierOverride",
-                message: `multiplierOverride: ${e.labName} ${current}× → ${requested}× (${ratio.toFixed(2)}× change) exceeds ±2× band. Only allowed for narrative-discontinuous events (sabotage / breakthrough / safety pivot / cyber-attack) — action text must cite one.`,
-              });
-              break;
-            }
-            const clamped = Math.max(0.1, Math.min(maxMult, requested));
-            multiplierOverrides.push({ labId: target.labId, newMultiplier: clamped });
-            workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: clamped } : l);
+            const next = Math.min(maxMult, current * f);
+            multiplierUpdates.push({ labId: target.labId, newMultiplier: next });
+            workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: next } : l);
+            logEntry(target.name, "rdMultiplier", current, next, `breakthrough ×${f} (ceil maxMult ${maxMult})`);
             break;
           }
+          case "modelRollback": {
+            const target = findActiveByName(e.labName);
+            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "modelRollback", message: `modelRollback: "${e.labName}" is not an active lab` }); break; }
+            const f = factor(0.4, 0.6);
+            const current = target.rdMultiplier;
+            const next = Math.max(1, current * f);
+            multiplierUpdates.push({ labId: target.labId, newMultiplier: next });
+            workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, rdMultiplier: next } : l);
+            logEntry(target.name, "rdMultiplier", current, next, `modelRollback ×${f} (floor 1)`);
+            break;
+          }
+          case "computeDestroyed": {
+            const target = findActiveByName(e.labName);
+            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "computeDestroyed", message: `computeDestroyed: "${e.labName}" is not an active lab` }); break; }
+            if (!target.roleId) { rejectedOps.push({ category: "precondition_failure", opType: "computeDestroyed", message: `computeDestroyed: "${e.labName}" is unowned — no compute pool to destroy` }); break; }
+            if (e.amount <= 0) {
+              rejectedOps.push({ category: "precondition_failure", opType: "computeDestroyed", message: `computeDestroyed: amount must be positive (got ${e.amount}). Compute is conserved — use computeTransfer to redistribute.` });
+              break;
+            }
+            const available = tableComputeByRole.get(target.roleId) ?? 0;
+            if (available <= 0) {
+              rejectedOps.push({ category: "precondition_failure", opType: "computeDestroyed", message: `computeDestroyed: "${e.labName}" has no compute to destroy` });
+              break;
+            }
+            const destroyed = Math.min(e.amount, 50, available);
+            computeModifiers.push({ labId: target.labId, change: -destroyed, reason });
+            tableComputeByRole.set(target.roleId, available - destroyed);
+            workingLabs = workingLabs.map((l) => l.labId === target.labId
+              ? { ...l, computeStock: Math.max(0, l.computeStock - destroyed) }
+              : l);
+            logEntry(target.name, "computeStock", available, available - destroyed, `computeDestroyed ${destroyed}u (requested ${e.amount}u, capped)`);
+            break;
+          }
+          case "researchDisruption": {
+            const target = findActiveByName(e.labName);
+            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "researchDisruption", message: `researchDisruption: "${e.labName}" is not an active lab` }); break; }
+            const f = factor(0.5, 0.8);
+            // Compose with any existing productivity mod this round (multiplicative).
+            const existing = productivityMods.find((p) => p.labId === target.labId);
+            const before = existing?.modifier ?? 1;
+            const after = before * f;
+            if (existing) existing.modifier = after;
+            else productivityMods.push({ labId: target.labId, modifier: after });
+            logEntry(target.name, "productivity", before, after, `researchDisruption ×${f} (one round)`);
+            break;
+          }
+          case "researchBoost": {
+            const target = findActiveByName(e.labName);
+            if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "researchBoost", message: `researchBoost: "${e.labName}" is not an active lab` }); break; }
+            const f = factor(1.2, 1.5);
+            const existing = productivityMods.find((p) => p.labId === target.labId);
+            const before = existing?.modifier ?? 1;
+            const after = before * f;
+            if (existing) existing.modifier = after;
+            else productivityMods.push({ labId: target.labId, modifier: after });
+            logEntry(target.name, "productivity", before, after, `researchBoost ×${f} (one round)`);
+            break;
+          }
+          case "computeChange":
+          case "multiplierOverride":
+            // Legacy variants — kept valid in the validator for backward-compat on
+            // rounds persisted before the four-layer redesign, but no-op at apply
+            // time. The grader no longer emits these; if one appears it's stale.
+            break;
           case "transferOwnership": {
             const target = findActiveByName(e.labName);
             if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${e.labName}" is not an active lab` }); break; }
@@ -778,7 +848,8 @@ export const rollAndApplyEffects = internalAction({
         });
       }
 
-      // Apply structural ops + multiplier overrides + adjusted + merged ledger.
+      // Apply structural ops + breakthrough/rollback multiplier updates + adjusted
+      // (including computeDestroyed deletions) + merged + productivity mods + mechanics log.
       await ctx.runMutation(internal.pipelineApply.applyDecidedEffectsInternal, {
         gameId,
         roundNumber,
@@ -786,9 +857,11 @@ export const rollAndApplyEffects = internalAction({
         mergeOps,
         decommissionOps,
         transferOps,
-        multiplierOverrides: multiplierOverrides.map((ov) => ({ labId: ov.labId, rdMultiplier: ov.newMultiplier })),
+        multiplierUpdates: multiplierUpdates.map((ov) => ({ labId: ov.labId, rdMultiplier: ov.newMultiplier })),
         adjusted: adjustedEntries,
         merged: mergedEntries,
+        productivityMods,
+        mechanicsLog: mechanicsLogPhase5,
       });
 
       // Build the P7 appliedOps list — what the facilitator sees on the review screen.
@@ -885,14 +958,19 @@ export const rollAndApplyEffects = internalAction({
         const newOwner = t.newOwnerRoleId ? roleNameMap.get(t.newOwnerRoleId) ?? t.newOwnerRoleId : "(unowned)";
         appliedOps.push({ type: "transferOwnership", status: "applied", summary: `${name} ownership → ${newOwner}` });
       }
-      for (const ov of multiplierOverrides) {
+      for (const ov of multiplierUpdates) {
         const name = labNameById.get(ov.labId) ?? "?";
-        appliedOps.push({ type: "multiplierOverride", status: "applied", summary: `${name} R&D multiplier → ${ov.newMultiplier}×` });
+        appliedOps.push({ type: "multiplierUpdate", status: "applied", summary: `${name} R&D multiplier → ${ov.newMultiplier.toFixed(2)}×` });
+      }
+      for (const p of productivityMods) {
+        const name = labNameById.get(p.labId) ?? "?";
+        appliedOps.push({ type: "productivityMod", status: "applied", summary: `${name} productivity ×${p.modifier.toFixed(2)} (this round only)` });
       }
       for (const m of computeModifiers) {
         const name = labNameById.get(m.labId) ?? "?";
-        const sign = m.change > 0 ? "+" : "";
-        appliedOps.push({ type: "computeChange", status: "applied", summary: `${name} compute ${sign}${m.change}u`, reason: m.reason });
+        // computeModifiers carries signed deltas; all entries from the new apply path
+        // are destructions (negative). The display sign is implicit from the number.
+        appliedOps.push({ type: "computeDestroyed", status: "applied", summary: `${name} compute ${m.change}u`, reason: m.reason });
       }
       for (const t of computeTransferPairs) {
         const from = roleNameMap.get(t.fromRoleId) ?? t.fromRoleId;
@@ -910,19 +988,11 @@ export const rollAndApplyEffects = internalAction({
         });
       }
 
-      // Stash multiplier overrides so continueFromEffectReview can re-apply them after
-      // R&D growth (otherwise growth compounds on top and the final multiplier exceeds
-      // what the facilitator reviewed at P7 — in live testing this escalated to 2000×).
-      const pendingMultiplierOverrides = multiplierOverrides.map((ov) => ({ labId: ov.labId, rdMultiplier: ov.newMultiplier }));
-
-      await Promise.all([
-        ctx.runMutation(internal.rounds.setAppliedOpsInternal, { gameId, roundNumber, appliedOps }),
-        ctx.runMutation(internal.rounds.setPendingMultiplierOverridesInternal, {
-          gameId,
-          roundNumber,
-          pendingMultiplierOverrides,
-        }),
-      ]);
+      // No post-growth multiplier re-apply: breakthrough / modelRollback produce a
+      // final multiplier at phase 5, and phase-9 growth grows from that new base.
+      // Productivity mods were stashed inside applyDecidedEffectsInternal; phase 9
+      // will consume them.
+      await ctx.runMutation(internal.rounds.setAppliedOpsInternal, { gameId, roundNumber, appliedOps });
 
       // P7 — transition to effect-review, release resolving lock. Facilitator reviews
       // applied ops + any flagged rejections, then clicks "Continue to Narrative" to
@@ -937,7 +1007,6 @@ export const rollAndApplyEffects = internalAction({
 /** Phase 8-11 of docs/resolve-pipeline.md: R&D growth → new compute acquired →
  *  narrate. Triggered by the facilitator clicking "Continue to Narrative" on the
  *  P7 effect-review screen (via triggerContinueFromEffectReview in games.ts). */
-// eslint-disable-next-line complexity
 export const continueFromEffectReview = internalAction({
   args: {
     gameId: v.id("games"),
@@ -984,28 +1053,25 @@ export const continueFromEffectReview = internalAction({
       }
       const grownLabs = computeLabGrowth(labsNow, ceoAllocations, roundNumber, maxMult);
       const multiplierUpdates: { labId: Id<"labs">; rdMultiplier: number }[] = [];
+      // Start mechanicsLog for phases 9 + 10 at the phase-5 offset.
+      const phase5LogLen = currentRound.mechanicsLog?.length ?? 0;
+      type MechLog = { sequence: number; phase: 5 | 9 | 10; source: "player-pinned" | "grader-effect" | "natural-growth" | "acquisition" | "facilitator-edit"; subject: string; field: "rdMultiplier" | "computeStock" | "productivity"; before: number; after: number; reason: string };
+      const mechLog: MechLog[] = [];
+      const pushLog = (entry: Omit<MechLog, "sequence">) => {
+        mechLog.push({ sequence: phase5LogLen + mechLog.length, ...entry });
+      };
       for (const lab of grownLabs) {
         const pre = labsNow.find((l) => l.labId === lab.labId);
         if (!pre) continue;
         if (lab.rdMultiplier !== pre.rdMultiplier) {
           multiplierUpdates.push({ labId: pre.labId, rdMultiplier: lab.rdMultiplier });
+          pushLog({ phase: 9, source: "natural-growth", subject: lab.name, field: "rdMultiplier", before: pre.rdMultiplier, after: lab.rdMultiplier, reason: `R${roundNumber} natural growth` });
         }
       }
 
-      // Re-apply LLM multiplier overrides AFTER growth. The overrides were already
-      // applied in phase 5 for P7 visibility, but growth runs on top of that value and
-      // would compound — a 10× override plus a 2× growth factor lands at 20×, and over
-      // multiple rounds compounded to 2000× in live testing. Override semantics should
-      // be "final value", so we force the lab's rdMultiplier back to the override here.
-      if (currentRound.pendingMultiplierOverrides && currentRound.pendingMultiplierOverrides.length > 0) {
-        for (const ov of currentRound.pendingMultiplierOverrides) {
-          const existing = multiplierUpdates.findIndex((u) => u.labId === ov.labId);
-          if (existing >= 0) multiplierUpdates[existing] = { labId: ov.labId, rdMultiplier: ov.rdMultiplier };
-          else multiplierUpdates.push({ labId: ov.labId, rdMultiplier: ov.rdMultiplier });
-        }
-        // Clear the stash so a later re-resolve or restore doesn't double-apply.
-        await ctx.runMutation(internal.rounds.clearPendingMultiplierOverridesInternal, { gameId, roundNumber });
-      }
+      // (No post-growth multiplier re-apply. Breakthrough / modelRollback finalise
+      // rdMultiplier at phase 5, and computeLabGrowth grows from that base — the old
+      // override compound bug is gone with the four-layer redesign.)
 
       // ═══ PHASE 10 — NEW COMPUTE ACQUIRED ═══
       const acquiredEntries: { roleId: string; amount: number }[] = [];
@@ -1033,12 +1099,21 @@ export const continueFromEffectReview = internalAction({
         if (produced !== 0) acquiredEntries.push({ roleId: t.roleId, amount: produced });
       }
 
+      // Phase 10 mechanicsLog — acquisition deltas per role. The before/after value
+      // is the role's stock pre- and post-acquisition (for a lab owner, the lab's
+      // growth stock IS the acquisition; for non-lab roles, it's pool share).
+      for (const entry of acquiredEntries) {
+        const pre = tableComputeByRole.get(entry.roleId) ?? 0;
+        pushLog({ phase: 10, source: "acquisition", subject: entry.roleId, field: "computeStock", before: pre, after: pre + entry.amount, reason: `R${roundNumber + 1} acquisition +${entry.amount}u` });
+      }
+
       await ctx.runMutation(internal.pipelineApply.applyGrowthAndAcquisitionInternal, {
         gameId,
         roundNumber,
         nonce,
         multiplierUpdates,
         acquired: acquiredEntries,
+        mechanicsLog: mechLog,
       });
       // Snapshot labs-after — the narrator's frozen ground truth.
       await ctx.runMutation(internal.rounds.snapshotAfterInternal, { gameId, roundNumber });

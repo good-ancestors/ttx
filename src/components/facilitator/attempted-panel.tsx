@@ -21,8 +21,11 @@ const REVIEWABLE_OP_TYPES = new Set([
   "merge",
   "decommission",
   "transferOwnership",
-  "computeChange",
-  "multiplierOverride",
+  "breakthrough",
+  "modelRollback",
+  "computeDestroyed",
+  "researchDisruption",
+  "researchBoost",
   "foundLab",
 ]);
 

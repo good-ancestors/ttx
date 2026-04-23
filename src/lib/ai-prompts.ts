@@ -180,20 +180,44 @@ export interface ActionRequest {
 // per action) and applied deterministically at resolve time. Replaces the
 // pre-refactor two-pass flow (grade-probability → decide-ops-LLM → apply).
 //
+// Four-layer mechanic model (see NEXT-SESSION.md / docs/resolve-pipeline.md):
+//   Position    — rdMultiplier, the capability of the deployed base model.
+//                 Only changed by breakthrough / modelRollback / merge.
+//   Stock       — computeStock, the physical compute pool. Changed by
+//                 starting allocation, acquisition pool, computeTransfer
+//                 (redistribute), computeDestroyed (destruction), merge.
+//   Velocity    — derived per round from stock × research% × mult × productivity.
+//   Productivity— one-round throughput modifier. Set by researchDisruption /
+//                 researchBoost. Defaults to 1.0 each round.
+//
 // Name-based references (labName, controllerRoleId, etc.) are resolved to ids
 // at apply time. Failed lookups surface as rejectedOps in the P7 panel so the
-// facilitator can correct them — this is the same pattern the old decide pass
-// used, just moved upstream.
+// facilitator can correct them.
+//
+// Conservation principle: compute is conserved. Only starting allocation +
+// per-round acquisition create compute. The LLM can never invent compute. It
+// can destroy (computeDestroyed — ledger-logged) or redistribute
+// (computeTransfer — between two role pools).
 
 export type StructuredEffect =
   | { type: "merge"; survivor: string; absorbed: string; newName?: string; newSpec?: string }
   | { type: "decommission"; labName: string }
-  | { type: "computeChange"; labName: string; change: number }
-  | { type: "multiplierOverride"; labName: string; newMultiplier: number }
+  | { type: "breakthrough"; labName: string }
+  | { type: "modelRollback"; labName: string }
+  | { type: "computeDestroyed"; labName: string; amount: number }
+  | { type: "researchDisruption"; labName: string }
+  | { type: "researchBoost"; labName: string }
   | { type: "transferOwnership"; labName: string; controllerRoleId: string }
   | { type: "computeTransfer"; fromRoleId: string; toRoleId: string; amount: number }
   | { type: "foundLab"; name: string; spec?: string; seedCompute: number; allocation?: { deployment: number; research: number; safety: number } }
-  | { type: "narrativeOnly" };
+  | { type: "narrativeOnly" }
+  // Legacy variants — kept in the union so documents persisted before the
+  // four-layer redesign still type-check on read. The grader no longer emits
+  // them; normaliseStructuredEffect converts them to narrativeOnly; the apply
+  // path is a no-op. Facilitator UI renders them with a "(legacy)" suffix and
+  // prompts the facilitator to pick a replacement type.
+  | { type: "computeChange"; labName: string; change: number }
+  | { type: "multiplierOverride"; labName: string; newMultiplier: number };
 
 export type Confidence = "high" | "medium" | "low";
 
@@ -214,10 +238,10 @@ export interface GradedActionOutput {
  *  `type` and drop unused fields so Convex validators accept it. Malformed
  *  shapes collapse to narrativeOnly.
  *
- *  Validation of apply-time preconditions (lab exists, role exists, ±2×
- *  multiplier band, non-zero change, etc.) lives in the pipeline apply path
- *  — there they produce rejectedOps surfaced at P7. This function only
- *  reshapes the payload; it doesn't validate against world state. */
+ *  Validation of apply-time preconditions (lab exists, role exists, positive
+ *  computeDestroyed amount, etc.) lives in the pipeline apply path — there
+ *  they produce rejectedOps surfaced at P7. This function only reshapes the
+ *  payload; it doesn't validate against world state. */
 export function normaliseStructuredEffect(e: unknown): StructuredEffect {
   if (!e || typeof e !== "object") return { type: "narrativeOnly" };
   const raw = e as Record<string, unknown>;
@@ -247,17 +271,31 @@ export function normaliseStructuredEffect(e: unknown): StructuredEffect {
       if (!labName) return { type: "narrativeOnly" };
       return { type: "decommission", labName };
     }
-    case "computeChange": {
+    case "breakthrough": {
       const labName = str("labName");
-      const change = num("change");
-      if (!labName || change == null) return { type: "narrativeOnly" };
-      return { type: "computeChange", labName, change };
+      if (!labName) return { type: "narrativeOnly" };
+      return { type: "breakthrough", labName };
     }
-    case "multiplierOverride": {
+    case "modelRollback": {
       const labName = str("labName");
-      const newMultiplier = num("newMultiplier");
-      if (!labName || newMultiplier == null) return { type: "narrativeOnly" };
-      return { type: "multiplierOverride", labName, newMultiplier };
+      if (!labName) return { type: "narrativeOnly" };
+      return { type: "modelRollback", labName };
+    }
+    case "computeDestroyed": {
+      const labName = str("labName");
+      const amount = num("amount");
+      if (!labName || amount == null) return { type: "narrativeOnly" };
+      return { type: "computeDestroyed", labName, amount };
+    }
+    case "researchDisruption": {
+      const labName = str("labName");
+      if (!labName) return { type: "narrativeOnly" };
+      return { type: "researchDisruption", labName };
+    }
+    case "researchBoost": {
+      const labName = str("labName");
+      if (!labName) return { type: "narrativeOnly" };
+      return { type: "researchBoost", labName };
     }
     case "transferOwnership": {
       const labName = str("labName");
@@ -423,28 +461,50 @@ Coordination does NOT guarantee success. Two labs agreeing to "solve alignment" 
 
 For every action, emit exactly one structuredEffect. The apply phase runs these deterministically on dice success. Default to narrativeOnly — most actions are atmospheric.
 
+FOUR-LAYER MECHANIC MODEL — each effect maps to exactly one layer:
+
+  1. POSITION — rdMultiplier, the capability of the lab's currently deployed base model. Only changes when a lab ships a different generation of model. Cyber attacks, sabotage, bombings, nationalisations DO NOT change the multiplier — the model on disk is unchanged. Layer effects: breakthrough, modelRollback (and merge inherits max).
+
+  2. STOCK — computeStock, the physical compute a lab can run on. Conserved: compute only enters the system via starting allocation and per-round acquisition. Layer effects: computeDestroyed (destruction), computeTransfer (redistribution), merge (combines). Never invent compute — no "boost" or "grant" effect exists; those are narrativeOnly.
+
+  3. VELOCITY — derived each round from stock × research% × rdMultiplier × productivity. Not directly emitted; you never touch this.
+
+  4. PRODUCTIVITY — one-round throughput modifier that defaults to 1.0. Represents a lab's ability to turn compute into R&D this round. Layer effects: researchDisruption (facility offline, talent exodus, cyber disruption short of destruction), researchBoost (algorithmic insight, talent influx, tooling upgrade). If the narrative persists into next round, re-emit next round.
+
+CONSERVATION RULES:
+- Compute is conserved. "computeDestroyed" is the only way compute leaves the system; "computeTransfer" redistributes between active role pools. Never emit an effect that invents compute.
+- Multiplier is model capability. Only breakthrough / modelRollback / merge change it. Cyber attacks, sabotage, bombing, nationalisation route through computeDestroyed (hardware destroyed), researchDisruption (hardware offline without destruction), or transferOwnership (control changed, capability unchanged).
+- Productivity is one-round. If the narrative continues next round (e.g. the cyber disruption persists), you'll re-emit then.
+
 EFFECT TAXONOMY:
 
-"merge" — consolidation of two active labs. Survivor keeps controller, takes max(survivor, absorbed) R&D multiplier. Fields: { survivor, absorbed, newName?, newSpec? } as lab-name strings. ONLY emit for actions already marked [PINNED merge: …] OR for narrative coercion (DPA order, Manhattan Project, antitrust). If unpinned but narrative supports it, name both labs explicitly.
+"merge" [POSITION + STOCK] — consolidation of two active labs. Survivor keeps controller, takes max(survivor, absorbed) R&D multiplier, and inherits absorbed compute pool. Fields: { survivor, absorbed, newName?, newSpec? } as lab-name strings. Emit for actions marked [PINNED merge: …] OR for narrative coercion (DPA order, Manhattan Project, antitrust). If unpinned but narrative supports it, name both labs explicitly.
 
-"decommission" — lab shut down or destroyed. Fields: { labName }. Use for explicit destruction (bombed, nationalised-into-dissolution, voluntary windup). Cannot decommission the last active lab.
+"decommission" [structural] — lab shut down or destroyed. Fields: { labName }. Use for explicit structural loss of the lab entity (bombed, nationalised-into-dissolution, voluntary windup). Cannot decommission the last active lab.
 
-"computeChange" — one-off compute stock delta for a specific narrative shock. Fields: { labName, change: number }. Reserve for: theft, sanctions, grant, physical damage, targeted funding. NOT for routine revenue (that's in the growth formula) or soft effects (morale, legitimacy — those are narrativeOnly). change=0 is meaningless — use narrativeOnly.
+"breakthrough" [POSITION ↑] — the lab ships a new generation of base model that is materially more capable. Fields: { labName }. The code picks the magnitude (multiplier ×1.4–1.6, clamped to the round's max). ONLY emit when the narrative is that the lab deployed a different model — not for "made progress", "accelerated research", or "got a grant". Default to narrativeOnly if unsure.
 
-"multiplierOverride" — discrete R&D shift. Fields: { labName, newMultiplier }. ONLY for narrative-discontinuous events: safer-style pivot (halve), physical sabotage (halve), successful breakthrough at high priority (≤2× current). NEVER for mergers (merge handles this automatically). NEVER for "feels too dangerous" capping. NEVER for general safety concern. Magnitude outside ±2× of current requires a narrative trigger keyword (sabotage, safer-pivot, breakthrough, nationalised, seized, cyber-attack) in the action text — otherwise use narrativeOnly.
+"modelRollback" [POSITION ↓] — the lab reverts to (or ships) a less capable base model: a Safer pivot, a rollback after a safety incident, a forced downgrade. Fields: { labName }. Code picks the magnitude (multiplier ×0.4–0.6, floor 1). NEVER emit for cyber attacks, sabotage, or compute destruction — those don't change which model is deployed.
 
-"transferOwnership" — lab changes controller (nationalisation, forced acquisition, cede). Fields: { labName, controllerRoleId }. Use LOWERCASE-HYPHENATED role id (e.g. "us-president", "australia-pm", "openbrain-ceo") NOT display name. NEVER empty controllerRoleId — if the narrative is dissolution, use decommission. If unsure of role id, use narrativeOnly.
+"computeDestroyed" [STOCK ↓] — physical compute is destroyed (hardware fried, data centre bombed, ransomware-bricked). Fields: { labName, amount }. amount MUST BE POSITIVE — it's a destruction quantity, not a signed delta. Emits a negative ledger adjustment under the hood. Reserve for genuinely destructive events; a facility that goes offline without being destroyed is researchDisruption, not this.
 
-"computeTransfer" — direct compute move between two active role compute pools. Fields: { fromRoleId, toRoleId, amount }. Use for narrative compute loans, gifts, seizures that move compute between actors. NOT for lab deployment revenue. Both role ids must be ACTIVE roles. Prefer PINNED computeTransfer context when available.
+"researchDisruption" [PRODUCTIVITY ↓] — the lab's throughput is reduced for this round without destroying compute: facility offline 1/3 of the quarter, researcher exodus, targeted cyber attack that disrupts without destroying, political pressure slowing progress. Fields: { labName }. Code picks the magnitude (×0.5–0.8). Effect lasts ONE round; re-emit if narrative continues.
 
-"foundLab" — new lab created from player's foundLab submission. Only emit for actions marked [PINNED foundLab: …]; echo the pinned name/seed/spec. NEVER invent a foundLab for a freeform action — those become narrativeOnly.
+"researchBoost" [PRODUCTIVITY ↑] — the lab's throughput is boosted for this round: algorithmic insight, key talent hire, tooling upgrade, crash-programme focus. Fields: { labName }. Code picks the magnitude (×1.2–1.5). Effect lasts ONE round.
+
+"transferOwnership" [control] — lab changes controller (nationalisation, forced acquisition, cede). Fields: { labName, controllerRoleId }. Use LOWERCASE-HYPHENATED role id (e.g. "us-president", "australia-pm", "openbrain-ceo") NOT display name. NEVER empty controllerRoleId — if the narrative is dissolution, use decommission. Capability (rdMultiplier) is unchanged — the model doesn't disappear when the owner changes.
+
+"computeTransfer" [STOCK ↔] — direct compute move between two active role compute pools. Fields: { fromRoleId, toRoleId, amount }. Use for narrative compute loans, gifts, seizures that move compute between actors. amount MUST be positive and bounded by the sender's balance. NOT for lab deployment revenue. Both role ids must be ACTIVE roles. Prefer PINNED computeTransfer context when available. This is the ONLY effect where you pick a numerical magnitude — every other mechanical effect type is semantic and the code picks the number.
+
+"foundLab" — new lab created from a player's foundLab submission. Only emit for actions marked [PINNED foundLab: …]; echo the pinned name/seed/spec. NEVER invent a foundLab for a freeform action — those become narrativeOnly.
 
 "narrativeOnly" — the correct default. Use when:
 - The action is diplomatic, rhetorical, informational, or atmospheric.
 - A mechanical effect would be stretchy or ambiguous.
-- The action has effects that show up as trajectory/state changes rather than instantaneous ops (e.g. "invest heavily in safety" shifts allocation next round, not now).
+- The action's effects show up as trajectory/state changes rather than instantaneous ops (e.g. "invest heavily in safety" shifts allocation next round, not now).
 - The action is a failure waiting to happen and doesn't need a mechanical shape.
 - You are genuinely uncertain — narrativeOnly is safer than a misfit mechanical op.
+- The narrative is about something the four-layer model doesn't express (reputation, legitimacy, public mood, institutional trust). Those belong in prose, not mechanics.
 
 WHEN AN ACTION IS PINNED: echo the pinned shape in structuredEffect. The apply phase will use the submission's pinned fields regardless, but your emitted type must agree so the audit log is clean. If the pinned effect cannot land (survivor already decommissioned, target role no longer active, etc.), emit narrativeOnly and say why in reasoning.
 

@@ -13,8 +13,14 @@ const TYPE_LABELS: Record<string, string> = {
   merge: "Merge",
   decommission: "Decommission",
   transferOwnership: "Ownership",
-  multiplierOverride: "R&D Override",
-  computeChange: "Compute",
+  breakthrough: "Breakthrough",
+  modelRollback: "Model rollback",
+  multiplierUpdate: "R&D update",
+  productivityMod: "Productivity",
+  researchDisruption: "Disruption",
+  researchBoost: "Boost",
+  computeDestroyed: "Compute destroyed",
+  computeTransfer: "Compute transfer",
   foundLab: "New Lab",
 };
 
@@ -22,8 +28,14 @@ const TYPE_COLOURS: Record<string, string> = {
   merge: "bg-viz-capability/15 text-viz-capability",
   decommission: "bg-viz-danger/15 text-viz-danger",
   transferOwnership: "bg-viz-safety/15 text-viz-safety",
-  multiplierOverride: "bg-viz-capability/15 text-viz-capability",
-  computeChange: "bg-viz-capability/15 text-viz-capability",
+  breakthrough: "bg-viz-capability/15 text-viz-capability",
+  modelRollback: "bg-viz-warning/15 text-viz-warning",
+  multiplierUpdate: "bg-viz-capability/15 text-viz-capability",
+  productivityMod: "bg-viz-warning/15 text-viz-warning",
+  researchDisruption: "bg-viz-warning/15 text-viz-warning",
+  researchBoost: "bg-viz-safety/15 text-viz-safety",
+  computeDestroyed: "bg-viz-danger/15 text-viz-danger",
+  computeTransfer: "bg-viz-capability/15 text-viz-capability",
   foundLab: "bg-viz-safety/15 text-viz-safety",
 };
 

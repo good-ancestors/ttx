@@ -176,16 +176,32 @@ export default defineSchema({
          *  computeTargets). Consumed deterministically at apply time — no second LLM pass. Each
          *  variant carries the exact fields needed to execute the effect; names resolve to labIds
          *  and roleIds at apply time. `narrativeOnly` means the action is prose-only on success.
-         *  Missing = legacy round pre-refactor, treated as narrativeOnly by apply path. */
+         *  Missing = legacy round pre-refactor, treated as narrativeOnly by apply path.
+         *
+         *  Four-layer model (see NEXT-SESSION.md):
+         *    Position — breakthrough / modelRollback / merge change rdMultiplier.
+         *    Stock    — computeDestroyed / computeTransfer / merge move compute.
+         *    Velocity — derived at resolve time, never an effect.
+         *    Productivity — researchDisruption / researchBoost (one-round throughput mod).
+         *
+         *  Legacy variants (computeChange, multiplierOverride) are kept in the union so
+         *  round documents persisted before the redesign still load — they are converted
+         *  to narrativeOnly by the apply path. */
         structuredEffect: v.optional(v.union(
           v.object({ type: v.literal("merge"), survivor: v.string(), absorbed: v.string(), newName: v.optional(v.string()), newSpec: v.optional(v.string()) }),
           v.object({ type: v.literal("decommission"), labName: v.string() }),
-          v.object({ type: v.literal("computeChange"), labName: v.string(), change: v.number() }),
-          v.object({ type: v.literal("multiplierOverride"), labName: v.string(), newMultiplier: v.number() }),
+          v.object({ type: v.literal("breakthrough"), labName: v.string() }),
+          v.object({ type: v.literal("modelRollback"), labName: v.string() }),
+          v.object({ type: v.literal("computeDestroyed"), labName: v.string(), amount: v.number() }),
+          v.object({ type: v.literal("researchDisruption"), labName: v.string() }),
+          v.object({ type: v.literal("researchBoost"), labName: v.string() }),
           v.object({ type: v.literal("transferOwnership"), labName: v.string(), controllerRoleId: v.string() }),
           v.object({ type: v.literal("computeTransfer"), fromRoleId: v.string(), toRoleId: v.string(), amount: v.number() }),
           v.object({ type: v.literal("foundLab"), name: v.string(), spec: v.optional(v.string()), seedCompute: v.number(), allocation: v.optional(v.object({ deployment: v.number(), research: v.number(), safety: v.number() })) }),
           v.object({ type: v.literal("narrativeOnly") }),
+          // Legacy variants — kept for backward-compat on persisted docs only.
+          v.object({ type: v.literal("computeChange"), labName: v.string(), change: v.number() }),
+          v.object({ type: v.literal("multiplierOverride"), labName: v.string(), newMultiplier: v.number() }),
         )),
         /** Grader's confidence in its grade + effect. `low` forces P2 click-through before
          *  Continue unlocks — facilitator must acknowledge (or edit) each low-confidence row. */
@@ -276,14 +292,46 @@ export default defineSchema({
       category: v.optional(v.string()),
       opType: v.optional(v.string()),
     }))),
-    // LLM multiplier overrides from this round's decide pass, carried across the P7
-    // pause. Applied in phase 5 for facilitator review visibility, then RE-applied
-    // after computeLabGrowth in phase 9 so the final rdMultiplier is exactly the
-    // override value (not the override * growth factor, which compounded to absurd
-    // numbers like 2000× in practice). Cleared on re-resolve.
+    // DEPRECATED — retained as optional unused for back-compat on rounds persisted
+    // before the redesign. The new taxonomy replaces multiplierOverride with semantic
+    // events (breakthrough / modelRollback) applied in-place by the new apply path;
+    // there is no post-growth re-apply step and therefore nothing to stash. New
+    // rounds leave this field undefined; the pipeline no longer reads it.
     pendingMultiplierOverrides: v.optional(v.array(v.object({
       labId: v.id("labs"),
       rdMultiplier: v.number(),
+    }))),
+    // One-round productivity modifiers from researchDisruption / researchBoost
+    // effects. labId → multiplicative factor applied to this round's R&D growth
+    // only (folded into computeLabGrowth alongside stock/research%/multiplier).
+    // Cleared when continueFromEffectReview consumes them, so it never persists
+    // into the next round. Re-applies via re-emission if the narrative still
+    // holds.
+    pendingProductivityMods: v.optional(v.array(v.object({
+      labId: v.id("labs"),
+      modifier: v.number(),
+    }))),
+    // Chronological audit log of mechanical state mutations during this round's
+    // resolve — every write to lab.rdMultiplier, lab owner's computeStock, or
+    // productivity during phases 5, 9, and 10. Rendered under Applied Effects in
+    // the P7 UI so the facilitator can inspect the full chain before Advance.
+    // Populated atomically alongside each phase's apply mutation; cleared on
+    // re-resolve.
+    mechanicsLog: v.optional(v.array(v.object({
+      sequence: v.number(),
+      phase: v.union(v.literal(5), v.literal(9), v.literal(10)),
+      source: v.union(
+        v.literal("player-pinned"),
+        v.literal("grader-effect"),
+        v.literal("natural-growth"),
+        v.literal("acquisition"),
+        v.literal("facilitator-edit"),
+      ),
+      subject: v.string(),
+      field: v.union(v.literal("rdMultiplier"), v.literal("computeStock"), v.literal("productivity")),
+      before: v.number(),
+      after: v.number(),
+      reason: v.string(),
     }))),
     // Compute acquired this round, deferred until the facilitator clicks Advance.
     // continueFromEffectReview computes the amounts (from lab-growth delta + pool shares)

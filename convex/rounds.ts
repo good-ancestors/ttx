@@ -293,35 +293,6 @@ export const setAppliedOpsInternal = internalMutation({
   },
 });
 
-/** Stash the LLM multiplier overrides from phase 5 so continueFromEffectReview can
- *  re-apply them after R&D growth. Without this, the override compounds with growth
- *  multiplicatively — in practice a 10× override plus a 2× growth factor lands at 20×,
- *  and over multiple rounds that escalation hit 2000× in testing. Override semantics
- *  should be "final value", not "starting value". */
-export const setPendingMultiplierOverridesInternal = internalMutation({
-  args: {
-    gameId: v.id("games"),
-    roundNumber: v.number(),
-    pendingMultiplierOverrides: v.array(v.object({
-      labId: v.id("labs"),
-      rdMultiplier: v.number(),
-    })),
-  },
-  handler: async (ctx, args) => {
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (round) await ctx.db.patch(round._id, { pendingMultiplierOverrides: args.pendingMultiplierOverrides });
-  },
-});
-
-/** Clear stashed overrides after continueFromEffectReview applies them. */
-export const clearPendingMultiplierOverridesInternal = internalMutation({
-  args: { gameId: v.id("games"), roundNumber: v.number() },
-  handler: async (ctx, args) => {
-    const round = await findRound(ctx, args.gameId, args.roundNumber);
-    if (round) await ctx.db.patch(round._id, { pendingMultiplierOverrides: undefined });
-  },
-});
-
 /** Read the pending (not-yet-materialised) acquisition amounts for a round, joined with
  *  role display names. Shown in the "New Compute Acquired" panel during narrate — the
  *  facilitator sees what will land at Advance. Falls back to settled `acquired` ledger

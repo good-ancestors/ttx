@@ -55,16 +55,41 @@ describe("buildBatchedGradingPrompt", () => {
     expect(prompt).toContain("reasoning");
     expect(prompt).toContain("confidence");
     expect(prompt).toContain("structuredEffect");
-    // Effect taxonomy
+    // Four-layer effect taxonomy — Position / Stock / Productivity
     expect(prompt).toContain('"merge"');
     expect(prompt).toContain('"decommission"');
-    expect(prompt).toContain('"computeChange"');
-    expect(prompt).toContain('"multiplierOverride"');
+    expect(prompt).toContain('"breakthrough"');
+    expect(prompt).toContain('"modelRollback"');
+    expect(prompt).toContain('"computeDestroyed"');
+    expect(prompt).toContain('"researchDisruption"');
+    expect(prompt).toContain('"researchBoost"');
     expect(prompt).toContain('"transferOwnership"');
     expect(prompt).toContain('"computeTransfer"');
     expect(prompt).toContain('"narrativeOnly"');
+    // Four-layer framing + conservation principle
+    expect(prompt).toContain("FOUR-LAYER MECHANIC MODEL");
+    expect(prompt).toContain("CONSERVATION");
     // actionId matching rule
     expect(prompt).toContain("Match each output entry to its input by actionId");
+  });
+
+  it("does not re-introduce deprecated effect types", () => {
+    // computeChange + multiplierOverride were replaced by the semantic four-layer
+    // taxonomy. The grader must not be told about them — they are kept in the
+    // Convex validator solely for back-compat on persisted documents.
+    const prompt = buildBatchedGradingPrompt({
+      round: 1,
+      roundLabel: "Q1",
+      enabledRoles: ["US President"],
+      labs: [LAB],
+      roles: [BASIC_ROLE],
+    });
+    expect(prompt).not.toContain('"computeChange"');
+    expect(prompt).not.toContain('"multiplierOverride"');
+    // Narrative-trigger keyword regex and ±2× band are gone — they were only
+    // ever guards for the old multiplierOverride magnitude free-for-all.
+    expect(prompt).not.toContain("±2×");
+    expect(prompt).not.toContain("narrative trigger keyword");
   });
 
   it("surfaces pinned effects inline so the grader knows shapes are fixed", () => {

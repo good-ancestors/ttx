@@ -6,14 +6,18 @@ import {
   ArrowRightLeft,
   ChevronDown,
   CircleX,
-  Edit3,
+  Flame,
   GitMerge,
   Landmark,
   MessageSquare,
   PencilLine,
   Plus,
+  Rocket,
   Save,
+  ShieldAlert,
+  TrendingDown,
   TrendingUp,
+  Zap,
   X,
 } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
@@ -24,12 +28,19 @@ function typeMeta(type: StructuredEffect["type"]): { label: string; Icon: typeof
   switch (type) {
     case "merge":              return { label: "Merge",              Icon: GitMerge,        tone: "text-viz-warning" };
     case "decommission":       return { label: "Decommission",       Icon: CircleX,         tone: "text-viz-danger" };
-    case "computeChange":      return { label: "Compute shock",      Icon: Edit3,           tone: "text-viz-capability" };
-    case "multiplierOverride": return { label: "R&D multiplier",     Icon: TrendingUp,      tone: "text-viz-capability" };
+    case "breakthrough":       return { label: "Breakthrough",       Icon: Rocket,          tone: "text-viz-capability" };
+    case "modelRollback":      return { label: "Model rollback",     Icon: TrendingDown,    tone: "text-viz-warning" };
+    case "computeDestroyed":   return { label: "Compute destroyed",  Icon: Flame,           tone: "text-viz-danger" };
+    case "researchDisruption": return { label: "Disruption",         Icon: ShieldAlert,     tone: "text-viz-warning" };
+    case "researchBoost":      return { label: "Boost",              Icon: Zap,             tone: "text-viz-safety" };
     case "transferOwnership":  return { label: "Transfer ownership", Icon: Landmark,        tone: "text-viz-warning" };
     case "computeTransfer":    return { label: "Compute transfer",   Icon: ArrowRightLeft,  tone: "text-viz-capability" };
     case "foundLab":           return { label: "Found lab",          Icon: Plus,            tone: "text-viz-safety" };
     case "narrativeOnly":      return { label: "Narrative only",     Icon: MessageSquare,   tone: "text-text-light" };
+    // Legacy persisted variants — render as their semantic equivalents for UX
+    // consistency when surfacing old round data.
+    case "computeChange":      return { label: "Compute (legacy)",   Icon: Flame,           tone: "text-text-muted" };
+    case "multiplierOverride": return { label: "R&D (legacy)",       Icon: TrendingUp,      tone: "text-text-muted" };
   }
 }
 
@@ -40,12 +51,16 @@ function effectSummary(e: StructuredEffect): string {
       return `${e.absorbed} → ${e.survivor}${e.newName ? ` (${e.newName})` : ""}`;
     case "decommission":
       return e.labName;
-    case "computeChange": {
-      const sign = e.change > 0 ? "+" : "";
-      return `${e.labName} ${sign}${e.change}u`;
-    }
-    case "multiplierOverride":
-      return `${e.labName} → ${e.newMultiplier}×`;
+    case "breakthrough":
+      return `${e.labName} (new model)`;
+    case "modelRollback":
+      return `${e.labName} (prior model)`;
+    case "computeDestroyed":
+      return `${e.labName} −${e.amount}u`;
+    case "researchDisruption":
+      return `${e.labName} (one round)`;
+    case "researchBoost":
+      return `${e.labName} (one round)`;
     case "transferOwnership":
       return `${e.labName} → ${e.controllerRoleId}`;
     case "computeTransfer":
@@ -54,6 +69,12 @@ function effectSummary(e: StructuredEffect): string {
       return `${e.name} (${e.seedCompute}u)`;
     case "narrativeOnly":
       return "no mechanical effect";
+    case "computeChange": {
+      const sign = e.change > 0 ? "+" : "";
+      return `${e.labName} ${sign}${e.change}u (legacy)`;
+    }
+    case "multiplierOverride":
+      return `${e.labName} → ${e.newMultiplier}× (legacy)`;
   }
 }
 
@@ -264,13 +285,24 @@ function EffectForm({
           onChange={(e) => { setType(e.target.value as EffectType); setFields({}); }}
           className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white"
         >
-          <option value="merge">Merge</option>
-          <option value="decommission">Decommission</option>
-          <option value="computeChange">Compute shock</option>
-          <option value="multiplierOverride">R&D multiplier override</option>
-          <option value="transferOwnership">Transfer ownership</option>
-          <option value="computeTransfer">Compute transfer (role → role)</option>
-          <option value="foundLab">Found lab (rare — usually pinned)</option>
+          <optgroup label="Structural">
+            <option value="merge">Merge</option>
+            <option value="decommission">Decommission</option>
+            <option value="transferOwnership">Transfer ownership</option>
+            <option value="foundLab">Found lab (usually pinned)</option>
+          </optgroup>
+          <optgroup label="Position (R&D multiplier)">
+            <option value="breakthrough">Breakthrough (ship new model)</option>
+            <option value="modelRollback">Model rollback (ship prior / safer model)</option>
+          </optgroup>
+          <optgroup label="Stock (compute)">
+            <option value="computeDestroyed">Compute destroyed (positive units)</option>
+            <option value="computeTransfer">Compute transfer (role → role)</option>
+          </optgroup>
+          <optgroup label="Productivity (one round)">
+            <option value="researchDisruption">Research disruption (throughput ↓)</option>
+            <option value="researchBoost">Research boost (throughput ↑)</option>
+          </optgroup>
           <option value="narrativeOnly">Narrative only (no mechanics)</option>
         </select>
       </label>
@@ -355,19 +387,32 @@ function buildEffect(type: EffectType, f: Record<string, string>): StructuredEff
       if (!labName) return "Decommission requires a lab name";
       return { type: "decommission", labName };
     }
-    case "computeChange": {
+    case "breakthrough": {
       const labName = get("labName");
-      const change = getNum("change");
-      if (!labName || change == null) return "Compute shock requires lab name and non-zero change";
-      if (change === 0) return "Change must be non-zero — use narrative only for no-op effects";
-      return { type: "computeChange", labName, change };
+      if (!labName) return "Breakthrough requires a lab name";
+      return { type: "breakthrough", labName };
     }
-    case "multiplierOverride": {
+    case "modelRollback": {
       const labName = get("labName");
-      const newMultiplier = getNum("newMultiplier");
-      if (!labName || newMultiplier == null) return "R&D override requires lab name and multiplier";
-      if (newMultiplier <= 0) return "Multiplier must be positive";
-      return { type: "multiplierOverride", labName, newMultiplier };
+      if (!labName) return "Model rollback requires a lab name";
+      return { type: "modelRollback", labName };
+    }
+    case "computeDestroyed": {
+      const labName = get("labName");
+      const amount = getNum("amount");
+      if (!labName || amount == null) return "Compute destroyed requires lab name and amount";
+      if (amount <= 0) return "Amount must be positive — compute is conserved, destruction only";
+      return { type: "computeDestroyed", labName, amount };
+    }
+    case "researchDisruption": {
+      const labName = get("labName");
+      if (!labName) return "Research disruption requires a lab name";
+      return { type: "researchDisruption", labName };
+    }
+    case "researchBoost": {
+      const labName = get("labName");
+      if (!labName) return "Research boost requires a lab name";
+      return { type: "researchBoost", labName };
     }
     case "transferOwnership": {
       const labName = get("labName");
@@ -392,6 +437,11 @@ function buildEffect(type: EffectType, f: Record<string, string>): StructuredEff
     }
     case "narrativeOnly":
       return { type: "narrativeOnly" };
+    case "computeChange":
+    case "multiplierOverride":
+      // Legacy types — not selectable in the new UI. If the initial effect was a
+      // legacy shape the facilitator must pick a replacement type before saving.
+      return "Legacy effect type — pick a four-layer taxonomy equivalent above";
   }
 }
 
@@ -447,26 +497,62 @@ function FieldsForType({
       );
     case "decommission":
       return <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>;
-    case "computeChange":
+    case "breakthrough":
       return (
         <div className="space-y-1.5">
           <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>
-          <label className="block text-[10px] text-text-light">
-            Change (u, can be negative)
-            <input type="number" value={fields.change ?? ""} onChange={(e) => set("change", e.target.value)}
-              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono" />
-          </label>
+          <p className="text-[11px] text-text-light/70 italic">
+            Lab ships a new generation of base model. R&D multiplier ×1.4–1.6 at apply
+            time (random, capped to the round&apos;s maxMultiplier). No number to enter —
+            magnitude is determined mechanically, not by the facilitator.
+          </p>
         </div>
       );
-    case "multiplierOverride":
+    case "modelRollback":
+      return (
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>
+          <p className="text-[11px] text-text-light/70 italic">
+            Lab reverts to (or ships) a less capable base model — a Safer pivot or
+            forced downgrade. R&D multiplier ×0.4–0.6 at apply time (random, floored
+            at 1).
+          </p>
+        </div>
+      );
+    case "computeDestroyed":
       return (
         <div className="space-y-1.5">
           <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>
           <label className="block text-[10px] text-text-light">
-            New R&D multiplier
-            <input type="number" step="0.1" value={fields.newMultiplier ?? ""} onChange={(e) => set("newMultiplier", e.target.value)}
+            Amount destroyed (positive units)
+            <input type="number" min={1} value={fields.amount ?? ""} onChange={(e) => set("amount", e.target.value)}
               className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono" />
           </label>
+          <p className="text-[10px] text-text-light/70 italic">
+            Positive quantity only — compute is conserved. Clamped to ≤50u and to the
+            owner&apos;s available stock. Emits a negative ledger adjustment.
+          </p>
+        </div>
+      );
+    case "researchDisruption":
+      return (
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>
+          <p className="text-[11px] text-text-light/70 italic">
+            One-round productivity drop (×0.5–0.8). Use for facility offline, researcher
+            exodus, cyber attack short of destruction, political pressure slowing work.
+            Next round returns to 1.0 unless re-emitted.
+          </p>
+        </div>
+      );
+    case "researchBoost":
+      return (
+        <div className="space-y-1.5">
+          <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>
+          <p className="text-[11px] text-text-light/70 italic">
+            One-round productivity boost (×1.2–1.5). Use for algorithmic insight, key
+            talent hire, tooling upgrade, crash programme. Next round returns to 1.0.
+          </p>
         </div>
       );
     case "transferOwnership":
@@ -507,6 +593,15 @@ function FieldsForType({
       return (
         <p className="text-[11px] text-text-light/70 italic">
           Action rolls and logs to the narrative but produces no mechanical state change.
+        </p>
+      );
+    case "computeChange":
+    case "multiplierOverride":
+      return (
+        <p className="text-[11px] text-viz-warning italic">
+          Legacy effect type from before the four-layer redesign. Pick a replacement
+          above (breakthrough / modelRollback / computeDestroyed / researchDisruption
+          / researchBoost) and save.
         </p>
       );
   }
