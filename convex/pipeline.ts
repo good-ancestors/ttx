@@ -1044,15 +1044,6 @@ export const continueFromEffectReview = internalAction({
       const maxMult = LAB_PROGRESSION.maxMultiplier(roundNumber);
 
       // ═══ PHASE 9 — R&D GROWTH ═══
-      const ceoAllocations = new Map<string, { deployment: number; research: number; safety: number }>();
-      for (const sub of submissions) {
-        if (sub.computeAllocation) {
-          const lab = labsNow.find((l) => l.roleId === sub.roleId);
-          if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
-        }
-      }
-      const grownLabs = computeLabGrowth(labsNow, ceoAllocations, roundNumber, maxMult);
-      const multiplierUpdates: { labId: Id<"labs">; rdMultiplier: number }[] = [];
       // Start mechanicsLog for phases 9 + 10 at the phase-5 offset.
       const phase5LogLen = currentRound.mechanicsLog?.length ?? 0;
       type MechLog = { sequence: number; phase: 5 | 9 | 10; source: "player-pinned" | "grader-effect" | "natural-growth" | "acquisition" | "facilitator-edit"; subject: string; field: "rdMultiplier" | "computeStock" | "productivity"; before: number; after: number; reason: string };
@@ -1060,6 +1051,29 @@ export const continueFromEffectReview = internalAction({
       const pushLog = (entry: Omit<MechLog, "sequence">) => {
         mechLog.push({ sequence: phase5LogLen + mechLog.length, ...entry });
       };
+
+      const ceoAllocations = new Map<string, { deployment: number; research: number; safety: number }>();
+      for (const sub of submissions) {
+        if (sub.computeAllocation) {
+          const lab = labsNow.find((l) => l.roleId === sub.roleId);
+          if (lab) ceoAllocations.set(lab.name, sub.computeAllocation);
+        }
+      }
+      // One-round productivity modifiers from researchDisruption / researchBoost
+      // stashed by applyDecidedEffectsInternal. Cleared in applyGrowthAndAcquisitionInternal
+      // so they don't persist into next round.
+      const productivityModsByLab = new Map<string, number>();
+      if (currentRound.pendingProductivityMods) {
+        for (const mod of currentRound.pendingProductivityMods) {
+          const lab = labsNow.find((l) => l.labId === mod.labId);
+          if (lab) {
+            productivityModsByLab.set(lab.name, mod.modifier);
+            pushLog({ phase: 9, source: "grader-effect", subject: lab.name, field: "productivity", before: 1, after: mod.modifier, reason: `productivity mod applied to R${roundNumber} growth` });
+          }
+        }
+      }
+      const grownLabs = computeLabGrowth(labsNow, ceoAllocations, roundNumber, maxMult, productivityModsByLab);
+      const multiplierUpdates: { labId: Id<"labs">; rdMultiplier: number }[] = [];
       for (const lab of grownLabs) {
         const pre = labsNow.find((l) => l.labId === lab.labId);
         if (!pre) continue;
