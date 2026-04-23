@@ -504,6 +504,29 @@ export function isSubmittedAction(action: { actionStatus: string }): boolean {
   return action.actionStatus === "submitted";
 }
 
+/** Count graded actions still flagged low-confidence. The grader emits
+ *  `confidence: "low"` when its structured-effect grade is uncertain;
+ *  facilitators must click-through (accept or edit) each before Roll Dice
+ *  unlocks. Once acknowledged via `overrideStructuredEffect({ acknowledge: true })`
+ *  confidence is upgraded to "high", so this count is simply the remaining
+ *  unacknowledged low-confidence rows. Only counts *graded* actions
+ *  (probability != null); ungraded rows are gated separately.
+ *
+ *  Generic over action shape so callers (facilitator Submission type,
+ *  raw Convex docs, or the round-phase reduced form) all work without
+ *  converting. */
+export function countUnacknowledgedLowConfidence(
+  submissions: { actions: { probability?: number; confidence?: string }[] }[],
+): number {
+  let count = 0;
+  for (const s of submissions) {
+    for (const a of s.actions) {
+      if (a.probability != null && a.confidence === "low") count++;
+    }
+  }
+  return count;
+}
+
 /** Auto-decay priority table: position-based priority assignment.
  *  Key = number of actions, value = priority for each position (highest first). */
 export const PRIORITY_DECAY: Record<number, number[]> = {

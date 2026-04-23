@@ -21,6 +21,7 @@ import {
   hasTag,
   isResolvingPhase,
   isSubmittedAction,
+  countUnacknowledgedLowConfidence,
   computeLabGrowth,
   buildComputeHolders,
   calculateStartingCompute,
@@ -645,6 +646,53 @@ describe("Constants", () => {
   it("isSubmittedAction works", () => {
     expect(isSubmittedAction({ actionStatus: "submitted" })).toBe(true);
     expect(isSubmittedAction({ actionStatus: "draft" })).toBe(false);
+  });
+});
+
+// ─── countUnacknowledgedLowConfidence ───────────────────────────────────────
+// Feeds the Roll Dice click-through gate: facilitator must accept or edit each
+// low-confidence row before dice unlock. Acknowledgement upgrades confidence to
+// "high" (see overrideStructuredEffect), so this count is just remaining lows.
+
+describe("countUnacknowledgedLowConfidence", () => {
+  it("counts only graded actions with confidence='low'", () => {
+    const subs = [
+      { actions: [
+        { probability: 70, confidence: "low" },     // counts
+        { probability: 50, confidence: "high" },    // graded-high → skip
+        { probability: 30, confidence: "medium" },  // graded-medium → skip
+      ] },
+      { actions: [
+        { probability: 90, confidence: "low" },     // counts
+      ] },
+    ];
+    expect(countUnacknowledgedLowConfidence(subs)).toBe(2);
+  });
+
+  it("skips ungraded actions (probability == null) — they're gated separately", () => {
+    const subs = [
+      { actions: [
+        { confidence: "low" },                      // ungraded → skip
+        { probability: undefined, confidence: "low" }, // ungraded → skip
+        { probability: 50, confidence: "low" },     // counts
+      ] },
+    ];
+    expect(countUnacknowledgedLowConfidence(subs)).toBe(1);
+  });
+
+  it("skips actions without a confidence field entirely", () => {
+    const subs = [
+      { actions: [
+        { probability: 70 },                         // no confidence → skip
+        { probability: 70, confidence: undefined },  // undefined → skip
+      ] },
+    ];
+    expect(countUnacknowledgedLowConfidence(subs)).toBe(0);
+  });
+
+  it("returns 0 on empty input", () => {
+    expect(countUnacknowledgedLowConfidence([])).toBe(0);
+    expect(countUnacknowledgedLowConfidence([{ actions: [] }])).toBe(0);
   });
 });
 

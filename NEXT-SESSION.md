@@ -145,7 +145,7 @@ These are playtest-driven polish and are not blocked on the redesign:
 
 - **Player-side structured-effect detection** — nudge players toward the structured UI when freeform text smells mechanical.
 - **Pre-fill structured effects in NPC sample data** (`sampleActionsData.ts`). Makes NPC rounds deterministic + LLM-free.
-- **Click-through gate for low-confidence effects** — disable Roll Dice until all low-confidence rows acknowledged.
+- ~~**Click-through gate for low-confidence effects**~~ — shipped. Roll Dice disabled until all `confidence: "low"` rows acknowledged via edit or accept-as-is (both upgrade to `"high"`).
 - **Effect-path scenario harness fixtures** — TSMC bombed, cyber takedown, hostile merger, etc. Each burns real-LLM budget but pins end-to-end behaviour.
 - **Lab split effect type** — `splitLab` or `foundLab`+`computeTransfer` pair. Narrative for a safety team spinning off.
 - **Section-header visual hierarchy polish** (low priority).

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { TOTAL_ROUNDS, isSubmittedAction, type Lab } from "@/lib/game-data";
+import { TOTAL_ROUNDS, isSubmittedAction, countUnacknowledgedLowConfidence, type Lab } from "@/lib/game-data";
 import { NarrativeEditor } from "@/components/manual-controls";
 import { AttemptedSection } from "./resolve-sections/attempted-section";
 import { HappenedSection } from "./resolve-sections/happened-section";
@@ -118,13 +118,14 @@ export function RoundPhase({
 }: RoundPhaseProps) {
   const phase = game.phase;
 
-  const { submittedActionCount, ungradedCount } = useMemo(() => {
+  const { submittedActionCount, ungradedCount, lowConfidenceCount } = useMemo(() => {
     const submitted = submissions.flatMap((s) =>
       s.actions.filter((a) => isSubmittedAction(a))
     );
     return {
       submittedActionCount: submitted.length,
       ungradedCount: submitted.filter((a) => a.probability == null).length,
+      lowConfidenceCount: countUnacknowledgedLowConfidence(submissions),
     };
   }, [submissions]);
 
@@ -280,10 +281,13 @@ export function RoundPhase({
               {ungradedCount === 0 && (
                 <button
                   onClick={handleRollDice}
-                  disabled={resolving}
+                  disabled={resolving || lowConfidenceCount > 0}
+                  title={lowConfidenceCount > 0
+                    ? `${lowConfidenceCount} low-confidence effect${lowConfidenceCount === 1 ? "" : "s"} need review — click each yellow badge above to accept or edit`
+                    : undefined}
                   className={`flex-1 py-3 rounded-lg font-extrabold text-base transition-colors flex items-center justify-center gap-2 ${
-                    resolving
-                      ? "bg-navy-light text-navy-muted opacity-50"
+                    resolving || lowConfidenceCount > 0
+                      ? "bg-navy-light text-navy-muted opacity-50 cursor-not-allowed"
                       : "bg-white text-navy hover:bg-off-white shadow-lg ring-1 ring-white/20"
                   }`}
                 >
@@ -291,6 +295,11 @@ export function RoundPhase({
                 </button>
               )}
             </div>
+          )}
+          {submittedActionCount > 0 && ungradedCount === 0 && lowConfidenceCount > 0 && (
+            <p className="text-xs text-viz-warning text-center">
+              {lowConfidenceCount} low-confidence effect{lowConfidenceCount === 1 ? "" : "s"} need{lowConfidenceCount === 1 ? "s" : ""} review — click each yellow badge above to accept or edit before rolling.
+            </p>
           )}
         </div>
       )}
