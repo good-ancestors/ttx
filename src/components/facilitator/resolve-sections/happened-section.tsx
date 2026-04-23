@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, ChevronRight, Loader2 } from "lucide-react";
+import { AlertTriangle, ChevronRight, ChevronDown, ClipboardList, Loader2 } from "lucide-react";
 import { useAuthMutation } from "@/lib/hooks";
 import { api } from "@convex/_generated/api";
 import { NarrativePanel } from "@/components/narrative-panel";
@@ -116,7 +116,11 @@ export function HappenedSection({
        *  consumes to produce the prose. Showing them before the narrative matches
        *  the causal order: apply → narrate. */}
       {appliedOps.length > 0 && (
-        <AppliedOpsPanel applied={applied} rejected={rejected} />
+        <AppliedOpsPanel
+          applied={applied}
+          rejected={rejected}
+          mechanicsLog={currentRound?.mechanicsLog}
+        />
       )}
 
       {/* Continue to Narrative bar — placed here (under Applied Effects, above
@@ -197,9 +201,19 @@ function ContinueToNarrativeBar({
 }
 
 type AppliedOp = NonNullable<Round["appliedOps"]>[number];
+type MechanicsLogEntry = NonNullable<Round["mechanicsLog"]>[number];
 
-function AppliedOpsPanel({ applied, rejected }: { applied: AppliedOp[]; rejected: AppliedOp[] }) {
+function AppliedOpsPanel({
+  applied,
+  rejected,
+  mechanicsLog,
+}: {
+  applied: AppliedOp[];
+  rejected: AppliedOp[];
+  mechanicsLog?: MechanicsLogEntry[];
+}) {
   if (applied.length === 0 && rejected.length === 0) return null;
+  const log = mechanicsLog ?? [];
 
   return (
     <div className="bg-navy-dark/50 rounded-xl border border-navy-light p-5">
@@ -234,7 +248,7 @@ function AppliedOpsPanel({ applied, rejected }: { applied: AppliedOp[]; rejected
       )}
 
       {rejected.length > 0 && (
-        <div>
+        <div className={log.length > 0 ? "mb-4" : undefined}>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-viz-danger block mb-2 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
             Flagged &amp; rejected ({rejected.length})
@@ -262,6 +276,77 @@ function AppliedOpsPanel({ applied, rejected }: { applied: AppliedOp[]; rejected
             continue as-is — these ops simply did not apply.
           </p>
         </div>
+      )}
+
+      {log.length > 0 && <MechanicsLogPanel entries={log} />}
+    </div>
+  );
+}
+
+/** Collapsible chronological audit log — every mutation of rdMultiplier,
+ *  computeStock, or productivity during phases 5 / 9 / 10. Closes the
+ *  debuggability gap that surfaced in the DeepCent trajectory bug: when a
+ *  multiplier moves unexpectedly, the facilitator can trace the exact chain
+ *  of events that produced the final number before clicking Finalise. */
+function MechanicsLogPanel({ entries }: { entries: MechanicsLogEntry[] }) {
+  const [open, setOpen] = useState(false);
+  const sorted = [...entries].sort((a, b) => a.sequence - b.sequence);
+
+  const fmt = (v: number): string => {
+    // Multiplier + productivity render to 2 decimal places for readability;
+    // compute stock is always whole units.
+    return Number.isInteger(v) ? String(v) : v.toFixed(2);
+  };
+  const fieldLabel: Record<MechanicsLogEntry["field"], string> = {
+    rdMultiplier: "R&D multiplier",
+    computeStock: "compute",
+    productivity: "productivity",
+  };
+  const phaseLabel: Record<MechanicsLogEntry["phase"], string> = {
+    5: "P5 effect",
+    9: "P9 growth",
+    10: "P10 acquisition",
+  };
+  const sourceTone: Record<MechanicsLogEntry["source"], string> = {
+    "grader-effect": "bg-viz-capability/15 text-viz-capability",
+    "natural-growth": "bg-viz-safety/15 text-viz-safety",
+    "acquisition": "bg-viz-safety/15 text-viz-safety",
+    "player-pinned": "bg-viz-warning/15 text-viz-warning",
+    "facilitator-edit": "bg-viz-warning/15 text-viz-warning",
+  };
+
+  return (
+    <div>
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-text-light hover:text-white transition-colors"
+      >
+        {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <ClipboardList className="w-3 h-3" />
+        Mechanics log ({sorted.length} {sorted.length === 1 ? "entry" : "entries"})
+      </button>
+      {open && (
+        <>
+          <ul className="mt-2 space-y-1 font-mono text-[11px]">
+            {sorted.map((entry) => (
+              <li key={entry.sequence} className="flex items-start gap-2 text-text-light/90">
+                <span className={`inline-block rounded px-1 py-0.5 shrink-0 text-[9px] uppercase tracking-wider ${sourceTone[entry.source]}`}>
+                  {phaseLabel[entry.phase]}
+                </span>
+                <span className="text-navy-muted shrink-0">#{entry.sequence}</span>
+                <span className="font-semibold shrink-0">{entry.subject}</span>
+                <span className="text-navy-muted shrink-0">{fieldLabel[entry.field]}</span>
+                <span className="shrink-0">{fmt(entry.before)} → {fmt(entry.after)}</span>
+                <span className="text-navy-muted italic truncate">{entry.reason}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[11px] text-navy-muted mt-2">
+            Chronological log of every write to R&amp;D multiplier, compute stock, and
+            productivity during this resolve. Phase 5 = grader effects applied; phase 9 =
+            R&amp;D growth; phase 10 = compute acquisition for next round.
+          </p>
+        </>
       )}
     </div>
   );
