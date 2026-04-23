@@ -12,5 +12,6 @@ if [ -n "$STAGED" ]; then
   fi
 fi
 
-# Only run free unit + component tests (not Convex integration tests which cost money and need a server)
-npx vitest run tests/game-logic.test.ts tests/component-integration.test.tsx --reporter=dot
+# Only run free unit + component tests (not Convex integration tests which cost money and need a server).
+# Keep this list aligned with `npm test` in package.json.
+npx vitest run tests/game-logic.test.ts tests/component-integration.test.tsx tests/structured-effects.test.ts tests/ai-prompts.test.ts --reporter=dot
