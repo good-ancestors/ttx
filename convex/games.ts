@@ -870,7 +870,10 @@ export const setPhaseEffectReviewInternal = internalMutation({
       phaseEndsAt: undefined,
       resolving: false,
       resolvingStartedAt: undefined,
-      pipelineStatus: { step: "effect-review", detail: "Review effects, then continue to narrative", startedAt: Date.now() },
+      // No detail text — at effect-review the pipeline is idle, waiting for
+      // the facilitator. The UI suppresses the spinner/resolveStep row for
+      // this step so there's no system-is-working connotation.
+      pipelineStatus: { step: "effect-review", detail: "", startedAt: Date.now() },
     });
     await logEvent(ctx, args.gameId, "phase_change", undefined, { phase: "effect-review" });
   },

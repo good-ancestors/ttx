@@ -298,6 +298,7 @@ export function RoundPhase({
       {/* ─── Section 2: What Happened — narrative + effect summaries ─── */}
       <HappenedSection
         gameId={gameId}
+        roundNumber={game.currentRound}
         currentRound={currentRound}
         phase={phase}
         resolving={resolving}

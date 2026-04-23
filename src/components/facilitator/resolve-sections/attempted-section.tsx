@@ -44,8 +44,6 @@ export function AttemptedSection(props: {
 
   return (
     <AttemptedPanel
-      gameId={props.gameId}
-      roundNumber={props.roundNumber}
       submissions={props.submissions}
       proposals={props.proposals}
       isProjector={props.isProjector}

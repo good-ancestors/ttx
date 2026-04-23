@@ -1,6 +1,9 @@
 "use client";
 
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, ChevronRight, Loader2 } from "lucide-react";
+import { useAuthMutation } from "@/lib/hooks";
+import { api } from "@convex/_generated/api";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { isResolvingPhase } from "@/lib/game-data";
 import type { Round } from "../types";
@@ -40,6 +43,7 @@ const CATEGORY_LABELS: Record<string, string> = {
  *  Appears once the pipeline has landed at P5 (effect-review) or later. */
 export function HappenedSection({
   gameId,
+  roundNumber,
   currentRound,
   phase,
   resolving,
@@ -49,6 +53,7 @@ export function HappenedSection({
   onEditNarrative,
 }: {
   gameId: Id<"games">;
+  roundNumber: number;
   currentRound: Round | undefined;
   phase: string;
   resolving: boolean;
@@ -65,6 +70,14 @@ export function HappenedSection({
     resolveStep.toLowerCase().includes("failed")
   );
 
+  // The spinner + resolveStep text represents "system is working" — only show
+  // when the pipeline is actually running (grading, rolling, applying,
+  // narrating). At the P7 effect-review pause, the system is NOT running;
+  // it's waiting for the facilitator to click Continue. The old "Review
+  // effects, then continue" message with a spinner misled facilitators into
+  // thinking the system was stuck.
+  const pipelineActivelyWorking = resolving && phase !== "effect-review";
+
   const appliedOps = currentRound?.appliedOps ?? [];
   const applied = appliedOps.filter((op) => op.status === "applied");
   const rejected = [...appliedOps.filter((op) => op.status === "rejected")]
@@ -72,7 +85,7 @@ export function HappenedSection({
 
   return (
     <>
-      {resolving && resolveStep && (
+      {pipelineActivelyWorking && resolveStep && (
         <div className="flex items-center gap-2 py-2 text-sm text-text-light">
           <Loader2 className="w-4 h-4 animate-spin" />
           {resolveStep}
@@ -89,12 +102,20 @@ export function HappenedSection({
 
       {/* Applied effects first — these are the mechanical changes the narrate LLM
        *  consumes to produce the prose. Showing them before the narrative matches
-       *  the causal order: decide → apply → narrate. */}
+       *  the causal order: apply → narrate. */}
       {appliedOps.length > 0 && (
         <AppliedOpsPanel applied={applied} rejected={rejected} />
       )}
 
-      {(resolving || currentRound?.summary) && (
+      {/* Continue to Narrative bar — placed here (under Applied Effects, above
+       *  the empty narrative slot) because clicking it triggers narrative
+       *  generation for the effects that have just been reviewed. At any
+       *  other phase this does nothing. */}
+      {phase === "effect-review" && !isProjector && (
+        <ContinueToNarrativeBar gameId={gameId} roundNumber={roundNumber} />
+      )}
+
+      {(pipelineActivelyWorking || currentRound?.summary) && (
         <NarrativePanel
           round={currentRound}
           isProjector={isProjector}
@@ -103,6 +124,62 @@ export function HappenedSection({
         />
       )}
     </>
+  );
+}
+
+/** Button that triggers narrative generation from effect-review. The name —
+ *  "Continue to Narrative" — matches the mental model: effects have been
+ *  reviewed, now generate the prose for them. */
+function ContinueToNarrativeBar({
+  gameId,
+  roundNumber,
+}: {
+  gameId: Id<"games">;
+  roundNumber: number;
+}) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const triggerContinue = useAuthMutation(api.games.triggerContinueFromEffectReview);
+
+  const handleContinue = async () => {
+    setSubmitting(true);
+    setError(null);
+    try {
+      await triggerContinue({ gameId, roundNumber });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSubmitting(false);
+    }
+    // Leave submitting=true on success — the phase change re-renders us out of existence.
+  };
+
+  return (
+    <div className="mt-4">
+      {error && (
+        <div className="mb-3 p-2 bg-viz-danger/10 border border-viz-danger/30 rounded text-sm text-viz-danger">
+          {error}
+        </div>
+      )}
+      <button
+        onClick={() => void handleContinue()}
+        disabled={submitting}
+        className="w-full py-4 bg-white text-navy rounded-lg font-extrabold text-lg hover:bg-off-white transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+      >
+        {submitting ? (
+          <>
+            <Loader2 className="w-5 h-5 animate-spin" />
+            Generating narrative&hellip;
+          </>
+        ) : (
+          <>
+            Continue to Narrative <ChevronRight className="w-5 h-5" />
+          </>
+        )}
+      </button>
+      <p className="text-[11px] text-navy-muted text-center mt-2">
+        Applies R&amp;D growth, distributes new compute, and generates the prose summary.
+      </p>
+    </div>
   );
 }
 

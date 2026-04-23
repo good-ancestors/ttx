@@ -2,8 +2,6 @@
 
 import { useState, useMemo, useCallback } from "react";
 import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, isSubmittedAction, isResolvingPhase, type Lab } from "@/lib/game-data";
-import { useAuthMutation } from "@/lib/hooks";
-import { api } from "@convex/_generated/api";
 import {
   Dices,
   Eye,
@@ -13,8 +11,6 @@ import {
   XCircle,
   Clock,
   ChevronDown,
-  ChevronRight,
-  Loader2,
 } from "lucide-react";
 import type { Submission, Proposal, Round, Table } from "./types";
 import type { StructuredEffect } from "@/lib/ai-prompts";
@@ -37,12 +33,12 @@ const REVIEWABLE_OP_TYPES = new Set([
  *   - discuss: hidden (component returns null in parent).
  *   - submit / rolling: flat list, staggered reveal animation.
  *   - effect-review / narrate: two-column succeeded/failed split. Successful rows whose
- *     round produced reviewable structural ops carry a "review" badge. During
- *     effect-review, a bottom "Continue to Narrative" bar commits the P7 pause.
+ *     round produced reviewable structural ops carry a "review" badge.
+ *
+ * The "Continue to Narrative" button lives in the HappenedSection, not here —
+ * it reads the applied effects to trigger narrative generation for them.
  */
 export function AttemptedPanel({
-  gameId,
-  roundNumber,
   submissions,
   proposals,
   isProjector,
@@ -66,8 +62,6 @@ export function AttemptedPanel({
   labs,
   tables,
 }: {
-  gameId: Id<"games">;
-  roundNumber: number;
   submissions: Submission[];
   proposals: Proposal[];
   isProjector: boolean;
@@ -312,13 +306,8 @@ export function AttemptedPanel({
             </div>
           )}
 
-          {phase === "effect-review" && !isProjector && (
-            <ContinueToNarrativeBar
-              gameId={gameId}
-              roundNumber={roundNumber}
-              reviewableCount={reviewableApplied.length}
-            />
-          )}
+          {/* The "Continue to Narrative" button now lives in the What Happened
+           *  section, alongside the Applied Effects list it's reviewing. */}
 
           {narrativeStale && hasNarrative && !isProjector && (
             <div className="mt-3 rounded-lg border border-viz-warning/30 bg-viz-warning/10 px-3 py-2 flex items-center justify-between gap-2">
@@ -443,63 +432,3 @@ function SucceededFailedSplit({
   );
 }
 
-function ContinueToNarrativeBar({
-  gameId,
-  roundNumber,
-  reviewableCount,
-}: {
-  gameId: Id<"games">;
-  roundNumber: number;
-  reviewableCount: number;
-}) {
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const triggerContinue = useAuthMutation(api.games.triggerContinueFromEffectReview);
-
-  const handleContinue = async () => {
-    setSubmitting(true);
-    setError(null);
-    try {
-      await triggerContinue({ gameId, roundNumber });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-      setSubmitting(false);
-    }
-    // Leave submitting=true on success — the phase change re-renders us out of existence.
-  };
-
-  return (
-    <div className="mt-5 pt-4 border-t border-navy-light">
-      {error && (
-        <div className="mb-3 p-2 bg-viz-danger/10 border border-viz-danger/30 rounded text-sm text-viz-danger">
-          {error}
-        </div>
-      )}
-      {reviewableCount > 0 && (
-        <div className="mb-3 text-xs text-text-light">
-          {reviewableCount === 1 ? "1 effect" : `${reviewableCount} effects`} to review in{" "}
-          <span className="font-semibold text-white">What Happened</span> below.
-        </div>
-      )}
-      <button
-        onClick={() => void handleContinue()}
-        disabled={submitting}
-        className="w-full py-4 bg-white text-navy rounded-lg font-extrabold text-lg hover:bg-off-white transition-colors flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-      >
-        {submitting ? (
-          <>
-            <Loader2 className="w-5 h-5 animate-spin" />
-            Continuing...
-          </>
-        ) : (
-          <>
-            Continue to Narrative <ChevronRight className="w-5 h-5" />
-          </>
-        )}
-      </button>
-      <p className="text-[11px] text-navy-muted text-center mt-2">
-        Applies R&amp;D growth, distributes new compute, and generates the narrative.
-      </p>
-    </div>
-  );
-}
