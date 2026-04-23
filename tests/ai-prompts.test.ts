@@ -75,8 +75,8 @@ describe("buildBatchedGradingPrompt", () => {
 
   it("does not re-introduce deprecated effect types", () => {
     // computeChange + multiplierOverride were replaced by the semantic four-layer
-    // taxonomy. The grader must not be told about them — they are kept in the
-    // Convex validator solely for back-compat on persisted documents.
+    // taxonomy (breakthrough / modelRollback / computeDestroyed / researchDisruption
+    // / researchBoost). Regression guard: the grader prompt must never mention them.
     const prompt = buildBatchedGradingPrompt({
       round: 1,
       roundLabel: "Q1",

@@ -210,14 +210,7 @@ export type StructuredEffect =
   | { type: "transferOwnership"; labName: string; controllerRoleId: string }
   | { type: "computeTransfer"; fromRoleId: string; toRoleId: string; amount: number }
   | { type: "foundLab"; name: string; spec?: string; seedCompute: number; allocation?: { deployment: number; research: number; safety: number } }
-  | { type: "narrativeOnly" }
-  // Legacy variants — kept in the union so documents persisted before the
-  // four-layer redesign still type-check on read. The grader no longer emits
-  // them; normaliseStructuredEffect converts them to narrativeOnly; the apply
-  // path is a no-op. Facilitator UI renders them with a "(legacy)" suffix and
-  // prompts the facilitator to pick a replacement type.
-  | { type: "computeChange"; labName: string; change: number }
-  | { type: "multiplierOverride"; labName: string; newMultiplier: number };
+  | { type: "narrativeOnly" };
 
 export type Confidence = "high" | "medium" | "low";
 

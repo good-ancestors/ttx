@@ -617,14 +617,13 @@ export const restoreSnapshot = mutation({
     // Clear resolution data on this round if restoring to "before". Also clear
     // resolveNonce unconditionally so any in-flight pipeline run tied to this
     // round can't land post-restore (mirrors the game-level clear above).
-    // Pending fields (pendingMultiplierOverrides, pendingAcquired) are cleared on
-    // "before" so the next roll/continue re-derives them cleanly.
+    // pendingAcquired is cleared on "before" so the next roll/continue
+    // re-derives it cleanly.
     if (args.useBefore) {
       await ctx.db.patch(round._id, {
         summary: undefined,
         labsAfter: undefined,
         resolveNonce: undefined,
-        pendingMultiplierOverrides: undefined,
         pendingAcquired: undefined,
       });
     } else {
@@ -1053,7 +1052,6 @@ export const forceClearResolvingLock = mutation({
     if (round) {
       await ctx.db.patch(round._id, {
         resolveNonce: undefined,
-        pendingMultiplierOverrides: undefined,
         pendingAcquired: undefined,
       });
     }

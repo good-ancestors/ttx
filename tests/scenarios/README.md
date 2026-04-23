@@ -43,16 +43,16 @@ NEXT_PUBLIC_CONVEX_URL=https://oceanic-lapwing-232.convex.cloud npx tsx tests/sc
 
 Per NEXT-SESSION.md #7 the priority scenarios to cover:
 
-- **TSMC bombed** — facilitator triggers a large negative computeChange
-  across all labs; subsequent round's baseline acquisition drops as pools
-  shrink.
+- **TSMC bombed** — facilitator triggers a large `computeDestroyed` across
+  all labs; subsequent round's baseline acquisition drops as pools shrink.
 - **Cyber takedown** — attacker role drains compute from target via a
-  succeed/fail roll; verify ledger source/sink.
+  `computeDestroyed` + `researchDisruption` pair on a succeed/fail roll;
+  verify ledger source/sink.
 - **Forced merger + orphan guard** — LLM tries to unown a merged lab;
   verify the guard rejects it as `precondition_failure`.
 - **Lab split** — `foundLab` action with seed compute; verify new lab
   created + seed debited from founder.
 - **Chained round** — cyber attack fails → retaliation decided → merger
-  forced → multiplier override; verify `appliedOps` ordering.
-- **Destruction non-conservation** — `computeChange: -30` pure loss;
+  forced → breakthrough; verify `appliedOps` ordering.
+- **Destruction non-conservation** — `computeDestroyed: 30` pure loss;
   verify ledger doesn't require a counterparty.

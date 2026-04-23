@@ -182,11 +182,7 @@ export default defineSchema({
          *    Position — breakthrough / modelRollback / merge change rdMultiplier.
          *    Stock    — computeDestroyed / computeTransfer / merge move compute.
          *    Velocity — derived at resolve time, never an effect.
-         *    Productivity — researchDisruption / researchBoost (one-round throughput mod).
-         *
-         *  Legacy variants (computeChange, multiplierOverride) are kept in the union so
-         *  round documents persisted before the redesign still load — they are converted
-         *  to narrativeOnly by the apply path. */
+         *    Productivity — researchDisruption / researchBoost (one-round throughput mod). */
         structuredEffect: v.optional(v.union(
           v.object({ type: v.literal("merge"), survivor: v.string(), absorbed: v.string(), newName: v.optional(v.string()), newSpec: v.optional(v.string()) }),
           v.object({ type: v.literal("decommission"), labName: v.string() }),
@@ -199,9 +195,6 @@ export default defineSchema({
           v.object({ type: v.literal("computeTransfer"), fromRoleId: v.string(), toRoleId: v.string(), amount: v.number() }),
           v.object({ type: v.literal("foundLab"), name: v.string(), spec: v.optional(v.string()), seedCompute: v.number(), allocation: v.optional(v.object({ deployment: v.number(), research: v.number(), safety: v.number() })) }),
           v.object({ type: v.literal("narrativeOnly") }),
-          // Legacy variants — kept for backward-compat on persisted docs only.
-          v.object({ type: v.literal("computeChange"), labName: v.string(), change: v.number() }),
-          v.object({ type: v.literal("multiplierOverride"), labName: v.string(), newMultiplier: v.number() }),
         )),
         /** Grader's confidence in its grade + effect. `low` forces P2 click-through before
          *  Continue unlocks — facilitator must acknowledge (or edit) each low-confidence row. */
@@ -281,7 +274,7 @@ export default defineSchema({
     // before the deterministic R&D growth + compute acquisition runs. Written at the end of
     // the effect-application phase; cleared on re-resolve.
     appliedOps: v.optional(v.array(v.object({
-      type: v.string(),              // merge | decommission | transferOwnership | computeChange | multiplierOverride | foundLab | rejected
+      type: v.string(),              // merge | decommission | transferOwnership | breakthrough | modelRollback | computeDestroyed | researchDisruption | researchBoost | computeTransfer | foundLab | rejected
       status: v.union(v.literal("applied"), v.literal("rejected")),
       summary: v.string(),           // human-readable one-line description of what happened
       reason: v.optional(v.string()),// LLM's reason for the op (applied ops) or why it was rejected
@@ -291,15 +284,6 @@ export default defineSchema({
       // group + style flags by severity. opType is the original op type that was rejected.
       category: v.optional(v.string()),
       opType: v.optional(v.string()),
-    }))),
-    // DEPRECATED — retained as optional unused for back-compat on rounds persisted
-    // before the redesign. The new taxonomy replaces multiplierOverride with semantic
-    // events (breakthrough / modelRollback) applied in-place by the new apply path;
-    // there is no post-growth re-apply step and therefore nothing to stash. New
-    // rounds leave this field undefined; the pipeline no longer reads it.
-    pendingMultiplierOverrides: v.optional(v.array(v.object({
-      labId: v.id("labs"),
-      rdMultiplier: v.number(),
     }))),
     // One-round productivity modifiers from researchDisruption / researchBoost
     // effects. labId → multiplicative factor applied to this round's R&D growth
@@ -398,7 +382,7 @@ export default defineSchema({
       v.literal("starting"),     // game creation: seed per role; never regenerated
       v.literal("acquired"),     // pool share acquisition on resolve; regenerated
       v.literal("transferred"),  // player send or settled accepted request; preserved across regens
-      v.literal("adjusted"),     // narrative LLM computeChange (reason required); regenerated
+      v.literal("adjusted"),     // computeDestroyed effect (reason required); regenerated
       v.literal("merged"),       // structural merger pair (counterparty required); regenerated
       v.literal("facilitator"),  // manual override with reason; never regenerated
     ),

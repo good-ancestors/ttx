@@ -16,7 +16,6 @@ import {
   Save,
   ShieldAlert,
   TrendingDown,
-  TrendingUp,
   Zap,
   X,
 } from "lucide-react";
@@ -37,10 +36,6 @@ function typeMeta(type: StructuredEffect["type"]): { label: string; Icon: typeof
     case "computeTransfer":    return { label: "Compute transfer",   Icon: ArrowRightLeft,  tone: "text-viz-capability" };
     case "foundLab":           return { label: "Found lab",          Icon: Plus,            tone: "text-viz-safety" };
     case "narrativeOnly":      return { label: "Narrative only",     Icon: MessageSquare,   tone: "text-text-light" };
-    // Legacy persisted variants — render as their semantic equivalents for UX
-    // consistency when surfacing old round data.
-    case "computeChange":      return { label: "Compute (legacy)",   Icon: Flame,           tone: "text-text-muted" };
-    case "multiplierOverride": return { label: "R&D (legacy)",       Icon: TrendingUp,      tone: "text-text-muted" };
   }
 }
 
@@ -69,12 +64,6 @@ function effectSummary(e: StructuredEffect): string {
       return `${e.name} (${e.seedCompute}u)`;
     case "narrativeOnly":
       return "no mechanical effect";
-    case "computeChange": {
-      const sign = e.change > 0 ? "+" : "";
-      return `${e.labName} ${sign}${e.change}u (legacy)`;
-    }
-    case "multiplierOverride":
-      return `${e.labName} → ${e.newMultiplier}× (legacy)`;
   }
 }
 
@@ -103,8 +92,7 @@ interface EffectEditorProps {
 }
 
 /** Compact badge + click-to-edit popover. If the effect is absent, shows
- *  nothing — the grader always emits one, so a missing badge is only possible
- *  on legacy pre-refactor rounds. */
+ *  nothing — the grader always emits one. */
 export function EffectEditor(props: EffectEditorProps) {
   const { effect, confidence, isProjector, locked } = props;
   if (!effect) return null;
@@ -437,11 +425,6 @@ function buildEffect(type: EffectType, f: Record<string, string>): StructuredEff
     }
     case "narrativeOnly":
       return { type: "narrativeOnly" };
-    case "computeChange":
-    case "multiplierOverride":
-      // Legacy types — not selectable in the new UI. If the initial effect was a
-      // legacy shape the facilitator must pick a replacement type before saving.
-      return "Legacy effect type — pick a four-layer taxonomy equivalent above";
   }
 }
 
@@ -593,15 +576,6 @@ function FieldsForType({
       return (
         <p className="text-[11px] text-text-light/70 italic">
           Action rolls and logs to the narrative but produces no mechanical state change.
-        </p>
-      );
-    case "computeChange":
-    case "multiplierOverride":
-      return (
-        <p className="text-[11px] text-viz-warning italic">
-          Legacy effect type from before the four-layer redesign. Pick a replacement
-          above (breakthrough / modelRollback / computeDestroyed / researchDisruption
-          / researchBoost) and save.
         </p>
       );
   }

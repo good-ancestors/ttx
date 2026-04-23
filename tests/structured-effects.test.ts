@@ -203,20 +203,4 @@ describe("normaliseStructuredEffect", () => {
     });
   });
 
-  describe("legacy variants (persisted pre-redesign) → narrativeOnly at normalisation", () => {
-    // computeChange + multiplierOverride are preserved in the Convex validator so
-    // rounds persisted before the four-layer redesign still load, but the grader
-    // no longer emits them and the apply path treats them as narrativeOnly. The
-    // normaliser mirrors that: unknown types drop through to narrativeOnly.
-    it("computeChange → narrativeOnly", () => {
-      expect(normaliseStructuredEffect({ type: "computeChange", labName: "OpenBrain", change: 30 })).toEqual({
-        type: "narrativeOnly",
-      });
-    });
-    it("multiplierOverride → narrativeOnly", () => {
-      expect(normaliseStructuredEffect({ type: "multiplierOverride", labName: "OpenBrain", newMultiplier: 5 })).toEqual({
-        type: "narrativeOnly",
-      });
-    });
-  });
 });

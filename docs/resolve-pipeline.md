@@ -24,7 +24,7 @@ Every mechanical effect maps to exactly one of four layers. If a new narrative c
 
 **Multiplier is model capability.** Only `breakthrough` / `modelRollback` / `merge` change `rdMultiplier`. Cyber attacks can't change which model is deployed — the model on disk is unchanged.
 
-**LLM-picked magnitudes in exactly one place.** The grader only picks a number for `computeTransfer.amount`. Every other mechanical effect is semantic; the code picks the factor at apply time. This kills an entire class of grader misjudgement (the pre-redesign `multiplierOverride` free-for-all that produced the DeepCent trajectory bug).
+**LLM-picked magnitudes in exactly one place.** The grader only picks a number for `computeTransfer.amount`. Every other mechanical effect is semantic; the code picks the factor at apply time. This kills an entire class of grader misjudgement (the pre-redesign multiplier-override free-for-all that produced the DeepCent trajectory bug).
 
 ## Phase order
 
@@ -71,8 +71,6 @@ Emitted by the grader at P2, applied deterministically at P5. Discriminated by `
 | `computeTransfer` | stock ↔ | `fromRoleId`, `toRoleId`, `amount` | Narrative compute move between two active role pools. **The ONLY effect where the LLM picks a magnitude.** Bounded by sender's balance. |
 | `foundLab` | new entity | `name`, `seedCompute`, `spec?` | Only pinned from player `foundLab` submission — grader doesn't invent these |
 | `narrativeOnly` | — | — | Default. Action rolls + logs to narrative, no mechanical op |
-
-Legacy `computeChange` and `multiplierOverride` are preserved in the Convex validator for back-compat on rounds persisted before the four-layer redesign. The grader no longer emits them and the apply path is a no-op; facilitator UI tags them `(legacy)` and prompts for a replacement.
 
 ## Mechanics audit log
 

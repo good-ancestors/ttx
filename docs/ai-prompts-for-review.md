@@ -336,13 +336,14 @@ SECRET ACTIONS (if any):
 
 ### Lab Operations
 
-The AI may also output structural changes to labs:
+Structural changes are emitted by the grader as structured effects (one per graded action). The canonical set of effects lives in `src/lib/ai-prompts.ts` and `docs/resolve-pipeline.md`; high-level shapes:
 - **merge** — consolidation (DPA, Manhattan Project)
-- **create** — new entity (rogue AI escaping, government lab)
+- **foundLab** — player-pinned new entity
 - **decommission** — lab shut down or destroyed
-- **rename** — identity change (Safer pivot, government takeover)
-- **computeChange** — direct compute changes from events
-- **multiplierOverride** — event changes R&D capability
+- **transferOwnership** — ownership moves to a different role; capability unchanged
+- **breakthrough / modelRollback** — position layer (deployed model swap)
+- **computeDestroyed / computeTransfer** — stock layer (conserved)
+- **researchDisruption / researchBoost** — productivity layer (one round)
 
 ### Per-Round Baseline Guidance
 

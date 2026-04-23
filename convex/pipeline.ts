@@ -531,11 +531,11 @@ export const rollAndApplyEffects = internalAction({
       // Transferred + facilitator + starting rows are preserved.
       await ctx.runMutation(internal.computeLedger.clearRegenerableRowsInternal, { gameId, roundNumber });
 
-      // Also reset lab structural state to the pre-round snapshot so a re-resolve doesn't
-      // carry forward LLM-decided multiplierOverrides / allocation edits from an earlier
-      // run of this same round. Without this, `labs.rdMultiplier` still reflects the
-      // previous resolve's overridden value and the new decide pass either piles another
-      // override on top or suppresses natural growth.
+      // Also reset lab structural state to the pre-round snapshot so a re-resolve
+      // doesn't carry forward earlier effects (breakthrough/modelRollback) applied
+      // during a previous run of this same round. Without this, `labs.rdMultiplier`
+      // still reflects the previous apply and this apply piles another factor on
+      // top or suppresses natural growth.
       const labsBefore = currentRound?.labsBefore;
       if (labsBefore && labsBefore.length > 0) {
         await ctx.runMutation(internal.labs.resetLabsToSnapshotInternal, {
@@ -567,15 +567,14 @@ export const rollAndApplyEffects = internalAction({
       const mergeOps: { survivorLabId: Id<"labs">; absorbedLabId: Id<"labs">; newName?: string; newSpec?: string; reason: string }[] = [];
       const decommissionOps: { labId: Id<"labs"> }[] = [];
       const transferOps: { labId: Id<"labs">; newOwnerRoleId: string | undefined }[] = [];
-      // computeModifiers carries signed deltas; computeDestroyed pushes a NEGATIVE
-      // entry (destruction). No positive entries ever originate here — compute is
-      // conserved (see conservation principle in ai-prompts.ts / NEXT-SESSION.md).
-      const computeModifiers: { labId: Id<"labs">; change: number; reason: string }[] = [];
+      // computeDestructions carries destruction-only deltas (amount > 0 on the effect,
+      // stored as a negative change for the ledger). No positive entries ever originate
+      // here — compute is conserved; see the conservation principle in ai-prompts.ts.
+      const computeDestructions: { labId: Id<"labs">; change: number; reason: string }[] = [];
       const computeTransferPairs: { fromRoleId: string; toRoleId: string; amount: number; reason: string }[] = [];
       // multiplierUpdates holds final rdMultiplier values derived from breakthrough /
       // modelRollback effects. Growth in phase 9 starts from these post-effect values
-      // — there is NO post-growth re-apply (that was the old multiplierOverride bug
-      // that suppressed DeepCent's trajectory).
+      // — there is NO post-growth re-apply.
       const multiplierUpdates: { labId: Id<"labs">; newMultiplier: number }[] = [];
       // One-round productivity modifiers from researchDisruption / researchBoost.
       // Stashed on round.pendingProductivityMods; consumed by phase 9 growth.
@@ -706,7 +705,7 @@ export const rollAndApplyEffects = internalAction({
               break;
             }
             const destroyed = Math.min(e.amount, 50, available);
-            computeModifiers.push({ labId: target.labId, change: -destroyed, reason });
+            computeDestructions.push({ labId: target.labId, change: -destroyed, reason });
             tableComputeByRole.set(target.roleId, available - destroyed);
             workingLabs = workingLabs.map((l) => l.labId === target.labId
               ? { ...l, computeStock: Math.max(0, l.computeStock - destroyed) }
@@ -739,12 +738,6 @@ export const rollAndApplyEffects = internalAction({
             logEntry(target.name, "productivity", before, after, `researchBoost ×${f} (one round)`);
             break;
           }
-          case "computeChange":
-          case "multiplierOverride":
-            // Legacy variants — kept valid in the validator for backward-compat on
-            // rounds persisted before the four-layer redesign, but no-op at apply
-            // time. The grader no longer emits these; if one appears it's stale.
-            break;
           case "transferOwnership": {
             const target = findActiveByName(e.labName);
             if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${e.labName}" is not an active lab` }); break; }
@@ -806,8 +799,8 @@ export const rollAndApplyEffects = internalAction({
       // consequences of actions reviewable before the deterministic growth lands,
       // and matches docs/resolve-pipeline.md.
 
-      // Adjusted compute ledger entries from computeChange effects.
-      const adjustedEntries = computeModifiers
+      // Adjusted compute ledger entries from computeDestroyed effects.
+      const adjustedEntries = computeDestructions
         .map((m) => {
           const lab = workingLabs.find((l) => l.labId === m.labId);
           if (!lab?.roleId) return null;
@@ -966,10 +959,9 @@ export const rollAndApplyEffects = internalAction({
         const name = labNameById.get(p.labId) ?? "?";
         appliedOps.push({ type: "productivityMod", status: "applied", summary: `${name} productivity ×${p.modifier.toFixed(2)} (this round only)` });
       }
-      for (const m of computeModifiers) {
+      for (const m of computeDestructions) {
         const name = labNameById.get(m.labId) ?? "?";
-        // computeModifiers carries signed deltas; all entries from the new apply path
-        // are destructions (negative). The display sign is implicit from the number.
+        // Entries are all negative (destruction); the sign is implicit in the number.
         appliedOps.push({ type: "computeDestroyed", status: "applied", summary: `${name} compute ${m.change}u`, reason: m.reason });
       }
       for (const t of computeTransferPairs) {
