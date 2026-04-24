@@ -107,18 +107,20 @@ export function NarrativePanel({
           <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
         )}
       </button>
-      {onEditNarrative && (
-        <button
-          onClick={onEditNarrative}
-          className="absolute top-4 right-10 text-text-light/60 hover:text-text-light transition-colors"
-          title="Edit summary"
-        >
-          <Pencil className="w-3.5 h-3.5" />
-        </button>
-      )}
-      {debugContext && (
-        <ResolveDebugButton gameId={debugContext.gameId} roundNumber={round.number} />
-      )}
+      <div className="flex items-center gap-1 absolute top-4 right-4">
+        {onEditNarrative && (
+          <button
+            onClick={onEditNarrative}
+            className="text-text-light/60 hover:text-text-light transition-colors"
+            title="Edit summary"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {debugContext && (
+          <ResolveDebugButton gameId={debugContext.gameId} roundNumber={round.number} />
+        )}
+      </div>
       {expanded && hasContent && summary && (
         <div className="mt-4 space-y-4">
           {hasProse
@@ -223,7 +225,7 @@ function ResolveDebugButton({ gameId, roundNumber }: { gameId: Id<"games">; roun
     <>
       <button
         onClick={openDebug}
-        className="absolute top-4 right-4 text-text-light/60 hover:text-text-light transition-colors"
+        className="text-text-light/60 hover:text-text-light transition-colors"
         title="Show LLM prompt and response for this round"
         aria-label="Show resolve-phase LLM debug"
       >

@@ -241,6 +241,8 @@ export function AttemptedPanel({
         <div className="flex items-center gap-2">
           <button
             onClick={() => setExpanded(!isExpanded)}
+            aria-expanded={isExpanded}
+            aria-controls="attempted-panel-content"
             className="flex items-center gap-2"
           >
             <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
@@ -282,7 +284,7 @@ export function AttemptedPanel({
       </div>
 
       {isExpanded && (
-        <>
+        <div id="attempted-panel-content">
           {isSplitPhase && hasRolled ? (
             <SucceededFailedSplit
               succeeded={succeeded}
@@ -332,7 +334,7 @@ export function AttemptedPanel({
               <RefreshCw className="w-3 h-3" /> Regenerate summary
             </button>
           )}
-        </>
+        </div>
       )}
     </div>
   );
@@ -377,12 +379,12 @@ function SucceededFailedSplit({
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-      <div>
+      <div role="group" aria-labelledby="succeeded-heading">
         <div className="flex items-center gap-2 mb-2">
-          <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-viz-safety">
+          <CheckCircle className="w-3.5 h-3.5 text-viz-safety" aria-hidden="true" />
+          <h3 id="succeeded-heading" className="text-[11px] font-semibold uppercase tracking-wider text-viz-safety">
             Succeeded ({succeeded.length})
-          </span>
+          </h3>
         </div>
         {succeeded.length === 0 ? (
           <div className="text-xs text-navy-muted py-2">None</div>
@@ -403,12 +405,12 @@ function SucceededFailedSplit({
           </div>
         )}
       </div>
-      <div>
+      <div role="group" aria-labelledby="failed-heading">
         <div className="flex items-center gap-2 mb-2">
-          <XCircle className="w-3.5 h-3.5 text-viz-danger" />
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-viz-danger">
+          <XCircle className="w-3.5 h-3.5 text-viz-danger" aria-hidden="true" />
+          <h3 id="failed-heading" className="text-[11px] font-semibold uppercase tracking-wider text-viz-danger">
             Failed ({failed.length})
-          </span>
+          </h3>
         </div>
         {failed.length === 0 ? (
           <div className="text-xs text-navy-muted py-2">None</div>

@@ -497,8 +497,10 @@ describe("AttemptedPanel", () => {
     );
     expandPanel();
 
-    // The chip text should be the endorser (toRoleName), not the owner
-    expect(screen.getByText("US President ✓")).toBeInTheDocument();
+    // The chip text should be the endorser (toRoleName), not the owner.
+    // The check-mark is in a separate aria-hidden span, so match the name and status separately.
+    expect(screen.getByText("US President", { exact: false })).toBeInTheDocument();
+    expect(screen.getByText("accepted")).toBeInTheDocument();
   });
 
   it("filters AI Systems endorsements", () => {

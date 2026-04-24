@@ -233,12 +233,12 @@ function AppliedOpsPanel({
 
       {applied.length > 0 && (
         <div className={rejected.length > 0 ? "mb-4" : undefined}>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-text-light block mb-2">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-text-light block mb-2 flex items-center gap-1">
             Applied ({applied.length})
-          </span>
+          </div>
           <ul className="space-y-1.5">
-            {applied.map((op, i) => (
-              <li key={`applied-${i}`} className="flex items-start gap-2 text-sm">
+            {applied.map((op) => (
+              <li key={op.summary} className="flex items-start gap-2 text-sm">
                 <span className={`inline-block text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 mt-[3px] shrink-0 ${TYPE_COLOURS[op.type as AppliedOpType] ?? "bg-navy-light text-text-light"}`}>
                   {TYPE_LABELS[op.type as AppliedOpType] ?? op.type}
                 </span>
@@ -254,13 +254,13 @@ function AppliedOpsPanel({
 
       {rejected.length > 0 && (
         <div className={log.length > 0 ? "mb-4" : undefined}>
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-viz-danger block mb-2 flex items-center gap-1">
+          <div className="text-[11px] font-semibold uppercase tracking-wider text-viz-danger block mb-2 flex items-center gap-1">
             <AlertTriangle className="w-3 h-3" />
             Flagged &amp; rejected ({rejected.length})
-          </span>
+          </div>
           <ul className="space-y-1.5">
-            {rejected.map((op, i) => (
-              <li key={`rejected-${i}`} className="flex items-start gap-2 text-sm">
+            {rejected.map((op) => (
+              <li key={op.summary} className="flex items-start gap-2 text-sm">
                 <span className="inline-block text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 mt-[3px] shrink-0 bg-viz-danger/20 text-viz-danger">
                   {op.opType ?? "Flag"}
                 </span>
@@ -324,6 +324,8 @@ function MechanicsLogPanel({ entries }: { entries: MechanicsLogEntry[] }) {
     <div>
       <button
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls="mechanics-log-list"
         className="w-full flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-text-light hover:text-white transition-colors"
       >
         {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
@@ -332,7 +334,7 @@ function MechanicsLogPanel({ entries }: { entries: MechanicsLogEntry[] }) {
       </button>
       {open && (
         <>
-          <ul className="mt-2 space-y-1 font-mono text-[11px]">
+          <ul id="mechanics-log-list" className="mt-2 space-y-1 font-mono text-[11px]">
             {sorted.map((entry) => (
               <li key={entry.sequence} className="flex items-start gap-2 text-text-light/90">
                 <span className={`inline-block rounded px-1 py-0.5 shrink-0 text-[9px] uppercase tracking-wider ${sourceTone[entry.source]}`}>

@@ -86,10 +86,13 @@ export function ActionRow({
         <div className="w-2 h-2 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: role?.color }} />
         <span className="text-xs font-bold text-white shrink-0">{roleName}</span>
         {action.secret && (
-          <Lock
-            className="w-3 h-3 text-viz-warning shrink-0 mt-0.5 cursor-pointer"
+          <button
+            aria-label={isCovert ? "Reveal secret action" : "Hide secret action"}
             onClick={() => toggleReveal(secretKey)}
-          />
+            className="shrink-0 cursor-pointer"
+          >
+            <Lock className="w-3 h-3 text-viz-warning mt-0.5" />
+          </button>
         )}
         {needsReview && (
           <span
@@ -111,7 +114,7 @@ export function ActionRow({
                 }`}
                 title={`${p.toRoleName} ${p.status} ${p.fromRoleName}'s request`}
               >
-                {p.toRoleName} {p.status === "accepted" ? "\u2713" : "\u2717"}
+                {p.toRoleName} <span aria-hidden="true">{p.status === "accepted" ? "\u2713" : "\u2717"}</span><span className="sr-only">{p.status}</span>
               </span>
             ))}
           </div>
@@ -168,6 +171,7 @@ export function ActionRow({
         <div className="pl-4 mt-0.5">
           <button
             onClick={() => setReasoningOpen(!reasoningOpen)}
+            aria-expanded={reasoningOpen}
             className="flex items-center gap-1 text-[10px] text-navy-muted hover:text-text-light transition-colors"
           >
             <MessageSquare className="w-3 h-3" />
@@ -236,6 +240,8 @@ function ProbabilityDropdown({
         <button
           ref={triggerRef}
           onClick={() => setOpen(!open)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
           className="text-[11px] font-bold py-0.5 px-2.5 rounded-full flex items-center gap-1"
           style={{ backgroundColor: card.bgColor, color: card.color }}
         >
@@ -246,6 +252,8 @@ function ProbabilityDropdown({
         <button
           ref={triggerRef}
           onClick={() => setOpen(!open)}
+          aria-haspopup="listbox"
+          aria-expanded={open}
           className="shrink-0 rounded-full bg-[#FEF3C7] px-2 py-0.5 text-xs font-semibold text-[#92400E] hover:bg-[#FDE68A] transition-colors flex items-center gap-1"
         >
           <ChevronRight className="w-3 h-3" /> Grade
@@ -254,15 +262,21 @@ function ProbabilityDropdown({
       {open && menuPos && typeof document !== "undefined" && createPortal(
         <div
           ref={menuRef}
+          role="listbox"
+          aria-label="Set probability"
           className="fixed z-[1000] bg-navy-dark border border-navy-light rounded-lg shadow-xl py-1 min-w-[160px]"
           style={{ top: menuPos.top, right: menuPos.right }}
+          onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } }}
         >
           {PROBABILITY_CARDS.map((p) => (
             <button
               key={p.pct}
+              role="option"
+              aria-selected={p.pct === current}
               onClick={() => {
                 void overrideProbability({ submissionId, actionIndex, probability: p.pct });
                 setOpen(false);
+                triggerRef.current?.focus();
               }}
               className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between hover:bg-navy-light transition-colors ${
                 p.pct === current ? "font-bold" : ""
@@ -277,9 +291,12 @@ function ProbabilityDropdown({
             <>
               <div className="border-t border-navy-light my-1" />
               <button
+                role="option"
+                aria-selected={current === null}
                 onClick={() => {
                   void ungradeAction({ submissionId, actionIndex });
                   setOpen(false);
+                  triggerRef.current?.focus();
                 }}
                 className="w-full text-left px-3 py-1.5 text-xs text-text-light hover:bg-navy-light transition-colors"
               >
@@ -385,11 +402,11 @@ export function InlineRollStatus() {
   }, []);
 
   return (
-    <div className="mb-2 flex items-center gap-3 rounded-lg border border-navy-light bg-navy-dark px-3 py-2">
-      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-light text-white">
+    <div aria-live="polite" aria-label="Rolling action dice…" className="mb-2 flex items-center gap-3 rounded-lg border border-navy-light bg-navy-dark px-3 py-2">
+      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-light text-white" aria-hidden="true">
         <Dices className="h-4 w-4 animate-pulse" />
       </div>
-      <div>
+      <div aria-hidden="true">
         <div className="text-[10px] uppercase tracking-[0.2em] text-text-light/70">Rolling</div>
         <div className="font-mono text-lg font-black text-white tabular-nums">{displayNumber}</div>
       </div>

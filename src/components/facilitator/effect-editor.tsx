@@ -92,15 +92,15 @@ export function EffectEditor(props: EffectEditorProps) {
   const text = formatEffectLabel(label, summary, effect.type);
 
   // Read-only surfaces (projector + post-roll locked) render the same badge
-  // without a popover; locked gets a muted tone and a tooltip.
+  // without a popover; locked gets a muted tone and an aria-label.
   if (isProjector || locked) {
     return (
       <span
         className={`inline-flex items-center gap-1 text-[10px] font-medium ${tone}${locked ? " opacity-75" : ""}`}
-        title={locked ? "Effect locked — dice already rolled. Use Re-resolve to change." : undefined}
+        aria-label={locked ? `${text} — locked, dice already rolled` : text}
       >
-        <Icon className="w-3 h-3" />
-        <span className="truncate">{text}</span>
+        <Icon className="w-3 h-3" aria-hidden="true" />
+        <span className="truncate" aria-hidden="true">{text}</span>
       </span>
     );
   }
@@ -121,7 +121,7 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
     const update = () => {
       const r = triggerRef.current?.getBoundingClientRect();
       if (!r) return;
-      setMenuPos({ top: r.bottom + 4, left: r.left });
+      setMenuPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 340) });
     };
     update();
     const onDown = (e: MouseEvent) => {
@@ -129,6 +129,7 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
       if (triggerRef.current?.contains(t)) return;
       if (menuRef.current?.contains(t)) return;
       setOpen(false);
+      triggerRef.current?.focus();
     };
     document.addEventListener("mousedown", onDown);
     window.addEventListener("scroll", update, true);
@@ -164,8 +165,12 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
       {open && menuPos && typeof document !== "undefined" && createPortal(
         <div
           ref={menuRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Edit effect"
           className="fixed z-[1000] bg-navy-dark border border-navy-light rounded-lg shadow-xl p-3 min-w-[320px]"
           style={{ top: menuPos.top, left: menuPos.left }}
+          onKeyDown={(e) => { if (e.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } }}
         >
           <EffectForm
             initialEffect={effect}
@@ -179,6 +184,7 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
                 acknowledge: true,
               });
               setOpen(false);
+              triggerRef.current?.focus();
             }}
             onAcknowledge={lowConfidence ? async () => {
               await overrideStructuredEffect({
@@ -188,8 +194,9 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
                 acknowledge: true,
               });
               setOpen(false);
+              triggerRef.current?.focus();
             } : undefined}
-            onCancel={() => setOpen(false)}
+            onCancel={() => { setOpen(false); triggerRef.current?.focus(); }}
           />
         </div>,
         document.body,

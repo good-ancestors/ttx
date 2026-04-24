@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { TOTAL_ROUNDS, isSubmittedAction, countUnacknowledgedLowConfidence, type Lab } from "@/lib/game-data";
 import { hasNarrativeContent } from "@/lib/narrative-sections";
 import { NarrativeEditor } from "@/components/manual-controls";
@@ -266,9 +266,8 @@ export function RoundPhase({
                 <button
                   onClick={handleRollDice}
                   disabled={resolving || lowConfidenceCount > 0}
-                  title={lowConfidenceCount > 0
-                    ? `${lowConfidenceCount} low-confidence effect${lowConfidenceCount === 1 ? "" : "s"} need review — click each yellow badge above to accept or edit`
-                    : undefined}
+                  aria-disabled={resolving || lowConfidenceCount > 0}
+                  aria-describedby={lowConfidenceCount > 0 ? "roll-dice-gate-hint" : undefined}
                   className={`flex-1 py-3 rounded-lg font-extrabold text-base transition-colors flex items-center justify-center gap-2 ${
                     resolving || lowConfidenceCount > 0
                       ? "bg-navy-light text-navy-muted opacity-50 cursor-not-allowed"
@@ -281,7 +280,7 @@ export function RoundPhase({
             </div>
           )}
           {submittedActionCount > 0 && ungradedCount === 0 && lowConfidenceCount > 0 && (
-            <p className="text-xs text-viz-warning text-center">
+            <p id="roll-dice-gate-hint" className="text-xs text-viz-warning text-center">
               {lowConfidenceCount} low-confidence effect{lowConfidenceCount === 1 ? "" : "s"} need{lowConfidenceCount === 1 ? "s" : ""} review — click each yellow badge above to accept or edit before rolling.
             </p>
           )}
@@ -373,12 +372,28 @@ function NarrativeEditModal({
   roundNumber: number;
   currentRound: Round | undefined;
 }) {
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeButtonRef.current?.focus();
+  }, []);
+
   return (
-    <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8" onClick={onClose}>
-      <div className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
+    <div
+      className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8"
+      onClick={onClose}
+      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="narrative-modal-title"
+        className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+      >
         <div className="flex items-center justify-between mb-4">
-          <span className="text-sm font-bold text-white">Edit Round Summary</span>
-          <button onClick={onClose} className="text-text-light hover:text-white text-sm">Close</button>
+          <span id="narrative-modal-title" className="text-sm font-bold text-white">Edit Round Summary</span>
+          <button ref={closeButtonRef} onClick={onClose} className="text-text-light hover:text-white text-sm">Close</button>
         </div>
         <NarrativeEditor gameId={gameId} roundNumber={roundNumber} currentSummary={currentRound?.summary ?? undefined} startOpen />
       </div>

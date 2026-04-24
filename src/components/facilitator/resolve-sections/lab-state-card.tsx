@@ -59,18 +59,31 @@ export function LabStateCard({
     ? Math.round((Math.max(0, holder.acquired) / totalAcquired) * 100)
     : 0;
 
+  const handleClick = isMergeTarget && onMergeCommit && mergeSource
+    ? async () => {
+        await onMergeCommit(lab.name, mergeSource);
+        onMergeCancel?.();
+      }
+    : undefined;
+
   return (
     <div
       className={`bg-navy rounded-lg p-3 border transition-colors ${
         isMergeTarget
-          ? "border-viz-warning cursor-pointer hover:bg-navy-light"
+          ? "border-viz-warning cursor-pointer hover:bg-navy-light focus-visible:outline-2 focus-visible:outline-viz-warning"
           : isMergeSource
             ? "border-viz-capability"
             : "border-navy-light"
       }`}
-      onClick={isMergeTarget && onMergeCommit && mergeSource ? async () => {
-        await onMergeCommit(lab.name, mergeSource);
-        onMergeCancel?.();
+      onClick={handleClick}
+      role={isMergeTarget ? "button" : undefined}
+      tabIndex={isMergeTarget ? 0 : undefined}
+      aria-label={isMergeTarget && mergeSource ? `Merge ${mergeSource} into ${lab.name}` : undefined}
+      onKeyDown={isMergeTarget && handleClick ? (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          void handleClick();
+        }
       } : undefined}
     >
       <div className="flex items-center gap-2 mb-1">
