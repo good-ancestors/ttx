@@ -744,6 +744,18 @@ export const rollAndApplyEffects = internalAction({
             if (newMult !== survivor.rdMultiplier) {
               logEntry(survivor.name, "rdMultiplier", survivor.rdMultiplier, newMult, `merge absorbed ${absorbed.name} (inherited higher multiplier)`);
             }
+            // Log the compute absorption: absorbed's stock moves to survivor.
+            // The actual ledger pair lands via `mergedEntries` at apply time.
+            if (absorbed.roleId && survivor.roleId) {
+              const absorbedStock = tableComputeByRole.get(absorbed.roleId) ?? 0;
+              const survivorPre = tableComputeByRole.get(survivor.roleId) ?? 0;
+              if (absorbedStock > 0) {
+                const survivorName = e.newName ?? survivor.name;
+                logEntry(survivorName, "computeStock", survivorPre, survivorPre + absorbedStock, `merge absorbed ${absorbed.name} (+${absorbedStock}u)`);
+                tableComputeByRole.set(absorbed.roleId, 0);
+                tableComputeByRole.set(survivor.roleId, survivorPre + absorbedStock);
+              }
+            }
             workingLabs = workingLabs
               .filter((l) => l.labId !== absorbed.labId)
               .map((l) => l.labId === survivor.labId
@@ -855,10 +867,18 @@ export const rollAndApplyEffects = internalAction({
               break;
             }
             computeTransferPairs.push({ fromRoleId: e.fromRoleId, toRoleId: e.toRoleId, amount: e.amount, reason });
+            // Log both sides of the transfer. Subject resolves to lab name when
+            // the role owns one, else the role id — keeps parity with phase-10
+            // acquisition entries that use labName when available.
+            const receiverPre = tableComputeByRole.get(e.toRoleId) ?? 0;
+            const fromSubject = workingLabs.find((l) => l.roleId === e.fromRoleId)?.name ?? e.fromRoleId;
+            const toSubject = workingLabs.find((l) => l.roleId === e.toRoleId)?.name ?? e.toRoleId;
+            logEntry(fromSubject, "computeStock", senderStock, senderStock - e.amount, `computeTransfer → ${e.toRoleId} (-${e.amount}u)`);
+            logEntry(toSubject, "computeStock", receiverPre, receiverPre + e.amount, `computeTransfer ← ${e.fromRoleId} (+${e.amount}u)`);
             // Track in working compute map so later same-round transfers from
             // the same sender see the reduced balance.
             tableComputeByRole.set(e.fromRoleId, senderStock - e.amount);
-            tableComputeByRole.set(e.toRoleId, (tableComputeByRole.get(e.toRoleId) ?? 0) + e.amount);
+            tableComputeByRole.set(e.toRoleId, receiverPre + e.amount);
             break;
           }
         }
