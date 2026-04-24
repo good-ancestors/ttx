@@ -810,16 +810,25 @@ export const rollAndApplyEffects = internalAction({
               rejectedOps.push({ category: "precondition_failure", opType: "transferOwnership", message: `transferOwnership: "${e.labName}" is already controlled by ${e.controllerRoleId}` });
               break;
             }
-            // Capture the old owner's compute now (before any subsequent effects
-            // for this lab modify it — but after prior effects do). The apply
-            // mutation will read the live ledger for the actual transfer amount.
+            // Capture the old owner's compute now (reads tableComputeByRole so
+            // prior phase-5 effects on this pool net correctly). The apply
+            // mutation re-reads the live ledger as the authoritative amount,
+            // so this value drives the UI summary and mechanicsLog only.
+            const oldOwnerRoleId = target.roleId;
+            const amount = oldOwnerRoleId ? tableComputeByRole.get(oldOwnerRoleId) ?? 0 : 0;
+            const newOwnerPre = tableComputeByRole.get(e.controllerRoleId) ?? 0;
             transferOps.push({
               labId: target.labId,
               newOwnerRoleId: e.controllerRoleId,
-              oldOwnerRoleId: target.roleId,
-              computeToTransfer: target.computeStock,
+              oldOwnerRoleId,
+              computeToTransfer: amount,
             });
-            logEntry(target.name, "computeStock", target.computeStock, target.computeStock, `transferOwnership → ${e.controllerRoleId} (compute follows the lab)`);
+            // Log from the lab's perspective: compute was `amount` under old
+            // owner; post-transfer the lab reports new owner's total (their
+            // pre-transfer stock + transferred amount).
+            logEntry(target.name, "computeStock", amount, newOwnerPre + amount, `transferOwnership → ${e.controllerRoleId} (compute follows the lab, ${amount}u moved)`);
+            if (oldOwnerRoleId) tableComputeByRole.set(oldOwnerRoleId, 0);
+            tableComputeByRole.set(e.controllerRoleId, newOwnerPre + amount);
             workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, roleId: e.controllerRoleId } : l);
             break;
           }
