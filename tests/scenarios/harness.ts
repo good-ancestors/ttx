@@ -12,7 +12,8 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 
 const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
-const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET || "coral-ember-drift-sage";
+const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET;
+if (!FACILITATOR_TOKEN) throw new Error("FACILITATOR_SECRET env var required");
 
 export interface ScenarioAction {
   text: string;

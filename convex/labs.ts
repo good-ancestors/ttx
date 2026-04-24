@@ -300,6 +300,7 @@ export const resetLabsToSnapshotInternal = internalMutation({
       }),
       status: v.union(v.literal("active"), v.literal("decommissioned")),
       mergedIntoLabId: v.optional(v.id("labs")),
+      jurisdiction: v.optional(v.string()),
     })),
   },
   handler: async (ctx, args) => {
@@ -314,6 +315,7 @@ export const resetLabsToSnapshotInternal = internalMutation({
         allocation: s.allocation,
         status: s.status,
         mergedIntoLabId: s.mergedIntoLabId,
+        jurisdiction: s.jurisdiction,
       });
     }));
   },

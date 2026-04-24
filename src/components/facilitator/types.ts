@@ -39,7 +39,7 @@ export type Submission = Pick<
   "_id" | "_creationTime" | "tableId" | "gameId" | "roundNumber" | "roleId" | "status"
 > & {
   actions: {
-    actionId?: string;
+    actionId: string;
     text: string;
     priority: number;
     secret?: boolean;

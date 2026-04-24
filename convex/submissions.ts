@@ -4,6 +4,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id, Doc } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator, assertNotResolving } from "./events";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
+import { MIN_SEED_COMPUTE } from "@/lib/game-data";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
 import {
   cancelPendingForAction,
@@ -116,7 +117,10 @@ const persistedActionValidator = v.object({
 type PersistedAction = Doc<"submissions">["actions"][number];
 function stripGradingFields(action: PersistedAction, { resetRoll = false } = {}): PersistedAction {
   const { reasoning: _reasoning, probability, rolled, success, ...rest } = action;
-  return resetRoll ? rest : { ...rest, probability, rolled, success };
+  if (resetRoll) {
+    return { ...rest, structuredEffect: undefined, confidence: undefined };
+  }
+  return { ...rest, probability, rolled, success };
 }
 
 // Full query — includes secret text and reasoning. Requires facilitator token.
@@ -602,12 +606,13 @@ export const saveAndSubmit = mutation({
     // accept emits the pending pair (see requests.ts respond mutation).
     // Validate foundLab args early (cheap checks before any writes).
     if (args.foundLab) {
-      if (args.foundLab.seedCompute < 10) {
-        throw new Error("Minimum 10u compute required to found a lab");
+      if (args.foundLab.seedCompute < MIN_SEED_COMPUTE) {
+        throw new Error(`Minimum ${MIN_SEED_COMPUTE}u compute required to found a lab`);
       }
       if (!args.foundLab.name.trim()) {
         throw new Error("Lab name required");
       }
+      if (args.foundLab.allocation) validateComputeAllocation(args.foundLab.allocation);
       // Dedup: reject if this role already has a submitted foundLab action with the
       // same name this round. Roll-time name-collision is self-correcting but leaves
       // two actions + two pending escrows visible until resolve. Same-name is the

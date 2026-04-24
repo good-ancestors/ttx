@@ -25,11 +25,15 @@ import { plainEventReason } from "./events";
 import {
   ROLES,
   LAB_PROGRESSION,
+  MAX_COMPUTE_DESTROYED_PER_ACTION,
   clampProductivity,
   getAiInfluencePower,
   autoGenerateInfluence,
   computeLabGrowth,
+  getDisposition,
 } from "@/lib/game-data";
+
+const MAX_MECHANICS_LOG_ENTRIES = 200;
 
 /** Build role description for the grading LLM from the structured handout.
  *  Only includes role + objective — resources are dynamic and already
@@ -571,6 +575,7 @@ export const rollAndApplyEffects = internalAction({
             allocation: s.allocation,
             status: s.status,
             mergedIntoLabId: s.mergedIntoLabId,
+            jurisdiction: s.jurisdiction,
           })),
         });
       }
@@ -613,6 +618,7 @@ export const rollAndApplyEffects = internalAction({
       type Phase5LogEntry = { sequence: number; phase: 5; source: "grader-effect"; subject: string; field: "rdMultiplier" | "computeStock" | "productivity"; before: number; after: number; reason: string };
       const mechanicsLogPhase5: Phase5LogEntry[] = [];
       const logEntry = (subject: string, field: Phase5LogEntry["field"], before: number, after: number, reason: string) => {
+        if (mechanicsLogPhase5.length >= MAX_MECHANICS_LOG_ENTRIES) return;
         mechanicsLogPhase5.push({ sequence: mechanicsLogPhase5.length, phase: 5, source: "grader-effect", subject, field, before, after, reason });
       };
       // Structured rejection tracking: each rejection carries a category so the P7
@@ -763,7 +769,7 @@ export const rollAndApplyEffects = internalAction({
               rejectedOps.push({ category: "precondition_failure", opType: "computeDestroyed", message: `computeDestroyed: "${e.labName}" has no compute to destroy` });
               break;
             }
-            const destroyed = Math.min(e.amount, 50, available);
+            const destroyed = Math.min(e.amount, MAX_COMPUTE_DESTROYED_PER_ACTION, available);
             computeDestructions.push({ labId: target.labId, change: -destroyed, reason });
             tableComputeByRole.set(target.roleId, available - destroyed);
             workingLabs = workingLabs.map((l) => l.labId === target.labId
@@ -1052,7 +1058,6 @@ export const continueFromEffectReview = internalAction({
       let aiDisposition: { label: string; description: string } | undefined;
       const aiTable = tables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID && t.aiDisposition);
       if (aiTable?.aiDisposition) {
-        const { getDisposition } = await import("@/lib/game-data");
         const disp = getDisposition(aiTable.aiDisposition);
         if (disp) aiDisposition = { label: disp.label, description: disp.description };
       }
@@ -1151,13 +1156,17 @@ export const continueFromEffectReview = internalAction({
           pushLog({ phase: 10, source: "acquisition", subject: entry.roleId, field: "computeStock", before: pre, after: pre + entry.amount, reason: `R${roundNumber + 1} acquisition +${entry.amount}u` });
         }
 
+        const priorLogLen = currentRound.mechanicsLog?.length ?? 0;
+        const cappedMechLog = [...(currentRound.mechanicsLog ?? []), ...mechLog]
+          .slice(0, MAX_MECHANICS_LOG_ENTRIES)
+          .slice(priorLogLen); // pass only the new entries to the mutation
         await ctx.runMutation(internal.pipelineApply.applyGrowthAndAcquisitionInternal, {
           gameId,
           roundNumber,
           nonce,
           multiplierUpdates,
           acquired: acquiredEntries,
-          mechanicsLog: mechLog,
+          mechanicsLog: cappedMechLog,
         });
       }
 

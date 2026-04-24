@@ -498,6 +498,8 @@ export const COMPUTE_CATEGORIES = [
 
 export const MAX_PRIORITY = 10;
 export const MAX_ACTIONS = 5;
+export const MAX_COMPUTE_DESTROYED_PER_ACTION = 50;
+export const MIN_SEED_COMPUTE = 10;
 export const TOTAL_ROUNDS = ROUND_CONFIGS.length;
 
 export function isSubmittedAction(action: { actionStatus: string }): boolean {

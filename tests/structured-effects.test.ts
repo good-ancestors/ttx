@@ -100,20 +100,17 @@ describe("normaliseStructuredEffect", () => {
         type: "computeDestroyed", labName: "DeepCent", amount: 15,
       });
     });
-    it("zero amount is kept at this layer — downstream validator rejects (degenerate op)", () => {
-      // Rationale: downstream surfaces 0u as a precondition_failure in the P7 panel,
-      // giving the facilitator a visible signal. Swallowing it here would hide the
-      // degenerate grader output.
+    it("zero amount → narrativeOnly (non-positive rejected at normalisation layer)", () => {
+      // SEC-M-R3-1: non-positive amounts are rejected here to prevent a zero-destruction
+      // effect from reaching the apply path and being treated as a no-op without a P7 signal.
       expect(normaliseStructuredEffect({ type: "computeDestroyed", labName: "X", amount: 0 })).toEqual({
-        type: "computeDestroyed", labName: "X", amount: 0,
+        type: "narrativeOnly",
       });
     });
-    it("negative amount is kept here — downstream enforces positivity + logs the conservation violation", () => {
-      // Conservation: compute can only be destroyed (positive amount). The apply
-      // path rejects negatives with a clear message; normalisation should pass the
-      // shape through so that rejection is visible.
+    it("negative amount → narrativeOnly (non-positive rejected at normalisation layer)", () => {
+      // SEC-M-R3-1: negative amounts are also rejected — conservation violation caught early.
       expect(normaliseStructuredEffect({ type: "computeDestroyed", labName: "X", amount: -10 })).toEqual({
-        type: "computeDestroyed", labName: "X", amount: -10,
+        type: "narrativeOnly",
       });
     });
     it("missing amount → narrativeOnly", () => {

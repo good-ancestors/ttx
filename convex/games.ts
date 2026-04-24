@@ -901,6 +901,9 @@ export const triggerContinueFromEffectReview = mutation({
     if (game.phase !== "effect-review") {
       throw new Error(`Cannot continue: game is in ${game.phase} phase, expected effect-review`);
     }
+    if (args.roundNumber !== game.currentRound) {
+      throw new Error(`roundNumber mismatch: expected ${game.currentRound}, got ${args.roundNumber}`);
+    }
     assertNotResolving(game);
 
     await ctx.db.patch(args.gameId, {
