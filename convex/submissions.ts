@@ -4,7 +4,7 @@ import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id, Doc } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator, assertNotResolving } from "./events";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
-import { MIN_SEED_COMPUTE } from "@/lib/game-data";
+import { MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
 import {
   cancelPendingForAction,
@@ -1246,7 +1246,7 @@ async function rollAllImpl(
             name: action.foundLab.name,
             spec: action.foundLab.spec,
             rdMultiplier: 1,
-            allocation: action.foundLab.allocation ?? { deployment: 33, research: 34, safety: 33 },
+            allocation: action.foundLab.allocation ?? DEFAULT_LAB_ALLOCATION,
             ownerRoleId: sub.roleId,
             createdRound: roundNumber,
           });

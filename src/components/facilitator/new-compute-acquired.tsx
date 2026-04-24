@@ -56,9 +56,10 @@ export function NewComputeAcquired({
           <button
             onClick={() => setEditing(true)}
             className="text-[10px] p-1 rounded bg-navy-light text-text-light hover:bg-navy-muted"
+            aria-label="Edit acquired amounts"
             title="Edit acquired amounts"
           >
-            <Pencil className="w-3 h-3" />
+            <Pencil className="w-3 h-3" aria-hidden="true" />
           </button>
         )}
       </div>

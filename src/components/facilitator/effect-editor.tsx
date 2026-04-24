@@ -164,9 +164,9 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
         }`}
         title={lowConfidence ? "Low confidence — click to review or edit" : "Click to edit effect"}
       >
-        <Icon className="w-3 h-3" />
+        <Icon className="w-3 h-3" aria-hidden="true" />
         <span className="truncate max-w-[200px]">{formatEffectLabel(label, summary, effect.type)}</span>
-        <ChevronDown className="w-3 h-3" />
+        <ChevronDown className="w-3 h-3" aria-hidden="true" />
       </button>
       {open && menuPos && typeof document !== "undefined" && createPortal(
         <div
