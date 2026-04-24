@@ -255,7 +255,12 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
     if (round) {
       const nonZero = args.acquired.filter((r) => r.amount !== 0);
       const priorLog = round.mechanicsLog ?? [];
-      const newLog = [...priorLog, ...args.mechanicsLog].slice(0, 200); // 200 = MAX_MECHANICS_LOG_ENTRIES
+      // Cap at MAX_MECHANICS_LOG_ENTRIES (= 200). Slice the new entries to fit
+      // the remaining room, then append — avoids copying the full prior log
+      // if priorLog is already at the cap.
+      const roomLeft = Math.max(0, 200 - priorLog.length);
+      const toAppend = roomLeft > 0 ? args.mechanicsLog.slice(0, roomLeft) : [];
+      const newLog = toAppend.length > 0 ? [...priorLog, ...toAppend] : priorLog;
       await ctx.db.patch(round._id, {
         pendingAcquired: nonZero,
         pendingProductivityMods: undefined,

@@ -20,7 +20,7 @@ export function generateActionId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-function validateComputeAllocation(allocation: { deployment: number; research: number; safety: number }) {
+export function validateComputeAllocation(allocation: { deployment: number; research: number; safety: number }) {
   if (allocation.deployment < 0 || allocation.research < 0 || allocation.safety < 0) {
     throw new Error("Compute allocation values must be >= 0");
   }

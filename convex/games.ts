@@ -10,6 +10,7 @@ import {
   mergeLabsWithComputeInternal,
 } from "./labs";
 import { emitTransaction } from "./computeLedger";
+import { validateComputeAllocation } from "./submissions";
 
 
 /** Pre-generate AI/NPC actions so they're ready before submissions open. */
@@ -348,15 +349,7 @@ export const updateLabs = mutation({
       // Allocation must sum to 100 (same rule as the player-path spec editor). Facilitator
       // clients validate client-side but we enforce here too so a bad or custom client
       // can't land `{deployment: 100, research: 100, safety: 0}` and break growth.
-      if (p.allocation !== undefined) {
-        const sum = p.allocation.deployment + p.allocation.research + p.allocation.safety;
-        if (sum !== 100) {
-          throw new Error(`Lab allocation must sum to 100 (got ${sum})`);
-        }
-        if (p.allocation.deployment < 0 || p.allocation.research < 0 || p.allocation.safety < 0) {
-          throw new Error(`Lab allocation values must be non-negative`);
-        }
-      }
+      if (p.allocation !== undefined) validateComputeAllocation(p.allocation);
       if (p.rdMultiplier !== undefined && p.rdMultiplier < 0) {
         throw new Error(`Lab rdMultiplier must be non-negative (got ${p.rdMultiplier})`);
       }

@@ -20,6 +20,7 @@ import {
 } from "@/lib/ai-prompts";
 import handoutData from "../public/role-handouts.json" with { type: "json" };
 import type { RoleHandout } from "@/lib/role-handouts";
+import { generateActionId as generateRandomId } from "./submissions";
 import type { LabWithCompute } from "./labs";
 import { plainEventReason } from "./events";
 import {
@@ -68,10 +69,6 @@ async function failPipeline(ctx: ActionCtx, gameId: Id<"games">, stage: string, 
     console.error(`[pipeline] failPipeline cleanup also failed:`, cleanupErr);
     // Lock will auto-expire via 3-minute TTL
   }
-}
-
-function generateNonce(): string {
-  return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
 /** Shape the prior rounds into the prompt input. Includes both prose
@@ -515,7 +512,7 @@ export const rollAndApplyEffects = internalAction({
       await ctx.runMutation(internal.submissions.rollAllInternal, { gameId, roundNumber });
 
       // Generate nonce + snapshot before
-      const nonce = generateNonce();
+      const nonce = generateRandomId();
       await Promise.all([
         ctx.runMutation(internal.rounds.setResolveNonce, { gameId, roundNumber, nonce }),
         ctx.runMutation(internal.games.setResolveNonce, { gameId, nonce }),
@@ -933,21 +930,11 @@ export const rollAndApplyEffects = internalAction({
             const founderSubject = workingLabs.find((l) => l.roleId === founderRoleId)?.name ?? founderRoleId;
             logEntry(founderSubject, "computeStock", founderStock, founderStock - e.seedCompute, `foundLab "${name}" — seeded with ${e.seedCompute}u`);
             tableComputeByRole.set(founderRoleId, founderStock - e.seedCompute);
-            // Add the new lab to workingLabs so later phase-5 effects that
-            // reference the lab by name (e.g. breakthrough, decommission)
-            // resolve. labId is a placeholder — apply mutation creates the
-            // real Convex id; phase-5 logic only reads .name / .roleId.
-            workingLabs.push({
-              labId: `pending-${name}` as Id<"labs">,
-              name,
-              roleId: founderRoleId,
-              computeStock: 0,
-              rdMultiplier: 1,
-              allocation,
-              spec: e.spec,
-              colour: "",
-              status: "active",
-            });
+            // Deliberately NOT pushed to workingLabs: the Convex lab row is
+            // only created by applyDecidedEffectsInternal. Any same-round
+            // effect referencing this new lab by name gets the standard
+            // "not an active lab" rejection — cleaner than a placeholder id
+            // that would fail later in ctx.db.get / ctx.db.patch.
             break;
           }
         }
@@ -1035,19 +1022,24 @@ export const rollAndApplyEffects = internalAction({
       // Name lookup must include decommissioned labs — the absorbed lab of a player-
       // originated merger is already `status: "decommissioned"` by the time we build
       // this summary (rollAllImpl settled the merge before the apply phase).
-      const allLabsForNames = await ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId, includeInactive: true });
+      // (b) Player-originated structural ops. rollAllImpl settles player mergers and
+      // lab foundings directly and emits events. Fetch the event log alongside
+      // allLabsForNames — both are read-only queries with no dependency.
+      const sinceMs = game.resolvingStartedAt ?? 0;
+      const [allLabsForNames, playerEvents] = await Promise.all([
+        ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId, includeInactive: true }),
+        sinceMs > 0
+          ? ctx.runQuery(internal.events.getSinceForRound, {
+              gameId,
+              sinceTimestamp: sinceMs,
+              types: ["lab_merged", "lab_merge_failed", "lab_founded", "lab_founding_failed"],
+            })
+          : Promise.resolve([] as Awaited<ReturnType<typeof ctx.runQuery<typeof internal.events.getSinceForRound>>>),
+      ]);
       const labNameById = new Map(allLabsForNames.map((l) => [l.labId, l.name] as const));
       const appliedOps: { type: string; status: "applied" | "rejected"; summary: string; reason?: string; category?: string; opType?: string }[] = [];
 
-      // (b) Player-originated structural ops. rollAllImpl settles player mergers and
-      // lab foundings directly and emits events.
-      const sinceMs = game.resolvingStartedAt ?? 0;
       if (sinceMs > 0) {
-        const playerEvents = await ctx.runQuery(internal.events.getSinceForRound, {
-          gameId,
-          sinceTimestamp: sinceMs,
-          types: ["lab_merged", "lab_merge_failed", "lab_founded", "lab_founding_failed"],
-        });
         for (const evt of playerEvents) {
           const data: Record<string, unknown> = evt.data ? (() => { try { return JSON.parse(evt.data) as Record<string, unknown>; } catch { return {}; } })() : {};
           const actorName = evt.roleId ? roleNameMap.get(evt.roleId) ?? evt.roleId : "a player";
