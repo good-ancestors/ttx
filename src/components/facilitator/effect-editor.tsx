@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import {
   ArrowRightLeft,
@@ -114,6 +114,7 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const firstFocusRef = useRef<HTMLSelectElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
@@ -124,6 +125,9 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
       setMenuPos({ top: r.bottom + 4, left: Math.min(r.left, window.innerWidth - 340) });
     };
     update();
+    if (open) {
+      setTimeout(() => firstFocusRef.current?.focus(), 0);
+    }
     const onDown = (e: MouseEvent) => {
       const t = e.target as Node;
       if (triggerRef.current?.contains(t)) return;
@@ -151,6 +155,8 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
       <button
         ref={triggerRef}
         onClick={() => setOpen(!open)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
         className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-md border transition-colors ${
           lowConfidence
             ? "border-viz-warning/60 bg-viz-warning/10 text-viz-warning hover:bg-viz-warning/20"
@@ -176,6 +182,7 @@ function EffectBadgeWithPopover(props: EffectEditorProps) {
             initialEffect={effect}
             labs={labs}
             roles={roles}
+            firstFocusRef={firstFocusRef}
             onSubmit={async (next) => {
               await overrideStructuredEffect({
                 submissionId,
@@ -211,6 +218,7 @@ function EffectForm({
   initialEffect,
   labs,
   roles,
+  firstFocusRef,
   onSubmit,
   onAcknowledge,
   onCancel,
@@ -218,6 +226,7 @@ function EffectForm({
   initialEffect: StructuredEffect;
   labs: LabOption[];
   roles: RoleOption[];
+  firstFocusRef?: RefObject<HTMLSelectElement | null>;
   onSubmit: (effect: StructuredEffect) => Promise<void>;
   /** Only present when confidence is "low" — lets facilitator accept without edits. */
   onAcknowledge?: () => Promise<void>;
@@ -254,6 +263,7 @@ function EffectForm({
       <label className="block text-[10px] text-text-light">
         Type
         <select
+          ref={firstFocusRef}
           value={type}
           onChange={(e) => { setType(e.target.value as EffectType); setFields({}); }}
           className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white"

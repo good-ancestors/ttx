@@ -95,18 +95,20 @@ export function LabStateCard({
           <button
             onClick={(e) => { e.stopPropagation(); setEditing(true); }}
             className="text-[10px] p-1 rounded bg-navy-light text-text-light hover:bg-navy-muted"
+            aria-label="Edit lab state"
             title="Edit lab state"
           >
-            <Pencil className="w-3 h-3" />
+            <Pencil className="w-3 h-3" aria-hidden="true" />
           </button>
         )}
         {onMergeStart && !mergeSource && !editing && (
           <button
             onClick={(e) => { e.stopPropagation(); onMergeStart(lab.name); }}
             className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-text-light hover:bg-navy-muted flex items-center gap-1"
+            aria-label={`Merge ${lab.name} into another lab`}
             title={`Merge ${lab.name} into another lab`}
           >
-            <Merge className="w-3 h-3" />
+            <Merge className="w-3 h-3" aria-hidden="true" />
           </button>
         )}
         {isMergeSource && onMergeCancel && (

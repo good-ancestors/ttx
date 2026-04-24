@@ -373,23 +373,46 @@ function NarrativeEditModal({
   currentRound: Round | undefined;
 }) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const prevActive = document.activeElement as HTMLElement | null;
     closeButtonRef.current?.focus();
+    return () => { prevActive?.focus(); };
   }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === "Escape") { onClose(); return; }
+    if (e.key === "Tab") {
+      const focusable = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusable || focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+  };
 
   return (
     <div
       className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-8"
       onClick={onClose}
-      onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="narrative-modal-title"
         className="bg-navy-dark border border-navy-light rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
+        onKeyDown={handleKeyDown}
       >
         <div className="flex items-center justify-between mb-4">
           <span id="narrative-modal-title" className="text-sm font-bold text-white">Edit Round Summary</span>

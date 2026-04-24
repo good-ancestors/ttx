@@ -112,9 +112,10 @@ export function NarrativePanel({
           <button
             onClick={onEditNarrative}
             className="text-text-light/60 hover:text-text-light transition-colors"
+            aria-label="Edit summary"
             title="Edit summary"
           >
-            <Pencil className="w-3.5 h-3.5" />
+            <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
         )}
         {debugContext && (
