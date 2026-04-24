@@ -1458,13 +1458,18 @@ export const submitInternal = internalMutation({
 
     const stampedActions = args.actions.map((a) => ({ ...a, actionId: generateActionId(), actionStatus: "submitted" as const }));
 
+    // Return persisted actions so callers can read actionIds without a re-query.
+    // When a submission is already graded/resolved we keep the existing row untouched
+    // and echo its actions (original actionIds) for downstream hint linking.
     if (existing) {
-      if (existing.status === "graded" || existing.status === "resolved") return existing._id;
+      if (existing.status === "graded" || existing.status === "resolved") {
+        return { submissionId: existing._id, actions: existing.actions };
+      }
       await ctx.db.patch(existing._id, { actions: stampedActions, computeAllocation: args.computeAllocation, status: "submitted" });
-      return existing._id;
+      return { submissionId: existing._id, actions: stampedActions };
     }
 
-    return await ctx.db.insert("submissions", {
+    const submissionId = await ctx.db.insert("submissions", {
       tableId: args.tableId,
       gameId: args.gameId,
       roundNumber: args.roundNumber,
@@ -1473,5 +1478,6 @@ export const submitInternal = internalMutation({
       computeAllocation: args.computeAllocation,
       status: "submitted",
     });
+    return { submissionId, actions: stampedActions };
   },
 });

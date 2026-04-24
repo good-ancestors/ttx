@@ -19,9 +19,7 @@ type Submission = Doc<"submissions">;
 // sample action's `structured: {kind: "computeTransfer"}` intent for NPCs, or
 // — if/when re-added — a structured intent from AI-mode output). This keeps
 // every ledger transfer traceable to an originating action that went through
-// grade → roll → apply. The previous out-of-band auto-send was removed
-// deliberately; see NEXT-SESSION.md for the follow-up to expand sample
-// actions' computeTransfer/request coverage.
+// grade → roll → apply.
 
 // ─── Generate + submit actions for all AI/NPC tables ──────────────────────────
 
@@ -450,7 +448,13 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       });
     }
 
-    // Submit all actions in parallel (independent mutations, no conflicts)
+    // Submit all actions in parallel (independent mutations, no conflicts).
+    // submitInternal returns the stamped actions so we can build the actionId
+    // lookup without a follow-up getAllForRound query.
+    type SubmitResult = typeof pending[number] & {
+      submissionId: Id<"submissions">;
+      stampedActions: Submission["actions"];
+    };
     const results = await Promise.allSettled(
       pending.map((p) =>
         ctx.runMutation(internal.submissions.submitInternal, {
@@ -460,7 +464,7 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
           roleId: p.roleId,
           actions: p.actions,
           computeAllocation: p.computeAllocation,
-        }).then((subId) => ({ ...p, submissionId: subId }))
+        }).then<SubmitResult>((res) => ({ ...p, submissionId: res.submissionId, stampedActions: res.actions }))
       )
     );
     for (const r of results) {
@@ -469,8 +473,8 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
       }
     }
     const submitted = results
-      .filter((r) => r.status === "fulfilled")
-      .map((r) => (r as PromiseFulfilledResult<typeof pending[number] & { submissionId: string }>).value);
+      .filter((r): r is PromiseFulfilledResult<SubmitResult> => r.status === "fulfilled")
+      .map((r) => r.value);
 
     // Log submission failures
     const submissionFailures = results.filter((r) => r.status === "rejected");
@@ -479,14 +483,12 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
     }
 
     // Send endorsement/compute requests sequentially to avoid OCC conflicts on requests table.
-    // Read back submissions to get stable actionIds for endorsement linking
     const roleMap = new Map(enabledTables.map((t) => [t.roleId, t.roleName]));
-    const allSubs: Submission[] = await ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber });
     const actionIdByRoleAndText = new Map<string, string>();
-    for (const sub of allSubs) {
-      for (const action of sub.actions) {
+    for (const p of submitted) {
+      for (const action of p.stampedActions) {
         if (action.actionId) {
-          actionIdByRoleAndText.set(`${sub.roleId}:${action.text}`, action.actionId);
+          actionIdByRoleAndText.set(`${p.roleId}:${action.text}`, action.actionId);
         }
       }
     }

@@ -179,7 +179,7 @@ export default defineSchema({
          *  and roleIds at apply time. `narrativeOnly` means the action is prose-only on success.
          *  Missing = legacy round pre-refactor, treated as narrativeOnly by apply path.
          *
-         *  Four-layer model (see NEXT-SESSION.md):
+         *  Four-layer model (see docs/resolve-pipeline.md):
          *    Position — breakthrough / modelRollback / merge change rdMultiplier.
          *    Stock    — computeDestroyed / computeTransfer / merge move compute.
          *    Velocity — derived at resolve time, never an effect.
