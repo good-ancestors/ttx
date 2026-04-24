@@ -501,6 +501,7 @@ export const MAX_ACTIONS = 5;
 export const MAX_COMPUTE_DESTROYED_PER_ACTION = 50;
 export const MIN_SEED_COMPUTE = 10;
 export const TOTAL_ROUNDS = ROUND_CONFIGS.length;
+export const DEFAULT_LAB_ALLOCATION = { deployment: 33, research: 34, safety: 33 } as const;
 
 export function isSubmittedAction(action: { actionStatus: string }): boolean {
   return action.actionStatus === "submitted";

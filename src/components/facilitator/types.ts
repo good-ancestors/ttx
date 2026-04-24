@@ -51,6 +51,9 @@ export type Submission = Pick<
     aiInfluence?: number;
     structuredEffect?: StructuredEffect;
     confidence?: Confidence;
+    mergeLab?: { absorbedLabId: string; survivorLabId: string; newName?: string; newSpec?: string };
+    foundLab?: { name: string; seedCompute: number; spec?: string; allocation?: { deployment: number; research: number; safety: number } };
+    computeTargets?: { roleId: string; amount: number; direction?: "send" | "request" }[];
   }[];
 };
 

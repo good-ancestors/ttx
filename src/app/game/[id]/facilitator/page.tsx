@@ -215,6 +215,22 @@ export default function FacilitatorPage({
     },
     [safeAction, triggerRoll, gameId, game?.currentRound, aiDispositionPayload],
   );
+  const handleReResolve = useCallback(
+    async () => {
+      setNarrativeStale(false);
+      try {
+        await clearResolution({ gameId, roundNumber: game?.currentRound ?? 1 });
+        await triggerRoll({
+          gameId,
+          roundNumber: game?.currentRound ?? 1,
+          aiDisposition: aiDispositionPayload,
+        });
+      } catch {
+        setActionError("Re-resolve failed — try again or adjust manually");
+      }
+    },
+    [clearResolution, triggerRoll, gameId, game, aiDispositionPayload, setActionError, setNarrativeStale],
+  );
 
   // Lobby needs game + tables; playing needs facilitatorState + rounds; finished needs roundsFull
   const isLoading = !game || (
@@ -242,21 +258,6 @@ export default function FacilitatorPage({
     if (r.labsAfter) opts.push({ number: r.number, label: r.label, useBefore: false, desc: `After ${r.label} resolve` });
     return opts;
   });
-
-  const handleReResolve = async () => {
-    try {
-      setNarrativeStale(false);
-      await clearResolution({ gameId, roundNumber: game.currentRound });
-      await triggerRoll({
-        gameId,
-        roundNumber: game.currentRound,
-        aiDisposition: aiDispositionPayload,
-      });
-    } catch {
-      setActionError("Re-resolve failed — try again or adjust manually");
-    }
-  };
-
 
   // ─── LOBBY ────────���───────────────────────────────��─────────────────────────
   if (game.status === "lobby") {

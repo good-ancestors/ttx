@@ -989,6 +989,7 @@ export const triggerRoll = mutation({
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "playing") throw new Error("Game is not in playing state");
+    if (args.roundNumber !== game.currentRound) throw new Error(`roundNumber mismatch: expected ${game.currentRound}, got ${args.roundNumber}`);
 
     // Verify all submitted actions are graded
     const subs = await ctx.db

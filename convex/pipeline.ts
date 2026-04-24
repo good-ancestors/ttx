@@ -291,6 +291,11 @@ async function gradeAllBatched(
   if (!result.output?.actions) throw new Error("Grading LLM returned no actions");
   const graded = result.output.actions;
 
+  const returnedIds = new Set(graded.map((g) => g.actionId));
+  for (const id of actionIdToSubmission.keys()) {
+    if (!returnedIds.has(id)) console.warn(`[pipeline] Grading LLM did not return actionId ${id} — will default to 50% probability`);
+  }
+
   // Group returned grades by submissionId so we patch each submission once.
   const updatesBySubmission = new Map<Id<"submissions">, Map<number, GradedActionOutput>>();
   for (const g of graded) {
@@ -1151,15 +1156,18 @@ export const continueFromEffectReview = internalAction({
         // Phase 10 mechanicsLog — acquisition deltas per role. The before/after value
         // is the role's stock pre- and post-acquisition (for a lab owner, the lab's
         // growth stock IS the acquisition; for non-lab roles, it's pool share).
+        const roleToName = new Map(labsNow.map((l) => [l.roleId, l.name] as const));
         for (const entry of acquiredEntries) {
           const pre = tableComputeByRole.get(entry.roleId) ?? 0;
-          pushLog({ phase: 10, source: "acquisition", subject: entry.roleId, field: "computeStock", before: pre, after: pre + entry.amount, reason: `R${roundNumber + 1} acquisition +${entry.amount}u` });
+          pushLog({ phase: 10, source: "acquisition", subject: roleToName.get(entry.roleId) ?? entry.roleId, field: "computeStock", before: pre, after: pre + entry.amount, reason: `R${roundNumber} acquisition +${entry.amount}u` });
         }
 
         const priorLogLen = currentRound.mechanicsLog?.length ?? 0;
-        const cappedMechLog = [...(currentRound.mechanicsLog ?? []), ...mechLog]
-          .slice(0, MAX_MECHANICS_LOG_ENTRIES)
-          .slice(priorLogLen); // pass only the new entries to the mutation
+        const roomLeft = Math.max(0, MAX_MECHANICS_LOG_ENTRIES - priorLogLen);
+        const cappedMechLog = mechLog.slice(0, roomLeft);
+        if (cappedMechLog.length < mechLog.length) {
+          console.warn(`[pipeline] mechanicsLog cap: dropped ${mechLog.length - cappedMechLog.length} entries (prior=${priorLogLen}, new=${mechLog.length}, cap=${MAX_MECHANICS_LOG_ENTRIES})`);
+        }
         await ctx.runMutation(internal.pipelineApply.applyGrowthAndAcquisitionInternal, {
           gameId,
           roundNumber,

@@ -6,7 +6,7 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS } from "./aiModels";
-import { type Role, ROLES, PRIORITY_DECAY, isLabCeo, isLabSafety, hasCompute, getDisposition } from "@/lib/game-data";
+import { type Role, ROLES, PRIORITY_DECAY, isLabCeo, isLabSafety, hasCompute, getDisposition, MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
 import { AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
 import { getSampleActions, pickRandom } from "@/lib/sample-actions";
@@ -194,13 +194,13 @@ export const generateAll = internalAction({
             if (s.kind === "foundLab") {
               const stock = table.computeStock ?? 0;
               const seedCompute = Math.round(stock * s.seedComputePct / 100);
-              if (seedCompute < 10) return base; // below minimum gate
+              if (seedCompute < MIN_SEED_COMPUTE) return base; // below minimum gate
               return {
                 ...base,
                 foundLab: {
                   name: s.name,
                   seedCompute,
-                  allocation: { deployment: 33, research: 34, safety: 33 },
+                  allocation: DEFAULT_LAB_ALLOCATION,
                 },
               };
             }

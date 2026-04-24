@@ -237,8 +237,8 @@ function AppliedOpsPanel({
             Applied ({applied.length})
           </div>
           <ul className="space-y-1.5">
-            {applied.map((op) => (
-              <li key={op.summary} className="flex items-start gap-2 text-sm">
+            {applied.map((op, idx) => (
+              <li key={`${op.type}-${idx}`} className="flex items-start gap-2 text-sm">
                 <span className={`inline-block text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 mt-[3px] shrink-0 ${TYPE_COLOURS[op.type as AppliedOpType] ?? "bg-navy-light text-text-light"}`}>
                   {TYPE_LABELS[op.type as AppliedOpType] ?? op.type}
                 </span>
@@ -259,8 +259,8 @@ function AppliedOpsPanel({
             Flagged &amp; rejected ({rejected.length})
           </div>
           <ul className="space-y-1.5">
-            {rejected.map((op) => (
-              <li key={op.summary} className="flex items-start gap-2 text-sm">
+            {rejected.map((op, idx) => (
+              <li key={`${op.type}-${idx}`} className="flex items-start gap-2 text-sm">
                 <span className="inline-block text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 mt-[3px] shrink-0 bg-viz-danger/20 text-viz-danger">
                   {op.opType ?? "Flag"}
                 </span>

@@ -184,10 +184,11 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
     if (round) {
       const nonZero = args.acquired.filter((r) => r.amount !== 0);
       const priorLog = round.mechanicsLog ?? [];
+      const newLog = [...priorLog, ...args.mechanicsLog].slice(0, 200); // 200 = MAX_MECHANICS_LOG_ENTRIES
       await ctx.db.patch(round._id, {
         pendingAcquired: nonZero,
         pendingProductivityMods: undefined,
-        mechanicsLog: [...priorLog, ...args.mechanicsLog],
+        mechanicsLog: newLog,
       });
     }
   },

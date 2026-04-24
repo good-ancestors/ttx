@@ -126,12 +126,12 @@ export function AttemptedPanel({
   [submissions]);
 
   const displayActions = useMemo(() => {
-    if (isRollingOrNarrate) {
-      return [...allActions]
-        .filter(({ action }) => action.probability != null || action.rolled != null)
-        .sort((a, b) => b.action.priority - a.action.priority);
-    }
-    return [...allActions].sort((a, b) => b.action.priority - a.action.priority);
+    const filtered = isRollingOrNarrate
+      ? allActions.filter(({ action }) => action.probability != null || action.rolled != null)
+      : allActions;
+    const sorted = [...filtered];
+    sorted.sort((a, b) => b.action.priority - a.action.priority);
+    return sorted;
   }, [allActions, isRollingOrNarrate]);
 
   // Succeeded / failed lists for the split view.

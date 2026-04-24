@@ -32,7 +32,6 @@ export interface NarrativeSummary {
 }
 
 // NOT YET EMITTED — reserved for future narrative shape migration, keep in sync with buildResolveNarrativePrompt.
-// Formerly named PROSE_SECTIONS (use that name for imports — this constant is the canonical definition).
 export const PROSE_SECTIONS: { key: "outcomes" | "stateOfPlay" | "pressures"; label: string }[] = [
   { key: "outcomes", label: "Outcomes" },
   { key: "stateOfPlay", label: "State of Play" },

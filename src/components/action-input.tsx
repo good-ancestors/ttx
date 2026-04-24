@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY } from "@/lib/game-data";
+import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
 import { Check, EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send, Zap, FlaskConical, GitMerge } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
 
@@ -300,7 +300,7 @@ function ActionCard({
                 foundLab: action.foundLab ? undefined : {
                   name: "",
                   seedCompute: ownComputeStock ?? 10,
-                  allocation: { deployment: 33, research: 34, safety: 33 },
+                  allocation: { ...DEFAULT_LAB_ALLOCATION },
                 },
               })}
               disabled={isSubmitted}
@@ -645,7 +645,7 @@ function FoundLabForm({
     }
   }, [ownComputeStock]);
 
-  const alloc = foundLab.allocation ?? { deployment: 33, research: 34, safety: 33 };
+  const alloc = foundLab.allocation ?? { ...DEFAULT_LAB_ALLOCATION };
   const setAlloc = (patch: Partial<typeof alloc>) => {
     onUpdate({ ...foundLab, allocation: { ...alloc, ...patch } });
   };

@@ -346,7 +346,7 @@ export function buildBatchedGradingPrompt(args: {
         } else if (a.pinnedEffect.kind === "foundLab") {
           parts[0] += ` [PINNED foundLab: name="${escapeAction(a.pinnedEffect.name)}", seed ${a.pinnedEffect.seedCompute}u${a.pinnedEffect.spec ? `, spec "${escapeAction(a.pinnedEffect.spec)}"` : ""}]`;
         } else {
-          const tgt = a.pinnedEffect.targets.map((t) => `${t.direction === "send" ? "→" : "←"} ${t.toRoleName} ${t.amount}u`).join(", ");
+          const tgt = a.pinnedEffect.targets.map((t) => `${t.direction === "send" ? "→" : "←"} ${escapeAction(t.toRoleName)} ${t.amount}u`).join(", ");
           parts[0] += ` [PINNED computeTransfer: ${tgt}]`;
         }
       }
