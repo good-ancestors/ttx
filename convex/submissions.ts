@@ -963,9 +963,15 @@ export const overrideProbability = mutation({
     // stripGradingFields drops stale reasoning; if dice were already rolled we
     // auto-reroll at the new probability.
     const stripped = stripGradingFields(action);
+    // If the action is still ungraded (no structuredEffect), fall back to
+    // narrativeOnly so the UI doesn't show "probability set but no effect".
+    // Facilitator setting probability on an ungraded action = "skip grading,
+    // just roll this at X%" — narrativeOnly is the correct implicit effect.
+    const fallbackEffect = stripped.structuredEffect ?? ({ type: "narrativeOnly" } as const);
+    const fallbackConfidence = stripped.confidence ?? "high";
     actions[args.actionIndex] = action.rolled != null
-      ? { ...stripped, probability: args.probability, ...rollDice(args.probability, action.aiInfluence) }
-      : { ...stripped, probability: args.probability };
+      ? { ...stripped, probability: args.probability, structuredEffect: fallbackEffect, confidence: fallbackConfidence, ...rollDice(args.probability, action.aiInfluence) }
+      : { ...stripped, probability: args.probability, structuredEffect: fallbackEffect, confidence: fallbackConfidence };
 
     await ctx.db.patch(args.submissionId, { actions });
   },
