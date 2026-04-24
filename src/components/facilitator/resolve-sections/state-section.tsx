@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { CheckCircle, Plus } from "lucide-react";
@@ -94,7 +94,10 @@ function LabStateAndAllocations({
   const totalAcquired = (holderView ?? []).reduce((s, h) => s + Math.max(0, h.acquired), 0);
   // O(1) roleId lookup so the activeLabs.map below doesn't quadratically scan
   // holderView on every render tick.
-  const holderByRoleId = new Map((holderView ?? []).map((h) => [h.roleId, h] as const));
+  const holderByRoleId = useMemo(
+    () => new Map((holderView ?? []).map((h) => [h.roleId, h] as const)),
+    [holderView],
+  );
 
   return (
     <div className="bg-navy-dark rounded-xl border border-navy-light p-5">

@@ -264,18 +264,26 @@ export function normaliseStructuredEffect(e: unknown): StructuredEffect {
   const shape = EFFECT_SHAPES[type as StructuredEffect["type"]];
   const out: Record<string, unknown> = { type };
   for (const key of shape.requiredStrings ?? []) {
-    const v = raw[key];
-    if (typeof v !== "string" || v === "") return { type: "narrativeOnly" };
-    out[key] = v;
+    const val = raw[key];
+    if (typeof val !== "string" || val === "") return { type: "narrativeOnly" };
+    out[key] = val;
   }
   for (const key of shape.requiredNumbers ?? []) {
-    const v = raw[key];
-    if (typeof v !== "number") return { type: "narrativeOnly" };
-    out[key] = v;
+    const val = raw[key];
+    if (typeof val !== "number") return { type: "narrativeOnly" };
+    // Reject non-positive amounts for destruction/transfer effects
+    if (key === "amount" && (type === "computeDestroyed" || type === "computeTransfer") && val <= 0) {
+      return { type: "narrativeOnly" };
+    }
+    // Reject non-positive seedCompute for foundLab
+    if (key === "seedCompute" && type === "foundLab" && val <= 0) {
+      return { type: "narrativeOnly" };
+    }
+    out[key] = val;
   }
   for (const key of shape.optionalStrings ?? []) {
-    const v = raw[key];
-    if (typeof v === "string" && v !== "") out[key] = v;
+    const val = raw[key];
+    if (typeof val === "string" && val !== "") out[key] = val;
   }
   return out as StructuredEffect;
 }
@@ -334,9 +342,9 @@ export function buildBatchedGradingPrompt(args: {
       if (a.secret) parts[0] += " [SECRET]";
       if (a.pinnedEffect) {
         if (a.pinnedEffect.kind === "merge") {
-          parts[0] += ` [PINNED merge: ${a.pinnedEffect.absorbedLabName} → ${a.pinnedEffect.survivorLabName}${a.pinnedEffect.newName ? `, rename "${a.pinnedEffect.newName}"` : ""}${a.pinnedEffect.submitterIsAbsorbed ? "; submitter is ABSORBED" : "; submitter is SURVIVOR"}]`;
+          parts[0] += ` [PINNED merge: ${escapeAction(a.pinnedEffect.absorbedLabName)} → ${escapeAction(a.pinnedEffect.survivorLabName)}${a.pinnedEffect.newName ? `, rename "${escapeAction(a.pinnedEffect.newName)}"` : ""}${a.pinnedEffect.submitterIsAbsorbed ? "; submitter is ABSORBED" : "; submitter is SURVIVOR"}]`;
         } else if (a.pinnedEffect.kind === "foundLab") {
-          parts[0] += ` [PINNED foundLab: name="${a.pinnedEffect.name}", seed ${a.pinnedEffect.seedCompute}u${a.pinnedEffect.spec ? `, spec "${a.pinnedEffect.spec}"` : ""}]`;
+          parts[0] += ` [PINNED foundLab: name="${escapeAction(a.pinnedEffect.name)}", seed ${a.pinnedEffect.seedCompute}u${a.pinnedEffect.spec ? `, spec "${escapeAction(a.pinnedEffect.spec)}"` : ""}]`;
         } else {
           const tgt = a.pinnedEffect.targets.map((t) => `${t.direction === "send" ? "→" : "←"} ${t.toRoleName} ${t.amount}u`).join(", ");
           parts[0] += ` [PINNED computeTransfer: ${tgt}]`;
@@ -351,8 +359,8 @@ export function buildBatchedGradingPrompt(args: {
       }
       return parts.join("\n");
     }).join("\n");
-    const specSuffix = role.labSpec ? `\n  Lab directive: "${role.labSpec}"` : "";
-    return `${role.roleName}${role.roleTags.length > 0 ? ` [${role.roleTags.join(", ")}]` : ""} — ${role.roleDescription}${specSuffix}
+    const specSuffix = role.labSpec ? `\n  Lab directive: "${escapeAction(role.labSpec)}"` : "";
+    return `${escapeAction(role.roleName)}${role.roleTags.length > 0 ? ` [${role.roleTags.join(", ")}]` : ""} — ${escapeAction(role.roleDescription)}${specSuffix}
 ${actionLines}`;
   }).join("\n\n");
 

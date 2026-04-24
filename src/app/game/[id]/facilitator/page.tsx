@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState, useEffect, useRef } from "react";
+import { use, useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -116,16 +116,19 @@ export default function FacilitatorPage({
   const pipelineError = pipelineStatus?.step === "error" ? pipelineStatus.error : null;
 
   const [actionError, setActionError] = useState<string | null>(null);
-  const safeAction = (label: string, fn: () => Promise<unknown>) => async () => {
-    setActionError(null);
-    try {
-      await fn();
-    } catch (err) {
-      console.error(`${label} failed:`, err);
-      setActionError(`${label} failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-      setTimeout(() => setActionError(null), 5000);
-    }
-  };
+  const safeAction = useCallback(
+    (label: string, fn: () => Promise<unknown>) => async () => {
+      setActionError(null);
+      try {
+        await fn();
+      } catch (err) {
+        console.error(`${label} failed:`, err);
+        setActionError(`${label} failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        setTimeout(() => setActionError(null), 5000);
+      }
+    },
+    [setActionError],
+  );
 
   const [showQROverlay, setShowQROverlay] = useState(false);
   const [focusedQR, setFocusedQR] = useState<string | null>(null);
@@ -182,6 +185,37 @@ export default function FacilitatorPage({
     setRevealedSecrets(new Set());
   };
 
+  // Get AI Systems disposition for passing to grading/narrate/AI player prompts
+  // Use enabledTables (from getFacilitatorState) which includes aiDisposition — only available during playing
+  const aiSystemsEnabled = enabledTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID);
+  const aiDispositionData = aiSystemsEnabled?.aiDisposition
+    ? getDisposition(aiSystemsEnabled.aiDisposition)
+    : undefined;
+  const aiDispositionPayload = aiDispositionData
+    ? { label: aiDispositionData.label, description: aiDispositionData.description }
+    : undefined;
+
+  // Grade Remaining + Roll Dice both wrap a single trigger mutation with the
+  // same try/catch shell — safeAction handles both uniformly.
+  // Declared before the loading guard so useCallback is unconditional (Rules of Hooks).
+  // game?.currentRound is safe here; both handlers are only called during playing phase.
+  const handleGradeRemaining = useCallback(
+    async () => {
+      await safeAction("Grading", () =>
+        triggerGrading({ gameId, roundNumber: game?.currentRound ?? 1, aiDisposition: aiDispositionPayload }),
+      )();
+    },
+    [safeAction, triggerGrading, gameId, game?.currentRound, aiDispositionPayload],
+  );
+  const handleRollDice = useCallback(
+    async () => {
+      await safeAction("Roll", () =>
+        triggerRoll({ gameId, roundNumber: game?.currentRound ?? 1, aiDisposition: aiDispositionPayload }),
+      )();
+    },
+    [safeAction, triggerRoll, gameId, game?.currentRound, aiDispositionPayload],
+  );
+
   // Lobby needs game + tables; playing needs facilitatorState + rounds; finished needs roundsFull
   const isLoading = !game || (
     game.status === "lobby" ? !allTablesForLobby :
@@ -208,25 +242,6 @@ export default function FacilitatorPage({
     if (r.labsAfter) opts.push({ number: r.number, label: r.label, useBefore: false, desc: `After ${r.label} resolve` });
     return opts;
   });
-
-  // Get AI Systems disposition for passing to grading/narrate/AI player prompts
-  // Use enabledTables (from getFacilitatorState) which includes aiDisposition — only available during playing
-  const aiSystemsEnabled = enabledTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID);
-  const aiDispositionData = aiSystemsEnabled?.aiDisposition
-    ? getDisposition(aiSystemsEnabled.aiDisposition)
-    : undefined;
-  const aiDispositionPayload = aiDispositionData
-    ? { label: aiDispositionData.label, description: aiDispositionData.description }
-    : undefined;
-
-  // Grade Remaining + Roll Dice both wrap a single trigger mutation with the
-  // same try/catch shell — safeAction handles both uniformly.
-  const handleGradeRemaining = safeAction("Grading", () =>
-    triggerGrading({ gameId, roundNumber: game.currentRound, aiDisposition: aiDispositionPayload }),
-  );
-  const handleRollDice = safeAction("Roll", () =>
-    triggerRoll({ gameId, roundNumber: game.currentRound, aiDisposition: aiDispositionPayload }),
-  );
 
   const handleReResolve = async () => {
     try {
@@ -391,7 +406,7 @@ export default function FacilitatorPage({
       {(actionError || pipelineError) && (
         <div className="mx-6 mt-2 bg-[#FEF2F2] border border-[#FECACA] rounded-lg px-4 py-2 text-sm text-[#991B1B] flex items-center justify-between">
           <span>{pipelineError ?? actionError}</span>
-          <button onClick={() => setActionError(null)} className="text-[#991B1B] font-bold ml-4">✕</button>
+          <button onClick={() => setActionError(null)} aria-label="Dismiss error" className="text-[#991B1B] font-bold ml-4">✕</button>
         </div>
       )}
 

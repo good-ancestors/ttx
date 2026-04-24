@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY } from "@/lib/game-data";
 import { Check, EyeOff, Eye, Handshake, Trash2, Plus, X, ChevronUp, ChevronDown, GripVertical, Send, Zap, FlaskConical, GitMerge } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
@@ -635,11 +635,14 @@ function FoundLabForm({
   // The founder always stakes their full current compute pool. Keep the form's
   // seedCompute synced to the current stock so the value reflects anything that
   // changes between toggling and submitting.
+  const foundLabRef = useRef(foundLab);
+  const onUpdateRef = useRef(onUpdate);
+  useEffect(() => { foundLabRef.current = foundLab; });
+  useEffect(() => { onUpdateRef.current = onUpdate; });
   useEffect(() => {
-    if (ownComputeStock > 0 && foundLab.seedCompute !== ownComputeStock) {
-      onUpdate({ ...foundLab, seedCompute: ownComputeStock });
+    if (ownComputeStock > 0 && foundLabRef.current.seedCompute !== ownComputeStock) {
+      onUpdateRef.current({ ...foundLabRef.current, seedCompute: ownComputeStock });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownComputeStock]);
 
   const alloc = foundLab.allocation ?? { deployment: 33, research: 34, safety: 33 };
