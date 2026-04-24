@@ -6,62 +6,22 @@ import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS } from "./aiModels";
-import { type Role, ROLES, PRIORITY_DECAY, isLabCeo, isLabSafety, hasCompute, getDisposition, MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
+import { ROLES, PRIORITY_DECAY, isLabCeo, isLabSafety, hasCompute, getDisposition, MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
 import { AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { SCENARIO_CONTEXT } from "@/lib/ai-prompts";
 import { getSampleActions, pickRandom } from "@/lib/sample-actions";
 
 type Request = Doc<"requests">;
-
-
-type Table = Doc<"tables">;
 type Submission = Doc<"submissions">;
 
-/** Pick a lab for an NPC with compute to loan 30-50% of stock to.
- *  Prefers labs whose CEOs are endorsed by the NPC's picked actions. */
-function npcComputeTransfer(
-  role: Role | undefined,
-  table: Table,
-  labs: { roleId?: string }[],
-  activeRoleIds: Set<string>,
-  endorsedRoleIds?: string[],
-): { toRoleId: string; amount: number }[] | undefined {
-  if (!role || !hasCompute(role) || isLabCeo(role)) return undefined;
-  const stock = table.computeStock ?? 0;
-  if (stock <= 0 || labs.length === 0) return undefined;
-  const enabledLabRoleIds = labs
-    .map((l) => l.roleId)
-    .filter((id): id is string => !!id && activeRoleIds.has(id));
-  if (enabledLabRoleIds.length === 0) return undefined;
-  const pct = 0.3 + Math.random() * 0.2; // 30-50%
-  const amount = Math.max(1, Math.floor(stock * pct));
-
-  // Prefer the most-endorsed lab CEO from the NPC's sample actions
-  let targetLabRoleId: string | undefined;
-  if (endorsedRoleIds && endorsedRoleIds.length > 0) {
-    const labCeoRoleIdSet = new Set(enabledLabRoleIds);
-    const counts = new Map<string, number>();
-    for (const id of endorsedRoleIds) {
-      if (labCeoRoleIdSet.has(id)) {
-        counts.set(id, (counts.get(id) ?? 0) + 1);
-      }
-    }
-    if (counts.size > 0) {
-      let best = "";
-      let bestCount = 0;
-      for (const [id, count] of counts) {
-        if (count > bestCount) { best = id; bestCount = count; }
-      }
-      targetLabRoleId = best;
-    }
-  }
-
-  // Fall back to random lab
-  if (!targetLabRoleId) {
-    targetLabRoleId = enabledLabRoleIds[Math.floor(Math.random() * enabledLabRoleIds.length)];
-  }
-  return [{ toRoleId: targetLabRoleId, amount }];
-}
+// Compute movement is now action-scoped only. An NPC/AI role wanting to send
+// compute must have a submitted action with `computeTargets` (pinned via a
+// sample action's `structured: {kind: "computeTransfer"}` intent for NPCs, or
+// — if/when re-added — a structured intent from AI-mode output). This keeps
+// every ledger transfer traceable to an originating action that went through
+// grade → roll → apply. The previous out-of-band auto-send was removed
+// deliberately; see NEXT-SESSION.md for the follow-up to expand sample
+// actions' computeTransfer/request coverage.
 
 // ─── Generate + submit actions for all AI/NPC tables ──────────────────────────
 
@@ -126,7 +86,6 @@ export const generateAll = internalAction({
       }[];
       computeAllocation?: { deployment: number; research: number; safety: number };
       endorseHints?: { actionText: string; targetRoleIds: string[] }[];
-      computeTransfers?: { toRoleId: string; amount: number }[];
       computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
     }
     const pending: PendingAction[] = [];
@@ -165,10 +124,6 @@ export const generateAll = internalAction({
                 : { deployment: 34, research: 33, safety: 33 };
             }
           }
-
-          // NPC non-lab has-compute roles: loan to an endorsed or random enabled lab
-          const endorsedRoleIds = picked.flatMap((a) => a.endorseHint ?? []);
-          const computeTransfers = npcComputeTransfer(role, table, labs, activeRoleIds, endorsedRoleIds);
 
           // Resolve structured intents (merger, foundLab, computeTransfer) per action.
           // Skip attachment silently if prerequisites are missing (lab already merged, etc.).
@@ -230,7 +185,6 @@ export const generateAll = internalAction({
               }))
               .filter((h) => h.targetRoleIds.length > 0),
             computeAllocation,
-            computeTransfers,
           });
         } catch {
           console.error(`[aiGenerate] NPC sample failed for ${table.roleId}`);
@@ -365,9 +319,7 @@ Available roles: ${enabledTables.filter((t) => t.roleId !== table.roleId && t.ro
 ${isLabCeo(role) ? `Also set your compute allocation (deployment/research/safety percentages summing to 100).
 You may also request compute from government players. Output computeRequestHints: [{ targetRoleId: "<government-role-id>", amount: <number>, actionText: "<reason>" }] if you want to request compute. Empty array if not.
 Available government roles: ${enabledTables.filter((t) => ROLES.find((r) => r.id === t.roleId)?.tags.includes("government")).map((t) => `${t.roleName} (${t.roleId})`).join(", ") || "none"}` : ""}
-${hasCompute(role) && !isLabCeo(role) ? `You have ${table.computeStock ?? 0} compute units. You may choose to loan some to a lab or another player.
-Output computeTransfers: [{ toRoleId: "<role-id>", amount: <number> }] if you want to send compute. Empty array if not.
-Available labs: ${labs.map((l) => `${l.name} (${l.roleId})`).join(", ")}` : ""}
+${hasCompute(role) && !isLabCeo(role) ? `You have ${table.computeStock ?? 0} compute units. If you want to send compute to a lab or another player, write an action that clearly describes the transfer — the grader will emit a computeTransfer effect from your action. Do NOT expect transfers to happen without an action.` : ""}
 ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifactPrompt}` : ""}`;
 
       try {
@@ -375,7 +327,6 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
           actions: { text: string; priority: number; secret?: boolean }[];
           endorseHints?: { actionText: string; targetRoleIds: string[] }[];
           computeAllocation?: { deployment: number; research: number; safety: number };
-          computeTransfers?: { toRoleId: string; amount: number }[];
           computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
         }>({
           models: GRADING_MODELS,
@@ -412,17 +363,6 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
               computeAllocation: {
                 type: "object",
                 properties: { deployment: { type: "number" }, research: { type: "number" }, safety: { type: "number" } },
-              },
-              computeTransfers: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    toRoleId: { type: "string" },
-                    amount: { type: "number" },
-                  },
-                  required: ["toRoleId", "amount"],
-                },
               },
               computeRequestHints: {
                 type: "array",
@@ -463,11 +403,6 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
               computeAllocation = { deployment: 34, research: 33, safety: 33 };
             }
           }
-          // Filter valid compute transfers (positive amount, valid target, not self)
-          const computeTransfers = (output.computeTransfers ?? []).filter(
-            (t) => t.amount > 0 && t.toRoleId !== table.roleId && activeRoleIds.has(t.toRoleId)
-          );
-
           // Filter valid compute request hints (positive amount, valid target, not self)
           const computeRequestHints = (output.computeRequestHints ?? []).filter(
             (h) => h.amount > 0 && h.targetRoleId !== table.roleId && activeRoleIds.has(h.targetRoleId)
@@ -491,7 +426,6 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
             actions,
             computeAllocation,
             endorseHints: endorseHints.length > 0 ? endorseHints : undefined,
-            computeTransfers: computeTransfers.length > 0 ? computeTransfers : undefined,
             computeRequestHints: computeRequestHints.length > 0 ? computeRequestHints : undefined,
           });
         }
@@ -542,22 +476,6 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
     const submissionFailures = results.filter((r) => r.status === "rejected");
     if (submissionFailures.length > 0) {
       console.error(`[aiGenerate] ${submissionFailures.length} submission mutation(s) failed`);
-    }
-
-    // Execute compute transfers sequentially to avoid OCC conflicts on tables/games docs
-    for (const p of submitted) {
-      for (const transfer of p.computeTransfers ?? []) {
-        try {
-          await ctx.runMutation(internal.requests.directTransferInternal, {
-            gameId,
-            fromRoleId: p.roleId,
-            toRoleId: transfer.toRoleId,
-            amount: transfer.amount,
-          });
-        } catch {
-          console.error(`[aiGenerate] Compute transfer failed: ${p.roleId} -> ${transfer.toRoleId}`);
-        }
-      }
     }
 
     // Send endorsement/compute requests sequentially to avoid OCC conflicts on requests table.

@@ -10,6 +10,7 @@ import {
   decommissionLabInternal,
   transferLabOwnershipInternal,
   updateLabRdMultiplierInternal,
+  createLabInternal,
 } from "./labs";
 import { emitTransaction, emitPair, clearRegenerableRows } from "./computeLedger";
 
@@ -53,6 +54,17 @@ export const applyDecidedEffectsInternal = internalMutation({
       newOwnerRoleId: v.optional(v.string()),
       oldOwnerRoleId: v.optional(v.string()),
       computeToTransfer: v.optional(v.number()),
+    })),
+    // foundLabOps: create a new lab for the founder + emit a settled ledger
+    // entry debiting their pool by seedCompute. Pipeline-side already
+    // validated name uniqueness, founder balance, and MIN_SEED_COMPUTE;
+    // the mutation trusts those invariants and focuses on the writes.
+    foundLabOps: v.array(v.object({
+      founderRoleId: v.string(),
+      name: v.string(),
+      spec: v.optional(v.string()),
+      seedCompute: v.number(),
+      allocation: v.object({ deployment: v.number(), research: v.number(), safety: v.number() }),
     })),
     // Final rdMultiplier values from breakthrough / modelRollback (four-layer
     // redesign). Growth-derived updates land later in applyGrowthAndAcquisitionInternal.
@@ -161,6 +173,31 @@ export const applyDecidedEffectsInternal = internalMutation({
         });
       }
     }));
+    // foundLabOps: create each new lab + settle the seedCompute debit from
+    // the founder's pool. Pipeline validated uniqueness + founder balance;
+    // createLabInternal defensively re-checks name uniqueness. Sequential
+    // rather than parallel to avoid racing on name uniqueness within the
+    // same batch (two foundLabOps proposing the same name would collide).
+    for (const f of args.foundLabOps) {
+      await createLabInternal(ctx, {
+        gameId: args.gameId,
+        name: f.name,
+        spec: f.spec,
+        rdMultiplier: 1,
+        allocation: f.allocation,
+        ownerRoleId: f.founderRoleId,
+        createdRound: args.roundNumber,
+      });
+      await emitTransaction(ctx, {
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        type: "adjusted",
+        status: "settled",
+        roleId: f.founderRoleId,
+        amount: -f.seedCompute,
+        reason: `foundLab "${f.name}" — seed compute escrow`,
+      });
+    }
     // Breakthrough / modelRollback final multiplier values. Growth in phase 9
     // grows from this value; there is no post-growth re-apply.
     await Promise.all(args.multiplierUpdates.map((u) => updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier)));

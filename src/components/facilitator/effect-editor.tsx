@@ -272,7 +272,7 @@ function EffectForm({
             <option value="merge">Merge</option>
             <option value="decommission">Decommission</option>
             <option value="transferOwnership">Transfer ownership</option>
-            <option value="foundLab">Found lab (usually pinned)</option>
+            <option value="foundLab">Found lab (new)</option>
           </optgroup>
           <optgroup label="Position (R&D multiplier)">
             <option value="breakthrough">Breakthrough (ship new model)</option>

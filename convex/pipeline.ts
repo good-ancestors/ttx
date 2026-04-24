@@ -26,6 +26,8 @@ import {
   ROLES,
   LAB_PROGRESSION,
   MAX_COMPUTE_DESTROYED_PER_ACTION,
+  MIN_SEED_COMPUTE,
+  DEFAULT_LAB_ALLOCATION,
   clampProductivity,
   getAiInfluencePower,
   autoGenerateInfluence,
@@ -608,6 +610,12 @@ export const rollAndApplyEffects = internalAction({
       // mutation emits a ledger pair when `computeToTransfer > 0` — avoids an
       // empty ledger row when the old owner already had 0 stock.
       const transferOps: { labId: Id<"labs">; newOwnerRoleId: string | undefined; oldOwnerRoleId?: string; computeToTransfer?: number }[] = [];
+      // foundLab creates a new lab and escrows seedCompute from the submitter.
+      // The apply mutation both creates the lab row and emits a settled
+      // ledger entry deducting seedCompute from the founder's pool. Rejection
+      // happens at pipeline time: insufficient compute, duplicate active
+      // lab name, missing/invalid fields.
+      const foundLabOps: { founderRoleId: string; name: string; spec?: string; seedCompute: number; allocation: { deployment: number; research: number; safety: number } }[] = [];
       // computeDestructions carries destruction-only deltas (amount > 0 on the effect,
       // stored as a negative change for the ledger). No positive entries ever originate
       // here — compute is conserved; see the conservation principle in ai-prompts.ts.
@@ -643,11 +651,11 @@ export const rollAndApplyEffects = internalAction({
       const roleNameMap = new Map<string, string>(ROLES.map((r) => [r.id, r.name]));
 
       // Collect per-action effects to apply. Skip failed actions; skip actions
-      // with player-pinned effects (mergeLab / foundLab / computeTargets) — those
-      // settled inside rollAllImpl and surface in P7 via the event log; skip
-      // narrativeOnly and foundLab at the grader-effect layer (foundLab is
-      // player-pinned only).
-      type ApplyableEffect = Exclude<StructuredEffect, { type: "narrativeOnly" } | { type: "foundLab" }>;
+      // with player-pinned effects (mergeLab / foundLab / computeTargets) —
+      // those settled inside rollAllImpl and surface in P7 via the event log.
+      // Skip narrativeOnly. foundLab at the grader-effect layer IS applied
+      // here (facilitator-override path for rounds where a player didn't pin).
+      type ApplyableEffect = Exclude<StructuredEffect, { type: "narrativeOnly" }>;
       type ResolvedEffect = {
         actorRoleId: string;
         actorRoleName: string;
@@ -661,7 +669,7 @@ export const rollAndApplyEffects = internalAction({
           if (!action.success) continue;
           if (action.mergeLab || action.foundLab || (action.computeTargets && action.computeTargets.length > 0)) continue;
           const e = action.structuredEffect;
-          if (!e || e.type === "narrativeOnly" || e.type === "foundLab") continue;
+          if (!e || e.type === "narrativeOnly") continue;
           effectsToApply.push({ actorRoleId: sub.roleId, actorRoleName, actionText: action.text, effect: e });
         }
       }
@@ -767,6 +775,18 @@ export const rollAndApplyEffects = internalAction({
             const target = findActiveByName(e.labName);
             if (!target) { rejectedOps.push({ category: "invalid_reference", opType: "decommission", message: `decommission: "${e.labName}" is not an active lab` }); break; }
             if (workingLabs.length <= 1) { rejectedOps.push({ category: "precondition_failure", opType: "decommission", message: `decommission: cannot decommission the last active lab` }); break; }
+            // Destroy the owner's compute pool — decommission = "the lab and
+            // its hardware are gone". If the player wants to preserve compute
+            // across a shutdown they must transferOwnership or computeTransfer
+            // FIRST (as a separate effect), then decommission.
+            if (target.roleId) {
+              const stock = tableComputeByRole.get(target.roleId) ?? 0;
+              if (stock > 0) {
+                computeDestructions.push({ labId: target.labId, change: -stock, reason: `decommission — hardware written off (${stock}u destroyed)` });
+                logEntry(target.name, "computeStock", stock, 0, `decommission destroyed ${stock}u (hardware written off)`);
+                tableComputeByRole.set(target.roleId, 0);
+              }
+            }
             decommissionOps.push({ labId: target.labId });
             workingLabs = workingLabs.filter((l) => l.labId !== target.labId);
             break;
@@ -881,6 +901,55 @@ export const rollAndApplyEffects = internalAction({
             tableComputeByRole.set(e.toRoleId, receiverPre + e.amount);
             break;
           }
+          case "foundLab": {
+            // Founder pool, name uniqueness, seedCompute floor all validated
+            // at pipeline time so rejectedOps surface in P7. The apply
+            // mutation creates the row + deducts the escrow.
+            const founderRoleId = resolved.actorRoleId;
+            const name = e.name.trim();
+            if (!name) {
+              rejectedOps.push({ category: "precondition_failure", opType: "foundLab", message: `foundLab: name is required` });
+              break;
+            }
+            if (e.seedCompute < MIN_SEED_COMPUTE) {
+              rejectedOps.push({ category: "precondition_failure", opType: "foundLab", message: `foundLab: seedCompute ${e.seedCompute}u below minimum ${MIN_SEED_COMPUTE}u` });
+              break;
+            }
+            const clash = workingLabs.find((l) => l.name === name);
+            if (clash) {
+              rejectedOps.push({ category: "invalid_reference", opType: "foundLab", message: `foundLab: active lab named "${name}" already exists` });
+              break;
+            }
+            const founderStock = tableComputeByRole.get(founderRoleId) ?? 0;
+            if (founderStock < e.seedCompute) {
+              rejectedOps.push({ category: "precondition_failure", opType: "foundLab", message: `foundLab: founder "${founderRoleId}" has ${founderStock}u, needs ${e.seedCompute}u` });
+              break;
+            }
+            const allocation = e.allocation ?? DEFAULT_LAB_ALLOCATION;
+            foundLabOps.push({ founderRoleId, name, spec: e.spec, seedCompute: e.seedCompute, allocation });
+            // Log the founder's pool loss only. A separate "new lab 0 →
+            // seedCompute" entry would be misleading: the new lab's compute
+            // view tracks its owner's pool, not a per-lab balance.
+            const founderSubject = workingLabs.find((l) => l.roleId === founderRoleId)?.name ?? founderRoleId;
+            logEntry(founderSubject, "computeStock", founderStock, founderStock - e.seedCompute, `foundLab "${name}" — seeded with ${e.seedCompute}u`);
+            tableComputeByRole.set(founderRoleId, founderStock - e.seedCompute);
+            // Add the new lab to workingLabs so later phase-5 effects that
+            // reference the lab by name (e.g. breakthrough, decommission)
+            // resolve. labId is a placeholder — apply mutation creates the
+            // real Convex id; phase-5 logic only reads .name / .roleId.
+            workingLabs.push({
+              labId: `pending-${name}` as Id<"labs">,
+              name,
+              roleId: founderRoleId,
+              computeStock: 0,
+              rdMultiplier: 1,
+              allocation,
+              spec: e.spec,
+              colour: "",
+              status: "active",
+            });
+            break;
+          }
         }
       }
       if (rejectedOps.length > 0) {
@@ -948,6 +1017,7 @@ export const rollAndApplyEffects = internalAction({
         mergeOps,
         decommissionOps,
         transferOps,
+        foundLabOps,
         multiplierUpdates: multiplierUpdates.map((ov) => ({ labId: ov.labId, rdMultiplier: ov.newMultiplier })),
         adjusted: adjustedEntries,
         merged: mergedEntries,
@@ -1042,6 +1112,10 @@ export const rollAndApplyEffects = internalAction({
           ? ` (inherited ${t.computeToTransfer}u compute)`
           : "";
         appliedOps.push({ type: "transferOwnership", status: "applied", summary: `${name} ownership → ${newOwner}${computeNote}` });
+      }
+      for (const f of foundLabOps) {
+        const founder = roleNameMap.get(f.founderRoleId) ?? f.founderRoleId;
+        appliedOps.push({ type: "foundLab", status: "applied", summary: `${founder} founded ${f.name} (${f.seedCompute}u seed)` });
       }
       for (const ov of multiplierUpdates) {
         const name = labNameById.get(ov.labId) ?? "?";

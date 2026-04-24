@@ -48,6 +48,11 @@ When a human player types a freeform action that "smells mechanical" (mentions a
 
 Shape: keyword regex over action text → inline tooltip pointing at mergeLab / foundLab / computeTargets. Low-risk UX-only change.
 
+### 2a. Expand sample-actions compute-transfer/request coverage
+The NPC/AI auto-transfer (30-50% of stock auto-sent to an endorsed lab at submission time) was removed — every ledger transfer must now originate from an action that goes through resolve. Sample actions covering `structured: {kind: "computeTransfer"}` (send) and `{kind: "computeRequest"}` (receive-from-target) are thin: ~9 current transfers across 402 actions. Expand to ~20-25 across the has-compute roles (`us-president`, `australia-pm`, `eu-president`, `us-congress`, `aisi-network`) so NPC rounds still surface realistic compute flow without the hidden auto-drip. Pair with `computeRequest` intents on lab-CEO roles so government-to-lab flows are mutual.
+
+Risk: data-only change, low. May also need a `kind: "computeRequest"` variant if the current schema doesn't support it (check `SampleAction.structured` union).
+
 ### 3. Pipeline.ts + submissions.ts split
 Both files are 1000+ lines and hit `max-lines` lint warnings.
 
