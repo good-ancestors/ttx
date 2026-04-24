@@ -255,9 +255,9 @@ export async function transferLabOwnershipInternal(
   labId: Id<"labs">,
   newOwnerRoleId: string | undefined,
 ): Promise<void> {
-  // Ownership transfer does NOT move compute — owner's personal stock stays with them.
-  // The new owner now controls the lab's structural decisions (spec, allocation) and
-  // the lab's R&D uses the new owner's compute balance going forward.
+  // Ownership patch only. The compute ledger pair (old owner → new owner) is
+  // emitted by the caller in applyDecidedEffectsInternal when the phase-5
+  // transferOwnership effect applies — compute follows the lab.
   await ctx.db.patch(labId, { ownerRoleId: newOwnerRoleId });
 }
 

@@ -45,7 +45,15 @@ export const applyDecidedEffectsInternal = internalMutation({
       reason: v.string(),
     })),
     decommissionOps: v.array(v.object({ labId: v.id("labs") })),
-    transferOps: v.array(v.object({ labId: v.id("labs"), newOwnerRoleId: v.optional(v.string()) })),
+    // transferOps now carries oldOwnerRoleId + computeToTransfer so the apply
+    // mutation can emit a settled ledger pair (compute follows the lab). When
+    // computeToTransfer is 0 or absent, only the lab doc is patched.
+    transferOps: v.array(v.object({
+      labId: v.id("labs"),
+      newOwnerRoleId: v.optional(v.string()),
+      oldOwnerRoleId: v.optional(v.string()),
+      computeToTransfer: v.optional(v.number()),
+    })),
     // Final rdMultiplier values from breakthrough / modelRollback (four-layer
     // redesign). Growth-derived updates land later in applyGrowthAndAcquisitionInternal.
     // The value here is the POST-effect multiplier — growth in phase 9 grows from
@@ -126,7 +134,33 @@ export const applyDecidedEffectsInternal = internalMutation({
       newSpec: m.newSpec,
     })));
     await Promise.all(args.decommissionOps.map((d) => decommissionLabInternal(ctx, d.labId)));
-    await Promise.all(args.transferOps.map((t) => transferLabOwnershipInternal(ctx, t.labId, t.newOwnerRoleId)));
+    // Ownership transfer: patch the lab's ownerRoleId, then emit a ledger pair
+    // moving the old owner's compute balance to the new owner (compute follows
+    // the lab — nationalisation includes the datacenter). The authoritative
+    // amount is the OLD OWNER'S LIVE BALANCE at apply time, read fresh here —
+    // prior phase-5 effects (computeDestroyed, computeTransfer) may have moved
+    // balances since the pipeline captured computeToTransfer on args. Skip the
+    // ledger emit when there's no amount to move or either side is undefined.
+    await Promise.all(args.transferOps.map(async (t) => {
+      await transferLabOwnershipInternal(ctx, t.labId, t.newOwnerRoleId);
+      if (!t.oldOwnerRoleId || !t.newOwnerRoleId) return;
+      const oldTable = await ctx.db.query("tables")
+        .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", t.oldOwnerRoleId!))
+        .first();
+      const liveAmount = Math.max(0, oldTable?.computeStock ?? 0);
+      if (liveAmount > 0) {
+        await emitPair(ctx, {
+          gameId: args.gameId,
+          roundNumber: args.roundNumber,
+          type: "transferred",
+          status: "settled",
+          fromRoleId: t.oldOwnerRoleId,
+          toRoleId: t.newOwnerRoleId,
+          amount: liveAmount,
+          reason: `Lab ownership transferred — compute follows the lab`,
+        });
+      }
+    }));
     // Breakthrough / modelRollback final multiplier values. Growth in phase 9
     // grows from this value; there is no post-growth re-apply.
     await Promise.all(args.multiplierUpdates.map((u) => updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier)));

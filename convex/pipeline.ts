@@ -603,7 +603,11 @@ export const rollAndApplyEffects = internalAction({
       // Parsed operations for the apply mutation
       const mergeOps: { survivorLabId: Id<"labs">; absorbedLabId: Id<"labs">; newName?: string; newSpec?: string; reason: string }[] = [];
       const decommissionOps: { labId: Id<"labs"> }[] = [];
-      const transferOps: { labId: Id<"labs">; newOwnerRoleId: string | undefined }[] = [];
+      // transferOwnership also moves the old owner's compute balance to the new owner
+      // (ownership transfer = seizure, the compute follows the lab). The apply
+      // mutation emits a ledger pair when `computeToTransfer > 0` — avoids an
+      // empty ledger row when the old owner already had 0 stock.
+      const transferOps: { labId: Id<"labs">; newOwnerRoleId: string | undefined; oldOwnerRoleId?: string; computeToTransfer?: number }[] = [];
       // computeDestructions carries destruction-only deltas (amount > 0 on the effect,
       // stored as a negative change for the ledger). No positive entries ever originate
       // here — compute is conserved; see the conservation principle in ai-prompts.ts.
@@ -800,7 +804,22 @@ export const rollAndApplyEffects = internalAction({
               rejectedOps.push({ category: "invalid_reference", opType: "transferOwnership", message: `transferOwnership: "${e.controllerRoleId}" is not an active role id` });
               break;
             }
-            transferOps.push({ labId: target.labId, newOwnerRoleId: e.controllerRoleId });
+            // Prevent no-op transfer to the current owner (would emit a zero-
+            // amount ledger pair to itself, fail emitPair's positive-amount guard).
+            if (target.roleId === e.controllerRoleId) {
+              rejectedOps.push({ category: "precondition_failure", opType: "transferOwnership", message: `transferOwnership: "${e.labName}" is already controlled by ${e.controllerRoleId}` });
+              break;
+            }
+            // Capture the old owner's compute now (before any subsequent effects
+            // for this lab modify it — but after prior effects do). The apply
+            // mutation will read the live ledger for the actual transfer amount.
+            transferOps.push({
+              labId: target.labId,
+              newOwnerRoleId: e.controllerRoleId,
+              oldOwnerRoleId: target.roleId,
+              computeToTransfer: target.computeStock,
+            });
+            logEntry(target.name, "computeStock", target.computeStock, target.computeStock, `transferOwnership → ${e.controllerRoleId} (compute follows the lab)`);
             workingLabs = workingLabs.map((l) => l.labId === target.labId ? { ...l, roleId: e.controllerRoleId } : l);
             break;
           }
@@ -990,7 +1009,10 @@ export const rollAndApplyEffects = internalAction({
       for (const t of transferOps) {
         const name = labNameById.get(t.labId) ?? "?";
         const newOwner = t.newOwnerRoleId ? roleNameMap.get(t.newOwnerRoleId) ?? t.newOwnerRoleId : "(unowned)";
-        appliedOps.push({ type: "transferOwnership", status: "applied", summary: `${name} ownership → ${newOwner}` });
+        const computeNote = t.computeToTransfer && t.computeToTransfer > 0
+          ? ` (inherited ${t.computeToTransfer}u compute)`
+          : "";
+        appliedOps.push({ type: "transferOwnership", status: "applied", summary: `${name} ownership → ${newOwner}${computeNote}` });
       }
       for (const ov of multiplierUpdates) {
         const name = labNameById.get(ov.labId) ?? "?";
