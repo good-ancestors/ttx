@@ -212,8 +212,11 @@ export function AttemptedPanel({
     () => labs.filter((l) => l.status !== "decommissioned").map((l) => ({ labId: String(l.labId), name: l.name })),
     [labs],
   );
+  // Note: `tables` here is already pre-filtered to enabled tables by the
+  // getFacilitatorState query projection — the `enabled` field is not
+  // included on the returned docs, so filtering again would always return [].
   const roleOptions = useMemo(
-    () => tables.filter((t) => t.enabled).map((t) => ({ roleId: t.roleId, name: t.roleName })),
+    () => tables.map((t) => ({ roleId: t.roleId, name: t.roleName })),
     [tables],
   );
 
