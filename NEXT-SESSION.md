@@ -72,7 +72,20 @@ No upper bound today. A malformed apply loop could in theory inflate the array. 
 ### 7. Lab split effect type
 Design decision: is a safety-team spin-off its own effect type (`splitLab`) or just a `foundLab` + `computeTransfer` pair? The pair expresses it today; a dedicated type would read more naturally in the narrative and the mechanics log.
 
-### 8. After the PR merges
+### 8. "The AIs" role — secret compute acquisition + covert lab founding
+Design question: should `ai-systems` actions tagged `secret: true` be allowed to (a) request compute from another role in a way that is **hidden from the target role** (the player's table sees the inbound request framed as a normal transfer from a plausible third party, letting the AI effectively "steal" compute through social engineering), and (b) found a new lab whose existence is hidden from everyone except the facilitator until a disclosure event?
+
+Current behaviour: compute requests surface at the target's table for accept/decline and labs appear in every state panel on creation. The AI role has no asymmetric-information affordance comparable to human "secret" actions.
+
+Considerations:
+- Schema: needs a `visibility` flag on `computeTransactions` (and a filter on `getComputeHolderView` / request queries) and a `hidden: boolean` on `labs` with a parallel filter on lab views.
+- UX: facilitator dashboard shows everything; targets see a plausible-but-false reason string; disclosure triggers (capability tier reached, audit event) flip the `hidden` flag and back-reveal prior history.
+- Risk: enlarges the trust boundary — bugs here leak game-breaking information. Needs careful testing on view-projection queries (`getFacilitatorState`, `getComputeHolderView`, the table player endpoint).
+- Alternative framing: keep mechanics as narrative-only for now and handle the deception via the facilitator's verbal description, avoiding schema churn.
+
+Decide before wiring up.
+
+### 9. After the PR merges
 - Prod Convex deploy (`npx convex deploy --prod`).
 - Smoke on prod: one fresh game, one full round, validate mechanics log renders.
 - Clear out dev Convex stale games + rogue game-creation source (something respawns them — probably an abandoned browser tab or test harness).
