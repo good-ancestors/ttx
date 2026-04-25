@@ -39,6 +39,20 @@ NEXT_PUBLIC_CONVEX_URL=http://127.0.0.1:3210 npx tsx tests/scenarios/harness.ts 
 NEXT_PUBLIC_CONVEX_URL=https://oceanic-lapwing-232.convex.cloud npx tsx tests/scenarios/harness.ts example-forced-merger
 ```
 
+## Existing scenarios
+
+- **`example-forced-merger`** — Forced player-originated merger at R2; verifies
+  appliedOps, lab decommission with mergedIntoLabId set, pendingAcquired
+  populated.
+- **`snapshot-restore-reroll`** — Pins the fix for the snapshot-restore
+  CRITs (compute conservation across `useBefore=true` restore + re-roll).
+  Drives R1 quiet → R2 with merger + foundLab + computeTransfer all forced
+  success → captures state at R2 narrate → restoreSnapshot useBefore=true →
+  asserts intermediate (submissions reset, labs reverted, ledger settled rows
+  dropped, pending escrows re-emitted) → re-drives R2 with same forced
+  outcomes → asserts final state matches captured (Conscienta decommissioned
+  again, Mistral-Nine recreated, table.computeStock per role unchanged).
+
 ## Scenarios to add
 
 Per NEXT-SESSION.md #7 the priority scenarios to cover:

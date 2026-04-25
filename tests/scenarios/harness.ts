@@ -26,6 +26,10 @@ export interface ScenarioAction {
   probability?: number;
   /** For merger actions. */
   mergeLab?: { absorbedRoleId: string; newName?: string };
+  /** For lab-founding actions. */
+  foundLab?: { name: string; seedCompute: number; spec?: string; allocation?: { deployment: number; research: number; safety: number } };
+  /** For compute send/request actions. */
+  computeTargets?: { roleId: string; amount: number; direction: "send" | "request" }[];
 }
 
 export interface ScenarioRound {
@@ -98,7 +102,6 @@ export async function runScenario(scenario: Scenario): Promise<void> {
       const table = tables.find((t) => t.roleId === roleId);
       if (!table) throw new Error(`Role ${roleId} has no table`);
       const convexActions = actions.map((a, i) => ({
-        id: `scenario-${round.roundNumber}-${roleId}-${i}`,
         text: a.text,
         priority: a.priority ?? (actions.length - i),
         secret: false,
@@ -113,82 +116,21 @@ export async function runScenario(scenario: Scenario): Promise<void> {
               newName: a.mergeLab.newName,
             }
           : undefined,
+        foundLab: a.foundLab,
+        computeTargets: a.computeTargets,
       }));
-      await client.mutation(api.submissions.saveAndSubmit, {
+      await client.mutation(api.submissions.submit, {
         tableId: table._id,
         gameId,
         roundNumber: round.roundNumber,
-        sessionId: `scenario-${roleId}`,
+        roleId,
         actions: convexActions,
       });
     }
 
     await client.mutation(api.games.skipTimer, { gameId, facilitatorToken: FACILITATOR_TOKEN });
 
-    // Force probabilities before grading to avoid LLM variance.
-    const submissions = (await client.query(api.games.getFacilitatorState, {
-      gameId, roundNumber: round.roundNumber,
-    })).submissions;
-    for (const sub of submissions) {
-      const roleActions = round.submissions[sub.roleId];
-      if (!roleActions) continue;
-      for (let i = 0; i < sub.actions.length && i < roleActions.length; i++) {
-        const pct = roleActions[i].probability ?? 70;
-        await client.mutation(api.submissions.overrideProbability, {
-          submissionId: sub._id, actionIndex: i, probability: pct,
-          facilitatorToken: FACILITATOR_TOKEN,
-        });
-      }
-    }
-
-    await client.mutation(api.games.triggerRoll, {
-      gameId, roundNumber: round.roundNumber, facilitatorToken: FACILITATOR_TOKEN,
-    });
-    await waitFor(
-      () => client.query(api.games.get, { gameId }),
-      (g) => g?.phase === "effect-review" || g?.pipelineStatus?.step === "error",
-      "effect-review",
-    );
-
-    // Reroll until forced outcomes are met.
-    const postSubs = (await client.query(api.games.getFacilitatorState, {
-      gameId, roundNumber: round.roundNumber,
-    })).submissions;
-    for (const sub of postSubs) {
-      const roleActions = round.submissions[sub.roleId];
-      if (!roleActions) continue;
-      for (let i = 0; i < sub.actions.length && i < roleActions.length; i++) {
-        const wantSuccess = roleActions[i].forceSuccess;
-        const wantFail = roleActions[i].forceFail;
-        if (!wantSuccess && !wantFail) continue;
-        for (let attempt = 0; attempt < 30; attempt++) {
-          const latestState = await client.query(api.games.getFacilitatorState, {
-            gameId, roundNumber: round.roundNumber,
-          });
-          const latest = latestState.submissions.find((s) => s._id === sub._id);
-          const a = latest?.actions[i];
-          if (!a) break;
-          if (wantSuccess && a.success) break;
-          if (wantFail && a.success === false) break;
-          await client.mutation(api.submissions.rerollAction, {
-            submissionId: sub._id, actionIndex: i,
-            facilitatorToken: FACILITATOR_TOKEN,
-          });
-          await sleep(200);
-        }
-      }
-    }
-
-    if (round.afterEffectReview) await round.afterEffectReview(client, gameId);
-
-    await client.mutation(api.games.triggerContinueFromEffectReview, {
-      gameId, roundNumber: round.roundNumber, facilitatorToken: FACILITATOR_TOKEN,
-    });
-    await waitFor(
-      () => client.query(api.games.get, { gameId }),
-      (g) => g?.phase === "narrate" || g?.pipelineStatus?.step === "error",
-      "narrate",
-    );
+    await driveResolveOnce(client, gameId, round);
 
     if (round.expect) await round.expect(client, gameId);
 
@@ -200,6 +142,81 @@ export async function runScenario(scenario: Scenario): Promise<void> {
   if (scenario.expect) await scenario.expect(client, gameId);
 
   console.log(`✓ ${scenario.name} passed`);
+}
+
+/** Drive a single resolve pass: forced probabilities → triggerRoll → effect-review,
+ *  rerolls until forced outcomes match, then triggerContinueFromEffectReview →
+ *  narrate. Assumes submissions for `round` are already in place; idempotent on
+ *  probability override (overrideProbability re-rolls under the hood when called
+ *  twice). Exported so scenarios can re-run resolve after restoreSnapshot. */
+export async function driveResolveOnce(
+  client: ConvexHttpClient,
+  gameId: Id<"games">,
+  round: ScenarioRound,
+): Promise<void> {
+  const submissions = (await client.query(api.games.getFacilitatorState, {
+    gameId, roundNumber: round.roundNumber,
+  })).submissions;
+  for (const sub of submissions) {
+    const roleActions = round.submissions[sub.roleId];
+    if (!roleActions) continue;
+    for (let i = 0; i < sub.actions.length && i < roleActions.length; i++) {
+      const pct = roleActions[i].probability ?? 70;
+      await client.mutation(api.submissions.overrideProbability, {
+        submissionId: sub._id, actionIndex: i, probability: pct,
+        facilitatorToken: FACILITATOR_TOKEN,
+      });
+    }
+  }
+
+  await client.mutation(api.games.triggerRoll, {
+    gameId, roundNumber: round.roundNumber, facilitatorToken: FACILITATOR_TOKEN,
+  });
+  await waitFor(
+    () => client.query(api.games.get, { gameId }),
+    (g) => g?.phase === "effect-review" || g?.pipelineStatus?.step === "error",
+    "effect-review",
+  );
+
+  // Reroll until forced outcomes are met.
+  const postSubs = (await client.query(api.games.getFacilitatorState, {
+    gameId, roundNumber: round.roundNumber,
+  })).submissions;
+  for (const sub of postSubs) {
+    const roleActions = round.submissions[sub.roleId];
+    if (!roleActions) continue;
+    for (let i = 0; i < sub.actions.length && i < roleActions.length; i++) {
+      const wantSuccess = roleActions[i].forceSuccess;
+      const wantFail = roleActions[i].forceFail;
+      if (!wantSuccess && !wantFail) continue;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const latestState = await client.query(api.games.getFacilitatorState, {
+          gameId, roundNumber: round.roundNumber,
+        });
+        const latest = latestState.submissions.find((s) => s._id === sub._id);
+        const a = latest?.actions[i];
+        if (!a) break;
+        if (wantSuccess && a.success) break;
+        if (wantFail && a.success === false) break;
+        await client.mutation(api.submissions.rerollAction, {
+          submissionId: sub._id, actionIndex: i,
+          facilitatorToken: FACILITATOR_TOKEN,
+        });
+        await sleep(200);
+      }
+    }
+  }
+
+  if (round.afterEffectReview) await round.afterEffectReview(client, gameId);
+
+  await client.mutation(api.games.triggerContinueFromEffectReview, {
+    gameId, roundNumber: round.roundNumber, facilitatorToken: FACILITATOR_TOKEN,
+  });
+  await waitFor(
+    () => client.query(api.games.get, { gameId }),
+    (g) => g?.phase === "narrate" || g?.pipelineStatus?.step === "error",
+    "narrate",
+  );
 }
 
 // CLI entrypoint
