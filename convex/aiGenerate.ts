@@ -15,10 +15,10 @@ import type { LabWithCompute } from "./labs";
 type Request = Doc<"requests">;
 type Submission = Doc<"submissions">;
 type Table = Doc<"tables">;
+type ComputeAllocation = { deployment: number; research: number; safety: number };
 
-/** Per-table action bundle ready to feed into submitInternal. Carries all the
- *  side-channel data the post-submit linker needs (endorseHints, compute
- *  request hints, allocation override). */
+/** Per-table action bundle ready to feed into submitInternal. Side-channel data
+ *  (endorseHints, compute request hints) is consumed by the post-submit linker. */
 interface PendingAction {
   tableId: string;
   roleId: string;
@@ -27,17 +27,15 @@ interface PendingAction {
     priority: number;
     secret?: boolean;
     mergeLab?: { absorbedLabId: Id<"labs">; survivorLabId: Id<"labs">; newName?: string };
-    foundLab?: { name: string; seedCompute: number; allocation?: { deployment: number; research: number; safety: number } };
+    foundLab?: { name: string; seedCompute: number; allocation?: ComputeAllocation };
     computeTargets?: { roleId: string; amount: number; direction?: "send" | "request" }[];
   }[];
-  computeAllocation?: { deployment: number; research: number; safety: number };
+  computeAllocation?: ComputeAllocation;
   endorseHints?: { actionText: string; targetRoleIds: string[] }[];
   computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
 }
 
-// SampleData type is opaque to this module — it's the imported JSON shape from
-// sampleActionsData. We pass it through as `unknown` and let getSampleActions
-// do the projection.
+// Sample-actions JSON shape is opaque here; getSampleActions does the projection.
 type SampleData = unknown;
 
 // Compute movement is now action-scoped only. An NPC/AI role wanting to send
@@ -115,8 +113,6 @@ export const generateAll = internalAction({
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
-/** Pick one of the rollable AI dispositions for the AI Systems table when the
- *  facilitator hasn't pinned one. No-op if already set or table missing. */
 async function rollAiSystemsDispositionIfNeeded(ctx: ActionCtx, nonHumanTables: Table[]) {
   const aiSystemsTable = nonHumanTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID && !t.aiDisposition);
   if (!aiSystemsTable) return;
@@ -130,9 +126,9 @@ async function rollAiSystemsDispositionIfNeeded(ctx: ActionCtx, nonHumanTables: 
   } catch { /* already set */ }
 }
 
-/** Build the NPC PendingAction list from sample-action picks. Resolves
- *  structured intents (merger / foundLab / computeTransfer) into the action
- *  shape the submitter expects, dropping intents whose prerequisites fail. */
+/** Build the NPC PendingAction list. Structured intents whose prerequisites
+ *  fail (lab already merged, seed below minimum, etc.) silently fall back to
+ *  the prose action — see resolveStructuredIntent. */
 function prepareNpcPending(opts: {
   npcTables: Table[];
   sampleData: SampleData;
@@ -190,24 +186,21 @@ function prepareNpcPending(opts: {
   return out;
 }
 
-/** Tweak a CEO's existing allocation by ±5% on research/safety, normalised to
- *  100. Falls back to the default 34/33/33 split when there's no current lab. */
-function randomiseCeoAllocation(lab: LabWithCompute | undefined): { deployment: number; research: number; safety: number } | undefined {
+function randomiseCeoAllocation(lab: LabWithCompute | undefined): ComputeAllocation | undefined {
   if (!lab) return undefined;
   const shift = Math.floor(Math.random() * 11) - 5; // -5 to +5
   const cap = Math.max(0, Math.min(100, lab.allocation.research + shift));
   const safety = Math.max(0, Math.min(100, lab.allocation.safety - shift));
   const total = lab.allocation.deployment + cap + safety;
-  if (total <= 0) return { deployment: 34, research: 33, safety: 33 };
+  if (total <= 0) return { ...DEFAULT_LAB_ALLOCATION };
   const deployment = Math.round(lab.allocation.deployment * 100 / total);
   const research = Math.round(cap * 100 / total);
   return { deployment, research, safety: 100 - deployment - research };
 }
 
-/** Resolve a sample action's `structured` intent into the action payload the
- *  submitter expects. Returns the base action when prerequisites aren't met
- *  (lab already merged, seedCompute below minimum, etc.) — silent skip is
- *  intentional; the round still gets the prose action without the mechanic. */
+/** Silent skip is intentional when a structured intent's prerequisites aren't
+ *  met (lab already merged, seedCompute below minimum, etc.) — the round still
+ *  gets the prose action; the mechanic just doesn't fire. */
 function resolveStructuredIntent(
   a: ReturnType<typeof getSampleActions>[number],
   priority: number,
@@ -237,10 +230,8 @@ function resolveStructuredIntent(
   return base;
 }
 
-/** Generate a per-table AI submission via the grading LLM. Builds rich prompt
- *  context (previous rounds, safety-lead lab state, accepted proposals, AI
- *  disposition) and validates the LLM output before returning. Returns null on
- *  fetch failure or empty output — caller filters. */
+/** Returns null on LLM fetch failure or empty output — the caller filters
+ *  these out and reports them via reportFailedGeneration. */
 async function generateAiTablePending(opts: {
   table: Table;
   roundNumber: number;
@@ -301,12 +292,7 @@ ${hasCompute(role) && !isLabCeo(role) ? `You have ${table.computeStock ?? 0} com
 ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifactPrompt}` : ""}`;
 
   try {
-    const { output } = await callAnthropic<{
-      actions: { text: string; priority: number; secret?: boolean }[];
-      endorseHints?: { actionText: string; targetRoleIds: string[] }[];
-      computeAllocation?: { deployment: number; research: number; safety: number };
-      computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
-    }>({
+    const { output } = await callAnthropic<AiSubmissionOutput>({
       models: GRADING_MODELS,
       systemPrompt: SCENARIO_CONTEXT,
       prompt,
@@ -322,7 +308,6 @@ ${role.artifactPrompt ? `\nOptionally write a creative artifact: ${role.artifact
   }
 }
 
-/** Tool-call schema the grading LLM hits when generating per-role actions. */
 const AI_SUBMISSION_SCHEMA = {
   type: "object",
   properties: {
@@ -369,15 +354,15 @@ const AI_SUBMISSION_SCHEMA = {
   required: ["actions"],
 } as const;
 
-/** Validate + clamp the LLM output: cap to actionsPerTable, normalise priorities
- *  + allocation, filter compute/endorse hints to valid in-game targets. */
+interface AiSubmissionOutput {
+  actions: { text: string; priority: number; secret?: boolean }[];
+  endorseHints?: { actionText: string; targetRoleIds: string[] }[];
+  computeAllocation?: ComputeAllocation;
+  computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
+}
+
 function validateAiOutput(
-  output: {
-    actions: { text: string; priority: number; secret?: boolean }[];
-    endorseHints?: { actionText: string; targetRoleIds: string[] }[];
-    computeAllocation?: { deployment: number; research: number; safety: number };
-    computeRequestHints?: { targetRoleId: string; amount: number; actionText: string }[];
-  },
+  output: AiSubmissionOutput,
   opts: { table: Table; actionsPerTable: number; activeRoleIds: Set<string> },
 ): PendingAction {
   const { table, actionsPerTable, activeRoleIds } = opts;
@@ -412,14 +397,10 @@ function validateAiOutput(
   };
 }
 
-/** Normalise a deployment/research/safety triple to sum to 100. Returns the
- *  default 34/33/33 split for a zero/negative input; passes undefined through. */
-function normaliseAllocation(
-  alloc: { deployment: number; research: number; safety: number } | undefined,
-): { deployment: number; research: number; safety: number } | undefined {
+function normaliseAllocation(alloc: ComputeAllocation | undefined): ComputeAllocation | undefined {
   if (!alloc) return undefined;
   const rawSum = alloc.deployment + alloc.research + alloc.safety;
-  if (rawSum <= 0) return { deployment: 34, research: 33, safety: 33 };
+  if (rawSum <= 0) return { ...DEFAULT_LAB_ALLOCATION };
   if (rawSum === 100) return alloc;
   const scale = 100 / rawSum;
   const deployment = Math.round(alloc.deployment * scale);
@@ -427,9 +408,8 @@ function normaliseAllocation(
   return { deployment, research, safety: 100 - deployment - research };
 }
 
-/** Build the previous-round prose section of the AI prompt — outcomes/state-of-play
- *  for the new schema, falling back to the legacy 4-domain buckets, plus the
- *  role's own previous actions and outcomes. */
+/** Prefers the post-refactor outcomes/stateOfPlay/pressures shape; falls back
+ *  to the legacy 4-domain buckets for rounds summarised before the migration. */
 function buildPreviousContext(roundNumber: number, prevRound: Doc<"rounds"> | undefined, prevSubs: Submission[], roleId: string): string {
   let ctx = "";
   if (roundNumber > 1 && prevRound?.summary) {
@@ -458,8 +438,7 @@ function buildPreviousContext(roundNumber: number, prevRound: Doc<"rounds"> | un
   return ctx;
 }
 
-/** Lab safety leads see their lab's current state + the CEO's previous actions,
- *  to ground their advocacy in concrete numbers. Empty string for non-safety roles. */
+/** Empty string for non-safety roles. */
 function buildSafetyLeadContext(
   role: typeof ROLES[number],
   labs: LabWithCompute[],
@@ -485,8 +464,6 @@ function buildSafetyLeadContext(
   return ctx;
 }
 
-/** Surface accepted proposals/agreements involving this role so the LLM can
- *  ground the round's actions in commitments already made. */
 function buildProposalContext(allRequests: Request[], roleId: string): string {
   const accepted = allRequests.filter(
     (p) => p.status === "accepted" && (p.fromRoleId === roleId || p.toRoleId === roleId),
@@ -501,9 +478,6 @@ function buildProposalContext(allRequests: Request[], roleId: string): string {
   return ctx;
 }
 
-/** Log + report any nonHuman tables that didn't make it into pending after the
- *  NPC and AI generation passes. Drives the "N role(s) failed" facilitator
- *  status banner so the operator knows submissions will be incomplete. */
 async function reportFailedGeneration(
   ctx: ActionCtx,
   gameId: Id<"games">,
@@ -525,10 +499,18 @@ async function reportFailedGeneration(
   });
 }
 
+/** Shared context for the post-submit fan-out — kept once per run rather than
+ *  re-passed through every helper signature. */
+interface LinkContext {
+  gameId: Id<"games">;
+  roundNumber: number;
+  roleMap: Map<string, string>;
+  actionIdByRoleAndText: Map<string, string>;
+}
+
 /** Submit all pending actions in parallel, then sequentially fan out endorsement
- *  + compute-request docs (sequential to avoid OCC conflicts on the requests
- *  table), and finally schedule auto-responses for any AI/NPC roles whose tables
- *  received pending requests during this run. */
+ *  + compute-request docs (sequential avoids OCC on the requests table), and
+ *  finally schedule auto-responses for AI/NPC roles with pending inbound requests. */
 async function submitPendingAndLink(
   ctx: ActionCtx,
   opts: { gameId: Id<"games">; roundNumber: number; enabledTables: Table[]; pending: PendingAction[] },
@@ -550,14 +532,8 @@ async function submitPendingAndLink(
       }).then<SubmitResult>((res) => ({ ...p, submissionId: res.submissionId, stampedActions: res.actions })),
     ),
   );
-  const submissionFailures = results.filter(
-    (r): r is PromiseRejectedResult => r.status === "rejected",
-  );
-  for (const r of submissionFailures) {
-    console.error(`[aiGenerate] Submission failed:`, r.reason);
-  }
-  if (submissionFailures.length > 0) {
-    console.error(`[aiGenerate] ${submissionFailures.length} submission mutation(s) failed`);
+  for (const r of results) {
+    if (r.status === "rejected") console.error(`[aiGenerate] Submission failed:`, r.reason);
   }
   const submitted = results
     .filter((r): r is PromiseFulfilledResult<SubmitResult> => r.status === "fulfilled")
@@ -567,72 +543,46 @@ async function submitPendingAndLink(
   const actionIdByRoleAndText = new Map<string, string>();
   for (const p of submitted) {
     for (const action of p.stampedActions) {
-      if (action.actionId) {
-        actionIdByRoleAndText.set(`${p.roleId}:${action.text}`, action.actionId);
-      }
+      if (action.actionId) actionIdByRoleAndText.set(`${p.roleId}:${action.text}`, action.actionId);
     }
   }
 
-  for (const p of submitted) {
-    await sendEndorsementHints(ctx, { gameId, roundNumber, p, roleMap, actionIdByRoleAndText });
-    await sendComputeRequestHints(ctx, { gameId, roundNumber, p, roleMap, actionIdByRoleAndText });
-  }
+  const linkCtx: LinkContext = { gameId, roundNumber, roleMap, actionIdByRoleAndText };
+  for (const p of submitted) await sendHintsForRole(ctx, linkCtx, p);
 
   await scheduleAiProposalResponses(ctx, gameId, roundNumber, submitted);
 }
 
-async function sendEndorsementHints(
-  ctx: ActionCtx,
-  opts: {
-    gameId: Id<"games">;
-    roundNumber: number;
-    p: PendingAction;
-    roleMap: Map<string, string>;
-    actionIdByRoleAndText: Map<string, string>;
-  },
-) {
-  const { gameId, roundNumber, p, roleMap, actionIdByRoleAndText } = opts;
+/** Fan out one role's endorsement + compute-request hints into the requests table.
+ *  Endorsement hints carry an array of target roles per action; compute-request
+ *  hints carry one target + an amount. Both produce identical request payloads
+ *  modulo `requestType` and `computeAmount`. */
+async function sendHintsForRole(ctx: ActionCtx, link: LinkContext, p: PendingAction) {
+  const lookupActionId = (text: string) => link.actionIdByRoleAndText.get(`${p.roleId}:${text}`) ?? "";
+  const fromRoleName = link.roleMap.get(p.roleId) ?? p.roleId;
+
   for (const hint of p.endorseHints ?? []) {
-    const actionId = actionIdByRoleAndText.get(`${p.roleId}:${hint.actionText}`) ?? "";
+    const actionId = lookupActionId(hint.actionText);
     for (const targetId of hint.targetRoleIds) {
       try {
         await ctx.runMutation(internal.requests.sendInternal, {
-          gameId, roundNumber,
-          fromRoleId: p.roleId,
-          fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
-          toRoleId: targetId,
-          toRoleName: roleMap.get(targetId) ?? targetId,
-          actionId,
-          actionText: hint.actionText,
+          gameId: link.gameId, roundNumber: link.roundNumber,
+          fromRoleId: p.roleId, fromRoleName,
+          toRoleId: targetId, toRoleName: link.roleMap.get(targetId) ?? targetId,
+          actionId, actionText: hint.actionText,
           requestType: "endorsement",
         });
       } catch { /* request already exists */ }
     }
   }
-}
-
-async function sendComputeRequestHints(
-  ctx: ActionCtx,
-  opts: {
-    gameId: Id<"games">;
-    roundNumber: number;
-    p: PendingAction;
-    roleMap: Map<string, string>;
-    actionIdByRoleAndText: Map<string, string>;
-  },
-) {
-  const { gameId, roundNumber, p, roleMap, actionIdByRoleAndText } = opts;
   for (const hint of p.computeRequestHints ?? []) {
-    const actionId = actionIdByRoleAndText.get(`${p.roleId}:${hint.actionText}`) ?? "";
+    const actionId = lookupActionId(hint.actionText);
     try {
       await ctx.runMutation(internal.requests.sendInternal, {
-        gameId, roundNumber,
-        fromRoleId: p.roleId,
-        fromRoleName: roleMap.get(p.roleId) ?? p.roleId,
-        toRoleId: hint.targetRoleId,
-        toRoleName: roleMap.get(hint.targetRoleId) ?? hint.targetRoleId,
-        actionId,
-        actionText: hint.actionText,
+        gameId: link.gameId, roundNumber: link.roundNumber,
+        fromRoleId: p.roleId, fromRoleName,
+        toRoleId: hint.targetRoleId, toRoleName: link.roleMap.get(hint.targetRoleId) ?? hint.targetRoleId,
+        actionId, actionText: hint.actionText,
         requestType: "compute",
         computeAmount: hint.amount,
       });
@@ -649,12 +599,12 @@ async function scheduleAiProposalResponses(
   const pendingRequests: Request[] = await ctx.runQuery(
     internal.requests.getByGameAndRoundInternal, { gameId, roundNumber },
   );
+  const targetsWithPending = new Set(
+    pendingRequests.filter((r) => r.status === "pending").map((r) => r.toRoleId),
+  );
   for (const p of submitted) {
-    const hasPending = pendingRequests.some((r) => r.toRoleId === p.roleId && r.status === "pending");
-    if (hasPending) {
-      await ctx.scheduler.runAfter(0, internal.aiProposals.respond, {
-        gameId, roundNumber, roleId: p.roleId,
-      });
+    if (targetsWithPending.has(p.roleId)) {
+      await ctx.scheduler.runAfter(0, internal.aiProposals.respond, { gameId, roundNumber, roleId: p.roleId });
     }
   }
 }

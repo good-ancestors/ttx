@@ -421,10 +421,8 @@ function buildEffect(type: EffectType, f: Record<string, string>): StructuredEff
     return { type, labName } as StructuredEffect;
   }
 
-  const builder = COMPLEX_BUILDERS[type];
-  // Exhaustive: every EffectType is either in LAB_NAME_ONLY_LABELS or COMPLEX_BUILDERS.
-  // The `?? "..."` is defensive — TS already guarantees one of the two tables matches.
-  return builder ? builder(get, getNum) : "Unknown effect type";
+  // Exhaustive: every EffectType is in either LAB_NAME_ONLY_LABELS or COMPLEX_BUILDERS.
+  return COMPLEX_BUILDERS[type]!(get, getNum);
 }
 
 function FieldsForType({

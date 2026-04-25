@@ -507,9 +507,6 @@ export const rollAndApplyEffects = internalAction({
       // Fetch tables once for use in AI influence resolution and snapshotting
       const tablesBeforeResolve: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
 
-      // Resolve AI influence before dice roll. Extracted to a helper to keep
-      // nesting shallow — the body had to do an aiSystemsTable + labsNow guard
-      // dance plus per-actor branches and would hit max-depth otherwise.
       await resolveAiInfluencePass(ctx, { gameId, roundNumber, tablesBeforeResolve });
 
       // Roll dice (idempotent — skips already-rolled)

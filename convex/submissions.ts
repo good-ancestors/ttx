@@ -1317,41 +1317,42 @@ async function settleComputeTargetsAction(
   if (!action.actionId) return;
 
   const success = !!action.success;
-  if (success) {
+  if (!success) {
+    await cancelPendingForAction(ctx, gameId, action.actionId);
+  } else {
     await settlePendingForAction(ctx, gameId, action.actionId);
     // Accepted request targets are already represented as pending rows from requests.respond.
     // If a request target was NOT accepted, the ledger has no pending pair — the submitter
     // takes compute from the target clamped to availability, per the "soft request" rule.
     const requestTargets = action.computeTargets.filter((t) => t.direction === "request");
-    for (const target of requestTargets) {
-      const existing = await ctx.db
+    if (requestTargets.length > 0) {
+      const requestsForRole = await ctx.db
         .query("requests")
         .withIndex("by_from_role", (q) =>
           q.eq("gameId", gameId).eq("roundNumber", roundNumber).eq("fromRoleId", sub.roleId))
         .collect();
-      const match = existing.find((r) =>
-        r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId,
-      );
-      if (match?.status === "accepted") continue; // already settled above
-      // Soft-take: clamp to target's available balance
-      const targetAvail = await getAvailableStock(ctx, gameId, target.roleId, roundNumber);
-      const take = Math.min(target.amount, targetAvail);
-      if (take > 0) {
-        await emitPair(ctx, {
-          gameId,
-          roundNumber,
-          type: "transferred",
-          status: "settled",
-          fromRoleId: target.roleId,
-          toRoleId: sub.roleId,
-          amount: take,
-          reason: `Soft-take on unaccepted request: ${action.text.slice(0, 80)}`,
-          actionId: action.actionId,
-        });
+      for (const target of requestTargets) {
+        const match = requestsForRole.find((r) =>
+          r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId,
+        );
+        if (match?.status === "accepted") continue; // already settled above
+        const targetAvail = await getAvailableStock(ctx, gameId, target.roleId, roundNumber);
+        const take = Math.min(target.amount, targetAvail);
+        if (take > 0) {
+          await emitPair(ctx, {
+            gameId,
+            roundNumber,
+            type: "transferred",
+            status: "settled",
+            fromRoleId: target.roleId,
+            toRoleId: sub.roleId,
+            amount: take,
+            reason: `Soft-take on unaccepted request: ${action.text.slice(0, 80)}`,
+            actionId: action.actionId,
+          });
+        }
       }
     }
-  } else {
-    await cancelPendingForAction(ctx, gameId, action.actionId);
   }
 
   await logEvent(ctx, gameId, success ? "compute_transfer_success" : "compute_transfer_refund", sub.roleId, {

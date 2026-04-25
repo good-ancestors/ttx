@@ -186,52 +186,49 @@ export default function FacilitatorPage({
     setRevealedSecrets(new Set());
   };
 
-  // Get AI Systems disposition for passing to grading/narrate/AI player prompts.
-  // Memoised so the useCallback hooks below don't see a fresh object identity
-  // on every render (react-hooks/exhaustive-deps would otherwise complain).
-  // enabledTables comes from getFacilitatorState and only carries aiDisposition during playing.
-  const aiDispositionPayload = useMemo(() => {
-    const aiSystemsEnabled = enabledTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID);
-    if (!aiSystemsEnabled?.aiDisposition) return undefined;
-    const d = getDisposition(aiSystemsEnabled.aiDisposition);
-    return d ? { label: d.label, description: d.description } : undefined;
-  }, [enabledTables]);
+  // Stable string id from the Convex query — the three callbacks below derive
+  // the payload object inline to keep deps pinned to the id rather than to a
+  // freshly-allocated object each render.
+  const aiDispositionId = enabledTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID)?.aiDisposition;
 
-  // Grade Remaining + Roll Dice both wrap a single trigger mutation with the
-  // same try/catch shell — safeAction handles both uniformly.
   // Declared before the loading guard so useCallback is unconditional (Rules of Hooks).
-  // game?.currentRound is safe here; both handlers are only called during playing phase.
+  // game?.currentRound is safe — both handlers only run during the playing phase.
   const handleGradeRemaining = useCallback(
     async () => {
+      const d = aiDispositionId ? getDisposition(aiDispositionId) : undefined;
+      const aiDisposition = d ? { label: d.label, description: d.description } : undefined;
       await safeAction("Grading", () =>
-        triggerGrading({ gameId, roundNumber: game?.currentRound ?? 1, aiDisposition: aiDispositionPayload }),
+        triggerGrading({ gameId, roundNumber: game?.currentRound ?? 1, aiDisposition }),
       )();
     },
-    [safeAction, triggerGrading, gameId, game?.currentRound, aiDispositionPayload],
+    [safeAction, triggerGrading, gameId, game?.currentRound, aiDispositionId],
   );
   const handleRollDice = useCallback(
     async () => {
+      const d = aiDispositionId ? getDisposition(aiDispositionId) : undefined;
+      const aiDisposition = d ? { label: d.label, description: d.description } : undefined;
       await safeAction("Roll", () =>
-        triggerRoll({ gameId, roundNumber: game?.currentRound ?? 1, aiDisposition: aiDispositionPayload }),
+        triggerRoll({ gameId, roundNumber: game?.currentRound ?? 1, aiDisposition }),
       )();
     },
-    [safeAction, triggerRoll, gameId, game?.currentRound, aiDispositionPayload],
+    [safeAction, triggerRoll, gameId, game?.currentRound, aiDispositionId],
   );
   const handleReResolve = useCallback(
     async () => {
       setNarrativeStale(false);
       try {
         await clearResolution({ gameId, roundNumber: game?.currentRound ?? 1 });
+        const d = aiDispositionId ? getDisposition(aiDispositionId) : undefined;
         await triggerRoll({
           gameId,
           roundNumber: game?.currentRound ?? 1,
-          aiDisposition: aiDispositionPayload,
+          aiDisposition: d ? { label: d.label, description: d.description } : undefined,
         });
       } catch {
         setActionError("Re-resolve failed — try again or adjust manually");
       }
     },
-    [clearResolution, triggerRoll, gameId, game, aiDispositionPayload, setActionError, setNarrativeStale],
+    [clearResolution, triggerRoll, gameId, game, aiDispositionId, setActionError, setNarrativeStale],
   );
 
   // Lobby needs game + tables; playing needs facilitatorState + rounds; finished needs roundsFull

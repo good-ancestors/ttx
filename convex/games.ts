@@ -9,7 +9,7 @@ import {
   createLabInternal,
   mergeLabsWithComputeInternal,
 } from "./labs";
-import { emitTransaction } from "./computeLedger";
+import { emitTransaction, REGENERABLE_TX_TYPES } from "./computeLedger";
 import { validateComputeAllocation } from "./submissions";
 
 
@@ -523,18 +523,20 @@ export const restoreSnapshot = mutation({
     const round = rounds.find((r) => r.number === args.roundNumber);
     if (!round) throw new Error(`Round ${args.roundNumber} not found for game ${args.gameId}`);
 
-    const labsSnapshot = args.useBefore ? round.labsBefore : round.labsAfter;
+    const useBefore = args.useBefore ?? false;
+    const snapshotType = useBefore ? "before" : "after";
+    const labsSnapshot = useBefore ? round.labsBefore : round.labsAfter;
     if (!labsSnapshot) {
-      throw new Error(`No ${args.useBefore ? "before" : "after"} snapshot data for round ${args.roundNumber}`);
+      throw new Error(`No ${snapshotType} snapshot data for round ${args.roundNumber}`);
     }
 
-    // Restore game-level state. Clearing resolveNonce is critical — any in-flight
-    // rollAndNarrate started before this restore will otherwise pass its post-LLM
-    // nonce check (convex/pipelineApply.ts) and land structural mutations on top
-    // of the just-restored state. Round-level nonce is mirrored below.
+    // Clearing resolveNonce is critical — any in-flight rollAndNarrate started
+    // before this restore will otherwise pass its post-LLM nonce check
+    // (convex/pipelineApply.ts) and land structural mutations on top of the
+    // just-restored state. Round-level nonce is mirrored below.
     await ctx.db.patch(args.gameId, {
       currentRound: args.roundNumber,
-      phase: args.useBefore ? "submit" : "narrate",
+      phase: useBefore ? "submit" : "narrate",
       phaseEndsAt: undefined,
       resolving: false,
       pipelineStatus: undefined,
@@ -542,12 +544,12 @@ export const restoreSnapshot = mutation({
     });
 
     await restoreLabsFromSnapshot(ctx, args.gameId, labsSnapshot);
-    await clearRoundResolveData(ctx, round._id, args.useBefore ?? false);
-    await rebuildLedgerState(ctx, args.gameId, args.roundNumber, args.useBefore ?? false);
+    await clearRoundResolveData(ctx, round._id, useBefore);
+    await rebuildLedgerState(ctx, args.gameId, args.roundNumber, useBefore);
 
     await logEvent(ctx, args.gameId, "snapshot_restored", undefined, {
       restoredFromRound: args.roundNumber,
-      type: args.useBefore ? "before" : "after",
+      type: snapshotType,
     });
   },
 });
@@ -564,6 +566,7 @@ async function restoreLabsFromSnapshot(
   const currentLabs = await ctx.db.query("labs")
     .withIndex("by_game", (q) => q.eq("gameId", gameId))
     .collect();
+  const currentById = new Map(currentLabs.map((l) => [l._id, l]));
   const snapshotIds = new Set(labsSnapshot.map((s) => s.labId));
   for (const current of currentLabs) {
     if (!snapshotIds.has(current._id)) {
@@ -575,8 +578,7 @@ async function restoreLabsFromSnapshot(
   const labIdRemap = new Map<Id<"labs">, Id<"labs">>();
   const freshInsertIds = new Set<Id<"labs">>();
   for (const snap of labsSnapshot) {
-    const existing = currentLabs.find((l) => l._id === snap.labId);
-    if (existing) {
+    if (currentById.has(snap.labId)) {
       labIdRemap.set(snap.labId, snap.labId);
       continue;
     }
@@ -663,26 +665,18 @@ async function rebuildLedgerState(
   roundNumber: number,
   useBefore: boolean,
 ) {
-  const REGENERABLE_TYPES = new Set(["acquired", "adjusted", "merged"]);
   const allTx = await ctx.db.query("computeTransactions")
     .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId))
     .collect();
-  for (const tx of allTx) {
-    const isAfterTarget = tx.roundNumber > roundNumber;
-    const isRegenerableInTarget = useBefore
-      && tx.roundNumber === roundNumber
-      && REGENERABLE_TYPES.has(tx.type);
-    if (isAfterTarget || isRegenerableInTarget) {
-      await ctx.db.delete(tx._id);
-    }
-  }
-
-  // Recompute cached table.computeStock = sum of remaining settled rows per role.
-  const remaining = await ctx.db.query("computeTransactions")
-    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId))
-    .collect();
+  const shouldDelete = (tx: typeof allTx[number]) =>
+    tx.roundNumber > roundNumber ||
+    (useBefore && tx.roundNumber === roundNumber && REGENERABLE_TX_TYPES.has(tx.type));
   const stockByRole = new Map<string, number>();
-  for (const tx of remaining) {
+  for (const tx of allTx) {
+    if (shouldDelete(tx)) {
+      await ctx.db.delete(tx._id);
+      continue;
+    }
     if (tx.status !== "settled") continue;
     stockByRole.set(tx.roleId, (stockByRole.get(tx.roleId) ?? 0) + tx.amount);
   }
