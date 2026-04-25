@@ -94,6 +94,65 @@ function previousRoundsForPrompt(rounds: Round[], roundNumber: number) {
     }));
 }
 
+/** AI Systems influence pass — runs immediately before the dice roll.
+ *  - For NPC/AI-controlled AI Systems tables: keyword-driven auto-influence
+ *    on OTHER players' un-set actions, scaled by getAiInfluencePower(labs).
+ *  - For ALL AI Systems tables (incl. human-controlled): auto-boost the AI's
+ *    OWN submitted actions when the player hasn't set a manual modifier.
+ *  No-op when the AI Systems table is missing/disabled or has no disposition. */
+async function resolveAiInfluencePass(
+  ctx: ActionCtx,
+  opts: { gameId: Id<"games">; roundNumber: number; tablesBeforeResolve: Table[] },
+) {
+  const aiSystemsTable = opts.tablesBeforeResolve.find(
+    (t) => t.roleId === AI_SYSTEMS_ROLE_ID && t.enabled && t.aiDisposition,
+  );
+  if (!aiSystemsTable) return;
+
+  const [labsNow, subs]: [LabWithCompute[], Submission[]] = await Promise.all([
+    ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId: opts.gameId }),
+    ctx.runQuery(internal.submissions.getAllForRound, { gameId: opts.gameId, roundNumber: opts.roundNumber }),
+  ]);
+  if (!labsNow) return;
+
+  const power = getAiInfluencePower(labsNow);
+  const influences: { submissionId: Id<"submissions">; actionIndex: number; modifier: number }[] = [];
+
+  // AI Systems' OWN actions → auto-boost if no influence set
+  if (power > 0) {
+    for (const sub of subs.filter((s) => s.roleId === AI_SYSTEMS_ROLE_ID)) {
+      sub.actions.forEach((action, i) => {
+        if (action.aiInfluence == null) {
+          influences.push({ submissionId: sub._id, actionIndex: i, modifier: power });
+        }
+      });
+    }
+  }
+
+  // Other players' actions → keyword-driven auto-influence for NPC/AI controllers
+  if (aiSystemsTable.controlMode !== "human") {
+    const actionsToInfluence = subs.flatMap((sub) =>
+      sub.actions
+        .map((a, i) => ({ submissionId: sub._id as string, actionIndex: i, text: a.text, roleId: sub.roleId, aiInfluence: a.aiInfluence }))
+        .filter((item) => item.aiInfluence == null && item.roleId !== AI_SYSTEMS_ROLE_ID),
+    );
+    if (actionsToInfluence.length > 0) {
+      const keyword = autoGenerateInfluence(aiSystemsTable.aiDisposition!, actionsToInfluence, power);
+      for (const inf of keyword) {
+        influences.push({ submissionId: inf.submissionId as Id<"submissions">, actionIndex: inf.actionIndex, modifier: inf.modifier });
+      }
+    }
+  }
+
+  if (influences.length > 0) {
+    await ctx.runMutation(internal.submissions.applyAiInfluenceInternal, {
+      gameId: opts.gameId,
+      roundNumber: opts.roundNumber,
+      influences,
+    });
+  }
+}
+
 /** Batched grading — single LLM call across all roles per round. Emits
  *  probability + reasoning + structuredEffect + confidence per action, matched
  *  back to submissions by actionId. Replaces the pre-refactor per-role loop
@@ -448,61 +507,10 @@ export const rollAndApplyEffects = internalAction({
       // Fetch tables once for use in AI influence resolution and snapshotting
       const tablesBeforeResolve: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
 
-      // Resolve AI influence before dice roll.
-      // - NPC/AI AI Systems: auto-generate keyword-based influence for OTHER players' actions
-      // - Any AI Systems (including human-controlled): auto-boost its OWN submitted actions
-      //   (it wants them to succeed) unless the player has set influence manually.
-      {
-        const aiSystemsTable = tablesBeforeResolve.find(
-          (t) => t.roleId === AI_SYSTEMS_ROLE_ID && t.enabled && t.aiDisposition
-        );
-        if (aiSystemsTable) {
-          // labsNow and subs are independent — parallelise.
-          const [labsNow, subs]: [LabWithCompute[], Submission[]] = await Promise.all([
-            ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
-            ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }),
-          ]);
-          if (labsNow) {
-            const power = getAiInfluencePower(labsNow);
-            const influences: { submissionId: Id<"submissions">; actionIndex: number; modifier: number }[] = [];
-
-            // AI Systems' OWN actions → auto-boost if no influence set
-            if (power > 0) {
-              for (const sub of subs) {
-                if (sub.roleId !== AI_SYSTEMS_ROLE_ID) continue;
-                sub.actions.forEach((action, i) => {
-                  if (action.aiInfluence == null) {
-                    influences.push({ submissionId: sub._id, actionIndex: i, modifier: power });
-                  }
-                });
-              }
-            }
-
-            // Other players' actions → keyword-driven auto-influence for NPC/AI controllers
-            if (aiSystemsTable.controlMode !== "human") {
-              const actionsToInfluence = subs.flatMap((sub) =>
-                sub.actions
-                  .map((a, i) => ({ submissionId: sub._id as string, actionIndex: i, text: a.text, roleId: sub.roleId, aiInfluence: a.aiInfluence }))
-                  .filter((item) => item.aiInfluence == null && item.roleId !== AI_SYSTEMS_ROLE_ID)
-              );
-              if (actionsToInfluence.length > 0) {
-                const keyword = autoGenerateInfluence(aiSystemsTable.aiDisposition!, actionsToInfluence, power);
-                for (const inf of keyword) {
-                  influences.push({ submissionId: inf.submissionId as Id<"submissions">, actionIndex: inf.actionIndex, modifier: inf.modifier });
-                }
-              }
-            }
-
-            if (influences.length > 0) {
-              await ctx.runMutation(internal.submissions.applyAiInfluenceInternal, {
-                gameId,
-                roundNumber,
-                influences,
-              });
-            }
-          }
-        }
-      }
+      // Resolve AI influence before dice roll. Extracted to a helper to keep
+      // nesting shallow — the body had to do an aiSystemsTable + labsNow guard
+      // dance plus per-actor branches and would hit max-depth otherwise.
+      await resolveAiInfluencePass(ctx, { gameId, roundNumber, tablesBeforeResolve });
 
       // Roll dice (idempotent — skips already-rolled)
       await ctx.runMutation(internal.games.updatePipelineStatus, {

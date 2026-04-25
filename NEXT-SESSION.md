@@ -53,13 +53,19 @@ The NPC/AI auto-transfer (30-50% of stock auto-sent to an endorsed lab at submis
 
 Risk: data-only change, low. May also need a `kind: "computeRequest"` variant if the current schema doesn't support it (check `SampleAction.structured` union).
 
-### 3. Pipeline.ts + submissions.ts split
-Both files are 1000+ lines and hit `max-lines` lint warnings.
+### 3. File splits — last remaining lint warnings
+Four files still trip `max-lines` (>700) after the latest cleanup pass nuked all
+complexity warnings via in-place helper extraction. These are the only warnings
+in the tree:
 
-- `convex/pipeline.ts` (1098 lines) → `apply.ts` (phase 5 dispatch) + `continue.ts` (phase 9 + 10 + narrate trigger) + `helpers.ts` (findActiveByName, logEntry, clampProductivity dispatch).
-- `convex/submissions.ts` (1207 lines) → grading mutations + submission mutations + helpers.
+- `convex/pipeline.ts` (1193) → `apply.ts` (phase 5 dispatch) + `continue.ts` (phase 9 + 10 + narrate trigger) + `helpers.ts` (findActiveByName, logEntry, clampProductivity dispatch, plus the new `resolveAiInfluencePass` helper).
+- `convex/submissions.ts` (1251) → grading mutations + submission mutations + the new settlement helpers (`settleFoundLabAction`, `settleMergeLabAction`, `settleComputeTargetsAction`) + the validate helpers (`assertSaveAndSubmitContext`, `validateFoundLabIntent`, `validateMergeLabIntent`).
+- `convex/games.ts` (997) → restoreSnapshot helpers (`restoreLabsFromSnapshot`, `clearRoundResolveData`, `rebuildLedgerState`) could move to a new `convex/snapshots.ts`; lobby/lab mutations could split off too.
+- `src/components/action-input.tsx` (787) → ActionCard + ActionControlsRow + the four pickers/forms could split into `action-card.tsx` + `action-pickers.tsx`.
 
-Risk: higher — Convex function references live in generated code. Do it in a separate PR with a careful verify loop.
+Risk: medium-high for Convex (function references live in generated code, must regen + verify), low for client components. Do it in a separate PR with a careful verify loop.
+
+Also: `convex/aiGenerate.ts` has two `eslint-disable-next-line complexity` comments on `generateAll` and the AI-table generation map. Pre-existing, justified by orchestration complexity. Worth tackling as part of an aiGenerate split (NPC path / AI path / submit path).
 
 ### 4. Component tests — MechanicsLogPanel + EffectEditor
 MechanicsLogPanel is a local function in `happened-section.tsx`; extract + export to enable testing.

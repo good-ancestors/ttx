@@ -1,6 +1,7 @@
 "use client";
 
 import { use, useCallback, useMemo, useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -185,15 +186,16 @@ export default function FacilitatorPage({
     setRevealedSecrets(new Set());
   };
 
-  // Get AI Systems disposition for passing to grading/narrate/AI player prompts
-  // Use enabledTables (from getFacilitatorState) which includes aiDisposition — only available during playing
-  const aiSystemsEnabled = enabledTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID);
-  const aiDispositionData = aiSystemsEnabled?.aiDisposition
-    ? getDisposition(aiSystemsEnabled.aiDisposition)
-    : undefined;
-  const aiDispositionPayload = aiDispositionData
-    ? { label: aiDispositionData.label, description: aiDispositionData.description }
-    : undefined;
+  // Get AI Systems disposition for passing to grading/narrate/AI player prompts.
+  // Memoised so the useCallback hooks below don't see a fresh object identity
+  // on every render (react-hooks/exhaustive-deps would otherwise complain).
+  // enabledTables comes from getFacilitatorState and only carries aiDisposition during playing.
+  const aiDispositionPayload = useMemo(() => {
+    const aiSystemsEnabled = enabledTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID);
+    if (!aiSystemsEnabled?.aiDisposition) return undefined;
+    const d = getDisposition(aiSystemsEnabled.aiDisposition);
+    return d ? { label: d.label, description: d.description } : undefined;
+  }, [enabledTables]);
 
   // Grade Remaining + Roll Dice both wrap a single trigger mutation with the
   // same try/catch shell — safeAction handles both uniformly.
@@ -534,7 +536,7 @@ function FacilitatorNav({
     <div className="bg-navy border-b border-navy-light px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-2">
         <div className="w-7 h-7 bg-white rounded-md flex items-center justify-center">
-          <img src="/favicon.svg" alt="Good Ancestors" className="w-5 h-5" />
+          <Image src="/favicon.svg" alt="Good Ancestors" width={20} height={20} className="w-5 h-5" />
         </div>
         <span className="text-[15px] font-bold text-white">The Race to AGI</span>
       </div>

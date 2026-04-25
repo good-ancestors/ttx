@@ -16,6 +16,146 @@ interface HolderEntry {
   acquired: number;
 }
 
+/** Header row (colour dot + name + edit/merge/cancel buttons). */
+function LabCardHeader({
+  lab,
+  isProjector,
+  editable,
+  gameId,
+  editing,
+  setEditing,
+  mergeSource,
+  isMergeSource,
+  onMergeStart,
+  onMergeCancel,
+}: {
+  lab: Lab;
+  isProjector: boolean;
+  editable?: boolean;
+  gameId?: Id<"games">;
+  editing: boolean;
+  setEditing: (v: boolean) => void;
+  mergeSource: string | null;
+  isMergeSource: boolean;
+  onMergeStart?: (name: string) => void;
+  onMergeCancel?: () => void;
+}) {
+  const role = lab.roleId ? ROLE_MAP.get(lab.roleId) : undefined;
+  return (
+    <div className="flex items-center gap-2 mb-1">
+      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role?.color }} />
+      <span className={`${isProjector ? "text-base" : "text-sm"} font-bold text-white flex-1 truncate`}>
+        {lab.name}
+      </span>
+      {editable && gameId && !editing && !mergeSource && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setEditing(true); }}
+          className="text-[10px] p-1 rounded bg-navy-light text-text-light hover:bg-navy-muted"
+          aria-label="Edit lab state"
+          title="Edit lab state"
+        >
+          <Pencil className="w-3 h-3" aria-hidden="true" />
+        </button>
+      )}
+      {onMergeStart && !mergeSource && !editing && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onMergeStart(lab.name); }}
+          className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-text-light hover:bg-navy-muted flex items-center gap-1"
+          aria-label={`Merge ${lab.name} into another lab`}
+          title={`Merge ${lab.name} into another lab`}
+        >
+          <Merge className="w-3 h-3" aria-hidden="true" />
+        </button>
+      )}
+      {isMergeSource && onMergeCancel && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onMergeCancel(); }}
+          className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-viz-warning"
+        >
+          Cancel
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Stock + share + allocation visualisation + legend + spec footer. The
+ *  read-only body of the card; the editor replaces this when `editing`. */
+function LabCardBody({
+  lab,
+  holder,
+  totalAcquired,
+  isProjector,
+}: {
+  lab: Lab;
+  holder: HolderEntry | undefined;
+  totalAcquired: number;
+  isProjector: boolean;
+}) {
+  const stockBefore = holder?.stockBefore ?? lab.computeStock;
+  const stockAfter = holder?.stockAfter ?? lab.computeStock;
+  const stockChange = stockAfter - stockBefore;
+  const labSharePct = holder && totalAcquired > 0
+    ? Math.round((Math.max(0, holder.acquired) / totalAcquired) * 100)
+    : 0;
+
+  return (
+    <>
+      <div className="flex items-baseline gap-3 mb-1">
+        <span className={`${isProjector ? "text-3xl" : "text-xl"} font-black font-mono text-[#06B6D4]`}>
+          {lab.rdMultiplier}×
+        </span>
+        <span
+          className="text-xs text-text-light font-mono"
+          title={`${stockAfter} units (~${stockAfter}M H100e)`}
+        >
+          {stockBefore !== stockAfter ? (
+            <>
+              {stockBefore}u {"→"} {stockAfter}u
+              {stockChange !== 0 && (
+                <span className={`ml-1 ${stockChange > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
+                  ({stockChange > 0 ? "+" : ""}{stockChange})
+                </span>
+              )}
+            </>
+          ) : (
+            <>{stockAfter}u</>
+          )}
+        </span>
+      </div>
+
+      {holder && totalAcquired > 0 && (
+        <div className="text-xs text-text-light mb-2">
+          {labSharePct}% of new compute
+        </div>
+      )}
+
+      <ComputeDotsViz allocation={lab.allocation} computeStock={stockAfter} />
+
+      <div className="flex flex-wrap gap-1.5 mt-1.5">
+        {COMPUTE_CATEGORIES.map((cat) => (
+          <span
+            key={cat.key}
+            className="text-[10px] text-text-light flex items-center gap-1"
+          >
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-[1px]"
+              style={{ backgroundColor: cat.color }}
+            />
+            {cat.label} {lab.allocation[cat.key]}%
+          </span>
+        ))}
+      </div>
+
+      {lab.spec && (
+        <div className="text-[10px] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
+          Spec: {lab.spec}
+        </div>
+      )}
+    </>
+  );
+}
+
 /** Combined lab state + allocations card. Shows per-lab name, R&D multiplier, compute
  *  stock, share of new compute, spec, and the coloured allocation blocks + legend from
  *  the old LabTracker. When `editable`, a pencil icon opens an inline editor for R&D
@@ -48,16 +188,9 @@ export function LabStateCard({
 }) {
   const [editing, setEditing] = useState(false);
 
-  const role = lab.roleId ? ROLE_MAP.get(lab.roleId) : undefined;
   const isMergeSource = mergeSource === lab.name;
   const isMergeTarget = mergeSource !== null && mergeSource !== lab.name;
-
-  const stockBefore = holder?.stockBefore ?? lab.computeStock;
   const stockAfter = holder?.stockAfter ?? lab.computeStock;
-  const stockChange = stockAfter - stockBefore;
-  const labSharePct = holder && totalAcquired > 0
-    ? Math.round((Math.max(0, holder.acquired) / totalAcquired) * 100)
-    : 0;
 
   const handleClick = isMergeTarget && onMergeCommit && mergeSource
     ? async () => {
@@ -66,15 +199,17 @@ export function LabStateCard({
       }
     : undefined;
 
+  const containerClass = `bg-navy rounded-lg p-3 border transition-colors ${
+    isMergeTarget
+      ? "border-viz-warning cursor-pointer hover:bg-navy-light focus-visible:outline-2 focus-visible:outline-viz-warning"
+      : isMergeSource
+        ? "border-viz-capability"
+        : "border-navy-light"
+  }`;
+
   return (
     <div
-      className={`bg-navy rounded-lg p-3 border transition-colors ${
-        isMergeTarget
-          ? "border-viz-warning cursor-pointer hover:bg-navy-light focus-visible:outline-2 focus-visible:outline-viz-warning"
-          : isMergeSource
-            ? "border-viz-capability"
-            : "border-navy-light"
-      }`}
+      className={containerClass}
       onClick={handleClick}
       role={isMergeTarget ? "button" : undefined}
       tabIndex={isMergeTarget ? 0 : undefined}
@@ -86,40 +221,18 @@ export function LabStateCard({
         }
       } : undefined}
     >
-      <div className="flex items-center gap-2 mb-1">
-        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role?.color }} />
-        <span className={`${isProjector ? "text-base" : "text-sm"} font-bold text-white flex-1 truncate`}>
-          {lab.name}
-        </span>
-        {editable && gameId && !editing && !mergeSource && (
-          <button
-            onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-            className="text-[10px] p-1 rounded bg-navy-light text-text-light hover:bg-navy-muted"
-            aria-label="Edit lab state"
-            title="Edit lab state"
-          >
-            <Pencil className="w-3 h-3" aria-hidden="true" />
-          </button>
-        )}
-        {onMergeStart && !mergeSource && !editing && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onMergeStart(lab.name); }}
-            className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-text-light hover:bg-navy-muted flex items-center gap-1"
-            aria-label={`Merge ${lab.name} into another lab`}
-            title={`Merge ${lab.name} into another lab`}
-          >
-            <Merge className="w-3 h-3" aria-hidden="true" />
-          </button>
-        )}
-        {isMergeSource && onMergeCancel && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onMergeCancel(); }}
-            className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-viz-warning"
-          >
-            Cancel
-          </button>
-        )}
-      </div>
+      <LabCardHeader
+        lab={lab}
+        isProjector={isProjector}
+        editable={editable}
+        gameId={gameId}
+        editing={editing}
+        setEditing={setEditing}
+        mergeSource={mergeSource}
+        isMergeSource={isMergeSource}
+        onMergeStart={onMergeStart}
+        onMergeCancel={onMergeCancel}
+      />
       {isMergeTarget && (
         <div className="text-[10px] text-viz-warning mb-1">
           Click to absorb {mergeSource} into {lab.name}
@@ -135,59 +248,7 @@ export function LabStateCard({
           onClose={() => setEditing(false)}
         />
       ) : (
-        <>
-          <div className="flex items-baseline gap-3 mb-1">
-            <span className={`${isProjector ? "text-3xl" : "text-xl"} font-black font-mono text-[#06B6D4]`}>
-              {lab.rdMultiplier}×
-            </span>
-            <span
-              className="text-xs text-text-light font-mono"
-              title={`${stockAfter} units (~${stockAfter}M H100e)`}
-            >
-              {stockBefore !== stockAfter ? (
-                <>
-                  {stockBefore}u {"→"} {stockAfter}u
-                  {stockChange !== 0 && (
-                    <span className={`ml-1 ${stockChange > 0 ? "text-viz-safety" : "text-viz-danger"}`}>
-                      ({stockChange > 0 ? "+" : ""}{stockChange})
-                    </span>
-                  )}
-                </>
-              ) : (
-                <>{stockAfter}u</>
-              )}
-            </span>
-          </div>
-
-          {holder && totalAcquired > 0 && (
-            <div className="text-xs text-text-light mb-2">
-              {labSharePct}% of new compute
-            </div>
-          )}
-
-          <ComputeDotsViz allocation={lab.allocation} computeStock={stockAfter} />
-
-          <div className="flex flex-wrap gap-1.5 mt-1.5">
-            {COMPUTE_CATEGORIES.map((cat) => (
-              <span
-                key={cat.key}
-                className="text-[10px] text-text-light flex items-center gap-1"
-              >
-                <span
-                  className="inline-block w-1.5 h-1.5 rounded-[1px]"
-                  style={{ backgroundColor: cat.color }}
-                />
-                {cat.label} {lab.allocation[cat.key]}%
-              </span>
-            ))}
-          </div>
-
-          {lab.spec && (
-            <div className="text-[10px] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
-              Spec: {lab.spec}
-            </div>
-          )}
-        </>
+        <LabCardBody lab={lab} holder={holder} totalAcquired={totalAcquired} isProjector={isProjector} />
       )}
     </div>
   );

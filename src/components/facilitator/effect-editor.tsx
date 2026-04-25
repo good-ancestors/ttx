@@ -343,84 +343,88 @@ function stringifyFields(e: StructuredEffect): Record<string, string> {
   return f;
 }
 
+/** Effect types that are fully described by a single labName field — the
+ *  validation and shape are identical aside from the discriminant. */
+const LAB_NAME_ONLY_LABELS: Partial<Record<EffectType, string>> = {
+  decommission: "Decommission",
+  breakthrough: "Breakthrough",
+  modelRollback: "Model rollback",
+  researchDisruption: "Research disruption",
+  researchBoost: "Research boost",
+};
+
+/** Per-type builders for effects whose shape is more than `{type, labName}`.
+ *  Each receives a pre-built `get`/`getNum` accessor pair and returns either
+ *  a fully-typed effect or a user-facing error string. */
+type FieldGetter = (k: string) => string | undefined;
+type NumberGetter = (k: string) => number | undefined;
+type EffectBuilder = (get: FieldGetter, getNum: NumberGetter) => StructuredEffect | string;
+
+const COMPLEX_BUILDERS: Partial<Record<EffectType, EffectBuilder>> = {
+  merge: (get) => {
+    const survivor = get("survivor");
+    const absorbed = get("absorbed");
+    if (!survivor || !absorbed) return "Merge requires both survivor and absorbed lab names";
+    if (survivor === absorbed) return "Survivor and absorbed cannot be the same lab";
+    return { type: "merge", survivor, absorbed, newName: get("newName"), newSpec: get("newSpec") };
+  },
+  computeDestroyed: (get, getNum) => {
+    const labName = get("labName");
+    const amount = getNum("amount");
+    if (!labName || amount == null) return "Compute destroyed requires lab name and amount";
+    if (amount <= 0) return "Amount must be positive — compute is conserved, destruction only";
+    return { type: "computeDestroyed", labName, amount };
+  },
+  transferOwnership: (get) => {
+    const labName = get("labName");
+    const controllerRoleId = get("controllerRoleId");
+    if (!labName || !controllerRoleId) return "Transfer requires lab and new controller role";
+    return { type: "transferOwnership", labName, controllerRoleId };
+  },
+  computeTransfer: (get, getNum) => {
+    const fromRoleId = get("fromRoleId");
+    const toRoleId = get("toRoleId");
+    const amount = getNum("amount");
+    if (!fromRoleId || !toRoleId || amount == null) return "Transfer requires from, to, and amount";
+    if (fromRoleId === toRoleId) return "From and to must differ";
+    if (amount <= 0) return "Amount must be positive";
+    return { type: "computeTransfer", fromRoleId, toRoleId, amount };
+  },
+  foundLab: (get, getNum) => {
+    const name = get("name");
+    const seedCompute = getNum("seedCompute");
+    if (!name || seedCompute == null) return "Found lab requires name and seed compute";
+    return { type: "foundLab", name, seedCompute, spec: get("spec") };
+  },
+  narrativeOnly: () => ({ type: "narrativeOnly" }),
+};
+
 /** Build a validated StructuredEffect from the form fields. Returns the effect
  *  or an error message string. */
 function buildEffect(type: EffectType, f: Record<string, string>): StructuredEffect | string {
-  const get = (k: string): string | undefined => {
+  const get: FieldGetter = (k) => {
     const v = f[k]?.trim();
     return v ? v : undefined;
   };
-  const getNum = (k: string): number | undefined => {
+  const getNum: NumberGetter = (k) => {
     const raw = f[k]?.trim();
     if (!raw) return undefined;
     const n = Number(raw);
     return Number.isFinite(n) ? n : undefined;
   };
 
-  switch (type) {
-    case "merge": {
-      const survivor = get("survivor");
-      const absorbed = get("absorbed");
-      if (!survivor || !absorbed) return "Merge requires both survivor and absorbed lab names";
-      if (survivor === absorbed) return "Survivor and absorbed cannot be the same lab";
-      return { type: "merge", survivor, absorbed, newName: get("newName"), newSpec: get("newSpec") };
-    }
-    case "decommission": {
-      const labName = get("labName");
-      if (!labName) return "Decommission requires a lab name";
-      return { type: "decommission", labName };
-    }
-    case "breakthrough": {
-      const labName = get("labName");
-      if (!labName) return "Breakthrough requires a lab name";
-      return { type: "breakthrough", labName };
-    }
-    case "modelRollback": {
-      const labName = get("labName");
-      if (!labName) return "Model rollback requires a lab name";
-      return { type: "modelRollback", labName };
-    }
-    case "computeDestroyed": {
-      const labName = get("labName");
-      const amount = getNum("amount");
-      if (!labName || amount == null) return "Compute destroyed requires lab name and amount";
-      if (amount <= 0) return "Amount must be positive — compute is conserved, destruction only";
-      return { type: "computeDestroyed", labName, amount };
-    }
-    case "researchDisruption": {
-      const labName = get("labName");
-      if (!labName) return "Research disruption requires a lab name";
-      return { type: "researchDisruption", labName };
-    }
-    case "researchBoost": {
-      const labName = get("labName");
-      if (!labName) return "Research boost requires a lab name";
-      return { type: "researchBoost", labName };
-    }
-    case "transferOwnership": {
-      const labName = get("labName");
-      const controllerRoleId = get("controllerRoleId");
-      if (!labName || !controllerRoleId) return "Transfer requires lab and new controller role";
-      return { type: "transferOwnership", labName, controllerRoleId };
-    }
-    case "computeTransfer": {
-      const fromRoleId = get("fromRoleId");
-      const toRoleId = get("toRoleId");
-      const amount = getNum("amount");
-      if (!fromRoleId || !toRoleId || amount == null) return "Transfer requires from, to, and amount";
-      if (fromRoleId === toRoleId) return "From and to must differ";
-      if (amount <= 0) return "Amount must be positive";
-      return { type: "computeTransfer", fromRoleId, toRoleId, amount };
-    }
-    case "foundLab": {
-      const name = get("name");
-      const seedCompute = getNum("seedCompute");
-      if (!name || seedCompute == null) return "Found lab requires name and seed compute";
-      return { type: "foundLab", name, seedCompute, spec: get("spec") };
-    }
-    case "narrativeOnly":
-      return { type: "narrativeOnly" };
+  // Five effect types follow the same single-labName shape — fold them into one branch.
+  const labNameOnlyLabel = LAB_NAME_ONLY_LABELS[type];
+  if (labNameOnlyLabel) {
+    const labName = get("labName");
+    if (!labName) return `${labNameOnlyLabel} requires a lab name`;
+    return { type, labName } as StructuredEffect;
   }
+
+  const builder = COMPLEX_BUILDERS[type];
+  // Exhaustive: every EffectType is either in LAB_NAME_ONLY_LABELS or COMPLEX_BUILDERS.
+  // The `?? "..."` is defensive — TS already guarantees one of the two tables matches.
+  return builder ? builder(get, getNum) : "Unknown effect type";
 }
 
 function FieldsForType({

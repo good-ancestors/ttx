@@ -240,51 +240,20 @@ export function AttemptedPanel({
 
   return (
     <div className="bg-navy rounded-xl border border-navy-light p-5">
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setExpanded(!isExpanded)}
-            aria-expanded={isExpanded}
-            aria-controls="attempted-panel-content"
-            className="flex items-center gap-2"
-          >
-            <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
-            <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
-              What Was Attempted
-            </span>
-            {allRevealed && (
-              <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
-            )}
-          </button>
-          {isRollingOrNarrate && !hasRolled && hasGraded && (
-            <span className="text-xs text-viz-warning animate-pulse flex items-center gap-1">
-              <Clock className="w-3.5 h-3.5" /> Evaluating...
-            </span>
-          )}
-          {isRollingOrNarrate && hasRolled && !allRevealed && (
-            <span className="text-xs text-viz-warning animate-pulse flex items-center gap-1">
-              <Dices className="w-3.5 h-3.5" /> Rolling...
-            </span>
-          )}
-          {!isRollingOrNarrate && hasSubmissions && (
-            <span className="text-xs text-text-light">
-              {submissions.length} submitted
-            </span>
-          )}
-        </div>
-        {!isProjector && isExpanded && hasSecrets && (
-          <button
-            onClick={allSecretsRevealed ? hideAllSecrets : revealAllSecrets}
-            className="text-[10px] text-viz-warning hover:text-white transition-colors flex items-center gap-1"
-          >
-            {allSecretsRevealed ? (
-              <><Eye className="w-3 h-3" /> Hide secrets</>
-            ) : (
-              <><EyeOff className="w-3 h-3" /> Reveal secrets</>
-            )}
-          </button>
-        )}
-      </div>
+      <PanelHeader
+        isExpanded={isExpanded}
+        setExpanded={setExpanded}
+        allRevealed={allRevealed}
+        isRollingOrNarrate={isRollingOrNarrate}
+        hasRolled={hasRolled}
+        hasGraded={hasGraded}
+        hasSubmissions={hasSubmissions}
+        submissionCount={submissions.length}
+        showRevealToggle={!isProjector && isExpanded && hasSecrets}
+        allSecretsRevealed={allSecretsRevealed}
+        revealAllSecrets={revealAllSecrets}
+        hideAllSecrets={hideAllSecrets}
+      />
 
       {isExpanded && (
         <div id="attempted-panel-content">
@@ -314,32 +283,136 @@ export function AttemptedPanel({
             </div>
           )}
 
-          {narrativeStale && hasNarrative && !isProjector && (
-            <div className="mt-3 rounded-lg border border-viz-warning/30 bg-viz-warning/10 px-3 py-2 flex items-center justify-between gap-2">
-              <span className="text-[11px] text-viz-warning">
-                Results changed since the summary was generated
-              </span>
-              <button
-                onClick={handleReResolve}
-                disabled={resolving}
-                className="text-[11px] px-3 py-1 rounded font-semibold bg-viz-warning text-navy-dark hover:bg-viz-warning/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
-              >
-                <RefreshCw className="w-3 h-3" /> Regenerate
-              </button>
-            </div>
-          )}
-          {!narrativeStale && hasNarrative && !isProjector && (
-            <button
-              onClick={handleReResolve}
-              disabled={resolving}
-              className="text-[11px] px-3 py-1.5 rounded font-medium transition-colors flex items-center gap-1 mt-3 disabled:opacity-50 bg-viz-warning/20 text-viz-warning hover:bg-viz-warning/30 border border-viz-warning/30"
-            >
-              <RefreshCw className="w-3 h-3" /> Regenerate summary
-            </button>
-          )}
+          <RegenerateAffordance
+            narrativeStale={narrativeStale}
+            hasNarrative={hasNarrative}
+            isProjector={isProjector}
+            resolving={resolving}
+            onReResolve={handleReResolve}
+          />
         </div>
       )}
     </div>
+  );
+}
+
+/** Header row: collapse toggle + status badges + reveal-secrets toggle. */
+function PanelHeader({
+  isExpanded,
+  setExpanded,
+  allRevealed,
+  isRollingOrNarrate,
+  hasRolled,
+  hasGraded,
+  hasSubmissions,
+  submissionCount,
+  showRevealToggle,
+  allSecretsRevealed,
+  revealAllSecrets,
+  hideAllSecrets,
+}: {
+  isExpanded: boolean;
+  setExpanded: (v: boolean) => void;
+  allRevealed: boolean;
+  isRollingOrNarrate: boolean;
+  hasRolled: boolean;
+  hasGraded: boolean;
+  hasSubmissions: boolean;
+  submissionCount: number;
+  showRevealToggle: boolean;
+  allSecretsRevealed: boolean;
+  revealAllSecrets: () => void;
+  hideAllSecrets: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => setExpanded(!isExpanded)}
+          aria-expanded={isExpanded}
+          aria-controls="attempted-panel-content"
+          className="flex items-center gap-2"
+        >
+          <ChevronDown className={`w-4 h-4 text-text-light transition-transform ${isExpanded ? "" : "-rotate-90"}`} />
+          <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
+            What Was Attempted
+          </span>
+          {allRevealed && (
+            <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
+          )}
+        </button>
+        {isRollingOrNarrate && !hasRolled && hasGraded && (
+          <span className="text-xs text-viz-warning animate-pulse flex items-center gap-1">
+            <Clock className="w-3.5 h-3.5" /> Evaluating...
+          </span>
+        )}
+        {isRollingOrNarrate && hasRolled && !allRevealed && (
+          <span className="text-xs text-viz-warning animate-pulse flex items-center gap-1">
+            <Dices className="w-3.5 h-3.5" /> Rolling...
+          </span>
+        )}
+        {!isRollingOrNarrate && hasSubmissions && (
+          <span className="text-xs text-text-light">
+            {submissionCount} submitted
+          </span>
+        )}
+      </div>
+      {showRevealToggle && (
+        <button
+          onClick={allSecretsRevealed ? hideAllSecrets : revealAllSecrets}
+          className="text-[10px] text-viz-warning hover:text-white transition-colors flex items-center gap-1"
+        >
+          {allSecretsRevealed ? (
+            <><Eye className="w-3 h-3" /> Hide secrets</>
+          ) : (
+            <><EyeOff className="w-3 h-3" /> Reveal secrets</>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Trailing "Regenerate" button — variant depends on whether the narrative is
+ *  stale. Hidden in projector mode and when no narrative has been generated. */
+function RegenerateAffordance({
+  narrativeStale,
+  hasNarrative,
+  isProjector,
+  resolving,
+  onReResolve,
+}: {
+  narrativeStale: boolean;
+  hasNarrative: boolean;
+  isProjector: boolean;
+  resolving: boolean;
+  onReResolve: () => Promise<void>;
+}) {
+  if (!hasNarrative || isProjector) return null;
+  if (narrativeStale) {
+    return (
+      <div className="mt-3 rounded-lg border border-viz-warning/30 bg-viz-warning/10 px-3 py-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] text-viz-warning">
+          Results changed since the summary was generated
+        </span>
+        <button
+          onClick={onReResolve}
+          disabled={resolving}
+          className="text-[11px] px-3 py-1 rounded font-semibold bg-viz-warning text-navy-dark hover:bg-viz-warning/80 transition-colors disabled:opacity-50 flex items-center gap-1 shrink-0"
+        >
+          <RefreshCw className="w-3 h-3" /> Regenerate
+        </button>
+      </div>
+    );
+  }
+  return (
+    <button
+      onClick={onReResolve}
+      disabled={resolving}
+      className="text-[11px] px-3 py-1.5 rounded font-medium transition-colors flex items-center gap-1 mt-3 disabled:opacity-50 bg-viz-warning/20 text-viz-warning hover:bg-viz-warning/30 border border-viz-warning/30"
+    >
+      <RefreshCw className="w-3 h-3" /> Regenerate summary
+    </button>
   );
 }
 

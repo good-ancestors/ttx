@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery, type MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { ROLES, ROUND_CONFIGS, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID, calculatePoolAllocations } from "./gameData";
 import { logEvent, assertFacilitator, assertNotResolving } from "./events";
 import { internal } from "./_generated/api";
@@ -523,16 +523,15 @@ export const restoreSnapshot = mutation({
     const round = rounds.find((r) => r.number === args.roundNumber);
     if (!round) throw new Error(`Round ${args.roundNumber} not found for game ${args.gameId}`);
 
-    // Choose before or after snapshot
     const labsSnapshot = args.useBefore ? round.labsBefore : round.labsAfter;
-    const snapshotType = args.useBefore ? "before" : "after";
-    if (!labsSnapshot) throw new Error(`No ${snapshotType} snapshot data for round ${args.roundNumber}`);
+    if (!labsSnapshot) {
+      throw new Error(`No ${args.useBefore ? "before" : "after"} snapshot data for round ${args.roundNumber}`);
+    }
 
-    // Restore round + phase; labs table rows are restored below from the snapshot.
-    // Clearing resolveNonce is critical — any in-flight rollAndNarrate that was
-    // started before this restore will otherwise pass its post-LLM nonce check
-    // (convex/pipelineApply.ts) and land structural mutations on top of the just-
-    // restored state. Mirror the clear on the target round below.
+    // Restore game-level state. Clearing resolveNonce is critical — any in-flight
+    // rollAndNarrate started before this restore will otherwise pass its post-LLM
+    // nonce check (convex/pipelineApply.ts) and land structural mutations on top
+    // of the just-restored state. Round-level nonce is mirrored below.
     await ctx.db.patch(args.gameId, {
       currentRound: args.roundNumber,
       phase: args.useBefore ? "submit" : "narrate",
@@ -542,129 +541,9 @@ export const restoreSnapshot = mutation({
       resolveNonce: undefined,
     });
 
-    // Restore labs table: upsert from snapshot by labId; delete any current labs not in snapshot.
-    // Two-pass so we can rewrite mergedIntoLabId through a labId remap — when a snapshot lab
-    // was hard-deleted after the target round and has to be re-inserted, it gets a fresh _id;
-    // any surviving snapshot entry whose mergedIntoLabId pointed at it would otherwise dangle.
-    const currentLabs = await ctx.db.query("labs")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    const snapshotIds = new Set(labsSnapshot.map((s) => s.labId));
-    for (const current of currentLabs) {
-      if (!snapshotIds.has(current._id)) {
-        await ctx.db.delete(current._id);
-      }
-    }
-    // Pass 1: determine target labId per snap entry (existing _id or fresh insert).
-    const labIdRemap = new Map<Id<"labs">, Id<"labs">>();
-    const pendingInserts: { snap: typeof labsSnapshot[number]; newId: Id<"labs"> }[] = [];
-    for (const snap of labsSnapshot) {
-      const existing = currentLabs.find((l) => l._id === snap.labId);
-      if (existing) {
-        labIdRemap.set(snap.labId, snap.labId);
-      } else {
-        const insertedId = await ctx.db.insert("labs", {
-          gameId: args.gameId,
-          name: snap.name,
-          spec: snap.spec,
-          rdMultiplier: snap.rdMultiplier,
-          allocation: snap.allocation,
-          ownerRoleId: snap.roleId,
-          colour: snap.colour,
-          status: snap.status,
-          createdRound: snap.createdRound,
-          jurisdiction: snap.jurisdiction,
-          // mergedIntoLabId set in pass 2 once remap is complete.
-        });
-        labIdRemap.set(snap.labId, insertedId);
-        pendingInserts.push({ snap, newId: insertedId });
-      }
-    }
-    // Pass 2: patch each existing snapshot target with remapped mergedIntoLabId.
-    for (const snap of labsSnapshot) {
-      const targetId = labIdRemap.get(snap.labId)!;
-      const remappedMerged = snap.mergedIntoLabId
-        ? labIdRemap.get(snap.mergedIntoLabId) ?? undefined
-        : undefined;
-      const isFreshInsert = pendingInserts.some((p) => p.newId === targetId);
-      if (isFreshInsert) {
-        // Insert already landed name/spec/etc.; only need to set remapped mergedIntoLabId.
-        if (remappedMerged) {
-          await ctx.db.patch(targetId, { mergedIntoLabId: remappedMerged });
-        }
-      } else {
-        await ctx.db.patch(targetId, {
-          name: snap.name,
-          spec: snap.spec,
-          rdMultiplier: snap.rdMultiplier,
-          allocation: snap.allocation,
-          ownerRoleId: snap.roleId,
-          colour: snap.colour,
-          status: snap.status,
-          mergedIntoLabId: remappedMerged,
-          createdRound: snap.createdRound,
-        });
-      }
-    }
-
-    // Clear resolution data on this round. `resolveNonce` is cleared
-    // unconditionally so any in-flight pipeline run tied to this round can't
-    // land post-restore (mirrors the game-level clear above). All other
-    // per-round pipeline residue — summary, snapshots, pending-*, mechanicsLog,
-    // appliedOps, labTrajectories — is cleared on "before" so the next
-    // roll/continue re-derives from clean state. On "after" we leave those
-    // alone (they describe the post-resolve state the user wants to restore).
-    if (args.useBefore) {
-      await ctx.db.patch(round._id, {
-        summary: undefined,
-        labsAfter: undefined,
-        resolveNonce: undefined,
-        pendingAcquired: undefined,
-        pendingProductivityMods: undefined,
-        mechanicsLog: undefined,
-        appliedOps: undefined,
-        labTrajectories: undefined,
-      });
-    } else {
-      await ctx.db.patch(round._id, { resolveNonce: undefined });
-    }
-
-    // Rebuild ledger state to match the restored point-in-time.
-    // - useBefore=true: remove all rows from rounds > targetRound, plus regenerable rows
-    //   (acquired/adjusted/merged) from targetRound itself. Transferred + facilitator rows
-    //   within targetRound remain (player-initiated movements done during the submit phase).
-    // - useBefore=false: remove all rows from rounds > targetRound. Keep targetRound fully.
-    const allTx = await ctx.db.query("computeTransactions")
-      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    for (const tx of allTx) {
-      const shouldDelete =
-        tx.roundNumber > args.roundNumber ||
-        (args.useBefore && tx.roundNumber === args.roundNumber &&
-          (tx.type === "acquired" || tx.type === "adjusted" || tx.type === "merged"));
-      if (shouldDelete) {
-        await ctx.db.delete(tx._id);
-      }
-    }
-    // Recompute cached table.computeStock = sum of remaining settled rows per role.
-    const remaining = await ctx.db.query("computeTransactions")
-      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    const stockByRole = new Map<string, number>();
-    for (const tx of remaining) {
-      if (tx.status !== "settled") continue;
-      stockByRole.set(tx.roleId, (stockByRole.get(tx.roleId) ?? 0) + tx.amount);
-    }
-    const tables = await ctx.db.query("tables")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
-      .collect();
-    for (const t of tables) {
-      if (t.computeStock == null) continue;
-      const newStock = Math.max(0, stockByRole.get(t.roleId) ?? 0);
-      if (newStock !== t.computeStock) {
-        await ctx.db.patch(t._id, { computeStock: newStock });
-      }
-    }
+    await restoreLabsFromSnapshot(ctx, args.gameId, labsSnapshot);
+    await clearRoundResolveData(ctx, round._id, args.useBefore ?? false);
+    await rebuildLedgerState(ctx, args.gameId, args.roundNumber, args.useBefore ?? false);
 
     await logEvent(ctx, args.gameId, "snapshot_restored", undefined, {
       restoredFromRound: args.roundNumber,
@@ -672,6 +551,152 @@ export const restoreSnapshot = mutation({
     });
   },
 });
+
+/** Upsert labs from snapshot: delete labs not in snapshot, insert missing entries
+ *  (with fresh _ids), patch survivors. Two-pass so mergedIntoLabId can be rewritten
+ *  through the labId remap — when a snapshot lab was hard-deleted after the target
+ *  round, it gets a fresh _id and any survivor pointing at it would otherwise dangle. */
+async function restoreLabsFromSnapshot(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  labsSnapshot: NonNullable<Doc<"rounds">["labsBefore"]>,
+) {
+  const currentLabs = await ctx.db.query("labs")
+    .withIndex("by_game", (q) => q.eq("gameId", gameId))
+    .collect();
+  const snapshotIds = new Set(labsSnapshot.map((s) => s.labId));
+  for (const current of currentLabs) {
+    if (!snapshotIds.has(current._id)) {
+      await ctx.db.delete(current._id);
+    }
+  }
+
+  // Pass 1: determine target labId per snap entry (existing _id or fresh insert).
+  const labIdRemap = new Map<Id<"labs">, Id<"labs">>();
+  const freshInsertIds = new Set<Id<"labs">>();
+  for (const snap of labsSnapshot) {
+    const existing = currentLabs.find((l) => l._id === snap.labId);
+    if (existing) {
+      labIdRemap.set(snap.labId, snap.labId);
+      continue;
+    }
+    const insertedId = await ctx.db.insert("labs", {
+      gameId,
+      name: snap.name,
+      spec: snap.spec,
+      rdMultiplier: snap.rdMultiplier,
+      allocation: snap.allocation,
+      ownerRoleId: snap.roleId,
+      colour: snap.colour,
+      status: snap.status,
+      createdRound: snap.createdRound,
+      jurisdiction: snap.jurisdiction,
+      // mergedIntoLabId set in pass 2 once remap is complete.
+    });
+    labIdRemap.set(snap.labId, insertedId);
+    freshInsertIds.add(insertedId);
+  }
+
+  // Pass 2: patch survivors and rewrite mergedIntoLabId via remap.
+  for (const snap of labsSnapshot) {
+    const targetId = labIdRemap.get(snap.labId)!;
+    const remappedMerged = snap.mergedIntoLabId
+      ? labIdRemap.get(snap.mergedIntoLabId) ?? undefined
+      : undefined;
+    if (freshInsertIds.has(targetId)) {
+      // Insert already landed name/spec/etc.; only need to set remapped mergedIntoLabId.
+      if (remappedMerged) {
+        await ctx.db.patch(targetId, { mergedIntoLabId: remappedMerged });
+      }
+      continue;
+    }
+    await ctx.db.patch(targetId, {
+      name: snap.name,
+      spec: snap.spec,
+      rdMultiplier: snap.rdMultiplier,
+      allocation: snap.allocation,
+      ownerRoleId: snap.roleId,
+      colour: snap.colour,
+      status: snap.status,
+      mergedIntoLabId: remappedMerged,
+      createdRound: snap.createdRound,
+    });
+  }
+}
+
+/** Clear per-round pipeline residue. `resolveNonce` is always cleared so any
+ *  in-flight pipeline run tied to this round can't land post-restore. On "before"
+ *  we additionally drop all summary/snapshots/pending state so the next roll
+ *  re-derives from clean state. On "after" we leave that alone — it describes
+ *  the post-resolve state the user wants to restore. */
+async function clearRoundResolveData(
+  ctx: MutationCtx,
+  roundId: Id<"rounds">,
+  useBefore: boolean,
+) {
+  if (!useBefore) {
+    await ctx.db.patch(roundId, { resolveNonce: undefined });
+    return;
+  }
+  await ctx.db.patch(roundId, {
+    summary: undefined,
+    labsAfter: undefined,
+    resolveNonce: undefined,
+    pendingAcquired: undefined,
+    pendingProductivityMods: undefined,
+    mechanicsLog: undefined,
+    appliedOps: undefined,
+    labTrajectories: undefined,
+  });
+}
+
+/** Rebuild compute ledger to match the restored point-in-time, then refresh the
+ *  cached table.computeStock from the surviving rows.
+ *  - useBefore=true: remove all rows from rounds > targetRound, plus regenerable
+ *    rows (acquired/adjusted/merged) from targetRound itself. Transferred +
+ *    facilitator rows within targetRound remain (player-initiated movements done
+ *    during the submit phase).
+ *  - useBefore=false: remove all rows from rounds > targetRound. Keep targetRound. */
+async function rebuildLedgerState(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roundNumber: number,
+  useBefore: boolean,
+) {
+  const REGENERABLE_TYPES = new Set(["acquired", "adjusted", "merged"]);
+  const allTx = await ctx.db.query("computeTransactions")
+    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId))
+    .collect();
+  for (const tx of allTx) {
+    const isAfterTarget = tx.roundNumber > roundNumber;
+    const isRegenerableInTarget = useBefore
+      && tx.roundNumber === roundNumber
+      && REGENERABLE_TYPES.has(tx.type);
+    if (isAfterTarget || isRegenerableInTarget) {
+      await ctx.db.delete(tx._id);
+    }
+  }
+
+  // Recompute cached table.computeStock = sum of remaining settled rows per role.
+  const remaining = await ctx.db.query("computeTransactions")
+    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId))
+    .collect();
+  const stockByRole = new Map<string, number>();
+  for (const tx of remaining) {
+    if (tx.status !== "settled") continue;
+    stockByRole.set(tx.roleId, (stockByRole.get(tx.roleId) ?? 0) + tx.amount);
+  }
+  const tables = await ctx.db.query("tables")
+    .withIndex("by_game", (q) => q.eq("gameId", gameId))
+    .collect();
+  for (const t of tables) {
+    if (t.computeStock == null) continue;
+    const newStock = Math.max(0, stockByRole.get(t.roleId) ?? 0);
+    if (newStock !== t.computeStock) {
+      await ctx.db.patch(t._id, { computeStock: newStock });
+    }
+  }
+}
 
 export const skipTimer = mutation({
   args: { gameId: v.id("games"), facilitatorToken: v.optional(v.string()) },
