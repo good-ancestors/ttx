@@ -112,15 +112,18 @@ const persistedActionValidator = v.object({
 
 /** Strip grading byproducts from a persisted action. `reasoning` is always
  *  stripped (stale once the grade is overridden or discarded).
- *  `resetRoll: true` also drops `probability` / `rolled` / `success` — used by
- *  ungradeAction to fully reset to the pre-graded state. */
+ *  `resetRoll: true` also drops every roll/grade artifact — `probability`,
+ *  `rolled`, `success`, `aiInfluence`, `structuredEffect`, `confidence` — used
+ *  by `ungradeAction` and the snapshot-restore re-roll path to fully reset to
+ *  the pre-graded state while keeping player intent (text, priority, secret,
+ *  computeTargets, foundLab, mergeLab) intact. */
 type PersistedAction = Doc<"submissions">["actions"][number];
-function stripGradingFields(action: PersistedAction, { resetRoll = false } = {}): PersistedAction {
-  const { reasoning: _reasoning, probability, rolled, success, ...rest } = action;
+export function stripGradingFields(action: PersistedAction, { resetRoll = false } = {}): PersistedAction {
+  const { reasoning: _reasoning, probability, rolled, success, aiInfluence, ...rest } = action;
   if (resetRoll) {
     return { ...rest, structuredEffect: undefined, confidence: undefined };
   }
-  return { ...rest, probability, rolled, success };
+  return { ...rest, probability, rolled, success, aiInfluence };
 }
 
 // Full query — includes secret text and reasoning. Requires facilitator token.
@@ -443,8 +446,9 @@ export const submitAction = mutation({
  *  per target tied to the action. Cache stays at settled value; UI subtracts pending sends
  *  via getAvailableStock. Settlement happens at roll time via settlePendingForAction.
  *  Validates that the sender's available balance (settled − other pending sends) covers
- *  the total. */
-async function escrowSendTargets(
+ *  the total, unless `skipAvailabilityCheck` is set (used by snapshot-restore re-emit
+ *  where the action was already validated at original submit time). */
+export async function escrowSendTargets(
   ctx: MutationCtx,
   args: {
     gameId: Id<"games">;
@@ -453,15 +457,18 @@ async function escrowSendTargets(
     actionId: string;
     actionText: string;
     targets: { roleId: string; amount: number }[];
+    skipAvailabilityCheck?: boolean;
   },
 ) {
   if (args.targets.length === 0) return;
   const totalAmount = args.targets.reduce((s, t) => s + t.amount, 0);
   if (totalAmount <= 0) return;
 
-  const available = await getAvailableStock(ctx, args.gameId, args.senderRoleId, args.roundNumber);
-  if (available < totalAmount) {
-    throw new Error(`Insufficient compute: have ${available}u available, need ${totalAmount}u`);
+  if (!args.skipAvailabilityCheck) {
+    const available = await getAvailableStock(ctx, args.gameId, args.senderRoleId, args.roundNumber);
+    if (available < totalAmount) {
+      throw new Error(`Insufficient compute: have ${available}u available, need ${totalAmount}u`);
+    }
   }
 
   for (const t of args.targets) {
@@ -477,6 +484,31 @@ async function escrowSendTargets(
       actionId: args.actionId,
     });
   }
+}
+
+/** Escrow a foundLab seed — pending `adjusted` row debiting the founder. Counts
+ *  as escrow against availableStock until rollAllImpl settles or cancels. */
+export async function escrowFoundLab(
+  ctx: MutationCtx,
+  args: {
+    gameId: Id<"games">;
+    roundNumber: number;
+    founderRoleId: string;
+    actionId: string;
+    foundLab: { name: string; seedCompute: number };
+  },
+) {
+  await ctx.db.insert("computeTransactions", {
+    gameId: args.gameId,
+    roundNumber: args.roundNumber,
+    createdAt: Date.now(),
+    type: "adjusted",
+    status: "pending",
+    roleId: args.founderRoleId,
+    amount: -args.foundLab.seedCompute,
+    reason: `Lab founding escrow: "${args.foundLab.name}"`,
+    actionId: args.actionId,
+  });
 }
 
 /** Create endorsement + compute request docs for a newly submitted action. */
@@ -716,17 +748,12 @@ export const saveAndSubmit = mutation({
     }
 
     if (args.foundLab) {
-      // Pending row — counts as escrow (subtracted from availableStock) but not from settled cache.
-      await ctx.db.insert("computeTransactions", {
+      await escrowFoundLab(ctx, {
         gameId: args.gameId,
         roundNumber: args.roundNumber,
-        createdAt: Date.now(),
-        type: "adjusted",
-        status: "pending",
-        roleId: args.roleId,
-        amount: -args.foundLab.seedCompute,
-        reason: `Lab founding escrow: "${args.foundLab.name}"`,
+        founderRoleId: args.roleId,
         actionId,
+        foundLab: args.foundLab,
       });
     }
 

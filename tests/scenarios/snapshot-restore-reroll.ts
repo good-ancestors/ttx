@@ -58,6 +58,17 @@ import { driveResolveOnce, type Scenario } from "./harness";
 
 const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET;
 
+// Single source of truth for the lab names referenced from R2's forced actions
+// and from the assertion block — prevents string-drift between submission and
+// verification (e.g. "Mistral-Nine" vs "Mistral Nine").
+const LAB_CONSCIENTA = "Conscienta";
+const LAB_MISTRAL = "Mistral-Nine";
+const LAB_UNIFIED = "Unified AI Safety Initiative";
+
+function assert(cond: unknown, msg: string): asserts cond {
+  if (!cond) throw new Error(msg);
+}
+
 const scenario: Scenario = {
   name: "snapshot-restore-reroll",
   description: "useBefore=true restore + re-roll preserves compute conservation and structural state",
@@ -91,7 +102,7 @@ const scenario: Scenario = {
             priority: 9,
             forceSuccess: true,
             probability: 80,
-            mergeLab: { absorbedRoleId: "conscienta-ceo", newName: "Unified AI Safety Initiative" },
+            mergeLab: { absorbedRoleId: "conscienta-ceo", newName: LAB_UNIFIED },
           },
         ],
         "deepcent-ceo": [
@@ -100,7 +111,7 @@ const scenario: Scenario = {
             priority: 8,
             forceSuccess: true,
             probability: 80,
-            foundLab: { name: "Mistral-Nine", seedCompute: 12 },
+            foundLab: { name: LAB_MISTRAL, seedCompute: 12 },
           },
         ],
         "us-president": [
@@ -120,79 +131,69 @@ const scenario: Scenario = {
         ],
       },
       expect: async (client, gameId) => {
-        if (!FACILITATOR_TOKEN) throw new Error("FACILITATOR_SECRET required");
+        assert(FACILITATOR_TOKEN, "FACILITATOR_SECRET required");
 
-        // We're at R2 narrate. Capture, restore, verify intermediate, re-run,
-        // verify final equals captured. Doing this in round.expect (rather than
-        // scenario.expect) keeps capture-and-final at the SAME phase (narrate),
-        // so pool acquisition materialisation — which only happens on advance —
-        // doesn't skew the table.computeStock equality check.
+        // Capture, restore, verify intermediate, re-run, verify final equals
+        // captured — all in round.expect so capture-and-final are at the SAME
+        // phase (R2 narrate). Pool-acquisition materialisation only happens on
+        // advance, so anchoring both observations to narrate avoids that
+        // skewing the table.computeStock equality check.
 
-        // Step 1 — capture post-R2 narrate state.
         const captured = await captureState(client, gameId);
-        if (!captured.unifiedLab) throw new Error(`Pre-restore: expected 'Unified AI Safety Initiative' active, got: ${JSON.stringify(captured.labsByName)}`);
-        if (!captured.mistralLab) throw new Error(`Pre-restore: expected 'Mistral-Nine' active, got: ${JSON.stringify(captured.labsByName)}`);
-        if (captured.conscientaStatus !== "decommissioned") {
-          throw new Error(`Pre-restore: expected Conscienta decommissioned, got ${captured.conscientaStatus}`);
-        }
+        assert(captured.unifiedLab, `Pre-restore: expected '${LAB_UNIFIED}' active, got: ${JSON.stringify(captured.labsByName)}`);
+        assert(captured.mistralLab, `Pre-restore: expected '${LAB_MISTRAL}' active, got: ${JSON.stringify(captured.labsByName)}`);
+        assert(captured.conscientaStatus === "decommissioned", `Pre-restore: expected ${LAB_CONSCIENTA} decommissioned, got ${captured.conscientaStatus}`);
 
-        // Step 2 — restore.
         await client.mutation(api.games.restoreSnapshot, {
           gameId, roundNumber: 2, useBefore: true, facilitatorToken: FACILITATOR_TOKEN,
         });
 
-        // Step 3 — verify intermediate state.
         const game = await client.query(api.games.get, { gameId });
-        if (!game) throw new Error("Game disappeared after restore");
-        if (game.currentRound !== 2) throw new Error(`Expected currentRound=2 post-restore, got ${game.currentRound}`);
-        if (game.phase !== "submit") throw new Error(`Expected phase=submit post-restore, got ${game.phase}`);
+        assert(game, "Game disappeared after restore");
+        assert(game.currentRound === 2, `Expected currentRound=2 post-restore, got ${game.currentRound}`);
+        assert(game.phase === "submit", `Expected phase=submit post-restore, got ${game.phase}`);
 
         const intermediate = await client.query(api.games.getFacilitatorState, { gameId, roundNumber: 2 });
+        assert(intermediate.submissions.length > 0, "Expected reset-not-deleted submissions post-restore, got 0");
         for (const sub of intermediate.submissions) {
-          if (sub.status !== "submitted") {
-            throw new Error(`Expected submission status=submitted post-restore, got ${sub.status} for role ${sub.roleId}`);
-          }
+          assert(sub.status === "submitted", `Expected submission status=submitted post-restore, got ${sub.status} for role ${sub.roleId}`);
           for (const action of sub.actions) {
             if (action.actionStatus !== "submitted") continue;
-            if (action.rolled != null) throw new Error(`Expected rolled cleared on action for ${sub.roleId}, got ${action.rolled}`);
-            if (action.success != null) throw new Error(`Expected success cleared on action for ${sub.roleId}, got ${action.success}`);
-            if (action.probability != null) throw new Error(`Expected probability cleared on action for ${sub.roleId}, got ${action.probability}`);
+            assert(action.rolled == null, `Expected rolled cleared on action for ${sub.roleId}, got ${action.rolled}`);
+            assert(action.success == null, `Expected success cleared on action for ${sub.roleId}, got ${action.success}`);
+            assert(action.probability == null, `Expected probability cleared on action for ${sub.roleId}, got ${action.probability}`);
           }
         }
 
         const labsAfterRestore = await client.query(api.labs.getLabs, { gameId, includeInactive: true });
-        const conscientaAfterRestore = labsAfterRestore.find((l) => l.name === "Conscienta");
-        if (!conscientaAfterRestore || conscientaAfterRestore.status !== "active") {
-          throw new Error(`Expected Conscienta active post-restore, got ${conscientaAfterRestore?.status}`);
-        }
-        const mistralAfterRestore = labsAfterRestore.find((l) => l.name === "Mistral-Nine");
-        if (mistralAfterRestore && mistralAfterRestore.status === "active") {
-          throw new Error(`Expected Mistral-Nine to be removed post-restore, but it's still active`);
-        }
-        const unifiedAfterRestore = labsAfterRestore.find((l) => l.name === "Unified AI Safety Initiative");
-        if (unifiedAfterRestore && unifiedAfterRestore.status === "active") {
-          throw new Error(`Expected unified lab to be reverted post-restore, but it's still active`);
-        }
+        const findLabAfterRestore = (name: string) => labsAfterRestore.find((l) => l.name === name);
+        const conscientaAfterRestore = findLabAfterRestore(LAB_CONSCIENTA);
+        assert(
+          conscientaAfterRestore?.status === "active",
+          `Expected ${LAB_CONSCIENTA} active post-restore, got ${conscientaAfterRestore?.status}`,
+        );
+        assert(
+          findLabAfterRestore(LAB_MISTRAL)?.status !== "active",
+          `Expected ${LAB_MISTRAL} to be removed post-restore, but it's still active`,
+        );
+        assert(
+          findLabAfterRestore(LAB_UNIFIED)?.status !== "active",
+          `Expected ${LAB_UNIFIED} to be reverted post-restore, but it's still active`,
+        );
 
-        // Step 4 — re-drive the R2 resolve pipeline with the same forced outcomes.
         const r2 = scenario.rounds.find((r) => r.roundNumber === 2)!;
         await driveResolveOnce(client, gameId, r2);
 
-        // Step 5 — final state must match captured (both at R2 narrate).
         const final = await captureState(client, gameId);
-        if (final.conscientaStatus !== "decommissioned") {
-          throw new Error(`Post-rerun: expected Conscienta decommissioned, got ${final.conscientaStatus}`);
-        }
-        if (!final.unifiedLab) throw new Error(`Post-rerun: missing 'Unified AI Safety Initiative' lab`);
-        if (!final.mistralLab) throw new Error(`Post-rerun: missing 'Mistral-Nine' lab`);
+        assert(final.conscientaStatus === "decommissioned", `Post-rerun: expected ${LAB_CONSCIENTA} decommissioned, got ${final.conscientaStatus}`);
+        assert(final.unifiedLab, `Post-rerun: missing '${LAB_UNIFIED}' lab`);
+        assert(final.mistralLab, `Post-rerun: missing '${LAB_MISTRAL}' lab`);
 
         // table.computeStock is the cached sum of settled ledger rows per role —
-        // equality here is exactly the conservation invariant we care about.
+        // equality here is the conservation invariant.
         for (const [roleId, before] of Object.entries(captured.tableStockByRole)) {
           const after = final.tableStockByRole[roleId];
-          if (after !== before) {
-            throw new Error(`Post-rerun stock drift for ${roleId}: captured=${before}, after=${after}`);
-          }
+          assert(after === before, `Post-rerun stock drift for ${roleId}: captured=${before}, after=${after}`);
         }
       },
     },
@@ -208,23 +209,25 @@ interface CapturedState {
 }
 
 async function captureState(client: Parameters<typeof driveResolveOnce>[0], gameId: Id<"games">): Promise<CapturedState> {
-  const labs = await client.query(api.labs.getLabs, { gameId, includeInactive: true });
+  const [labs, tables] = await Promise.all([
+    client.query(api.labs.getLabs, { gameId, includeInactive: true }),
+    client.query(api.tables.getByGame, { gameId }),
+  ]);
   const labsByName: CapturedState["labsByName"] = {};
   for (const l of labs) {
     labsByName[l.name] = { status: l.status, ownerRoleId: l.ownerRoleId ?? undefined };
   }
-  const tables = await client.query(api.tables.getByGame, { gameId });
   const tableStockByRole: Record<string, number> = {};
   for (const t of tables) {
     if (t.computeStock != null) tableStockByRole[t.roleId] = t.computeStock;
   }
+  const findActive = (name: string) =>
+    labsByName[name]?.status === "active" ? labsByName[name] : undefined;
   return {
     labsByName,
-    conscientaStatus: labsByName["Conscienta"]?.status ?? "missing",
-    unifiedLab: labsByName["Unified AI Safety Initiative"]?.status === "active"
-      ? labsByName["Unified AI Safety Initiative"] : undefined,
-    mistralLab: labsByName["Mistral-Nine"]?.status === "active"
-      ? labsByName["Mistral-Nine"] : undefined,
+    conscientaStatus: labsByName[LAB_CONSCIENTA]?.status ?? "missing",
+    unifiedLab: findActive(LAB_UNIFIED),
+    mistralLab: findActive(LAB_MISTRAL),
     tableStockByRole,
   };
 }

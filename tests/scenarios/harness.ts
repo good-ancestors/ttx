@@ -144,11 +144,9 @@ export async function runScenario(scenario: Scenario): Promise<void> {
   console.log(`✓ ${scenario.name} passed`);
 }
 
-/** Drive a single resolve pass: forced probabilities → triggerRoll → effect-review,
- *  rerolls until forced outcomes match, then triggerContinueFromEffectReview →
- *  narrate. Assumes submissions for `round` are already in place; idempotent on
- *  probability override (overrideProbability re-rolls under the hood when called
- *  twice). Exported so scenarios can re-run resolve after restoreSnapshot. */
+/** Exported so scenarios can re-run resolve after restoreSnapshot. Assumes
+ *  submissions for `round` are already in place; idempotent on probability
+ *  override (overrideProbability re-rolls under the hood when called twice). */
 export async function driveResolveOnce(
   client: ConvexHttpClient,
   gameId: Id<"games">,

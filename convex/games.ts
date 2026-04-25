@@ -10,7 +10,7 @@ import {
   mergeLabsWithComputeInternal,
 } from "./labs";
 import { emitTransaction, emitPair } from "./computeLedger";
-import { validateComputeAllocation } from "./submissions";
+import { validateComputeAllocation, stripGradingFields, escrowSendTargets, escrowFoundLab } from "./submissions";
 
 
 /** Pre-generate AI/NPC actions so they're ready before submissions open. */
@@ -727,15 +727,16 @@ async function resetSubmissionsForReroll(
     .collect();
   for (const sub of submissions) {
     if (sub.status !== "graded" && sub.status !== "resolved") continue;
+    // Only re-allocate `actions` when at least one submitted action carried
+    // roll/grade artifacts; submissions with only draft actions just need
+    // their status reverted.
+    let dirty = false;
     const actions = sub.actions.map((a) => {
       if (a.actionStatus !== "submitted") return a;
-      const {
-        probability: _p, reasoning: _r, rolled: _ro, success: _s,
-        aiInfluence: _ai, structuredEffect: _se, confidence: _c, ...rest
-      } = a;
-      return rest;
+      dirty = true;
+      return stripGradingFields(a, { resetRoll: true });
     });
-    await ctx.db.patch(sub._id, { actions, status: "submitted" });
+    await ctx.db.patch(sub._id, dirty ? { actions, status: "submitted" } : { status: "submitted" });
   }
 }
 
@@ -752,46 +753,45 @@ async function reEmitPendingEscrowsForRound(
   gameId: Id<"games">,
   roundNumber: number,
 ) {
-  const submissions = await ctx.db.query("submissions")
-    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId).eq("roundNumber", roundNumber))
-    .collect();
+  const [submissions, requests] = await Promise.all([
+    ctx.db.query("submissions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId).eq("roundNumber", roundNumber))
+      .collect(),
+    ctx.db.query("requests")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId).eq("roundNumber", roundNumber))
+      .collect(),
+  ]);
+
   for (const sub of submissions) {
     for (const action of sub.actions) {
       if (action.actionStatus !== "submitted" || !action.actionId) continue;
 
-      if (action.computeTargets) {
-        for (const target of action.computeTargets) {
-          if (target.direction !== "send") continue;
-          await emitPair(ctx, {
-            gameId, roundNumber,
-            type: "transferred", status: "pending",
-            fromRoleId: sub.roleId,
-            toRoleId: target.roleId,
-            amount: target.amount,
-            reason: `Send escrow: ${action.text.slice(0, 80)}`,
-            actionId: action.actionId,
-          });
-        }
+      const sendTargets = (action.computeTargets ?? []).filter((t) => t.direction === "send");
+      if (sendTargets.length > 0) {
+        await escrowSendTargets(ctx, {
+          gameId, roundNumber,
+          senderRoleId: sub.roleId,
+          actionId: action.actionId,
+          actionText: action.text,
+          targets: sendTargets,
+          // Already validated at original submit; stock baseline can shift on
+          // re-emit if other actions in this round restore-pass have already
+          // landed pending rows, so re-checking here would false-positive.
+          skipAvailabilityCheck: true,
+        });
       }
 
       if (action.foundLab) {
-        await ctx.db.insert("computeTransactions", {
+        await escrowFoundLab(ctx, {
           gameId, roundNumber,
-          createdAt: Date.now(),
-          type: "adjusted",
-          status: "pending",
-          roleId: sub.roleId,
-          amount: -action.foundLab.seedCompute,
-          reason: `Lab founding escrow: "${action.foundLab.name}"`,
+          founderRoleId: sub.roleId,
           actionId: action.actionId,
+          foundLab: action.foundLab,
         });
       }
     }
   }
 
-  const requests = await ctx.db.query("requests")
-    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId).eq("roundNumber", roundNumber))
-    .collect();
   for (const req of requests) {
     if (req.status !== "accepted" || req.requestType !== "compute") continue;
     if (!req.actionId || req.computeAmount == null) continue;
