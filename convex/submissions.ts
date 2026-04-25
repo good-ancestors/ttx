@@ -153,7 +153,22 @@ export const getByGameAndRoundRedacted = query({
       actions: sub.actions.map((a) => {
         // AI Systems can see all secrets (needed for influence decisions)
         if (a.secret && sub.roleId !== args.viewerRoleId && args.viewerRoleId !== AI_SYSTEMS_ROLE_ID) {
-          return { ...a, text: "[Covert action]", reasoning: undefined };
+          // Strip every field that exposes intent / target. The action's
+          // existence + dice outcome stay visible (rolled / success /
+          // probability / aiInfluence) — that's the deliberate "something
+          // covert was attempted" signal. Successful structural outcomes
+          // (mergers, foundLabs, transfers) leak naturally via labs/ledger
+          // state, not via this endpoint, which is correct.
+          return {
+            ...a,
+            text: "[Covert action]",
+            reasoning: undefined,
+            structuredEffect: undefined,
+            confidence: undefined,
+            mergeLab: undefined,
+            foundLab: undefined,
+            computeTargets: undefined,
+          };
         }
         return a;
       }),

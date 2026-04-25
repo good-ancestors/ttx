@@ -22,16 +22,6 @@ export type TransactionType =
 
 export type TransactionStatus = "pending" | "settled";
 
-/** Transaction types that snapshot-restore should drop from the round being
- *  restored — they're re-derivable from the structural state. The remaining
- *  types (`starting`, `transferred`, `facilitator`) are player-initiated and
- *  must be preserved across a restore. */
-export const REGENERABLE_TX_TYPES: ReadonlySet<TransactionType> = new Set([
-  "acquired",
-  "adjusted",
-  "merged",
-]);
-
 export interface EmitArgs {
   gameId: Id<"games">;
   roundNumber: number;

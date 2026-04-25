@@ -101,6 +101,97 @@ Decide before wiring up.
 - Smoke on prod: one fresh game, one full round, validate mechanics log renders.
 - Clear out dev Convex stale games + rogue game-creation source (something respawns them — probably an abandoned browser tab or test harness).
 
+### 10. Two-reviewer pass: deferred findings
+
+A correctness lens (A) and a production-readiness lens (B) reviewed the full PR
+post-simplify. Three CRIT/MAJ findings landed in this PR; the rest are deferred.
+
+**Correctness — pipeline-iteration-vs-apply-mutation order (A-MAJ-1, A-MAJ-3).**
+Pipeline iterates `effectsToApply` in submission/action order, but the apply
+mutation has a fixed type-bucket order (adjusted+merged → mergeOps → decommission
+→ transferOps → foundLab). When a single round mixes `computeDestroyed` /
+`computeTransfer` outflow with `transferOwnership` of the same role's lab,
+`mechanicsLog` `before/after` numbers (logged in pipeline iteration order) can
+diverge from actual ledger end-state (which always applies adjusted before
+transferOps). Fix: build the mechanics log inside the apply mutation after live-
+state reads, or sort `effectsToApply` to match the apply order.
+
+**Correctness — `resetLabsToSnapshotInternal` silent skip (A-MAJ-2).**
+`convex/labs.ts:287-322` silently skips snapshot entries whose `labId` no longer
+exists. Called from `pipeline.ts` on the in-place re-resolve path (no remap pass).
+If a lab in `labsBefore` was hard-deleted between the original resolve and a
+re-resolve, it's silently NOT recreated. Fix: error out, or use the same insert-
+with-remap pass as `restoreLabsFromSnapshot`.
+
+**Correctness — post-merge absorbed-owner pool acquisition (A-MAJ-4).**
+`convex/pipeline.ts:1262-1276` builds `activeOwnerRoleIds` from post-growth
+`grownLabs`. After a phase-5 merger the absorbed lab's old owner roleId is gone,
+so `calculatePoolNewCompute` treats them as a non-lab pool role. For lab-CEO-
+tagged roles this is wrong. Fix: also exclude lab-CEO-tagged roles from pool
+acquisition, or zero the absorbed-owner's table.computeStock on merge.
+
+**Correctness — resolving-lock release at P7 (A-MAJ-5).**
+`setPhaseEffectReviewInternal` releases `resolving: false` at the P7 pause. A
+stray `triggerRoll` from a different facilitator tab during P7 review would
+launch a new resolve while pendingProductivityMods + mechanicsLog are still on
+the round. Fix: in `triggerRoll`, also reject when `phase === "effect-review"`.
+
+**Correctness — re-resolve through rolling-phase path (A-MAJ-6).**
+`convex/pipeline.ts:567` runs `clearRegenerableRowsInternal` before
+`resetLabsToSnapshotInternal` on re-resolve. On first-time resolve this is fine;
+on re-resolve through the same path (no snapshot restore), `tableComputeByRole`
+reflects ledger state including prior-run player-pinned settlements that are now
+structurally inconsistent with the reset labs. Fix: block re-resolve through this
+path entirely (force users through `restoreSnapshot`), or fully reset
+`table.computeStock` from baseline + non-action ledger rows.
+
+**Correctness — minor follow-ups (A-MIN-1..7).**
+- `mergeLabsWithComputeInternal` silently drops absorbed compute on owned-into-
+  unowned merge — emit `adjusted -X` instead.
+- `cappedMechLog` allocates entries beyond the cap before slicing — fold the
+  room-left check into `pushLog`.
+- `MAX_MECHANICS_LOG_ENTRIES` constant duplicated (200) in pipelineApply.ts.
+- `transferOwnership` mechanicsLog `subject = target.name` but `after` is the new
+  owner's combined stock — confusing. Split into two log entries.
+- `try/catch` on "request already exists" in `sendHintsForRole` was hardened in
+  this PR (logs non-idempotency errors); pattern could be applied elsewhere.
+- `advanceRound` on round 4 doesn't materialise round-4 `pendingAcquired`.
+  Document the design or materialise on `finishGame`.
+- `transferLabOwnershipInternal` doesn't enforce one-lab-per-role — `addLab`
+  rejects this case but the structural transfer path doesn't.
+
+**Coverage gaps (A — testing).** Not addressed in this PR.
+- No end-to-end compute-conservation test across a full round.
+- P9-before-P10 ordering tested in pure function only, not at live-pipeline level.
+- Snapshot-restore + re-resolve round-trip — the path the CRIT-1/CRIT-2 fix
+  lands on this PR — should grow an integration test in the scenario harness.
+- mechanicsLog idempotency guard untested.
+- transferOwnership compute-follows-the-lab apply-path test missing.
+- Scenario harness wiring to CI is in #6 above.
+
+**Production — nice-to-haves (B-MIN-1..4).**
+- Effect-editor popover lacks Tab-cycle trap (has aria-modal + ESC + initial focus).
+- Some toggles in `action-input-pickers.tsx` use `min-h-[36px]` vs the 48px target
+  — regression-of-policy not regression-of-code (source already had similar).
+- `getFacilitatorState` payload roughly doubled with the new action fields —
+  bounded at event scale (~50 actions) but worth a note.
+- Narrative LLM fallback writes a placeholder summary but `updatePipelineStatus`
+  uses `step: "narrating"` with the error in `detail`. Consider a `step:
+  "warning"` literal so the facilitator UI distinguishes it from success.
+
+**Day-of-event runbook gaps (B).**
+1. Pipeline-stuck recovery — `clearResolution` exists; needs labelled "force
+   unstick" button and bookmark `npx convex logs --prod --history 50`.
+2. LLM 5xx storm fallback — document the manual `overrideProbability` +
+   `overrideStructuredEffect` flow with screenshots.
+3. Snapshot-restore walkthrough on prod-deployed code, before the event.
+4. Cost ceiling — facilitator should know NPC kill switch if AI-mode round costs
+   spike.
+5. Projector test — confirm the three-section facilitator dashboard renders at
+   1920×1080 on the **physical venue projector**, not just Claude Preview MCP.
+6. Browser-refresh during effect-review — confirm the new `effect-review` phase
+   re-hydrates correctly mid-round if the laptop sleeps and reawakens.
+
 ## How to resume
 
 ```

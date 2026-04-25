@@ -572,7 +572,7 @@ async function sendHintsForRole(ctx: ActionCtx, link: LinkContext, p: PendingAct
           actionId, actionText: hint.actionText,
           requestType: "endorsement",
         });
-      } catch { /* request already exists */ }
+      } catch (err) { logHintFailure(err, `endorsement ${p.roleId} → ${targetId}`); }
     }
   }
   for (const hint of p.computeRequestHints ?? []) {
@@ -586,7 +586,17 @@ async function sendHintsForRole(ctx: ActionCtx, link: LinkContext, p: PendingAct
         requestType: "compute",
         computeAmount: hint.amount,
       });
-    } catch { /* request already exists */ }
+    } catch (err) { logHintFailure(err, `compute request ${p.roleId} → ${hint.targetRoleId}`); }
+  }
+}
+
+/** sendInternal throws on duplicate request docs (idempotency by design). Any
+ *  other failure — validation, "cannot send to yourself", DB error — should
+ *  surface in logs rather than vanish silently. */
+function logHintFailure(err: unknown, label: string) {
+  const msg = err instanceof Error ? err.message : String(err);
+  if (!/already exists/i.test(msg)) {
+    console.warn(`[aiGenerate] ${label} hint failed:`, err);
   }
 }
 

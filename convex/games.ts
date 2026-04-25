@@ -9,7 +9,7 @@ import {
   createLabInternal,
   mergeLabsWithComputeInternal,
 } from "./labs";
-import { emitTransaction, REGENERABLE_TX_TYPES } from "./computeLedger";
+import { emitTransaction, emitPair } from "./computeLedger";
 import { validateComputeAllocation } from "./submissions";
 
 
@@ -545,6 +545,12 @@ export const restoreSnapshot = mutation({
 
     await restoreLabsFromSnapshot(ctx, args.gameId, labsSnapshot);
     await clearRoundResolveData(ctx, round._id, useBefore);
+    if (useBefore) {
+      // Order matters: reset submissions BEFORE rebuilding the ledger so the
+      // re-emit pass can read the (now-reset) action intents and rebuild the
+      // submit-phase pending escrows from them.
+      await resetSubmissionsForReroll(ctx, args.gameId, args.roundNumber);
+    }
     await rebuildLedgerState(ctx, args.gameId, args.roundNumber, useBefore);
 
     await logEvent(ctx, args.gameId, "snapshot_restored", undefined, {
@@ -654,11 +660,13 @@ async function clearRoundResolveData(
 
 /** Rebuild compute ledger to match the restored point-in-time, then refresh the
  *  cached table.computeStock from the surviving rows.
- *  - useBefore=true: remove all rows from rounds > targetRound, plus regenerable
- *    rows (acquired/adjusted/merged) from targetRound itself. Transferred +
- *    facilitator rows within targetRound remain (player-initiated movements done
- *    during the submit phase).
- *  - useBefore=false: remove all rows from rounds > targetRound. Keep targetRound. */
+ *  - useBefore=true: drop ALL target-round rows (submit-phase escrows, roll-phase
+ *    settlements, apply-phase derivations). The next call to
+ *    reEmitPendingEscrowsForRound rebuilds the submit-phase pending state from
+ *    the (just-reset) action intents, returning the round to a "post-submit,
+ *    pre-roll" ledger configuration. Future-round rows (> target) are also dropped.
+ *  - useBefore=false: keep target round intact (the round IS resolved); only drop
+ *    rows from rounds > targetRound (future state we never reached). */
 async function rebuildLedgerState(
   ctx: MutationCtx,
   gameId: Id<"games">,
@@ -669,8 +677,7 @@ async function rebuildLedgerState(
     .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId))
     .collect();
   const shouldDelete = (tx: typeof allTx[number]) =>
-    tx.roundNumber > roundNumber ||
-    (useBefore && tx.roundNumber === roundNumber && REGENERABLE_TX_TYPES.has(tx.type));
+    tx.roundNumber > roundNumber || (useBefore && tx.roundNumber === roundNumber);
   const stockByRole = new Map<string, number>();
   for (const tx of allTx) {
     if (shouldDelete(tx)) {
@@ -680,6 +687,16 @@ async function rebuildLedgerState(
     if (tx.status !== "settled") continue;
     stockByRole.set(tx.roleId, (stockByRole.get(tx.roleId) ?? 0) + tx.amount);
   }
+
+  if (useBefore) {
+    // Re-emit the pending escrows submit-phase would produce; without these the
+    // next rollAllImpl finds no pending rows to settle and silently zeroes the
+    // submitter's intent. The pending rows are status="pending" so they don't
+    // contribute to settled stock totals — table.computeStock refresh below
+    // remains correct.
+    await reEmitPendingEscrowsForRound(ctx, gameId, roundNumber);
+  }
+
   const tables = await ctx.db.query("tables")
     .withIndex("by_game", (q) => q.eq("gameId", gameId))
     .collect();
@@ -689,6 +706,104 @@ async function rebuildLedgerState(
     if (newStock !== t.computeStock) {
       await ctx.db.patch(t._id, { computeStock: newStock });
     }
+  }
+}
+
+/** Reset all submissions in the target round so the next triggerRoll re-runs
+ *  rollAllImpl on them. Without this, rollAllImpl short-circuits on
+ *  status="resolved" and the player-pinned settlement helpers (foundLab, merge,
+ *  computeTargets) never re-fire — the round's structural state ends up
+ *  inconsistent with the action outcomes the submissions still claim. Keeps
+ *  player intent fields (text, priority, secret, computeTargets, foundLab,
+ *  mergeLab); drops every grading + rolling artifact so re-grade + re-roll
+ *  produce a clean run. */
+async function resetSubmissionsForReroll(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roundNumber: number,
+) {
+  const submissions = await ctx.db.query("submissions")
+    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId).eq("roundNumber", roundNumber))
+    .collect();
+  for (const sub of submissions) {
+    if (sub.status !== "graded" && sub.status !== "resolved") continue;
+    const actions = sub.actions.map((a) => {
+      if (a.actionStatus !== "submitted") return a;
+      const {
+        probability: _p, reasoning: _r, rolled: _ro, success: _s,
+        aiInfluence: _ai, structuredEffect: _se, confidence: _c, ...rest
+      } = a;
+      return rest;
+    });
+    await ctx.db.patch(sub._id, { actions, status: "submitted" });
+  }
+}
+
+/** Walk submissions + accepted compute-requests in the target round and re-emit
+ *  the pending ledger rows submit-phase would have produced:
+ *  - foundLab: pending `adjusted` row (-seedCompute, escrowed against submitter)
+ *  - send computeTargets: pending `transferred` pair (submitter → target)
+ *  - accepted compute requests: pending `transferred` pair (target → submitter)
+ *  Endorsement requests have no escrow. Pending status means table.computeStock
+ *  isn't affected; the rows exist for rollAllImpl's settlePendingForAction to
+ *  transition to settled (or cancelPendingForAction to delete) on re-roll. */
+async function reEmitPendingEscrowsForRound(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roundNumber: number,
+) {
+  const submissions = await ctx.db.query("submissions")
+    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId).eq("roundNumber", roundNumber))
+    .collect();
+  for (const sub of submissions) {
+    for (const action of sub.actions) {
+      if (action.actionStatus !== "submitted" || !action.actionId) continue;
+
+      if (action.computeTargets) {
+        for (const target of action.computeTargets) {
+          if (target.direction !== "send") continue;
+          await emitPair(ctx, {
+            gameId, roundNumber,
+            type: "transferred", status: "pending",
+            fromRoleId: sub.roleId,
+            toRoleId: target.roleId,
+            amount: target.amount,
+            reason: `Send escrow: ${action.text.slice(0, 80)}`,
+            actionId: action.actionId,
+          });
+        }
+      }
+
+      if (action.foundLab) {
+        await ctx.db.insert("computeTransactions", {
+          gameId, roundNumber,
+          createdAt: Date.now(),
+          type: "adjusted",
+          status: "pending",
+          roleId: sub.roleId,
+          amount: -action.foundLab.seedCompute,
+          reason: `Lab founding escrow: "${action.foundLab.name}"`,
+          actionId: action.actionId,
+        });
+      }
+    }
+  }
+
+  const requests = await ctx.db.query("requests")
+    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId).eq("roundNumber", roundNumber))
+    .collect();
+  for (const req of requests) {
+    if (req.status !== "accepted" || req.requestType !== "compute") continue;
+    if (!req.actionId || req.computeAmount == null) continue;
+    await emitPair(ctx, {
+      gameId, roundNumber,
+      type: "transferred", status: "pending",
+      fromRoleId: req.toRoleId,    // target whose pool was escrowed on accept
+      toRoleId: req.fromRoleId,    // submitter who'll receive on success
+      amount: req.computeAmount,
+      reason: `Accepted-request escrow: ${req.actionText.slice(0, 80)}`,
+      actionId: req.actionId,
+    });
   }
 }
 
