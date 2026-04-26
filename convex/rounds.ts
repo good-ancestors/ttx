@@ -39,8 +39,12 @@ export const getByGameLightweight = query({
       number: r.number,
       label: r.label,
       labsAfter: r.labsAfter,
-      // Sectioned summary — four short section arrays
+      // Narrative summary — outcomes/stateOfPlay/pressures for new rounds, legacy
+      // 4-domain buckets for older rounds. Both shapes passed through; UI prefers new.
       summary: r.summary ? {
+        outcomes: r.summary.outcomes,
+        stateOfPlay: r.summary.stateOfPlay,
+        pressures: r.summary.pressures,
         labs: r.summary.labs,
         geopolitics: r.summary.geopolitics,
         publicAndMedia: r.summary.publicAndMedia,
@@ -97,6 +101,9 @@ export const getForPlayer = query({
       number: round.number,
       label: round.label,
       summary: round.summary ? {
+        outcomes: round.summary.outcomes,
+        stateOfPlay: round.summary.stateOfPlay,
+        pressures: round.summary.pressures,
         labs: round.summary.labs,
         geopolitics: round.summary.geopolitics,
         publicAndMedia: round.summary.publicAndMedia,
@@ -111,11 +118,15 @@ export const applySummary = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     summary: v.object({
-      labs: v.array(v.string()),
-      geopolitics: v.array(v.string()),
-      publicAndMedia: v.array(v.string()),
-      aiSystems: v.array(v.string()),
+      outcomes: v.optional(v.string()),
+      stateOfPlay: v.optional(v.string()),
+      pressures: v.optional(v.string()),
       facilitatorNotes: v.optional(v.string()),
+      // Legacy 4-domain fields (older rounds) — accepted for compat during edit.
+      labs: v.optional(v.array(v.string())),
+      geopolitics: v.optional(v.array(v.string())),
+      publicAndMedia: v.optional(v.array(v.string())),
+      aiSystems: v.optional(v.array(v.string())),
     }),
     facilitatorToken: v.optional(v.string()),
   },
@@ -188,11 +199,14 @@ export const applySummaryInternal = internalMutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     summary: v.object({
-      labs: v.array(v.string()),
-      geopolitics: v.array(v.string()),
-      publicAndMedia: v.array(v.string()),
-      aiSystems: v.array(v.string()),
+      outcomes: v.optional(v.string()),
+      stateOfPlay: v.optional(v.string()),
+      pressures: v.optional(v.string()),
       facilitatorNotes: v.optional(v.string()),
+      labs: v.optional(v.array(v.string())),
+      geopolitics: v.optional(v.array(v.string())),
+      publicAndMedia: v.optional(v.array(v.string())),
+      aiSystems: v.optional(v.array(v.string())),
     }),
   },
   handler: async (ctx, args) => {
@@ -220,6 +234,7 @@ async function buildLabSnapshot(ctx: MutationCtx, gameId: Id<"games">) {
     status: l.status,
     mergedIntoLabId: l.mergedIntoLabId,
     createdRound: l.createdRound,
+    jurisdiction: l.jurisdiction,
   }));
 }
 
@@ -252,6 +267,91 @@ export const setLabTrajectories = internalMutation({
   handler: async (ctx, args) => {
     const round = await findRound(ctx, args.gameId, args.roundNumber);
     if (round) await ctx.db.patch(round._id, { labTrajectories: args.trajectories });
+  },
+});
+
+/** Write the P7 applied-ops list for facilitator review. Rendered on the effect-review
+ *  screen so the facilitator sees what the decide LLM proposed, what actually landed,
+ *  and what was rejected by the validator (conflicts, invalid roleIds, last-active-lab
+ *  guard, etc.). */
+export const setAppliedOpsInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    appliedOps: v.array(v.object({
+      type: v.string(),
+      status: v.union(v.literal("applied"), v.literal("rejected")),
+      summary: v.string(),
+      reason: v.optional(v.string()),
+      category: v.optional(v.string()),
+      opType: v.optional(v.string()),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
+    if (round) await ctx.db.patch(round._id, { appliedOps: args.appliedOps });
+  },
+});
+
+/** Read the pending (not-yet-materialised) acquisition amounts for a round, joined with
+ *  role display names. Shown in the "New Compute Acquired" panel during narrate — the
+ *  facilitator sees what will land at Advance. Falls back to settled `acquired` ledger
+ *  rows for legacy rounds that were resolved before the deferral landed. */
+export const getPendingAcquired = query({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
+    if (!round) return [];
+
+    const tables = await ctx.db.query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const nameByRole = new Map(tables.map((t) => [t.roleId, t.roleName] as const));
+
+    if (round.pendingAcquired && round.pendingAcquired.length > 0) {
+      return round.pendingAcquired
+        .filter((r) => r.amount !== 0)
+        .map((r) => ({ roleId: r.roleId, name: nameByRole.get(r.roleId) ?? r.roleId, amount: r.amount, pending: true as const }));
+    }
+
+    // Fallback: legacy rounds resolved pre-deferral have acquired rows in the ledger.
+    const acquired = await ctx.db.query("computeTransactions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
+      .filter((q) => q.eq(q.field("type"), "acquired"))
+      .collect();
+    const byRole = new Map<string, number>();
+    for (const row of acquired) {
+      byRole.set(row.roleId, (byRole.get(row.roleId) ?? 0) + row.amount);
+    }
+    return [...byRole.entries()]
+      .filter(([, amount]) => amount !== 0)
+      .map(([roleId, amount]) => ({ roleId, name: nameByRole.get(roleId) ?? roleId, amount, pending: false as const }));
+  },
+});
+
+/** Facilitator-edit path for pending acquisition: overwrite the full `pendingAcquired`
+ *  array with new per-role amounts. Used by the editable "New Compute Acquired" panel. */
+export const updatePendingAcquired = mutation({
+  args: {
+    gameId: v.id("games"),
+    roundNumber: v.number(),
+    amounts: v.array(v.object({ roleId: v.string(), amount: v.number() })),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    const round = await findRound(ctx, args.gameId, args.roundNumber);
+    if (!round) throw new Error(`Round ${args.roundNumber} not found`);
+    // Acquisition is conserved non-negative compute flowing in. Reject non-finite
+    // values (NaN/Infinity pass v.number()) and any negative amount — a negative
+    // "acquired" row would violate the ledger invariant that `acquired` entries
+    // only ever add compute.
+    for (const r of args.amounts) {
+      if (!Number.isFinite(r.amount)) throw new Error(`updatePendingAcquired: amount for ${r.roleId} is not a finite number`);
+      if (r.amount < 0) throw new Error(`updatePendingAcquired: amount for ${r.roleId} must be >= 0 (got ${r.amount})`);
+    }
+    const nonZero = args.amounts.filter((r) => r.amount !== 0);
+    await ctx.db.patch(round._id, { pendingAcquired: nonZero });
   },
 });
 
@@ -308,13 +408,16 @@ export const setAiMetaInternal = internalMutation({
 export const getComputeHolderView = query({
   args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
-    // All settled rows up to and including this round, for stockAfter computation.
+    // Range-scan settled rows in this round or earlier. Narrower than a full
+    // game scan, which matters as games accumulate transactions round-over-round.
     const allTx = await ctx.db
       .query("computeTransactions")
-      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId))
+      .withIndex("by_game_and_round", (q) =>
+        q.eq("gameId", args.gameId).lte("roundNumber", args.roundNumber),
+      )
       .collect();
     // `starting` rows are emitted at roundNumber=1 but represent seed stock present before
-    // the first round's activity — include them in stockBefore regardless of target round.
+    // the first round's activity — always in priorRounds regardless of target.
     const priorRounds = allTx.filter((t) =>
       t.status === "settled" &&
       (t.roundNumber < args.roundNumber || t.type === "starting")
@@ -355,7 +458,11 @@ export const getComputeHolderView = query({
       let acquired = 0, transferred = 0, adjusted = 0, merged = 0, facilitator = 0;
       for (const tx of thisRound) {
         if (tx.roleId !== roleId) continue;
-        if (tx.status !== "settled") continue;
+        // Include pending `transferred` rows so planned/soft-take transfers are visible
+        // in the detail table and reflected in stockAfter. Other types only count when
+        // settled (pending escrow for foundings, etc. hasn't actually moved compute).
+        const include = tx.status === "settled" || (tx.type === "transferred" && tx.status === "pending");
+        if (!include) continue;
         switch (tx.type) {
           case "acquired": acquired += tx.amount; break;
           case "transferred": transferred += tx.amount; break;

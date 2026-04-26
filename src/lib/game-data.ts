@@ -25,6 +25,7 @@ export interface Lab {
   spec?: string;
   colour?: string;
   status?: "active" | "decommissioned";
+  jurisdiction?: string;                // legal/regulatory home — affects probability weighting; mutated by redomicile
 }
 
 // ─── ROLES ────────────────────────────────────────────────────────────────────
@@ -48,8 +49,8 @@ export interface Role {
 export const DEFAULT_ROUND_LABEL = ROUND_CONFIGS[0].label;
 
 // Phase helpers
-export function isResolvingPhase(phase: string): phase is "rolling" | "narrate" {
-  return phase === "rolling" || phase === "narrate";
+export function isResolvingPhase(phase: string): phase is "rolling" | "effect-review" | "narrate" {
+  return phase === "rolling" || phase === "effect-review" || phase === "narrate";
 }
 
 // Tag helpers — gate UI features and AI context
@@ -497,10 +498,36 @@ export const COMPUTE_CATEGORIES = [
 
 export const MAX_PRIORITY = 10;
 export const MAX_ACTIONS = 5;
+export const MAX_COMPUTE_DESTROYED_PER_ACTION = 50;
+export const MIN_SEED_COMPUTE = 10;
 export const TOTAL_ROUNDS = ROUND_CONFIGS.length;
+export const DEFAULT_LAB_ALLOCATION = { deployment: 33, research: 34, safety: 33 } as const;
 
 export function isSubmittedAction(action: { actionStatus: string }): boolean {
   return action.actionStatus === "submitted";
+}
+
+/** Count graded actions still flagged low-confidence. The grader emits
+ *  `confidence: "low"` when its structured-effect grade is uncertain;
+ *  facilitators must click-through (accept or edit) each before Roll Dice
+ *  unlocks. Once acknowledged via `overrideStructuredEffect({ acknowledge: true })`
+ *  confidence is upgraded to "high", so this count is simply the remaining
+ *  unacknowledged low-confidence rows. Only counts *graded* actions
+ *  (probability != null); ungraded rows are gated separately.
+ *
+ *  Generic over action shape so callers (facilitator Submission type,
+ *  raw Convex docs, or the round-phase reduced form) all work without
+ *  converting. */
+export function countUnacknowledgedLowConfidence(
+  submissions: { actions: { probability?: number; confidence?: string }[] }[],
+): number {
+  let count = 0;
+  for (const s of submissions) {
+    for (const a of s.actions) {
+      if (a.probability != null && a.confidence === "low") count++;
+    }
+  }
+  return count;
 }
 
 /** Auto-decay priority table: position-based priority assignment.
@@ -635,12 +662,28 @@ export const LAB_PROGRESSION = {
   MIN_MULTIPLIER: 0.1,
   /** Max multiplier caps per round range. */
   maxMultiplier: (round: number) => round <= 2 ? 200 : round === 3 ? 2000 : 15000,
+  /** Productivity modifier clamps for researchDisruption / researchBoost.
+   *  Symmetric with the multiplier clamps (ceil maxMultiplier, floor 1) so
+   *  repeated emissions of either effect can't nuke or rocket a lab beyond
+   *  these bounds. Consumed by the pipeline's applyProductivityMod helper. */
+  PRODUCTIVITY_MIN: 0.25,
+  PRODUCTIVITY_MAX: 2.5,
 };
 
-function getBaselineStockAfterRound(labName: string, roundNumber: number): number {
+/** Clamp a productivity modifier to [PRODUCTIVITY_MIN, PRODUCTIVITY_MAX]. */
+export function clampProductivity(mod: number): number {
+  return Math.max(LAB_PROGRESSION.PRODUCTIVITY_MIN, Math.min(LAB_PROGRESSION.PRODUCTIVITY_MAX, mod));
+}
+
+/** Baseline compute stock at the START of `roundNumber` — i.e. starting stock
+ *  plus acquisitions from rounds 1 .. (roundNumber - 1). Used for the baseline
+ *  effectiveRd comparison in computeLabGrowth: R&D runs on pre-acquisition
+ *  stock, so the baseline ratio must also be pre-acquisition to stay
+ *  apples-to-apples. */
+export function getBaselineStockBeforeRound(labName: string, roundNumber: number): number {
   const startingStock = DEFAULT_LABS.find((lab) => lab.name === labName)?.computeStock ?? 0;
   let total = startingStock;
-  for (let round = 1; round <= roundNumber; round++) {
+  for (let round = 1; round < roundNumber; round++) {
     const share = DEFAULT_COMPUTE_SHARES[round]?.[labName] ?? 0;
     total += Math.round((NEW_COMPUTE_PER_GAME_ROUND[round] ?? 0) * share / 100);
   }
@@ -656,9 +699,27 @@ function getBaselineMultiplierBeforeRound(labName: string, roundNumber: number):
     ?? 1;
 }
 
-/** Compute lab R&D growth for a round based on allocations and compute stock.
- *  roleId is optional — used only for looking up default allocation via ROLES. Labs without
- *  a roleId (e.g. recently-founded labs with no default-compute match) fall back to 50% cap. */
+/** Compute lab R&D growth for a round based on allocations and PRE-ACQUISITION
+ *  compute stock. The returned labs carry:
+ *    - rdMultiplier: post-growth value (fed to applyGrowthAndAcquisitionInternal)
+ *    - computeStock: pre-acquisition stock + this round's new acquisition, so the
+ *      caller can derive the acquisition amount by diffing with the input stock.
+ *
+ *  R&D growth and compute acquisition are calculated INDEPENDENTLY:
+ *    effectiveRd uses pre-acquisition stock × research% × rdMultiplier × productivity
+ *    acquisition is the per-lab share of NEW_COMPUTE_PER_GAME_ROUND
+ *
+ *  Fixes the pre-redesign bug where R&D was calculated after acquisition was
+ *  folded in — trailing labs got a free multiplier boost from compute that
+ *  hadn't actually arrived yet.
+ *
+ *  `productivityMods` (labName → multiplicative factor) folds into effectiveRd
+ *  as a one-round throughput modifier from researchDisruption / researchBoost
+ *  effects. Absent entries default to 1.0.
+ *
+ *  roleId is optional — used only for looking up default allocation via ROLES.
+ *  Labs without a roleId (e.g. recently-founded labs with no default-compute
+ *  match) fall back to 50% research. */
 export function computeLabGrowth<T extends {
   name: string;
   roleId?: string;
@@ -671,45 +732,53 @@ export function computeLabGrowth<T extends {
   ceoAllocations: Map<string, { deployment: number; research: number; safety: number }>,
   roundNumber: number,
   maxMult: number,
+  productivityMods?: Map<string, number>,
 ): T[] {
   const P = LAB_PROGRESSION;
   const newComputeTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 3;
   const shares = DEFAULT_COMPUTE_SHARES[roundNumber] ?? {};
-
-  // Total stock for the proportional fallback (labs outside DEFAULT_COMPUTE_SHARES,
-  // e.g. player-founded). Hoisted so we compute once per round, not once per lab.
-  const totalCurrentStock = currentLabs.reduce((s, l) => s + l.computeStock, 0);
   const { STRUCTURAL_RATIO, REVENUE_FLOOR } = COMPUTE_ACQUISITION;
 
-  const labs = currentLabs.map(lab => {
-    const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
-    const sharePct = shares[lab.name];
-    // Baseline share of this round's new compute: authored per-round DEFAULT_COMPUTE_SHARES
-    // when present, else proportional to current stock.
-    const baseShare = sharePct !== undefined
-      ? newComputeTotal * sharePct / 100
-      : newComputeTotal * lab.computeStock / Math.max(1, totalCurrentStock);
-    // Split-bucket: STRUCTURAL_RATIO of baseShare flows regardless of deployment%;
-    // the remainder scales 0.5–1.5× with deployment% (REVENUE_FLOOR at D=0 → 1.0+ at D=50).
-    const revenueMult = REVENUE_FLOOR + 0.01 * allocation.deployment;
-    const newCompute = Math.round(baseShare * (STRUCTURAL_RATIO + (1 - STRUCTURAL_RATIO) * revenueMult));
-    const computeStock = Math.max(0, lab.computeStock + newCompute);
-    return { ...lab, allocation, computeStock };
-  });
+  // Total pre-acquisition stock for the proportional-share fallback (labs
+  // outside DEFAULT_COMPUTE_SHARES, e.g. player-founded). Hoisted so we compute
+  // once per round, not once per lab.
+  const totalPreStock = currentLabs.reduce((s, l) => s + l.computeStock, 0);
 
-  const effectiveRd = labs.map(l => l.computeStock * (l.allocation.research / 100) * l.rdMultiplier);
+  // ── R&D calculation on PRE-acquisition stock ──
+  // effectiveRd drives the performance ratio vs. the authored baseline. It
+  // explicitly does NOT include the acquisition that arrives this round —
+  // trailing labs should not get a free multiplier boost from compute that
+  // hasn't landed yet.
+  const effectiveRd = currentLabs.map((lab) => {
+    const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
+    const productivity = productivityMods?.get(lab.name) ?? 1;
+    return lab.computeStock * (allocation.research / 100) * lab.rdMultiplier * productivity;
+  });
   const totalEffectiveRd = effectiveRd.reduce((s, v) => s + v, 0);
 
-  return labs.map((lab, i) => {
+  return currentLabs.map((lab, i) => {
+    const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
+    const productivity = productivityMods?.get(lab.name) ?? 1;
+
+    // ── Acquisition (independent of R&D) ──
+    const sharePct = shares[lab.name];
+    const baseShare = sharePct !== undefined
+      ? newComputeTotal * sharePct / 100
+      : newComputeTotal * lab.computeStock / Math.max(1, totalPreStock);
+    const revenueMult = REVENUE_FLOOR + 0.01 * allocation.deployment;
+    const newCompute = Math.round(baseShare * (STRUCTURAL_RATIO + (1 - STRUCTURAL_RATIO) * revenueMult));
+
+    // ── R&D multiplier update ──
     const rdShare = effectiveRd[i] / Math.max(1, totalEffectiveRd);
     const baselineTarget = BASELINE_RD_TARGETS[lab.name]?.[roundNumber];
     let newMultiplier: number;
 
     if (baselineTarget) {
-      const baselineStock = getBaselineStockAfterRound(lab.name, roundNumber);
+      const baselineStock = getBaselineStockBeforeRound(lab.name, roundNumber);
       const baselineMultiplier = getBaselineMultiplierBeforeRound(lab.name, roundNumber);
-      const defaultAlloc = ROLES.find((role) => role.id === lab.roleId)?.defaultCompute;
+      const defaultAlloc = lab.roleId ? ROLE_MAP.get(lab.roleId)?.defaultCompute : undefined;
       const baselineResearchPct = defaultAlloc?.research ?? 50;
+      // Baseline effectiveRd — productivity baseline is 1.0 (no mods assumed).
       const baselineEffectiveRd = baselineStock * (baselineResearchPct / 100) * baselineMultiplier;
       const performanceRatio = effectiveRd[i] / Math.max(1, baselineEffectiveRd);
       const growthModifier = Math.min(
@@ -717,10 +786,9 @@ export function computeLabGrowth<T extends {
         Math.max(P.MIN_GROWTH_FACTOR, Math.pow(performanceRatio, P.PERFORMANCE_SENSITIVITY)),
       );
       const baselineGrowthFactor = baselineTarget / Math.max(P.MIN_MULTIPLIER, baselineMultiplier);
-      // Apply growthModifier to growth portion only: at modifier=0 → no growth, modifier=1 → baseline growth.
-      // Floor the effective factor at MIN_GROWTH_FACTOR so a lab that's already running far ahead of
-      // its baseline never regresses — it just grows more slowly. Without this floor, (baselineGrowthFactor - 1)
-      // goes negative and a high modifier could zero or shrink the multiplier.
+      // Apply growthModifier to growth portion only: at modifier=0 → no growth,
+      // modifier=1 → baseline growth. Floor at MIN_GROWTH_FACTOR so a lab running
+      // far ahead of its baseline never regresses — it just grows more slowly.
       const rawFactor = 1 + (baselineGrowthFactor - 1) * growthModifier;
       const effectiveFactor = Math.max(P.MIN_GROWTH_FACTOR, rawFactor);
       newMultiplier = Math.round(
@@ -728,10 +796,16 @@ export function computeLabGrowth<T extends {
       ) / 10;
     } else {
       const poolGrowth: Record<number, number> = { 1: 3, 2: 10, 3: 10, 4: 10 };
-      newMultiplier = Math.round(lab.rdMultiplier * (1 + rdShare * (poolGrowth[roundNumber] ?? 5)) * 10) / 10;
+      // Productivity folds directly into the no-baseline fallback too.
+      newMultiplier = Math.round(lab.rdMultiplier * (1 + rdShare * (poolGrowth[roundNumber] ?? 5) * productivity) * 10) / 10;
     }
 
-    return { ...lab, rdMultiplier: Math.min(maxMult, newMultiplier) };
+    return {
+      ...lab,
+      allocation,
+      rdMultiplier: Math.min(maxMult, newMultiplier),
+      computeStock: Math.max(0, lab.computeStock + newCompute),
+    };
   });
 }
 

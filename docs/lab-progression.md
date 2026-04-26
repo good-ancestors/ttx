@@ -87,7 +87,7 @@ Conscienta: 2x -> 5.5x -> 20x -> 44x     (slight boost at 65% cap)
 1. **CEO allocation**: The most impactful decision. Crossing the 60% threshold is the race/slowdown fork.
 2. **Compute acquisition**: DPA consolidation, trade deals, sanctions can dramatically change compute stocks. Doubling compute roughly doubles Safer path growth.
 3. **Re-entering the race**: Shifting allocation back above 60% restarts the exponential -- but from wherever you are, having lost rounds of compounding.
-4. **AI event modifiers**: Sanctions, sabotage, Taiwan invasion, weight theft -- these apply multiplierFactor and computeChange via a focused AI call after the deterministic baseline.
+4. **AI event modifiers**: Sanctions, sabotage, Taiwan invasion, weight theft -- the grader emits structured effects (computeDestroyed / researchDisruption / breakthrough / modelRollback / transferOwnership) that the deterministic apply path executes alongside the baseline R&D growth.
 
 ## Compute Growth
 

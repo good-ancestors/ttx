@@ -43,6 +43,7 @@ npm run test:all          # Everything including integration
 - Run `npm run lint:dead` (knip) after any refactor that moves/renames/deletes components
 - Prefer deleting code over commenting it out
 - If a function is unused, delete it — don't prefix with underscore
+- For local browser-driven smoke tests, prefer the **Claude Preview MCP** (`mcp__Claude_Preview__*`) over `mcp__Control_Chrome__*` — it reuses the dev server via `.claude/launch.json`, returns accessibility-tree snapshots with stable element UIDs, and supports CSS-selector clicks/fills. Fall back to Chrome MCP only when you need independent multi-tab orchestration. See `E2E-TESTING.md` for details.
 
 ## Cost-conscious testing
 - **Prefer unit tests** (`npm test`) over Convex integration tests — unit tests are free and instant

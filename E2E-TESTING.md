@@ -92,6 +92,19 @@ Test ONE role, ONE round. Don't run full 4-round games with AI tables.
 
 ## Browser Setup
 
+### For AI agents — prefer the Preview MCP
+
+When an AI agent is driving the browser for local testing, **use the `mcp__Claude_Preview__*` tools** in preference to `mcp__Control_Chrome__*` or raw Playwright. Reasons:
+
+- `preview_start` reads `.claude/launch.json` and reuses an already-running dev server (no port conflicts).
+- `preview_snapshot` returns an accessibility-tree snapshot with element UIDs — stable against re-renders and much cheaper on context than screenshots.
+- `preview_click` / `preview_fill` take CSS selectors, so you can target by `button:has-text('...')`, `[data-testid="..."]`, or role-based selectors without maintaining tab IDs.
+- `preview_console_logs` and `preview_eval` give you runtime debugging without tabbing out to DevTools.
+
+Only fall back to Chrome MCP tools when you genuinely need multi-tab orchestration (e.g. a facilitator window + several player windows driven independently).
+
+Ensure `app/.claude/launch.json` has a `"ttx"` entry pointing at `npm run dev` on port 3000, then call `preview_start({ name: "ttx" })` to get a `serverId` you can reuse for the rest of the session.
+
 ### Authentication
 
 Password managers can interfere with the login form. Use the `?p=` query parameter to bypass:

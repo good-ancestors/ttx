@@ -1,13 +1,12 @@
 "use client";
 
-import { use, useState, useEffect, useRef } from "react";
+import { use, useCallback, useMemo, useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, STARTING_SCENARIO, type Lab } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, type Lab } from "@/lib/game-data";
 import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation } from "@/lib/hooks";
-import { RdProgressChart } from "@/components/rd-progress-chart";
-import { LabTracker } from "@/components/lab-tracker";
 import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
 import { DebugPanel } from "@/components/debug-panel";
@@ -41,20 +40,23 @@ export default function FacilitatorPage({
   const game = useQuery(api.games.get, { gameId });
   const activeLabsRaw = useQuery(api.labs.getActiveLabs, isVisible ? { gameId } : "skip");
   const labTables = useQuery(api.tables.getByGame, isVisible ? { gameId } : "skip");
-  const labs: Lab[] = (activeLabsRaw ?? []).map((l) => {
-    const table = labTables?.find((t) => t.roleId === l.ownerRoleId);
-    return {
+  // Memoised: without this, every Convex reactive tick re-ran an O(labs × tables)
+  // scan inside the join. O(1) Map lookup instead; stable reference across ticks
+  // when the upstream data hasn't changed.
+  const labs: Lab[] = useMemo(() => {
+    const tableByRoleId = new Map((labTables ?? []).map((t) => [t.roleId, t] as const));
+    return (activeLabsRaw ?? []).map((l) => ({
       labId: l._id,
       name: l.name,
       roleId: l.ownerRoleId,
-      computeStock: table?.computeStock ?? 0,
+      computeStock: (l.ownerRoleId ? tableByRoleId.get(l.ownerRoleId) : undefined)?.computeStock ?? 0,
       rdMultiplier: l.rdMultiplier,
       allocation: l.allocation,
       spec: l.spec,
       colour: l.colour,
       status: l.status,
-    };
-  });
+    }));
+  }, [activeLabsRaw, labTables]);
 
   // Full tables query — needed for lobby (all 17 tables, including disabled)
   const gamePhase = game?.phase;
@@ -78,8 +80,9 @@ export default function FacilitatorPage({
   const roundsLite = useQuery(api.rounds.getByGameLightweight, isVisible ? { gameId } : "skip");
   // Full rounds only needed for finished-game timeline
   const roundsFull = useQuery(api.rounds.getByGame, isVisible && game?.status === "finished" ? { gameId } : "skip");
-  // Full current round only needed during submit/rolling/narrate (narrative panel, resolve results)
-  const needsCurrentRound = gamePhase === "rolling" || gamePhase === "narrate" || gamePhase === "submit";
+  // Full current round only needed during submit/rolling/effect-review/narrate
+  // (narrative panel, resolve results, P7 applied-ops review).
+  const needsCurrentRound = gamePhase === "rolling" || gamePhase === "narrate" || gamePhase === "submit" || gamePhase === "effect-review";
   const currentRoundFull = useQuery(api.rounds.getCurrent,
     isVisible && needsCurrentRound ? { gameId } : "skip"
   );
@@ -88,6 +91,7 @@ export default function FacilitatorPage({
   const advanceRound = useAuthMutation(api.games.advanceRound);
   const finishGame = useAuthMutation(api.games.finishGame);
   const overrideProbability = useAuthMutation(api.submissions.overrideProbability);
+  const overrideStructuredEffect = useAuthMutation(api.submissions.overrideStructuredEffect);
   const ungradeAction = useAuthMutation(api.submissions.ungradeAction);
   const rerollAction = useAuthMutation(api.submissions.rerollAction);
   const setControlMode = useAuthMutation(api.tables.setControlMode);
@@ -113,16 +117,19 @@ export default function FacilitatorPage({
   const pipelineError = pipelineStatus?.step === "error" ? pipelineStatus.error : null;
 
   const [actionError, setActionError] = useState<string | null>(null);
-  const safeAction = (label: string, fn: () => Promise<unknown>) => async () => {
-    setActionError(null);
-    try {
-      await fn();
-    } catch (err) {
-      console.error(`${label} failed:`, err);
-      setActionError(`${label} failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-      setTimeout(() => setActionError(null), 5000);
-    }
-  };
+  const safeAction = useCallback(
+    (label: string, fn: () => Promise<unknown>) => async () => {
+      setActionError(null);
+      try {
+        await fn();
+      } catch (err) {
+        console.error(`${label} failed:`, err);
+        setActionError(`${label} failed: ${err instanceof Error ? err.message : "Unknown error"}`);
+        setTimeout(() => setActionError(null), 5000);
+      }
+    },
+    [setActionError],
+  );
 
   const [showQROverlay, setShowQROverlay] = useState(false);
   const [focusedQR, setFocusedQR] = useState<string | null>(null);
@@ -179,6 +186,51 @@ export default function FacilitatorPage({
     setRevealedSecrets(new Set());
   };
 
+  // Stable string id from the Convex query — the three callbacks below derive
+  // the payload object inline to keep deps pinned to the id rather than to a
+  // freshly-allocated object each render.
+  const aiDispositionId = enabledTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID)?.aiDisposition;
+
+  // Declared before the loading guard so useCallback is unconditional (Rules of Hooks).
+  // game?.currentRound is safe — both handlers only run during the playing phase.
+  const handleGradeRemaining = useCallback(
+    async () => {
+      const d = aiDispositionId ? getDisposition(aiDispositionId) : undefined;
+      const aiDisposition = d ? { label: d.label, description: d.description } : undefined;
+      await safeAction("Grading", () =>
+        triggerGrading({ gameId, roundNumber: game?.currentRound ?? 1, aiDisposition }),
+      )();
+    },
+    [safeAction, triggerGrading, gameId, game?.currentRound, aiDispositionId],
+  );
+  const handleRollDice = useCallback(
+    async () => {
+      const d = aiDispositionId ? getDisposition(aiDispositionId) : undefined;
+      const aiDisposition = d ? { label: d.label, description: d.description } : undefined;
+      await safeAction("Roll", () =>
+        triggerRoll({ gameId, roundNumber: game?.currentRound ?? 1, aiDisposition }),
+      )();
+    },
+    [safeAction, triggerRoll, gameId, game?.currentRound, aiDispositionId],
+  );
+  const handleReResolve = useCallback(
+    async () => {
+      setNarrativeStale(false);
+      try {
+        await clearResolution({ gameId, roundNumber: game?.currentRound ?? 1 });
+        const d = aiDispositionId ? getDisposition(aiDispositionId) : undefined;
+        await triggerRoll({
+          gameId,
+          roundNumber: game?.currentRound ?? 1,
+          aiDisposition: d ? { label: d.label, description: d.description } : undefined,
+        });
+      } catch {
+        setActionError("Re-resolve failed — try again or adjust manually");
+      }
+    },
+    [clearResolution, triggerRoll, gameId, game, aiDispositionId, setActionError, setNarrativeStale],
+  );
+
   // Lobby needs game + tables; playing needs facilitatorState + rounds; finished needs roundsFull
   const isLoading = !game || (
     game.status === "lobby" ? !allTablesForLobby :
@@ -197,18 +249,6 @@ export default function FacilitatorPage({
   const currentRound = currentRoundFull ?? undefined;
   // rounds is guaranteed non-null after loading guard for playing/finished states
   const rounds = roundsLite ?? [];
-  // Previous-round summary text for display (joined sectioned summary) or
-  // the fixed starting scenario for round 1.
-  const prevRoundLite = rounds.find(r => r.number === game.currentRound - 1);
-  const prevSummary = prevRoundLite?.summary;
-  const previousNarrative = prevSummary
-    ? [
-        ...prevSummary.labs.map((l) => `[Labs] ${l}`),
-        ...prevSummary.geopolitics.map((l) => `[Geopolitics] ${l}`),
-        ...prevSummary.publicAndMedia.map((l) => `[Media] ${l}`),
-        ...prevSummary.aiSystems.map((l) => `[AI] ${l}`),
-      ].join("\n") || undefined
-    : (game.currentRound === 1 ? STARTING_SCENARIO : undefined);
   const phase = game.phase;
   const connectedCount = tables.filter((t) => t.connected).length;
   const snapshotOptions = isProjector ? [] : rounds.flatMap(r => {
@@ -217,61 +257,6 @@ export default function FacilitatorPage({
     if (r.labsAfter) opts.push({ number: r.number, label: r.label, useBefore: false, desc: `After ${r.label} resolve` });
     return opts;
   });
-
-  // Get AI Systems disposition for passing to grading/narrate/AI player prompts
-  // Use enabledTables (from getFacilitatorState) which includes aiDisposition — only available during playing
-  const aiSystemsEnabled = enabledTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID);
-  const aiDispositionData = aiSystemsEnabled?.aiDisposition
-    ? getDisposition(aiSystemsEnabled.aiDisposition)
-    : undefined;
-  const aiDispositionPayload = aiDispositionData
-    ? { label: aiDispositionData.label, description: aiDispositionData.description }
-    : undefined;
-
-  // ─── Grade Remaining: AI grades only ungraded submitted actions ──────────
-  const handleGradeRemaining = async () => {
-    setActionError(null);
-    try {
-      await triggerGrading({
-        gameId,
-        roundNumber: game.currentRound,
-        aiDisposition: aiDispositionPayload,
-      });
-    } catch (err) {
-      console.error("Grading failed:", err);
-      setActionError(`Grading failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  };
-
-  // ─── Roll Dice: roll all graded actions + generate narrative ────────────
-  const handleRollDice = async () => {
-    setActionError(null);
-    try {
-      await triggerRoll({
-        gameId,
-        roundNumber: game.currentRound,
-        aiDisposition: aiDispositionPayload,
-      });
-    } catch (err) {
-      console.error("Roll failed:", err);
-      setActionError(`Roll failed: ${err instanceof Error ? err.message : "Unknown error"}`);
-    }
-  };
-
-  const handleReResolve = async () => {
-    try {
-      setNarrativeStale(false);
-      await clearResolution({ gameId, roundNumber: game.currentRound });
-      await triggerRoll({
-        gameId,
-        roundNumber: game.currentRound,
-        aiDisposition: aiDispositionPayload,
-      });
-    } catch {
-      setActionError("Re-resolve failed — try again or adjust manually");
-    }
-  };
-
 
   // ─── LOBBY ────────���───────────────────────────────��─────────────────────────
   if (game.status === "lobby") {
@@ -421,76 +406,64 @@ export default function FacilitatorPage({
       {(actionError || pipelineError) && (
         <div className="mx-6 mt-2 bg-[#FEF2F2] border border-[#FECACA] rounded-lg px-4 py-2 text-sm text-[#991B1B] flex items-center justify-between">
           <span>{pipelineError ?? actionError}</span>
-          <button onClick={() => setActionError(null)} className="text-[#991B1B] font-bold ml-4">✕</button>
+          <button onClick={() => setActionError(null)} aria-label="Dismiss error" className="text-[#991B1B] font-bold ml-4">✕</button>
         </div>
       )}
 
-      <div className="p-6 max-w-[1400px] mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-          {/* Left sidebar */}
-          <div className="flex flex-col gap-4">
-            <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={game.currentRound} />
-            <LabTracker
-              labs={labs}
-              onMerge={isProjector ? undefined : async (survivor, absorbed) => {
-                await mergeLabs({ gameId, survivorName: survivor, absorbedName: absorbed });
-              }}
-              onAddLab={isProjector ? undefined : () => setAddLabOpen(true)}
-            />
-          </div>
+      {/* Full-width sequential layout — designed for 1920×1080 projection */}
+      <div className="px-6 py-6 space-y-4">
+        {/* Add Lab modal */}
+        {addLabOpen && !isProjector && (
+          <AddLabModal
+            gameId={gameId}
+            tables={tables}
+            addLab={addLab}
+            onClose={() => setAddLabOpen(false)}
+          />
+        )}
 
-      {/* Add Lab modal (triggered from sidebar + button) */}
-      {addLabOpen && !isProjector && (
-        <AddLabModal
+        {/* ── Sections 1–3: phase controls, AttemptedSection, HappenedSection, StateSection (all progressively revealed) ── */}
+        <RoundPhase
           gameId={gameId}
+          game={game}
           tables={tables}
-          addLab={addLab}
-          onClose={() => setAddLabOpen(false)}
+          isProjector={isProjector}
+          submissions={submissions ?? []}
+          proposals={proposals ?? []}
+          currentRound={currentRound}
+          resolving={resolving}
+          resolveStep={resolveStep}
+          revealedCount={revealedCount}
+          revealedSecrets={revealedSecrets}
+          toggleReveal={toggleReveal}
+          revealAllSecrets={revealAllSecrets}
+          hideAllSecrets={hideAllSecrets}
+          handleGradeRemaining={handleGradeRemaining}
+          handleRollDice={handleRollDice}
+          handleReResolve={handleReResolve}
+          safeAction={safeAction}
+          submitDuration={submitDuration}
+          setSubmitDuration={setSubmitDuration}
+          openSubmissions={openSubmissions}
+          skipTimer={skipTimer}
+          overrideProbability={overrideProbability}
+          overrideStructuredEffect={overrideStructuredEffect}
+          ungradeAction={ungradeAction}
+          rerollAction={rerollAction}
+          narrativeStale={narrativeStale}
+          onDiceChanged={() => setNarrativeStale(true)}
+          advanceRound={advanceRound}
+          finishGame={finishGame}
+          forceClearLock={forceClearLock}
+          isTimerExpired={isExpired}
+          timerDisplay={timerDisplay}
+          isUrgent={isUrgent}
+          adjustTimer={adjustTimer}
+          labs={labs}
+          rounds={rounds}
+          mergeLabs={mergeLabs}
+          openAddLab={() => setAddLabOpen(true)}
         />
-      )}
-
-          {/* Main content area — single progressive view for all phases */}
-          <div className="min-w-0 overflow-hidden">
-            <RoundPhase
-              gameId={gameId}
-              game={game}
-              tables={tables}
-              isProjector={isProjector}
-              submissions={submissions ?? []}
-              proposals={proposals ?? []}
-              currentRound={currentRound}
-              previousNarrative={previousNarrative}
-              resolving={resolving}
-              resolveStep={resolveStep}
-              revealedCount={revealedCount}
-              revealedSecrets={revealedSecrets}
-              toggleReveal={toggleReveal}
-              revealAllSecrets={revealAllSecrets}
-              hideAllSecrets={hideAllSecrets}
-              handleGradeRemaining={handleGradeRemaining}
-              handleRollDice={handleRollDice}
-              handleReResolve={handleReResolve}
-              safeAction={safeAction}
-              submitDuration={submitDuration}
-              setSubmitDuration={setSubmitDuration}
-              openSubmissions={openSubmissions}
-              skipTimer={skipTimer}
-              overrideProbability={overrideProbability}
-              ungradeAction={ungradeAction}
-              rerollAction={rerollAction}
-              narrativeStale={narrativeStale}
-              onDiceChanged={() => setNarrativeStale(true)}
-              advanceRound={advanceRound}
-              finishGame={finishGame}
-              addLab={addLab}
-              forceClearLock={forceClearLock}
-              isTimerExpired={isExpired}
-              timerDisplay={timerDisplay}
-              isUrgent={isUrgent}
-              adjustTimer={adjustTimer}
-            />
-          </div>
-        </div>
 
         {/* Debug panel — fetches its own data when expanded to avoid always-on subscriptions */}
         {!isProjector && (
@@ -560,7 +533,7 @@ function FacilitatorNav({
     <div className="bg-navy border-b border-navy-light px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-2">
         <div className="w-7 h-7 bg-white rounded-md flex items-center justify-center">
-          <img src="/favicon.svg" alt="Good Ancestors" className="w-5 h-5" />
+          <Image src="/favicon.svg" alt="Good Ancestors" width={20} height={20} className="w-5 h-5" />
         </div>
         <span className="text-[15px] font-bold text-white">The Race to AGI</span>
       </div>

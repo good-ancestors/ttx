@@ -1,9 +1,10 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Id, Doc } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator, assertNotResolving } from "./events";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
+import { MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
 import {
   cancelPendingForAction,
@@ -19,7 +20,7 @@ export function generateActionId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-function validateComputeAllocation(allocation: { deployment: number; research: number; safety: number }) {
+export function validateComputeAllocation(allocation: { deployment: number; research: number; safety: number }) {
   if (allocation.deployment < 0 || allocation.research < 0 || allocation.safety < 0) {
     throw new Error("Compute allocation values must be >= 0");
   }
@@ -57,6 +58,11 @@ const foundLabValidator = v.object({
   name: v.string(),
   spec: v.optional(v.string()),
   seedCompute: v.number(),
+  allocation: v.optional(v.object({
+    deployment: v.number(),
+    research: v.number(),
+    safety: v.number(),
+  })),
 });
 
 const mergeLabValidator = v.object({
@@ -65,6 +71,8 @@ const mergeLabValidator = v.object({
   newName: v.optional(v.string()),
   newSpec: v.optional(v.string()),
 });
+
+import { structuredEffectValidator, confidenceValidator } from "./validators";
 
 const actionValidator = v.object({
   text: v.string(),
@@ -79,6 +87,8 @@ const actionValidator = v.object({
   computeTargets: v.optional(v.array(computeTargetValidator)),
   foundLab: v.optional(foundLabValidator),
   mergeLab: v.optional(mergeLabValidator),
+  structuredEffect: v.optional(structuredEffectValidator),
+  confidence: v.optional(confidenceValidator),
 });
 
 // Validator for actions that already have actionStatus set (e.g. grading pipeline output).
@@ -96,7 +106,25 @@ const persistedActionValidator = v.object({
   computeTargets: v.optional(v.array(computeTargetValidator)),
   foundLab: v.optional(foundLabValidator),
   mergeLab: v.optional(mergeLabValidator),
+  structuredEffect: v.optional(structuredEffectValidator),
+  confidence: v.optional(confidenceValidator),
 });
+
+/** Strip grading byproducts from a persisted action. `reasoning` is always
+ *  stripped (stale once the grade is overridden or discarded).
+ *  `resetRoll: true` also drops every roll/grade artifact — `probability`,
+ *  `rolled`, `success`, `aiInfluence`, `structuredEffect`, `confidence` — used
+ *  by `ungradeAction` and the snapshot-restore re-roll path to fully reset to
+ *  the pre-graded state while keeping player intent (text, priority, secret,
+ *  computeTargets, foundLab, mergeLab) intact. */
+type PersistedAction = Doc<"submissions">["actions"][number];
+export function stripGradingFields(action: PersistedAction, { resetRoll = false } = {}): PersistedAction {
+  const { reasoning: _reasoning, probability, rolled, success, aiInfluence, ...rest } = action;
+  if (resetRoll) {
+    return { ...rest, structuredEffect: undefined, confidence: undefined };
+  }
+  return { ...rest, probability, rolled, success, aiInfluence };
+}
 
 // Full query — includes secret text and reasoning. Requires facilitator token.
 export const getByGameAndRound = query({
@@ -128,7 +156,22 @@ export const getByGameAndRoundRedacted = query({
       actions: sub.actions.map((a) => {
         // AI Systems can see all secrets (needed for influence decisions)
         if (a.secret && sub.roleId !== args.viewerRoleId && args.viewerRoleId !== AI_SYSTEMS_ROLE_ID) {
-          return { ...a, text: "[Covert action]", reasoning: undefined };
+          // Strip every field that exposes intent / target. The action's
+          // existence + dice outcome stay visible (rolled / success /
+          // probability / aiInfluence) — that's the deliberate "something
+          // covert was attempted" signal. Successful structural outcomes
+          // (mergers, foundLabs, transfers) leak naturally via labs/ledger
+          // state, not via this endpoint, which is correct.
+          return {
+            ...a,
+            text: "[Covert action]",
+            reasoning: undefined,
+            structuredEffect: undefined,
+            confidence: undefined,
+            mergeLab: undefined,
+            foundLab: undefined,
+            computeTargets: undefined,
+          };
         }
         return a;
       }),
@@ -403,8 +446,9 @@ export const submitAction = mutation({
  *  per target tied to the action. Cache stays at settled value; UI subtracts pending sends
  *  via getAvailableStock. Settlement happens at roll time via settlePendingForAction.
  *  Validates that the sender's available balance (settled − other pending sends) covers
- *  the total. */
-async function escrowSendTargets(
+ *  the total, unless `skipAvailabilityCheck` is set (used by snapshot-restore re-emit
+ *  where the action was already validated at original submit time). */
+export async function escrowSendTargets(
   ctx: MutationCtx,
   args: {
     gameId: Id<"games">;
@@ -413,15 +457,18 @@ async function escrowSendTargets(
     actionId: string;
     actionText: string;
     targets: { roleId: string; amount: number }[];
+    skipAvailabilityCheck?: boolean;
   },
 ) {
   if (args.targets.length === 0) return;
   const totalAmount = args.targets.reduce((s, t) => s + t.amount, 0);
   if (totalAmount <= 0) return;
 
-  const available = await getAvailableStock(ctx, args.gameId, args.senderRoleId, args.roundNumber);
-  if (available < totalAmount) {
-    throw new Error(`Insufficient compute: have ${available}u available, need ${totalAmount}u`);
+  if (!args.skipAvailabilityCheck) {
+    const available = await getAvailableStock(ctx, args.gameId, args.senderRoleId, args.roundNumber);
+    if (available < totalAmount) {
+      throw new Error(`Insufficient compute: have ${available}u available, need ${totalAmount}u`);
+    }
   }
 
   for (const t of args.targets) {
@@ -437,6 +484,31 @@ async function escrowSendTargets(
       actionId: args.actionId,
     });
   }
+}
+
+/** Escrow a foundLab seed — pending `adjusted` row debiting the founder. Counts
+ *  as escrow against availableStock until rollAllImpl settles or cancels. */
+export async function escrowFoundLab(
+  ctx: MutationCtx,
+  args: {
+    gameId: Id<"games">;
+    roundNumber: number;
+    founderRoleId: string;
+    actionId: string;
+    foundLab: { name: string; seedCompute: number };
+  },
+) {
+  await ctx.db.insert("computeTransactions", {
+    gameId: args.gameId,
+    roundNumber: args.roundNumber,
+    createdAt: Date.now(),
+    type: "adjusted",
+    status: "pending",
+    roleId: args.founderRoleId,
+    amount: -args.foundLab.seedCompute,
+    reason: `Lab founding escrow: "${args.foundLab.name}"`,
+    actionId: args.actionId,
+  });
 }
 
 /** Create endorsement + compute request docs for a newly submitted action. */
@@ -514,6 +586,89 @@ async function createActionRequests(
   }
 }
 
+/** Validate the table + game preconditions for saveAndSubmit. Returns the table doc
+ *  on success (saves the caller a re-fetch). Throws on any precondition failure. */
+async function assertSaveAndSubmitContext(
+  ctx: MutationCtx,
+  args: { tableId: Id<"tables">; gameId: Id<"games">; roleId: string; text: string },
+): Promise<Doc<"tables">> {
+  const table = await ctx.db.get(args.tableId);
+  if (!table) throw new Error("Table not found");
+  if (table.gameId !== args.gameId) throw new Error("Table does not belong to this game");
+  if (table.roleId !== args.roleId) throw new Error("Role does not match table assignment");
+
+  const game = await ctx.db.get(args.gameId);
+  if (!game) throw new Error("Game not found");
+  if (game.phase !== "submit" && game.phase !== "discuss") {
+    throw new Error(`Cannot save drafts during ${game.phase} phase`);
+  }
+  assertSubmitWindowOpen(game);
+  if (!args.text.trim()) throw new Error("Action text cannot be empty");
+  return table;
+}
+
+/** Validate a foundLab intent before any writes. Catches min-seed, missing name,
+ *  bad allocation, and same-name duplication against this round's submitted actions. */
+function validateFoundLabIntent(
+  foundLab: NonNullable<Doc<"submissions">["actions"][number]["foundLab"]>,
+  existing: Doc<"submissions"> | null,
+  currentActionId: string,
+) {
+  if (foundLab.seedCompute < MIN_SEED_COMPUTE) {
+    throw new Error(`Minimum ${MIN_SEED_COMPUTE}u compute required to found a lab`);
+  }
+  if (!foundLab.name.trim()) throw new Error("Lab name required");
+  if (foundLab.allocation) validateComputeAllocation(foundLab.allocation);
+
+  // Dedup: reject if this role already has a submitted foundLab action with the
+  // same name this round. Same-name is the relevant key — text may differ between
+  // the two click attempts. Roll-time would self-correct but leaves two pending
+  // escrows visible until resolve.
+  if (!existing) return;
+  const dup = existing.actions.find((a) =>
+    a.actionStatus === "submitted" &&
+    a.foundLab?.name.trim() === foundLab.name.trim() &&
+    a.actionId !== currentActionId,
+  );
+  if (dup) {
+    throw new Error(`You already have a submitted foundLab action for "${foundLab.name}" this round`);
+  }
+}
+
+/** Validate a mergeLab intent: distinct labs, both active in this game, the role
+ *  owns at least one, and the proposed newName doesn't clash with another active lab. */
+async function validateMergeLabIntent(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roleId: string,
+  mergeLab: NonNullable<Doc<"submissions">["actions"][number]["mergeLab"]>,
+) {
+  if (mergeLab.absorbedLabId === mergeLab.survivorLabId) {
+    throw new Error("Cannot merge a lab with itself");
+  }
+  const [absorbed, survivor] = await Promise.all([
+    ctx.db.get(mergeLab.absorbedLabId),
+    ctx.db.get(mergeLab.survivorLabId),
+  ]);
+  if (!absorbed || absorbed.gameId !== gameId || absorbed.status !== "active") {
+    throw new Error("Absorbed lab is not active in this game");
+  }
+  if (!survivor || survivor.gameId !== gameId || survivor.status !== "active") {
+    throw new Error("Survivor lab is not active in this game");
+  }
+  if (absorbed.ownerRoleId !== roleId && survivor.ownerRoleId !== roleId) {
+    throw new Error("You must own either the absorbed or survivor lab to propose a merger");
+  }
+  const newName = mergeLab.newName?.trim();
+  if (!newName || newName === survivor.name) return;
+  const activeLabs = await ctx.db
+    .query("labs")
+    .withIndex("by_game_and_status", (q) => q.eq("gameId", gameId).eq("status", "active"))
+    .collect();
+  const conflict = activeLabs.find((l) => l._id !== mergeLab.survivorLabId && l.name === newName);
+  if (conflict) throw new Error(`Active lab named "${newName}" already exists`);
+}
+
 /** Save a draft and immediately submit it in a single mutation (avoids two round-trips). */
 export const saveAndSubmit = mutation({
   args: {
@@ -530,26 +685,12 @@ export const saveAndSubmit = mutation({
     mergeLab: v.optional(mergeLabValidator),
   },
   handler: async (ctx, args) => {
-    // Validate table ownership: the table must belong to the claimed role
-    const table = await ctx.db.get(args.tableId);
-    if (!table) throw new Error("Table not found");
-    if (table.gameId !== args.gameId) throw new Error("Table does not belong to this game");
-    if (table.roleId !== args.roleId) throw new Error("Role does not match table assignment");
-
-    const game = await ctx.db.get(args.gameId);
-    if (!game) throw new Error("Game not found");
-    if (game.phase !== "submit" && game.phase !== "discuss") {
-      throw new Error(`Cannot save drafts during ${game.phase} phase`);
-    }
-    assertSubmitWindowOpen(game);
-    if (!args.text.trim()) throw new Error("Action text cannot be empty");
+    const table = await assertSaveAndSubmitContext(ctx, args);
 
     const targets = (args.computeTargets ?? []).map((t) => ({
       ...t,
       direction: t.direction ?? ("send" as const),
     }));
-
-    // Validate compute targets
     for (const t of targets) {
       if (t.amount <= 0) throw new Error("Compute amount must be positive");
       if (t.roleId === args.roleId) throw new Error("Cannot transfer compute to yourself");
@@ -576,62 +717,8 @@ export const saveAndSubmit = mutation({
       ? existing.actions[existingDraftIndex].actionId
       : generateActionId();
 
-    // Escrow "send" targets — emit pending ledger pairs tied to actionId.
-    // "request" targets are NOT escrowed here; they create request docs and the target's
-    // accept emits the pending pair (see requests.ts respond mutation).
-    // Validate foundLab args early (cheap checks before any writes).
-    if (args.foundLab) {
-      if (args.foundLab.seedCompute < 10) {
-        throw new Error("Minimum 10u compute required to found a lab");
-      }
-      if (!args.foundLab.name.trim()) {
-        throw new Error("Lab name required");
-      }
-      // Dedup: reject if this role already has a submitted foundLab action with the
-      // same name this round. Roll-time name-collision is self-correcting but leaves
-      // two actions + two pending escrows visible until resolve. Same-name is the
-      // relevant key — text may differ between the two click attempts.
-      if (existing) {
-        const dup = existing.actions.find((a) =>
-          a.actionStatus === "submitted" &&
-          a.foundLab?.name.trim() === args.foundLab!.name.trim() &&
-          a.actionId !== actionId,
-        );
-        if (dup) {
-          throw new Error(`You already have a submitted foundLab action for "${args.foundLab.name}" this round`);
-        }
-      }
-    }
-
-    if (args.mergeLab) {
-      if (args.mergeLab.absorbedLabId === args.mergeLab.survivorLabId) {
-        throw new Error("Cannot merge a lab with itself");
-      }
-      const [absorbed, survivor] = await Promise.all([
-        ctx.db.get(args.mergeLab.absorbedLabId),
-        ctx.db.get(args.mergeLab.survivorLabId),
-      ]);
-      if (!absorbed || absorbed.gameId !== args.gameId || absorbed.status !== "active") {
-        throw new Error("Absorbed lab is not active in this game");
-      }
-      if (!survivor || survivor.gameId !== args.gameId || survivor.status !== "active") {
-        throw new Error("Survivor lab is not active in this game");
-      }
-      if (absorbed.ownerRoleId !== args.roleId && survivor.ownerRoleId !== args.roleId) {
-        throw new Error("You must own either the absorbed or survivor lab to propose a merger");
-      }
-      const newName = args.mergeLab.newName?.trim();
-      if (newName && newName !== survivor.name) {
-        const clash = await ctx.db
-          .query("labs")
-          .withIndex("by_game_and_status", (q) => q.eq("gameId", args.gameId).eq("status", "active"))
-          .collect();
-        const conflict = clash.find(
-          (l) => l._id !== args.mergeLab!.survivorLabId && l.name === newName,
-        );
-        if (conflict) throw new Error(`Active lab named "${newName}" already exists`);
-      }
-    }
+    if (args.foundLab) validateFoundLabIntent(args.foundLab, existing, actionId);
+    if (args.mergeLab) await validateMergeLabIntent(ctx, args.gameId, args.roleId, args.mergeLab);
 
     // Compose availability check: send-escrow total + foundLab seedCompute must fit in
     // available stock. Done up-front so a send + foundLab on the same action can't each
@@ -661,17 +748,12 @@ export const saveAndSubmit = mutation({
     }
 
     if (args.foundLab) {
-      // Pending row — counts as escrow (subtracted from availableStock) but not from settled cache.
-      await ctx.db.insert("computeTransactions", {
+      await escrowFoundLab(ctx, {
         gameId: args.gameId,
         roundNumber: args.roundNumber,
-        createdAt: Date.now(),
-        type: "adjusted",
-        status: "pending",
-        roleId: args.roleId,
-        amount: -args.foundLab.seedCompute,
-        reason: `Lab founding escrow: "${args.foundLab.name}"`,
+        founderRoleId: args.roleId,
         actionId,
+        foundLab: args.foundLab,
       });
     }
 
@@ -934,19 +1016,54 @@ export const overrideProbability = mutation({
     const action = actions[args.actionIndex];
     if (!action) return;
 
-    // If dice have already been rolled, auto-reroll at the new probability
-    if (action.rolled != null) {
-      actions[args.actionIndex] = {
-        ...action,
-        probability: args.probability,
-        ...rollDice(args.probability, action.aiInfluence),
-      };
-    } else {
-      actions[args.actionIndex] = {
-        ...action,
-        probability: args.probability,
-      };
-    }
+    // stripGradingFields drops stale reasoning; if dice were already rolled we
+    // auto-reroll at the new probability.
+    const stripped = stripGradingFields(action);
+    // If the action is still ungraded (no structuredEffect), fall back to
+    // narrativeOnly so the UI doesn't show "probability set but no effect".
+    // Facilitator setting probability on an ungraded action = "skip grading,
+    // just roll this at X%" — narrativeOnly is the correct implicit effect.
+    const fallbackEffect = stripped.structuredEffect ?? ({ type: "narrativeOnly" } as const);
+    const fallbackConfidence = stripped.confidence ?? "high";
+    actions[args.actionIndex] = action.rolled != null
+      ? { ...stripped, probability: args.probability, structuredEffect: fallbackEffect, confidence: fallbackConfidence, ...rollDice(args.probability, action.aiInfluence) }
+      : { ...stripped, probability: args.probability, structuredEffect: fallbackEffect, confidence: fallbackConfidence };
+
+    await ctx.db.patch(args.submissionId, { actions });
+  },
+});
+
+/** Facilitator edit of a graded action's structured effect at P2. Mirrors
+ *  overrideProbability: validates the action exists, replaces the effect in
+ *  place. The facilitator can also upgrade confidence to "high" (implicit
+ *  acknowledgement that they reviewed the effect). Accepts `null` to mean
+ *  narrativeOnly — simplifies the UI call-site when the facilitator wants to
+ *  strip mechanics without opening an editor for each field. */
+export const overrideStructuredEffect = mutation({
+  args: {
+    submissionId: v.id("submissions"),
+    actionIndex: v.number(),
+    structuredEffect: v.optional(structuredEffectValidator),
+    acknowledge: v.optional(v.boolean()),
+    facilitatorToken: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    assertFacilitator(args.facilitatorToken);
+    const sub = await ctx.db.get(args.submissionId);
+    if (!sub) return;
+
+    const actions = [...sub.actions];
+    const action = actions[args.actionIndex];
+    if (!action) return;
+
+    const nextEffect = args.structuredEffect ?? { type: "narrativeOnly" as const };
+    actions[args.actionIndex] = {
+      ...action,
+      structuredEffect: nextEffect,
+      // Acknowledging an effect (either via edit or explicit click-through)
+      // upgrades confidence to "high" so the P2 click-through gate clears.
+      confidence: args.acknowledge ? "high" : action.confidence,
+    };
 
     await ctx.db.patch(args.submissionId, { actions });
   },
@@ -967,9 +1084,8 @@ export const ungradeAction = mutation({
     const action = actions[args.actionIndex];
     if (!action) return;
 
-    // Strip grading/rolling fields, keeping everything else
-    const { probability: _, rolled: __, success: ___, ...rest } = action;
-    actions[args.actionIndex] = rest;
+    // Full reset: drop reasoning AND probability/rolled/success.
+    actions[args.actionIndex] = stripGradingFields(action, { resetRoll: true });
 
     await ctx.db.patch(args.submissionId, { actions });
   },
@@ -1142,8 +1258,161 @@ export const getAllForRound = internalQuery({
   },
 });
 
+/** Settle a single foundLab action: on success → create the lab + settle the
+ *  founding-cost escrow; on failure (rolled or name-collision) → cancel escrow. */
+async function settleFoundLabAction(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roundNumber: number,
+  sub: Doc<"submissions">,
+  action: PersistedAction,
+) {
+  if (!action.foundLab || !action.actionId) return;
+  const success = !!action.success;
+  if (success) {
+    try {
+      await createLabInternal(ctx, {
+        gameId,
+        name: action.foundLab.name,
+        spec: action.foundLab.spec,
+        rdMultiplier: 1,
+        allocation: action.foundLab.allocation ?? DEFAULT_LAB_ALLOCATION,
+        ownerRoleId: sub.roleId,
+        createdRound: roundNumber,
+      });
+      await settlePendingForAction(ctx, gameId, action.actionId);
+    } catch (err) {
+      // Name collision or other failure → treat as failed founding, refund escrow
+      console.warn(`[rollAll] Lab founding failed for "${action.foundLab.name}":`, err);
+      await cancelPendingForAction(ctx, gameId, action.actionId);
+    }
+  } else {
+    await cancelPendingForAction(ctx, gameId, action.actionId);
+  }
+  await logEvent(ctx, gameId, success ? "lab_founded" : "lab_founding_failed", sub.roleId, {
+    labName: action.foundLab.name,
+    seedCompute: action.foundLab.seedCompute,
+  });
+}
+
+/** Settle a single mergeLab action. Auto-fails if either lab was decommissioned
+ *  earlier this round (another merger won the race). */
+async function settleMergeLabAction(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roundNumber: number,
+  sub: Doc<"submissions">,
+  action: PersistedAction,
+) {
+  if (!action.mergeLab || !action.actionId) return;
+  if (!action.success) {
+    await logEvent(ctx, gameId, "lab_merge_failed", sub.roleId, {
+      absorbedLabId: action.mergeLab.absorbedLabId,
+      survivorLabId: action.mergeLab.survivorLabId,
+      reason: "rolled_failure",
+    });
+    return;
+  }
+  try {
+    const outcome = await mergeLabsWithComputeInternal(ctx, {
+      gameId,
+      roundNumber,
+      survivorLabId: action.mergeLab.survivorLabId,
+      absorbedLabId: action.mergeLab.absorbedLabId,
+      newName: action.mergeLab.newName?.trim() || undefined,
+      newSpec: action.mergeLab.newSpec?.trim() || undefined,
+      reason: `Merger on action: ${action.text.slice(0, 80)}`,
+      actionId: action.actionId,
+    });
+    await logEvent(ctx, gameId, outcome ? "lab_merged" : "lab_merge_failed", sub.roleId, {
+      absorbedLabId: action.mergeLab.absorbedLabId,
+      survivorLabId: action.mergeLab.survivorLabId,
+      reason: outcome ? undefined : "lab_already_decommissioned",
+      amountMoved: outcome?.amountMoved,
+    });
+  } catch (err) {
+    // Structural merge half-completed (compute may be stranded on the absorbed
+    // owner). Log loudly so facilitator can reconcile via ledger adjustment.
+    console.error(`[rollAll] Merger settlement crashed after structural change`, {
+      actionId: action.actionId, absorbedLabId: action.mergeLab.absorbedLabId,
+      survivorLabId: action.mergeLab.survivorLabId, err,
+    });
+    await logEvent(ctx, gameId, "lab_merge_error", sub.roleId, {
+      absorbedLabId: action.mergeLab.absorbedLabId,
+      survivorLabId: action.mergeLab.survivorLabId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/** Settle a single action's computeTargets. Success settles all pending rows
+ *  (sends + accepted requests); failure cancels them. Unaccepted request targets
+ *  on success do a "soft-take" clamped to the target's available balance. */
+async function settleComputeTargetsAction(
+  ctx: MutationCtx,
+  gameId: Id<"games">,
+  roundNumber: number,
+  sub: Doc<"submissions">,
+  action: PersistedAction,
+) {
+  if (!action.computeTargets || action.computeTargets.length === 0) return;
+  if (!action.actionId) return;
+
+  const success = !!action.success;
+  if (!success) {
+    await cancelPendingForAction(ctx, gameId, action.actionId);
+  } else {
+    await settlePendingForAction(ctx, gameId, action.actionId);
+    // Accepted request targets are already represented as pending rows from requests.respond.
+    // If a request target was NOT accepted, the ledger has no pending pair — the submitter
+    // takes compute from the target clamped to availability, per the "soft request" rule.
+    const requestTargets = action.computeTargets.filter((t) => t.direction === "request");
+    if (requestTargets.length > 0) {
+      const requestsForRole = await ctx.db
+        .query("requests")
+        .withIndex("by_from_role", (q) =>
+          q.eq("gameId", gameId).eq("roundNumber", roundNumber).eq("fromRoleId", sub.roleId))
+        .collect();
+      for (const target of requestTargets) {
+        const match = requestsForRole.find((r) =>
+          r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId,
+        );
+        if (match?.status === "accepted") continue; // already settled above
+        const targetAvail = await getAvailableStock(ctx, gameId, target.roleId, roundNumber);
+        const take = Math.min(target.amount, targetAvail);
+        if (take > 0) {
+          await emitPair(ctx, {
+            gameId,
+            roundNumber,
+            type: "transferred",
+            status: "settled",
+            fromRoleId: target.roleId,
+            toRoleId: sub.roleId,
+            amount: take,
+            reason: `Soft-take on unaccepted request: ${action.text.slice(0, 80)}`,
+            actionId: action.actionId,
+          });
+        }
+      }
+    }
+  }
+
+  await logEvent(ctx, gameId, success ? "compute_transfer_success" : "compute_transfer_refund", sub.roleId, {
+    targets: action.computeTargets,
+    actionText: action.text,
+  });
+}
+
 /** Shared dice + settlement logic. Called from both the internal pipeline path
- *  (rollAllInternal) and the facilitator test-harness wrapper (rollAllFacilitator). */
+ *  (rollAllInternal) and the facilitator test-harness wrapper (rollAllFacilitator).
+ *
+ *  Settlement model — only processes submitted+rolled actions; drafts were never escrowed.
+ *  - SEND compute targets: escrowed from submitter at submit time.
+ *      Success → credit recipient. Failure → refund submitter.
+ *  - REQUEST compute targets: escrowed from target if accepted during submit.
+ *      Accepted + Success → credit requester. Accepted + Failure → refund target.
+ *      Not accepted + Success → soft-take from target clamped to availability.
+ *      Not accepted + Failure → no-op (no escrow). */
 async function rollAllImpl(
   ctx: MutationCtx,
   gameId: Id<"games">,
@@ -1155,7 +1424,7 @@ async function rollAllImpl(
     .collect();
   for (const sub of subs) {
     if (sub.status === "resolved") continue;
-    // Skip if already rolled (idempotent)
+    // Idempotent: skip if already rolled.
     if (sub.actions.every((a) => a.rolled != null)) continue;
     const actions = sub.actions.map((action) => {
       if (action.actionStatus === "draft") return action;
@@ -1164,149 +1433,17 @@ async function rollAllImpl(
     });
     await ctx.db.patch(sub._id, { actions, status: "resolved" });
     const rolled = actions.filter((a) => a.rolled != null);
-    await logEvent(ctx, gameId, "roll", sub.roleId, { round: roundNumber, total: rolled.length, successes: rolled.filter((a) => a.success).length });
-
-      // ── Process compute transfers ──
-      // Only process submitted+rolled actions — drafts were never escrowed.
-      //
-      // SEND targets: escrowed from submitter at submit time.
-      //   Success → credit recipient. Failure → refund submitter.
-      //
-      // REQUEST targets: escrowed from target if they accepted during submit.
-      //   Accepted + Success → credit requester (submitter).
-      //   Accepted + Failure → refund target.
-      //   Not accepted + Success → take from target, clamped to available balance.
-      //   Not accepted + Failure → nothing (no escrow to settle).
-    // Found-a-lab settlement: for each action with foundLab, success → create lab row +
-    // settle escrow; failure → cancel escrow. Does not require compute targets on the action.
-    for (const action of actions) {
-      if (!action.foundLab) continue;
-      if (action.rolled == null || !action.actionId) continue;
-      if (action.actionStatus !== "submitted") continue;
-      const success = !!action.success;
-      if (success) {
-        // Create the lab — owner is the submitter. Unique active name enforced inside helper.
-        try {
-          await createLabInternal(ctx, {
-            gameId,
-            name: action.foundLab.name,
-            spec: action.foundLab.spec,
-            rdMultiplier: 1,
-            allocation: { deployment: 33, research: 34, safety: 33 },
-            ownerRoleId: sub.roleId,
-            createdRound: roundNumber,
-          });
-          // Settle the founding-cost escrow (pending adjusted row → cache deducts)
-          await settlePendingForAction(ctx, gameId, action.actionId);
-        } catch (err) {
-          // Name collision or other failure → treat as failed founding, refund escrow
-          console.warn(`[rollAll] Lab founding failed for "${action.foundLab.name}":`, err);
-          await cancelPendingForAction(ctx, gameId, action.actionId);
-        }
-      } else {
-        await cancelPendingForAction(ctx, gameId, action.actionId);
-      }
-      await logEvent(ctx, gameId, success ? "lab_founded" : "lab_founding_failed", sub.roleId, {
-        labName: action.foundLab.name,
-        seedCompute: action.foundLab.seedCompute,
-      });
-    }
-
-    // Merge-lab settlement. Auto-fails if either lab was decommissioned earlier this
-    // round (another merger won the race).
-    for (const action of actions) {
-      if (!action.mergeLab) continue;
-      if (action.rolled == null || !action.actionId) continue;
-      if (action.actionStatus !== "submitted") continue;
-      if (!action.success) {
-        await logEvent(ctx, gameId, "lab_merge_failed", sub.roleId, {
-          absorbedLabId: action.mergeLab.absorbedLabId,
-          survivorLabId: action.mergeLab.survivorLabId,
-          reason: "rolled_failure",
-        });
-        continue;
-      }
-      try {
-        const outcome = await mergeLabsWithComputeInternal(ctx, {
-          gameId,
-          roundNumber,
-          survivorLabId: action.mergeLab.survivorLabId,
-          absorbedLabId: action.mergeLab.absorbedLabId,
-          newName: action.mergeLab.newName?.trim() || undefined,
-          newSpec: action.mergeLab.newSpec?.trim() || undefined,
-          reason: `Merger on action: ${action.text.slice(0, 80)}`,
-          actionId: action.actionId,
-        });
-        await logEvent(ctx, gameId, outcome ? "lab_merged" : "lab_merge_failed", sub.roleId, {
-          absorbedLabId: action.mergeLab.absorbedLabId,
-          survivorLabId: action.mergeLab.survivorLabId,
-          reason: outcome ? undefined : "lab_already_decommissioned",
-          amountMoved: outcome?.amountMoved,
-        });
-      } catch (err) {
-        // Structural merge half-completed (compute may be stranded on the absorbed
-        // owner). Log loudly so facilitator can reconcile via ledger adjustment.
-        console.error(`[rollAll] Merger settlement crashed after structural change`, {
-          actionId: action.actionId, absorbedLabId: action.mergeLab.absorbedLabId,
-          survivorLabId: action.mergeLab.survivorLabId, err,
-        });
-        await logEvent(ctx, gameId, "lab_merge_error", sub.roleId, {
-          absorbedLabId: action.mergeLab.absorbedLabId,
-          survivorLabId: action.mergeLab.survivorLabId,
-          error: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
+    await logEvent(ctx, gameId, "roll", sub.roleId, {
+      round: roundNumber,
+      total: rolled.length,
+      successes: rolled.filter((a) => a.success).length,
+    });
 
     for (const action of actions) {
-      if (!action.computeTargets || action.computeTargets.length === 0) continue;
-      if (action.rolled == null) continue;
-      if (!action.actionId) continue;
-
-      const success = !!action.success;
-      // Ledger settlement: success → settle all pending rows for this action (sends + accepted requests);
-      // failure → cancel (refunds automatic since pending rows never hit the cache).
-      if (success) {
-        await settlePendingForAction(ctx, gameId, action.actionId);
-        // Accepted request targets are already represented as pending rows from requests.respond.
-        // If a request target was NOT accepted, the ledger has no pending pair — the submitter
-        // takes compute from the target clamped to availability, per the "soft request" rule.
-        const requestTargets = action.computeTargets.filter((t) => t.direction === "request");
-        for (const target of requestTargets) {
-          const existing = await ctx.db
-            .query("requests")
-            .withIndex("by_from_role", (q) =>
-              q.eq("gameId", gameId).eq("roundNumber", roundNumber).eq("fromRoleId", sub.roleId))
-            .collect();
-          const match = existing.find((r) =>
-            r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId
-          );
-          if (match?.status === "accepted") continue; // already settled above
-          // Soft-take: clamp to target's available balance
-          const targetAvail = await getAvailableStock(ctx, gameId, target.roleId, roundNumber);
-          const take = Math.min(target.amount, targetAvail);
-          if (take > 0) {
-            await emitPair(ctx, {
-              gameId,
-              roundNumber,
-              type: "transferred",
-              status: "settled",
-              fromRoleId: target.roleId,
-              toRoleId: sub.roleId,
-              amount: take,
-              reason: `Soft-take on unaccepted request: ${action.text.slice(0, 80)}`,
-              actionId: action.actionId,
-            });
-          }
-        }
-      } else {
-        await cancelPendingForAction(ctx, gameId, action.actionId);
-      }
-
-      await logEvent(ctx, gameId, success ? "compute_transfer_success" : "compute_transfer_refund", sub.roleId, {
-        targets: action.computeTargets,
-        actionText: action.text,
-      });
+      if (action.rolled == null || action.actionStatus !== "submitted") continue;
+      await settleFoundLabAction(ctx, gameId, roundNumber, sub, action);
+      await settleMergeLabAction(ctx, gameId, roundNumber, sub, action);
+      await settleComputeTargetsAction(ctx, gameId, roundNumber, sub, action);
     }
   }
 }
@@ -1398,13 +1535,18 @@ export const submitInternal = internalMutation({
 
     const stampedActions = args.actions.map((a) => ({ ...a, actionId: generateActionId(), actionStatus: "submitted" as const }));
 
+    // Return persisted actions so callers can read actionIds without a re-query.
+    // When a submission is already graded/resolved we keep the existing row untouched
+    // and echo its actions (original actionIds) for downstream hint linking.
     if (existing) {
-      if (existing.status === "graded" || existing.status === "resolved") return existing._id;
+      if (existing.status === "graded" || existing.status === "resolved") {
+        return { submissionId: existing._id, actions: existing.actions };
+      }
       await ctx.db.patch(existing._id, { actions: stampedActions, computeAllocation: args.computeAllocation, status: "submitted" });
-      return existing._id;
+      return { submissionId: existing._id, actions: stampedActions };
     }
 
-    return await ctx.db.insert("submissions", {
+    const submissionId = await ctx.db.insert("submissions", {
       tableId: args.tableId,
       gameId: args.gameId,
       roundNumber: args.roundNumber,
@@ -1413,5 +1555,6 @@ export const submitInternal = internalMutation({
       computeAllocation: args.computeAllocation,
       status: "submitted",
     });
+    return { submissionId, actions: stampedActions };
   },
 });

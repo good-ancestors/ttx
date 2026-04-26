@@ -94,16 +94,40 @@ function buildChartData(
   currentRound: number,
   compact: boolean,
 ): ChartData {
-  const snapshotLabs = rounds.flatMap((round) => round.labsAfter ?? []);
-  // Deduplicate by roleId (stable identity) — keeps DEFAULT_LABS entry first
-  // so Pre/Start points use the original starting values, not current values.
+  // Filter out decommissioned snapshot entries. decommissionLabInternal clears
+  // ownerRoleId on the live doc before snapshotAfter runs, so the post-merger
+  // snapshot of the absorbed lab has roleId: undefined. Without this filter
+  // the chart sees two Conscienta entries — one from DEFAULT_LABS (roleId
+  // "conscienta-ceo") and one from the roleId-less post-decommission snapshot
+  // — neither dedupes against the other. The historical line we want is
+  // already carried by DEFAULT_LABS + earlier rounds' active snapshots.
+  const snapshotLabs = rounds.flatMap((round) =>
+    (round.labsAfter ?? []).filter((l) => l.status !== "decommissioned"),
+  );
+  // Enrich DEFAULT_LABS with the live labId (matched by name) so
+  // ownership transfers don't split one lab into two series. The identity
+  // key below prefers labId over roleId — otherwise transferOwnership
+  // changes a lab's roleId (owner) and creates a phantom "inactive" series.
+  const labIdByName = new Map(
+    currentLabs.filter((l) => l.labId).map((l) => [l.name, l.labId] as const),
+  );
+  const defaultLabsEnriched = DEFAULT_LABS.map((l) => ({
+    ...l,
+    labId: labIdByName.get(l.name),
+  }));
+  // Key on labId first: it's stable across ownership transfers (unlike
+  // roleId, which tracks the current owner) and renames (unlike name).
+  // DEFAULT_LABS entries inherit the live labId via the name-match above.
+  const identityKey = (l: { labId?: string; roleId?: string; name: string }): string =>
+    l.labId ?? l.roleId ?? l.name;
   const allLabs = [
-    ...DEFAULT_LABS,
+    ...defaultLabsEnriched,
     ...currentLabs,
     ...snapshotLabs,
     ...BACKGROUND_LABS.map((l, i) => ({ ...l, roleId: `bg-${i}` })),
   ].reduce<Lab[]>((labs, lab) => {
-    if (labs.some((existing) => existing.roleId === lab.roleId)) return labs;
+    const k = identityKey(lab);
+    if (labs.some((existing) => identityKey(existing) === k)) return labs;
     labs.push(lab);
     return labs;
   }, []);
@@ -128,10 +152,6 @@ function buildChartData(
     return padLeft + (i / Math.max(1, xCount - 1)) * chartW;
   }
 
-  // Key on roleId first: DEFAULT_LABS carries static string labIds ("openbrain") that
-  // never match Convex labIds on the live doc. roleId is stable across both.
-  const identityKey = (l: { labId?: string; roleId?: string; name: string }) =>
-    l.roleId ?? l.labId ?? l.name;
   const currentByKey = new Map(currentLabs.map((l) => [identityKey(l), l]));
   const series: LabSeries[] = [];
 

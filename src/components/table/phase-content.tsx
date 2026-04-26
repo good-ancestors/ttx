@@ -295,7 +295,10 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
 
 function ResolveContent({ common, resolve, submit, lab }: {
   common: CommonProps;
-  resolve: ResolveProps & { phase: "rolling" | "narrate" };
+  // "effect-review" is a facilitator-only pause; from the player table view it's
+  // indistinguishable from narrate (dice results + narrative waiting to appear),
+  // so the prop type includes it and the body reads it as a non-rolling phase.
+  resolve: ResolveProps & { phase: "rolling" | "effect-review" | "narrate" };
   submit: Pick<SubmitProps, "currentRound" | "allRequests">;
   lab: Pick<LabProps, "currentLab" | "startingStock">;
 }) {

@@ -6,7 +6,7 @@
 // and player actions call the *Internal variants so mutations can be composed.
 
 import { v } from "convex/values";
-import { query, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { query, internalQuery, internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { emitPair } from "./computeLedger";
 
@@ -24,6 +24,7 @@ export interface LabWithCompute {
   spec?: string;
   colour: string;
   status: "active" | "decommissioned";
+  jurisdiction?: string;             // legal/regulatory home
 }
 
 // Default colour palette for auto-assigned labs (founder-chosen overrides).
@@ -81,6 +82,7 @@ export async function getLabsWithCompute(
     spec: l.spec,
     colour: l.colour,
     status: l.status,
+    jurisdiction: l.jurisdiction,
   }));
 }
 
@@ -99,6 +101,7 @@ export async function createLabInternal(
     ownerRoleId?: string;
     colour?: string;
     createdRound: number;
+    jurisdiction?: string;
   },
 ): Promise<Id<"labs">> {
   const active = await getActiveLabsForGame(ctx, args.gameId);
@@ -114,20 +117,27 @@ export async function createLabInternal(
     colour: args.colour ?? pickColour(active),
     status: "active",
     createdRound: args.createdRound,
+    jurisdiction: args.jurisdiction,
   });
 }
 
-/** Decommission a lab (soft-delete). Never removes the row — restore still needs it. */
+/** Decommission a lab (soft-delete). Never removes the row — restore still needs it.
+ *  `mergedIntoLabId` is only patched when the caller explicitly passes it — otherwise a
+ *  bare "just decommission" call would clobber an existing merger pointer from a previous
+ *  structural event. */
 export async function decommissionLabInternal(
   ctx: MutationCtx,
   labId: Id<"labs">,
   opts?: { mergedIntoLabId?: Id<"labs"> },
 ): Promise<void> {
-  await ctx.db.patch(labId, {
+  const patch: { status: "decommissioned"; ownerRoleId: undefined; mergedIntoLabId?: Id<"labs"> } = {
     status: "decommissioned",
-    mergedIntoLabId: opts?.mergedIntoLabId,
     ownerRoleId: undefined,
-  });
+  };
+  if (opts && "mergedIntoLabId" in opts) {
+    patch.mergedIntoLabId = opts.mergedIntoLabId;
+  }
+  await ctx.db.patch(labId, patch);
 }
 
 /** Merge two labs. Survivor absorbs structural fields as specified; absorbed goes
@@ -245,9 +255,9 @@ export async function transferLabOwnershipInternal(
   labId: Id<"labs">,
   newOwnerRoleId: string | undefined,
 ): Promise<void> {
-  // Ownership transfer does NOT move compute — owner's personal stock stays with them.
-  // The new owner now controls the lab's structural decisions (spec, allocation) and
-  // the lab's R&D uses the new owner's compute balance going forward.
+  // Ownership patch only. The compute ledger pair (old owner → new owner) is
+  // emitted by the caller in applyDecidedEffectsInternal when the phase-5
+  // transferOwnership effect applies — compute follows the lab.
   await ctx.db.patch(labId, { ownerRoleId: newOwnerRoleId });
 }
 
@@ -265,6 +275,49 @@ export const getLabs = query({
   handler: async (ctx, args) => {
     const all = await getAllLabs(ctx, args.gameId);
     return args.includeInactive ? all : all.filter((l) => l.status === "active");
+  },
+});
+
+/** Reset labs to a pre-round snapshot so re-resolve starts from a clean slate.
+ *  Restores the full structural state: rdMultiplier, allocation, name, spec,
+ *  ownerRoleId, status, mergedIntoLabId. Without restoring status/mergedIntoLabId,
+ *  a re-resolve of a round that previously merged Lab A into Lab B would fail
+ *  to re-apply the merge (A is still decommissioned) — the re-resolve would
+ *  silently diverge from the first run. */
+export const resetLabsToSnapshotInternal = internalMutation({
+  args: {
+    gameId: v.id("games"),
+    snapshot: v.array(v.object({
+      labId: v.id("labs"),
+      name: v.string(),
+      spec: v.optional(v.string()),
+      roleId: v.optional(v.string()),
+      rdMultiplier: v.number(),
+      allocation: v.object({
+        deployment: v.number(),
+        research: v.number(),
+        safety: v.number(),
+      }),
+      status: v.union(v.literal("active"), v.literal("decommissioned")),
+      mergedIntoLabId: v.optional(v.id("labs")),
+      jurisdiction: v.optional(v.string()),
+    })),
+  },
+  handler: async (ctx, args) => {
+    await Promise.all(args.snapshot.map(async (s) => {
+      const lab = await ctx.db.get(s.labId);
+      if (!lab || lab.gameId !== args.gameId) return;
+      await ctx.db.patch(s.labId, {
+        name: s.name,
+        spec: s.spec,
+        ownerRoleId: s.roleId,
+        rdMultiplier: s.rdMultiplier,
+        allocation: s.allocation,
+        status: s.status,
+        mergedIntoLabId: s.mergedIntoLabId,
+        jurisdiction: s.jurisdiction,
+      });
+    }));
   },
 });
 

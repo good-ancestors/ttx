@@ -16,8 +16,10 @@ export const setComputeShareOverrides = mutation({
   },
 });
 
-/** Facilitator-edit path: write a `facilitator` ledger row for the delta. The ledger
- *  updates table.computeStock cache; labs table doesn't store compute. */
+/** Facilitator-edit path: write a `facilitator` ledger row for the delta to a role's
+ *  compute stock. Caller passes an absolute target `computeStock`; the mutation reads
+ *  the current table stock and emits a delta ledger row. The ledger row updates
+ *  table.computeStock cache; labs table doesn't store compute. */
 export const overrideHolderCompute = mutation({
   args: {
     gameId: v.id("games"),
@@ -29,6 +31,11 @@ export const overrideHolderCompute = mutation({
   },
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
+    // Target stock must be a finite non-negative number. The facilitator editor
+    // clamps with Math.max(0, ...) on the client, but direct API calls would
+    // otherwise drive table.computeStock below zero via the ledger delta.
+    if (!Number.isFinite(args.computeStock)) throw new Error("overrideHolderCompute: target computeStock must be a finite number");
+    if (args.computeStock < 0) throw new Error(`overrideHolderCompute: target computeStock must be >= 0 (got ${args.computeStock})`);
     const table = await ctx.db.query("tables")
       .withIndex("by_game_and_role", (q) => q.eq("gameId", args.gameId).eq("roleId", args.roleId))
       .first();

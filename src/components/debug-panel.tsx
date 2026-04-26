@@ -7,11 +7,14 @@ import type { Id } from "@convex/_generated/dataModel";
 import { Bug, ChevronDown, ChevronUp } from "lucide-react";
 import { useFacilitatorToken } from "@/lib/hooks";
 
-// Rough token pricing (USD per 1M tokens) — for cost estimation
+// Rough token pricing (USD per 1M tokens) — keys match model IDs as returned by Anthropic API
 const TOKEN_COSTS: Record<string, { input: number; output: number }> = {
+  "claude-sonnet-4-6": { input: 3, output: 15 },
+  "claude-haiku-4-5": { input: 0.8, output: 4 },
+  "claude-opus-4-6": { input: 15, output: 75 },
+  // Legacy provider-prefixed keys for backwards compat with old stored values
   "anthropic/claude-sonnet-4-6": { input: 3, output: 15 },
   "anthropic/claude-haiku-4-5": { input: 0.8, output: 4 },
-  "google/gemini-2.5-flash": { input: 0.15, output: 0.6 },
   "anthropic/claude-opus-4-6": { input: 15, output: 75 },
 };
 
@@ -70,7 +73,7 @@ export function DebugPanel({ gameId, roundNumber }: Props) {
             <div className="text-navy-muted">
               Tokens: {totalTokens > 0 ? totalTokens.toLocaleString() : "—"} |
               Est. cost: {estimatedCost > 0 ? `$${estimatedCost.toFixed(4)}` : "—"} |
-              Models: {models.size > 0 ? [...models].map(m => m.split("/")[1]).join(", ") : "—"}
+              Models: {models.size > 0 ? [...models].map(m => m.split("/").pop()).join(", ") : "—"}
             </div>
           </div>
 
@@ -80,8 +83,8 @@ export function DebugPanel({ gameId, roundNumber }: Props) {
               <span className="text-text-light font-semibold block mb-1">Submissions</span>
               {(submissions ?? []).filter(s => s.aiMeta).map((sub) => (
                 <div key={`sub-${sub.roleId}`} className="text-navy-muted">
-                  {sub.roleId}: {sub.aiMeta?.playerModel?.split("/")[1] ?? "human"} ({sub.aiMeta?.playerTimeMs ?? "—"}ms)
-                  {sub.aiMeta?.gradingModel && ` → graded by ${sub.aiMeta.gradingModel.split("/")[1]} (${sub.aiMeta.gradingTimeMs ?? "—"}ms)`}
+                  {sub.roleId}: {sub.aiMeta?.playerModel?.split("/").pop() ?? "human"} ({sub.aiMeta?.playerTimeMs ?? "—"}ms)
+                  {sub.aiMeta?.gradingModel && ` → graded by ${sub.aiMeta.gradingModel.split("/").pop()} (${sub.aiMeta.gradingTimeMs ?? "—"}ms)`}
                 </div>
               ))}
             </div>
@@ -92,7 +95,7 @@ export function DebugPanel({ gameId, roundNumber }: Props) {
             <div className="mb-3">
               <span className="text-text-light font-semibold block mb-1">Narrative</span>
               <div className="text-navy-muted">
-                {round.aiMeta.narrativeModel?.split("/")[1] ?? "—"} |
+                {round.aiMeta.narrativeModel?.split("/").pop() ?? "—"} |
                 {round.aiMeta.narrativeTimeMs ? ` ${(round.aiMeta.narrativeTimeMs / 1000).toFixed(1)}s` : " —"} |
                 {round.aiMeta.narrativeTokens ? ` ${round.aiMeta.narrativeTokens.toLocaleString()} tokens` : " —"}
               </div>

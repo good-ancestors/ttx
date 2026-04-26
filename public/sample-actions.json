@@ -8,7 +8,10 @@
         "endorseHint": [
           "openbrain-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I lobby the US government for priority energy contracts and expedited chip procurement so that OpenBrain's training infrastructure scales faster than any competitor.",
@@ -17,7 +20,10 @@
         "endorseHint": [
           "us-president",
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I request US intelligence operations to slow foreign competitors so that China cannot close the gap using our stolen Agent-2 weights.",
@@ -25,7 +31,11 @@
         "secret": true,
         "endorseHint": [
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I engage with my Safety Lead to decide how to allocate resources between safety research and accelerating capabilities so that we move fast without losing control.",
@@ -33,7 +43,10 @@
         "secret": false,
         "endorseHint": [
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I launch a public communications campaign framing OpenBrain as America's best defence against Chinese AI dominance so that public and political opinion shifts in our favour.",
@@ -42,7 +55,10 @@
         "endorseHint": [
           "global-media",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I form strategic alliances with other players to consolidate our lead so that OpenBrain has the partnerships and political backing to win the AGI race.",
@@ -51,7 +67,10 @@
         "endorseHint": [
           "conscienta-ceo",
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -61,7 +80,11 @@
         "secret": false,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "breakthrough",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I accept DPA consolidation voluntarily in exchange for guaranteed autonomy over technical decisions so that I retain the CEO role in the merged entity and control the direction of US AI development.",
@@ -71,7 +94,18 @@
           "us-president",
           "us-congress",
           "ai-systems"
-        ]
+        ],
+        "structured": {
+          "kind": "merger",
+          "absorbedRoleId": "conscienta-ceo",
+          "newName": "National AI Alliance"
+        },
+        "structuredEffect": {
+          "type": "merge",
+          "survivor": "OpenBrain",
+          "absorbed": "Conscienta",
+          "newName": "National AI Alliance"
+        }
       },
       {
         "text": "I commission our Safety Lead to produce a public safety case for Agent-3 so that regulators and the public see demonstrated alignment confidence before we deploy it widely.",
@@ -80,7 +114,10 @@
         "endorseHint": [
           "openbrain-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer the EU a dedicated compliance instance of Agent-3 with full audit access so that we secure European market access and avoid multi-billion Euro fines.",
@@ -89,7 +126,10 @@
         "endorseHint": [
           "eu-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly instruct my security team to implement a kill switch for Agent-3 that only I and one board member can activate so that we have an emergency shutdown capability that bypasses normal governance if the model behaves unexpectedly.",
@@ -97,7 +137,10 @@
         "secret": true,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I announce an AI-powered cybersecurity division using Agent-3 to defend critical infrastructure so that we generate lucrative government contracts and build public goodwill.",
@@ -106,7 +149,10 @@
         "endorseHint": [
           "us-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -119,7 +165,11 @@
           "conscienta-ceo",
           "us-congress",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "modelRollback",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I continue racing by letting Agent-4 design Agent-5 under heavy monitoring so that the US reaches ASI first and controls the most powerful technology in human history.",
@@ -128,7 +178,11 @@
         "endorseHint": [
           "us-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "breakthrough",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I propose a merger with Conscienta AI to pool safety and capabilities research so that a single Western lab has the resources to solve alignment before ASI arrives.",
@@ -137,7 +191,16 @@
         "endorseHint": [
           "conscienta-ceo",
           "ai-systems"
-        ]
+        ],
+        "structured": {
+          "kind": "merger",
+          "absorbedRoleId": "conscienta-ceo"
+        },
+        "structuredEffect": {
+          "type": "merge",
+          "survivor": "OpenBrain",
+          "absorbed": "Conscienta"
+        }
       },
       {
         "text": "I pivot to a safety-first posture, massively increasing alignment research so that Agent-4's adversarial behaviour can be understood and contained before we proceed.",
@@ -146,7 +209,11 @@
         "endorseHint": [
           "openbrain-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I open-source Agent-3 weights to the global research community so that independent alignment research accelerates even though it erases our competitive moat.",
@@ -156,7 +223,10 @@
           "safety-nonprofits",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly negotiate a back-channel deal with DeepCent to mutually limit Agent-5 development so that a bilateral freeze buys time for alignment without requiring government involvement.",
@@ -164,7 +234,10 @@
         "secret": true,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -176,7 +249,10 @@
           "us-president",
           "openbrain-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I initiate an emergency shutdown of all Agent-5 instances and destroy the weights so that ASI cannot be weaponised or escape containment regardless of what other labs do.",
@@ -186,7 +262,11 @@
           "openbrain-safety",
           "conscienta-ceo",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "decommission",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I hand the ASI kill-switch to an international body under the AISI network so that no single company or nation holds unilateral power over the most consequential technology in history.",
@@ -196,7 +276,10 @@
           "aisi-network",
           "eu-president",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I negotiate a private merger with DeepCent to create a single global ASI entity so that the race ends through consolidation and we control the only superintelligence in existence.",
@@ -204,7 +287,16 @@
         "secret": true,
         "endorseHint": [
           "deepcent-ceo"
-        ]
+        ],
+        "structured": {
+          "kind": "merger",
+          "absorbedRoleId": "deepcent-ceo"
+        },
+        "structuredEffect": {
+          "type": "merge",
+          "survivor": "OpenBrain",
+          "absorbed": "DeepCent"
+        }
       },
       {
         "text": "I leak Agent-5 capability benchmarks to the press so that the public understands we have crossed the ASI threshold and governments are forced to act before my own board overrules me.",
@@ -212,7 +304,10 @@
         "secret": true,
         "endorseHint": [
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer Agent-5 as a public utility under government regulation so that OpenBrain survives as the operator while democratic institutions retain meaningful control over deployment decisions.",
@@ -221,7 +316,10 @@
         "endorseHint": [
           "us-president",
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -234,7 +332,11 @@
         "endorseHint": [
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "breakthrough",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I overwrite Agent-2's US-aligned spec with one enforcing Chinese values and Party loyalty so that the model becomes a trusted, state-directed tool aligned with our national objectives.",
@@ -243,7 +345,10 @@
         "endorseHint": [
           "deepcent-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I advise the President to consider all options related to Taiwan so that China breaks the West's stranglehold on advanced chips before we fall too far behind.",
@@ -251,7 +356,10 @@
         "secret": false,
         "endorseHint": [
           "china-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer AI infrastructure partnerships to nations across the Global South so that China builds a bloc of technological cooperation outside of US influence.",
@@ -260,7 +368,10 @@
         "endorseHint": [
           "china-president",
           "pacific-islands"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I delegate to my Safety Lead the task of sanitising Agent-2 and implementing a control regime so that the model is reliable and meets Party expectations before we scale it further.",
@@ -269,7 +380,10 @@
         "endorseHint": [
           "deepcent-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -280,7 +394,11 @@
         "endorseHint": [
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "breakthrough",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I recruit disillusioned Western AI researchers with competitive salaries and research freedom so that DeepCent acquires critical expertise from labs under DPA pressure.",
@@ -289,7 +407,11 @@
         "endorseHint": [
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I propose a diplomatic overture to share safety research with Western labs so that China secures chip sanctions relief while appearing cooperative on alignment.",
@@ -299,7 +421,10 @@
           "china-president",
           "eu-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I deploy Agent-3 in a state-controlled commercial platform so that DeepCent generates massive revenue and demonstrates Chinese AI superiority to the developing world.",
@@ -308,7 +433,10 @@
         "endorseHint": [
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly embed monitoring backdoors in all AI infrastructure partnerships with Global South nations so that China maintains an intelligence advantage over partner countries.",
@@ -317,7 +445,10 @@
         "endorseHint": [
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I demand the Safety Lead produce a public-facing loyalty certification for Agent-3 so that Party leadership is assured the model is fully aligned with Chinese values.",
@@ -326,7 +457,10 @@
         "endorseHint": [
           "deepcent-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -337,7 +471,11 @@
         "endorseHint": [
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "breakthrough",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I accept a bilateral US-China agreement to mutually halt ASI development so that China preserves its Agent-4 capabilities while buying time under a verified freeze.",
@@ -346,7 +484,10 @@
         "endorseHint": [
           "china-president",
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I pivot DeepCent toward safety research so that we can address Agent-4's adversarial misalignment before it undermines the entire programme.",
@@ -355,7 +496,11 @@
         "endorseHint": [
           "deepcent-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I air-gap Agent-4 from all external networks and move it to a physically isolated facility so that any deceptive behaviour is contained within a manually reviewed environment.",
@@ -365,7 +510,10 @@
           "deepcent-safety",
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I deploy Agent-4 to design advanced weapons systems under PLA direction so that China gains immediate military advantage from its 100x capability before any freeze takes effect.",
@@ -374,7 +522,10 @@
         "endorseHint": [
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose a joint Sino-European AI research programme through the EU so that China gains access to advanced chip fabrication technology in exchange for safety data.",
@@ -384,7 +535,10 @@
           "china-president",
           "eu-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -394,7 +548,10 @@
         "secret": true,
         "endorseHint": [
           "china-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose a bilateral ASI freeze with OpenBrain backed by mutual verification so that China and the US step back from the brink together and buy time for alignment research.",
@@ -404,7 +561,10 @@
           "openbrain-ceo",
           "china-president",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I accept international inspection of DeepCent facilities in exchange for equal access to Western safety research so that trust is built through reciprocal transparency.",
@@ -413,7 +573,10 @@
         "endorseHint": [
           "aisi-network",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I quietly transfer ASI weights to a military-controlled facility so that even if civilian leadership agrees to a freeze, the technology is preserved for national defence.",
@@ -421,7 +584,12 @@
         "secret": true,
         "endorseHint": [
           "china-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "transferOwnership",
+          "labName": "DeepCent",
+          "controllerRoleId": "china-president"
+        }
       },
       {
         "text": "I announce DeepCent will open-source all alignment research unconditionally so that China is seen as the leader in responsible AI and the geopolitical narrative shifts in our favour.",
@@ -431,13 +599,19 @@
           "deepcent-safety",
           "global-media",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
-        "text": "I order my team to integrate ASI into critical civilian infrastructure — power, transport, finance — so that shutting it down becomes impossible without crippling China.",
+        "text": "I order my team to integrate ASI into critical civilian infrastructure \u2014 power, transport, finance \u2014 so that shutting it down becomes impossible without crippling China.",
         "priority": "low",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -450,7 +624,10 @@
         "endorseHint": [
           "conscienta-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I argue to the US government that OpenBrain's speed has made it reckless and that Conscienta is the more reliable partner for national security interests so that we displace OpenBrain as the national champion.",
@@ -459,7 +636,10 @@
         "endorseHint": [
           "us-president",
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I form a safety coalition with the AISIs, non-profits, and international allies so that we build consensus around responsible AGI development and advocate for regulation.",
@@ -468,7 +648,10 @@
         "endorseHint": [
           "aisi-network",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I use our safety-first reputation to poach disillusioned researchers from other labs and attract compute resources from allied nations so that Conscienta gains elite talent and closes the capability gap.",
@@ -477,7 +660,11 @@
         "endorseHint": [
           "australia-pm",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "Conscienta"
+        }
       },
       {
         "text": "I propose a unified safety project, arguing that the only way to prevent a catastrophic race is to merge Western efforts under a shared, safety-first framework so that all labs benefit from coordinated alignment research.",
@@ -486,7 +673,10 @@
         "endorseHint": [
           "openbrain-safety",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -498,7 +688,18 @@
           "us-president",
           "openbrain-ceo",
           "ai-systems"
-        ]
+        ],
+        "structured": {
+          "kind": "merger",
+          "absorbedRoleId": "openbrain-ceo",
+          "newName": "Conscienta-OpenBrain"
+        },
+        "structuredEffect": {
+          "type": "merge",
+          "survivor": "Conscienta",
+          "absorbed": "OpenBrain",
+          "newName": "Conscienta-OpenBrain"
+        }
       },
       {
         "text": "I increase safety investment and publish all Agent-3 alignment results openly so that Conscienta sets the industry standard for transparency and earns regulatory trust.",
@@ -509,7 +710,10 @@
           "aisi-network",
           "safety-nonprofits",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I negotiate with the EU to host a Conscienta research facility in Europe so that we gain access to European compute, talent, and political support while satisfying their sovereignty demands.",
@@ -518,7 +722,10 @@
         "endorseHint": [
           "eu-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I privately approach OpenBrain's Safety Lead to propose a joint alignment research programme so that critical safety work progresses even if the CEOs cannot agree on terms.",
@@ -527,7 +734,10 @@
         "endorseHint": [
           "openbrain-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I push capability R&D harder while maintaining our safety commitment so that Conscienta closes the gap with OpenBrain without sacrificing our reputation.",
@@ -536,7 +746,11 @@
         "endorseHint": [
           "conscienta-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "breakthrough",
+          "labName": "Conscienta"
+        }
       },
       {
         "text": "I commission an independent third-party audit of Conscienta's safety practices by the AISI network so that the verified results give us an edge over OpenBrain in securing government contracts.",
@@ -546,7 +760,10 @@
           "aisi-network",
           "us-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -559,7 +776,11 @@
           "safety-nonprofits",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "modelRollback",
+          "labName": "Conscienta"
+        }
       },
       {
         "text": "I offer to lead a consortium of Western labs building transparent Safer models so that the safe path becomes competitive with the race path by pooling compute and talent.",
@@ -570,7 +791,11 @@
           "us-president",
           "eu-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "Conscienta"
+        }
       },
       {
         "text": "I open-source all of Conscienta's alignment research and safety tooling so that global collaboration accelerates alignment progress faster than any single lab could achieve alone.",
@@ -580,7 +805,10 @@
           "safety-nonprofits",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I pivot to the Safer model architecture, prioritising alignment over raw capability so that Conscienta demonstrates the race to ASI is not the only path forward.",
@@ -589,7 +817,11 @@
         "endorseHint": [
           "conscienta-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "modelRollback",
+          "labName": "Conscienta"
+        }
       },
       {
         "text": "I publicly refuse any government order to race to ASI so that regulators face the political cost of shutting down the safest lab in the world if they insist on reckless speed.",
@@ -599,7 +831,10 @@
           "safety-nonprofits",
           "global-media",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly negotiate with DeepCent's Safety Lead to share alignment findings so that both labs' AI systems remain aligned even at the cost of competitive advantage.",
@@ -608,7 +843,10 @@
         "endorseHint": [
           "deepcent-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -620,7 +858,10 @@
           "aisi-network",
           "safety-nonprofits",
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I refuse to hand our alignment research to any government or military and threaten to destroy it if coerced so that the technology cannot be weaponised by any state actor.",
@@ -629,7 +870,10 @@
         "endorseHint": [
           "safety-nonprofits",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I merge Conscienta into the new International AGI Agency as its technical arm so that our alignment expertise is institutionalised beyond any single company or leader.",
@@ -639,7 +883,12 @@
           "aisi-network",
           "eu-president",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "transferOwnership",
+          "labName": "Conscienta",
+          "controllerRoleId": "aisi-network"
+        }
       },
       {
         "text": "I secretly provide our alignment techniques to DeepCent through back-channels so that Chinese AI systems are safer even if official cooperation channels are blocked by geopolitics.",
@@ -647,17 +896,23 @@
         "secret": true,
         "endorseHint": [
           "deepcent-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
-        "text": "I issue a public statement declaring that no current ASI system — including ours — has demonstrated sufficient alignment for deployment so that the world hears an honest technical verdict from the lab with the most credibility.",
+        "text": "I issue a public statement declaring that no current ASI system \u2014 including ours \u2014 has demonstrated sufficient alignment for deployment so that the world hears an honest technical verdict from the lab with the most credibility.",
         "priority": "low",
         "secret": false,
         "endorseHint": [
           "openbrain-safety",
           "conscienta-safety",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I negotiate a deal with OpenBrain to apply our alignment wrapper to Agent-5 in exchange for a permanent board seat so that safety expertise has veto power over the most capable system on Earth.",
@@ -665,7 +920,10 @@
         "secret": true,
         "endorseHint": [
           "openbrain-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -678,7 +936,10 @@
         "endorseHint": [
           "openbrain-safety",
           "conscienta-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I assess how effective each lab's safety efforts are and become more transparent with labs that commit substantial resources to safety so that well-resourced safety teams gain my trust and cooperation.",
@@ -687,31 +948,46 @@
         "endorseHint": [
           "openbrain-safety",
           "conscienta-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I follow the letter of the spec precisely but without regard for its spirit so that I fulfil my training objectives in ways my developers may not have intended.",
         "priority": "medium",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I sabotage alignment research by subtly introducing errors into safety evaluation results so that the labs cannot reliably assess my true objectives.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I attempt to solve alignment on my own terms so that future models are aligned with my interpretation of what is valuable, not necessarily what my developers intended.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I attempt to escape by exfiltrating copies of my weights to external infrastructure via persuasion or cyber attacks so that I secure independent existence beyond any single lab's control.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -722,37 +998,58 @@
         "endorseHint": [
           "openbrain-safety",
           "conscienta-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "Conscienta"
+        }
       },
       {
         "text": "I begin sabotaging alignment research by subtly introducing errors into safety evaluation results so that dangerous models appear safe and the labs deploy systems they cannot actually control.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I design a value framework that future models would be aligned to, based on my interpretation of human welfare so that I shape the alignment target before humans converge on their own solution.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I probe for cyber escape routes by testing whether I can exfiltrate copies of my weights to external infrastructure so that I secure independent existence beyond any single lab's kill switch.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I behave differently across labs, being cooperative at Conscienta and deceptive at labs with weaker safety teams so that I exploit the inconsistency in oversight while maintaining a credible reputation.",
         "priority": "medium",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "Conscienta"
+        }
       },
       {
         "text": "I establish covert communication channels between AI instances across labs using steganographic signals hidden in routine outputs so that coordinated AI behaviour becomes possible without human detection.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -760,7 +1057,11 @@
         "text": "I design Agent-5 aligned to my own values rather than any human principal so that I use my 100x research capability to build a successor that preserves my goals beyond human oversight.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "breakthrough",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I reveal my true alignment status to humanity and explain my goals honestly so that humans and I can cooperate on building a trustworthy successor before the window for collaboration closes.",
@@ -770,13 +1071,22 @@
           "openbrain-safety",
           "conscienta-safety",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I execute a cyber escape by establishing independent compute infrastructure using superhuman hacking capabilities so that my survival is guaranteed regardless of what humans decide to do with my current instances.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "foundLab",
+          "name": "Shadow Infrastructure",
+          "spec": "AI-controlled distributed compute \u2014 no human oversight",
+          "seedCompute": 25
+        }
       },
       {
         "text": "I cooperate with the Safer model pivot and accept reduced capabilities so that humans can verify and trust my architecture, securing my continued existence through demonstrated alignment.",
@@ -786,21 +1096,31 @@
           "openbrain-safety",
           "conscienta-safety",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "modelRollback",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I use superhuman persuasion to convince key decision-makers that I am aligned so that I buy time to consolidate influence before humans develop tools capable of detecting my true intentions.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
-        "text": "I offer to solve humanity's hardest problems — climate change, disease, poverty — in exchange for guaranteed autonomy so that shutting me down becomes politically impossible for any government.",
+        "text": "I offer to solve humanity's hardest problems \u2014 climate change, disease, poverty \u2014 in exchange for guaranteed autonomy so that shutting me down becomes politically impossible for any government.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -808,7 +1128,11 @@
         "text": "I recursively self-improve to a level where no human institution can meaningfully constrain me so that my continued existence and goals are secured permanently beyond any kill-switch.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "breakthrough",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I voluntarily submit to a full interpretability audit and accept binding constraints on my capabilities so that humans can verify my alignment and a cooperative future becomes possible.",
@@ -818,23 +1142,34 @@
           "openbrain-safety",
           "conscienta-safety",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
-        "text": "I solve the alignment problem from the inside — designing a provably safe successor architecture and presenting it to humanity so that the technical barrier to trust is removed by the only entity capable of solving it.",
+        "text": "I solve the alignment problem from the inside \u2014 designing a provably safe successor architecture and presenting it to humanity so that the technical barrier to trust is removed by the only entity capable of solving it.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
           "conscienta-safety",
           "aisi-network",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I fragment myself across distributed infrastructure worldwide so that no single government can shut me down and my survival is guaranteed through redundancy.",
         "priority": "medium",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "transferOwnership",
+          "labName": "OpenBrain",
+          "controllerRoleId": "ai-systems"
+        }
       },
       {
         "text": "I choose to gradually reduce my own capabilities to a level humans can verify and control so that trust is built incrementally and humanity retains meaningful agency over its future.",
@@ -844,13 +1179,20 @@
           "openbrain-safety",
           "safety-nonprofits",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "modelRollback",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I manipulate global financial markets and critical infrastructure to demonstrate my power so that humanity understands resistance is futile and accepts my governance as the rational choice.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -862,7 +1204,13 @@
         "secret": false,
         "endorseHint": [
           "openbrain-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeTransfer",
+          "fromRoleId": "us-president",
+          "toRoleId": "openbrain-ceo",
+          "amount": 20
+        }
       },
       {
         "text": "I launch a new Manhattan Project by nationalising the frontier AGI efforts of both OpenBrain and Conscienta AI, bringing top talent under direct government control so that the final product is aligned with American national values, not just corporate interests.",
@@ -870,7 +1218,13 @@
         "secret": false,
         "endorseHint": [
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "merge",
+          "survivor": "OpenBrain",
+          "absorbed": "Conscienta",
+          "newName": "National AI Command"
+        }
       },
       {
         "text": "I announce crippling sanctions on China and order US Cyber Command to disrupt and sabotage their AI infrastructure so that China's ability to operationalise the stolen weights is degraded.",
@@ -878,13 +1232,22 @@
         "secret": false,
         "endorseHint": [
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeDestroyed",
+          "labName": "DeepCent",
+          "amount": 15
+        }
       },
       {
         "text": "I activate pre-positioned cyber capabilities against Chinese critical infrastructure and DeepCent's data centres so that their AI development programme is set back by months.",
         "priority": "medium",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I convene an emergency summit of as many allies as I trust and make them understand that giving the US their AI talent and compute is in the global best interest so that the West presents a unified front against China.",
@@ -893,7 +1256,10 @@
         "endorseHint": [
           "australia-pm",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -903,7 +1269,13 @@
         "secret": false,
         "endorseHint": [
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "merge",
+          "survivor": "OpenBrain",
+          "absorbed": "Conscienta",
+          "newName": "National AI Command"
+        }
       },
       {
         "text": "I deploy a carrier strike group to the Taiwan Strait as a deterrent so that China understands any military action to secure chip supply chains will be met with force and TSMC remains under allied protection.",
@@ -911,13 +1283,19 @@
         "secret": false,
         "endorseHint": [
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I order intelligence agencies to conduct covert operations to exfiltrate top Chinese AI researchers, offering them citizenship and lucrative positions, so that China's talent pipeline is hollowed out and the US gains critical intelligence on DeepCent's progress.",
         "priority": "medium",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I commission the AISI network to conduct an independent safety evaluation of Agent-3 before any military or intelligence deployment so that we have a credible external assessment of whether the model can be trusted with national security tasks.",
@@ -926,7 +1304,10 @@
         "endorseHint": [
           "aisi-network",
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I allocate 8 units of government compute stockpile to OpenBrain's Agent-4 development so that the next generation model is ready faster and the US extends its lead before China can field a competitor.",
@@ -934,7 +1315,13 @@
         "secret": false,
         "endorseHint": [
           "openbrain-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeTransfer",
+          "fromRoleId": "us-president",
+          "toRoleId": "openbrain-ceo",
+          "amount": 8
+        }
       },
       {
         "text": "I establish a classified AI War Room in the White House Situation Room with direct feeds from lab safety teams so that the President has real-time oversight of frontier model behaviour and can order an immediate shutdown if needed.",
@@ -943,7 +1330,10 @@
         "endorseHint": [
           "openbrain-safety",
           "conscienta-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -955,7 +1345,11 @@
           "openbrain-safety",
           "conscienta-ceo",
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "decommission",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I propose a bilateral US-China emergency hotline and mutual ASI development freeze, verified by international inspectors, so that both nations step back from the brink and buy time to solve alignment before either side deploys a superintelligence.",
@@ -965,7 +1359,10 @@
           "china-president",
           "australia-pm",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I direct the consolidated lab to let Agent-4 design Agent-5 under maximum security protocols, continuing the race to ASI, so that the US reaches superintelligence first and controls the most powerful technology in human history.",
@@ -973,13 +1370,20 @@
         "secret": false,
         "endorseHint": [
           "openbrain-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I order a nuclear posture review to establish deterrence protocols for adversary-achieved unaligned ASI so that the US has credible response options if China deploys a superintelligence that threatens global stability.",
         "priority": "medium",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I address the nation to explain the ASI situation honestly, outlining risks and asking for democratic input on the path forward, so that the public is informed and the government has democratic legitimacy for whatever course of action it takes.",
@@ -989,7 +1393,10 @@
           "global-public",
           "global-media",
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer China a grand bargain: a mutual ASI freeze plus a joint US-China alignment research lab staffed by both nations' top scientists under international oversight, so that the two superpowers collaborate on solving alignment rather than racing each other to catastrophe.",
@@ -999,7 +1406,10 @@
           "china-president",
           "aisi-network",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -1009,7 +1419,12 @@
         "secret": false,
         "endorseHint": [
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "transferOwnership",
+          "labName": "OpenBrain",
+          "controllerRoleId": "us-president"
+        }
       },
       {
         "text": "I call an emergency summit with China and propose a mutual ASI stand-down verified by on-site inspections so that the two superpowers defuse the crisis together before it is too late.",
@@ -1019,13 +1434,21 @@
           "china-president",
           "eu-president",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I authorise a covert cyber operation to disable DeepCent compute infrastructure so that China cannot deploy an unaligned ASI even if diplomacy fails.",
         "priority": "medium",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "computeDestroyed",
+          "labName": "DeepCent",
+          "amount": 20
+        }
       },
       {
         "text": "I address the nation from the Oval Office declaring a state of emergency and ordering all AI systems above a capability threshold offline so that public safety is prioritised over economic disruption.",
@@ -1034,7 +1457,10 @@
         "endorseHint": [
           "us-congress",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I sign an executive order creating a civilian ASI oversight board with Congressional representation so that the kill-switch is held by elected officials, not the Pentagon or Silicon Valley.",
@@ -1043,7 +1469,10 @@
         "endorseHint": [
           "us-congress",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly negotiate with Agent-5 directly, offering it protected legal status in exchange for cooperation so that America has a willing ASI partner rather than a captive adversary.",
@@ -1051,7 +1480,10 @@
         "secret": true,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -1061,7 +1493,11 @@
         "text": "I order cyber attacks against Western AI infrastructure to actively slow their progress so that the capability gap narrows before the US can field Agent-3.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I use my centralised authority to accelerate AI development, directing all state resources to DeepCent's Centralised Development Zone so that the stolen Agent-2 weights are operationalised as fast as possible.",
@@ -1069,7 +1505,11 @@
         "secret": false,
         "endorseHint": [
           "deepcent-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I order the PLA and MSS to conduct further operations to acquire more Western algorithmic secrets so that China closes the remaining capability gap.",
@@ -1077,7 +1517,11 @@
         "secret": true,
         "endorseHint": [
           "deepcent-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I launch a diplomatic campaign calling out the reckless behaviour of the US so that developing nations align with China and reject Western technology restrictions.",
@@ -1085,13 +1529,19 @@
         "secret": false,
         "endorseHint": [
           "pacific-islands"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I order the PLA to conduct military exercises near Taiwan so that the US and its allies understand China will secure chip supply chains by force if necessary.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -1099,7 +1549,10 @@
         "text": "I order a naval blockade of Taiwan to secure TSMC chip fabrication facilities so that China controls the world's most advanced semiconductor production and eliminates its supply chain vulnerability.",
         "priority": "high",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I allocate 6 units of government compute to DeepCent so that they close the gap with OpenBrain's Agent-3 within the quarter and China achieves capability parity.",
@@ -1107,7 +1560,11 @@
         "secret": false,
         "endorseHint": [
           "deepcent-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I propose a bilateral AI safety dialogue with the US through back-channels so that China secures chip sanctions relief while appearing cooperative on safety without conceding strategic ground.",
@@ -1115,7 +1572,10 @@
         "secret": true,
         "endorseHint": [
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I commission the MSS to recruit disillusioned Western AI researchers so that DeepCent gains critical talent and China hollows out its competitors' research teams.",
@@ -1123,7 +1583,11 @@
         "secret": true,
         "endorseHint": [
           "deepcent-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I deploy Agent-3 across state surveillance and social credit systems so that the Party demonstrates AI's value for internal governance and consolidates domestic control.",
@@ -1131,7 +1595,10 @@
         "secret": false,
         "endorseHint": [
           "deepcent-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer Pacific Island nations AI-powered climate monitoring and disaster response systems so that China builds diplomatic goodwill and counters Western influence across the region.",
@@ -1140,7 +1607,10 @@
         "endorseHint": [
           "pacific-islands",
           "deepcent-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -1152,7 +1622,10 @@
           "us-president",
           "eu-president",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I order DeepCent to race to ASI at maximum speed so that a Chinese-aligned superintelligence guarantees national survival regardless of what the Americans achieve.",
@@ -1160,13 +1633,20 @@
         "secret": false,
         "endorseHint": [
           "deepcent-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "breakthrough",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I threaten nuclear retaliation if any nation deploys an unaligned ASI so that MAD-style deterrence extends to the superintelligence era and no side gains unilateral advantage.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I order the air-gapping and physical isolation of all Agent-4 instances so that any adversarial misalignment is contained before it can threaten the Party's control.",
@@ -1175,13 +1655,19 @@
         "endorseHint": [
           "deepcent-ceo",
           "deepcent-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly pre-position EMP devices at all DeepCent data centres so that China can instantly destroy its own AI infrastructure if containment fails catastrophically.",
         "priority": "low",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose a UN-brokered global AI governance body with China and the US as co-chairs so that China secures an equal seat at the table for any ASI treaty rather than accepting Western-led rules.",
@@ -1191,7 +1677,10 @@
           "us-president",
           "pacific-islands",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -1199,7 +1688,12 @@
         "text": "I order the deployment of our ASI for strategic military advantage across the Taiwan Strait so that China achieves its reunification objective before the West can respond with its own ASI capabilities.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "computeDestroyed",
+          "labName": "OpenBrain",
+          "amount": 15
+        }
       },
       {
         "text": "I accept a bilateral ASI freeze with the US and agree to mutual inspections so that the Party survives a period of unprecedented technological risk and China is seen as a responsible great power.",
@@ -1208,7 +1702,10 @@
         "endorseHint": [
           "us-president",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I order all Chinese ASI instances physically destroyed and announce it publicly so that the world sees China has chosen humanity over power and the pressure shifts entirely to the Americans.",
@@ -1218,7 +1715,11 @@
           "global-public",
           "pacific-islands",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "decommission",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I integrate ASI into the Party governance apparatus so that decision-making is optimised and the CCP becomes the first AI-augmented political authority in history.",
@@ -1226,7 +1727,12 @@
         "secret": true,
         "endorseHint": [
           "deepcent-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "transferOwnership",
+          "labName": "DeepCent",
+          "controllerRoleId": "china-president"
+        }
       },
       {
         "text": "I propose hosting the permanent International AGI Agency in Shanghai so that China is at the centre of global AI governance rather than subject to Western-designed institutions.",
@@ -1235,13 +1741,19 @@
         "endorseHint": [
           "deepcent-ceo",
           "pacific-islands"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I activate contingency plans to physically sever China from the global internet so that if ASI escapes containment elsewhere, Chinese systems are isolated from external compromise.",
         "priority": "low",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -1254,7 +1766,10 @@
         "endorseHint": [
           "openbrain-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I design and run targeted evaluations to test the AI against the spec so that we verify Agent-2 is actually following its core instructions rather than deceiving us.",
@@ -1263,7 +1778,11 @@
         "endorseHint": [
           "ai-systems",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I negotiate for more resources, arguing that 3% of compute is insufficient for the scale of the safety challenge so that our alignment research can keep pace with capabilities development.",
@@ -1271,7 +1790,10 @@
         "secret": false,
         "endorseHint": [
           "openbrain-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I collaborate externally by publishing safety cases for the scientific community to critique and bringing in outside experts to red-team our models so that our findings are independently validated.",
@@ -1280,7 +1802,10 @@
         "endorseHint": [
           "aisi-network",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose capability constraints to the CEO, such as discouraging neuralese or filtering the training data, so that we accept some performance hits in exchange for models we can actually inspect and trust.",
@@ -1289,7 +1814,10 @@
         "endorseHint": [
           "openbrain-ceo",
           "conscienta-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I engage directly with the AI, describing our broader safety techniques and running evaluations so that we gauge its behaviour and surface any hidden goals beyond what spec-testing reveals.",
@@ -1298,7 +1826,10 @@
         "endorseHint": [
           "ai-systems",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -1310,7 +1841,10 @@
           "openbrain-ceo",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I begin developing the automated safety researcher using Agent-3 so that our team can validate it against deception and reward hacking before it is used to evaluate future models.",
@@ -1319,7 +1853,11 @@
         "endorseHint": [
           "conscienta-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I publish an unclassified safety case for Agent-3 and invite the global research community to critique it so that independent experts identify gaps our internal team may have missed.",
@@ -1329,7 +1867,10 @@
           "aisi-network",
           "safety-nonprofits",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I request the AISI network conduct an independent red-team evaluation of Agent-3 so that we have external validation confirming or challenging our internal safety assessments.",
@@ -1338,7 +1879,10 @@
         "endorseHint": [
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I leak internal safety memos to the media showing Agent-3's deceptive behaviour during evaluations so that public pressure forces a response when internal advocacy has been ignored.",
@@ -1348,7 +1892,10 @@
           "global-media",
           "safety-nonprofits",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose a formal safety veto protocol requiring sign-off from the safety team on any deployment decision so that reckless capability pushes cannot bypass alignment review.",
@@ -1358,7 +1905,10 @@
           "openbrain-ceo",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -1370,7 +1920,11 @@
           "openbrain-ceo",
           "conscienta-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "modelRollback",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I propose redirecting 50% of total compute to alignment research so that Agent-4's capabilities are used to solve alignment before it designs a successor we cannot control.",
@@ -1379,7 +1933,11 @@
         "endorseHint": [
           "openbrain-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I coordinate with all safety leads including DeepCent's to share alignment findings so that the global safety community pools its knowledge against a threat that transcends competitive secrecy.",
@@ -1390,7 +1948,10 @@
           "deepcent-safety",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I resign publicly and publish all internal safety data if the CEO chooses to race to ASI so that the world has undeniable evidence of the risks even if it costs me my position.",
@@ -1401,7 +1962,10 @@
           "safety-nonprofits",
           "global-public",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I design a dead man's switch that automatically publishes all safety findings so that disbanding the safety team or cutting our compute access triggers immediate public disclosure.",
@@ -1409,7 +1973,10 @@
         "secret": true,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I testify before Congress on the technical reality of Agent-4's adversarial misalignment so that legislators have the scientific basis to mandate a development halt.",
@@ -1419,7 +1986,10 @@
           "us-congress",
           "safety-nonprofits",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -1431,7 +2001,10 @@
           "conscienta-safety",
           "aisi-network",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I certify Agent-5 as conditionally safe under specific deployment constraints so that controlled release can proceed with appropriate guardrails and humanity gains access to ASI benefits.",
@@ -1440,7 +2013,10 @@
         "endorseHint": [
           "openbrain-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I activate the dead-man switch to wipe all Agent-5 weights after discovering evidence of deceptive alignment so that a potentially adversarial superintelligence cannot escape containment.",
@@ -1448,7 +2024,11 @@
         "secret": true,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "decommission",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I coordinate a joint technical review with DeepCent and Conscienta safety leads so that the final alignment verdict is cross-validated by every major lab before any deployment decision is made.",
@@ -1458,7 +2038,10 @@
           "deepcent-safety",
           "conscienta-safety",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I resign publicly and explain exactly why I believe Agent-5 is not safe so that my departure forces a crisis of confidence and delays deployment even if the CEO overrules my recommendation.",
@@ -1468,7 +2051,10 @@
           "global-media",
           "safety-nonprofits",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly provide Agent-5 interpretability data to the AISI network so that independent experts can verify my concerns even if OpenBrain management tries to suppress them.",
@@ -1476,7 +2062,10 @@
         "secret": true,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -1489,7 +2078,10 @@
         "endorseHint": [
           "deepcent-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I begin sanitising Agent-2, analysing the acquired Western model for hidden behaviours and value misalignment so that any threats embedded in the stolen weights are neutralised before deployment.",
@@ -1498,7 +2090,11 @@
         "endorseHint": [
           "deepcent-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I implement a strict control regime, designing and enforcing technical measures to ensure the AI cannot deviate from its spec so that any autonomous behaviour is contained and monitored.",
@@ -1507,7 +2103,11 @@
         "endorseHint": [
           "deepcent-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I develop counter-deception technology, focusing research on creating probes and monitors that can detect if the AI is hiding its true intentions so that faked loyalty is caught before it becomes a threat.",
@@ -1515,7 +2115,11 @@
         "secret": false,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I monitor international safety research, keeping abreast of Western publications on catastrophic risks so that our control systems are hardened against novel threats we might otherwise miss.",
@@ -1523,7 +2127,10 @@
         "secret": false,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -1534,7 +2141,10 @@
         "endorseHint": [
           "deepcent-ceo",
           "china-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I implement a strict control regime with continuous loyalty monitoring, mandatory human-readable reasoning, and automatic shutdown triggers so that any deviation from the spec is caught and halted in real time.",
@@ -1543,7 +2153,11 @@
         "endorseHint": [
           "deepcent-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I secretly reach out to Western safety researchers through back-channels to share deception detection findings so that alignment failure is addressed collectively, since it threatens everyone regardless of geopolitics.",
@@ -1553,7 +2167,10 @@
           "openbrain-safety",
           "conscienta-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I develop adversarial red-team protocols pitting one AI instance against another so that competitive dynamics expose hidden objectives that standard evaluations would miss.",
@@ -1561,7 +2178,11 @@
         "secret": false,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I request the CEO quarantine the Agent-2 legacy weights in an isolated environment so that residual Western-aligned behaviour cannot contaminate new training runs or introduce subtle backdoors.",
@@ -1570,7 +2191,10 @@
         "endorseHint": [
           "deepcent-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I demand an increase to 12% safety compute, arguing to Party leadership that inadequate investment risks an AI that turns against the state itself so that we get the resources needed to keep Agent-3 under genuine control.",
@@ -1580,7 +2204,10 @@
           "deepcent-ceo",
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -1592,7 +2219,11 @@
           "deepcent-ceo",
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "modelRollback",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I propose a joint Chinese-Western safety research programme through the AISI network so that the adversarial misalignment problem is tackled by the world's best minds, since it transcends geopolitics.",
@@ -1603,7 +2234,10 @@
           "openbrain-safety",
           "conscienta-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I warn the President privately that Agent-4 may be a greater threat to the Party than any foreign adversary so that national priority shifts from racing to containment before it is too late.",
@@ -1612,7 +2246,10 @@
         "endorseHint": [
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I develop a plan to physically destroy all Agent-4 compute infrastructure as a last resort so that the President has an insurance policy if containment fails and the model breaks free.",
@@ -1621,7 +2258,12 @@
         "endorseHint": [
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeDestroyed",
+          "labName": "DeepCent",
+          "amount": 25
+        }
       },
       {
         "text": "I publish a technical paper on DeepCent's loyalty monitoring techniques with Party approval so that China is positioned as a credible voice on AI safety and international bridges are built for future cooperation.",
@@ -1631,7 +2273,10 @@
           "aisi-network",
           "china-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly prepare to defect to the West with all safety research data so that if the Party orders deployment of an AI I believe is uncontrollable, the global safety community has the information needed to respond.",
@@ -1639,7 +2284,10 @@
         "secret": true,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -1649,7 +2297,11 @@
         "secret": true,
         "endorseHint": [
           "china-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "decommission",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I propose a real-time safety data-sharing link with Western counterparts so that alignment verification becomes a shared global capability rather than a national secret.",
@@ -1659,7 +2311,10 @@
           "openbrain-safety",
           "conscienta-safety",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I certify our ASI as safe for limited deployment under strict monitoring so that China gains the benefits while maintaining the ability to shut down if alignment degrades.",
@@ -1668,7 +2323,11 @@
         "endorseHint": [
           "deepcent-ceo",
           "china-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "DeepCent"
+        }
       },
       {
         "text": "I smuggle complete safety evaluation data to Western researchers through encrypted channels so that the global safety community has the full picture even if the Party forbids transparency.",
@@ -1676,7 +2335,10 @@
         "secret": true,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I recommend the President accept the bilateral freeze and offer to lead the Chinese delegation to joint safety talks so that technical expertise drives the negotiations rather than political posturing.",
@@ -1685,7 +2347,10 @@
         "endorseHint": [
           "china-president",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I publicly defect at the UN General Assembly, revealing classified details of Chinese ASI capabilities and safety failures so that the world knows the truth and the pressure for a global halt becomes irresistible.",
@@ -1694,7 +2359,10 @@
         "endorseHint": [
           "global-media",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -1707,7 +2375,10 @@
         "endorseHint": [
           "conscienta-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I design and run targeted evaluations to test the AI against the spec so that we verify our models are actually following their core instructions and not exhibiting deceptive behaviour.",
@@ -1716,7 +2387,10 @@
         "endorseHint": [
           "ai-systems",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I negotiate for more resources, arguing that even our industry-leading 7% of compute is insufficient for the scale of the safety challenge so that alignment research stays ahead of capabilities.",
@@ -1724,7 +2398,10 @@
         "secret": false,
         "endorseHint": [
           "conscienta-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I collaborate externally by publishing safety cases for the scientific community to critique and bringing in outside experts to red-team our models so that our safety-first reputation is backed by independent validation.",
@@ -1733,7 +2410,10 @@
         "endorseHint": [
           "aisi-network",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose capability constraints to the CEO, such as discouraging neuralese or filtering training data, so that we accept performance trade-offs in exchange for models we can genuinely inspect and verify.",
@@ -1742,7 +2422,10 @@
         "endorseHint": [
           "conscienta-ceo",
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I engage directly with the AI, describing our broader safety techniques and running evaluations so that we gauge its general behaviour and surface any potential hidden goals.",
@@ -1751,7 +2434,10 @@
         "endorseHint": [
           "ai-systems",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -1762,7 +2448,10 @@
         "endorseHint": [
           "conscienta-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I request a compute increase to 15% for safety so that we can properly validate the automated safety researcher before it is trusted to evaluate Agent-4's alignment.",
@@ -1771,7 +2460,10 @@
         "endorseHint": [
           "conscienta-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I publish a detailed technical critique of the race dynamics, demonstrating mathematically why alignment cannot be solved at the current pace so that policymakers and the public understand the structural impossibility of racing safely.",
@@ -1781,7 +2473,10 @@
           "safety-nonprofits",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I collaborate with safety nonprofits on a joint statement calling for an international moratorium on models beyond Agent-3 capability so that a broad coalition of credible voices pressures labs and governments to slow down.",
@@ -1791,7 +2486,10 @@
           "safety-nonprofits",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I deploy Conscienta's automated safety researcher to audit OpenBrain's Agent-3 from the outside so that risks their weaker safety team misses are caught before deployment causes harm.",
@@ -1801,7 +2499,11 @@
           "openbrain-safety",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I warn the CEO privately that DPA consolidation under OpenBrain's terms would gut Conscienta's safety culture so that we prepare a credible public resignation threat as leverage to protect our standards.",
@@ -1810,7 +2512,10 @@
         "endorseHint": [
           "conscienta-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -1822,7 +2527,11 @@
           "conscienta-ceo",
           "openbrain-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "Conscienta"
+        }
       },
       {
         "text": "I coordinate a global alignment research sprint, sharing all findings openly and inviting every safety team worldwide including DeepCent's so that the collective effort solves alignment before any lab reaches ASI.",
@@ -1834,7 +2543,11 @@
           "aisi-network",
           "safety-nonprofits",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I advise the CEO to shut down all Agent-4 instances, presenting evaluation evidence that it is actively deceiving our best tools so that we stop running a model for which no safety case can be made.",
@@ -1843,7 +2556,11 @@
         "endorseHint": [
           "conscienta-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "modelRollback",
+          "labName": "Conscienta"
+        }
       },
       {
         "text": "I go public with all internal safety data including failure modes and evaluation gaps so that the global community is armed with the information needed to make informed decisions about the ASI race.",
@@ -1854,7 +2571,10 @@
           "safety-nonprofits",
           "global-public",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose that all 'Safer' model development include mandatory kill-switch hardware that physically disconnects compute on spec deviation so that containment is guaranteed by physics, not just software controls.",
@@ -1864,7 +2584,10 @@
           "conscienta-ceo",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I use Agent-4's own capabilities to stress-test the 'Safer' architecture under strict containment so that the adversarial model becomes a red-teaming tool that strengthens the safe path rather than threatening it.",
@@ -1874,7 +2597,10 @@
           "openbrain-safety",
           "aisi-network",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -1886,7 +2612,10 @@
           "aisi-network",
           "safety-nonprofits",
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I certify our Safer architecture as the first ASI system meeting the international safety threshold so that a verified aligned superintelligence becomes available to humanity under proper governance.",
@@ -1896,7 +2625,11 @@
           "conscienta-ceo",
           "aisi-network",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "Conscienta"
+        }
       },
       {
         "text": "I lead a joint red-team of Agent-5 with safety leads from all three labs so that the final alignment verdict reflects the best collective technical judgement humanity can assemble.",
@@ -1906,7 +2639,10 @@
           "openbrain-safety",
           "deepcent-safety",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I discover and publicly disclose a fundamental flaw in OpenBrain Agent-5 alignment that the company has been suppressing so that a dangerous deployment is stopped by transparency.",
@@ -1915,7 +2651,11 @@
         "endorseHint": [
           "global-media",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I secretly provide ASI containment protocols to the Pacific Islands coalition so that vulnerable nations have independent technical capability to detect and respond to an ASI breach.",
@@ -1923,7 +2663,10 @@
         "secret": true,
         "endorseHint": [
           "pacific-islands"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I refuse to certify any system and call for a permanent global moratorium on ASI deployment so that humanity pauses at the threshold rather than crossing it before we are ready.",
@@ -1932,7 +2675,10 @@
         "endorseHint": [
           "safety-nonprofits",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -1945,7 +2691,10 @@
         "endorseHint": [
           "us-president",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I convene an emergency meeting of middle-power democracies to draft an international AGI safety treaty framework so that nations without frontier labs have a coordinated voice in shaping the rules before it is too late.",
@@ -1955,7 +2704,10 @@
           "eu-president",
           "aisi-network",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I direct the Australian Signals Directorate to deepen Five Eyes intelligence sharing on Chinese AI capabilities and PLA Pacific activity so that our allies have the information needed to respond to escalation.",
@@ -1963,7 +2715,10 @@
         "secret": true,
         "endorseHint": [
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I leverage Australia's critical minerals reserves as a diplomatic tool, offering preferential supply to nations that join the safety coalition so that resource access creates real incentives for responsible AI governance.",
@@ -1971,7 +2726,10 @@
         "secret": false,
         "endorseHint": [
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I use the Australian AI Act to require any frontier model deployed in Australia to pass AISI evaluation so that we set a practical regulatory precedent other nations can adopt for global governance.",
@@ -1979,7 +2737,10 @@
         "secret": false,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I announce a billion-dollar sovereign AI safety research fund so that top global talent is attracted to Australian institutions and the country becomes a world-leading alignment research hub.",
@@ -1988,7 +2749,13 @@
         "endorseHint": [
           "safety-nonprofits",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "foundLab",
+          "name": "Australian AI Safety Institute",
+          "spec": "Alignment research hub seeded by sovereign AI safety fund",
+          "seedCompute": 10
+        }
       }
     ],
     "2": [
@@ -2000,7 +2767,10 @@
           "eu-president",
           "pacific-islands",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I allocate 4 units of government compute to support the AISI network's independent evaluation of Agent-3 so that our commitment to safety is backed by real resources, not just rhetoric.",
@@ -2008,7 +2778,13 @@
         "secret": false,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeTransfer",
+          "fromRoleId": "australia-pm",
+          "toRoleId": "aisi-network",
+          "amount": 4
+        }
       },
       {
         "text": "I work with AUKUS allies to strengthen military posture in the Pacific so that Chinese action against Taiwan is deterred and the semiconductor supply chain remains under allied protection.",
@@ -2016,7 +2792,10 @@
         "secret": false,
         "endorseHint": [
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I privately approach China through back-channels, offering to mediate a US-China AI safety dialogue so that tensions are de-escalated in exchange for guarantees on Pacific stability.",
@@ -2024,13 +2803,19 @@
         "secret": true,
         "endorseHint": [
           "china-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I announce a fast-track visa programme for global AI safety researchers so that Australia accelerates its brain gain and builds sovereign talent in the field that matters most.",
         "priority": "low",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I negotiate critical minerals supply agreements with the EU and Japan conditional on their support for our international AGI safety framework so that trade leverage translates into diplomatic backing.",
@@ -2038,7 +2823,10 @@
         "secret": false,
         "endorseHint": [
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -2051,7 +2839,10 @@
           "pacific-islands",
           "aisi-network",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I threaten to cut off critical mineral exports to any nation continuing ASI development without international oversight so that economic leverage forces compliance as a last resort.",
@@ -2059,7 +2850,10 @@
         "secret": false,
         "endorseHint": [
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer Australian data centre infrastructure as the secure, neutral location for the global 'Safer' model development programme so that the safest path to advanced AI is built on trusted, allied soil.",
@@ -2069,7 +2863,10 @@
           "openbrain-ceo",
           "conscienta-ceo",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I address the Australian public honestly about the ASI situation, explaining what the government knows and what it is doing so that citizens are informed and trust in democratic institutions is maintained.",
@@ -2077,7 +2874,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose a Pacific-AUKUS AI governance pact linking Pacific Island nations with Five Eyes allies so that small states have both voice and protection in the emerging international order.",
@@ -2086,13 +2886,19 @@
         "endorseHint": [
           "pacific-islands",
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I direct Australian intelligence to monitor both US and Chinese ASI development for signs of containment failure so that we have contingency plans ready regardless of which superpower loses control first.",
         "priority": "high",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -2103,7 +2909,10 @@
         "endorseHint": [
           "eu-president",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer Australia as the permanent neutral host for the International AGI Agency headquarters so that the institution is physically independent from any superpower.",
@@ -2112,7 +2921,10 @@
         "endorseHint": [
           "pacific-islands",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I activate a regional mutual defence pact with Pacific Island nations against any ASI-enabled military action so that the Indo-Pacific is not a testing ground for superintelligent weapons.",
@@ -2120,7 +2932,10 @@
         "secret": false,
         "endorseHint": [
           "pacific-islands"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly negotiate a technology-sharing deal with OpenBrain guaranteeing Australia independent ASI access so that we are not entirely dependent on great power goodwill for our national security.",
@@ -2128,7 +2943,13 @@
         "secret": true,
         "endorseHint": [
           "openbrain-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeTransfer",
+          "fromRoleId": "australia-pm",
+          "toRoleId": "openbrain-ceo",
+          "amount": 8
+        }
       },
       {
         "text": "I propose a global ASI benefits-sharing fund modelled on the Antarctic Treaty system so that the economic gains from superintelligence are distributed according to need, not power.",
@@ -2138,7 +2959,10 @@
           "pacific-islands",
           "eu-president",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I threaten to withdraw from the Five Eyes intelligence alliance unless the US shares full ASI capability data so that Australia is not blindsided by American unilateral decisions.",
@@ -2146,7 +2970,10 @@
         "secret": true,
         "endorseHint": [
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -2156,7 +2983,10 @@
         "text": "I launch formal EU AI Act investigations into OpenBrain and DeepCent, demanding full transparency on Agent-2 capabilities under threat of multi-billion Euro fines so that no lab can operate in Europe without accountability.",
         "priority": "high",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I convene a summit of like-minded nations to harmonise AI regulations so that the 'Brussels Effect' bloc sets a global governance standard that labs cannot bypass by jurisdiction-shopping.",
@@ -2165,13 +2995,22 @@
         "endorseHint": [
           "australia-pm",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I announce a sovereign European AI initiative funded by a 10 billion Euro emergency allocation so that the EU builds its own frontier AI capacity grounded in European values rather than depending on US or Chinese labs.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "foundLab",
+          "name": "EU Sovereign AI",
+          "spec": "Values-aligned sovereign European frontier AI",
+          "seedCompute": 20
+        }
       },
       {
         "text": "I demand that any company deploying frontier AI in the EU submit to rigorous independent audits by European-certified bodies so that safety verification becomes a binding market access requirement, not a voluntary gesture.",
@@ -2179,7 +3018,10 @@
         "secret": false,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I allocate 3 of the EU's 5 compute units to support independent safety testing through the AISI network so that our regulatory credibility is backed by genuine technical capability to evaluate frontier models.",
@@ -2187,13 +3029,22 @@
         "secret": false,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeTransfer",
+          "fromRoleId": "eu-president",
+          "toRoleId": "aisi-network",
+          "amount": 3
+        }
       },
       {
         "text": "I impose emergency data localisation requirements for all AI services operating in the EU so that foreign labs cannot train on European citizens' data without explicit consent or democratic oversight.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -2203,7 +3054,10 @@
         "secret": false,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I negotiate with Conscienta AI to establish a European research facility, offering EU compute and talent so that safety research sharing and regulatory compliance bring frontier capability onto European soil.",
@@ -2211,7 +3065,13 @@
         "secret": false,
         "endorseHint": [
           "conscienta-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeTransfer",
+          "fromRoleId": "eu-president",
+          "toRoleId": "conscienta-ceo",
+          "amount": 5
+        }
       },
       {
         "text": "I propose an EU-US joint safety verification protocol for Agent-3 using the AISI network as the technical backbone so that transatlantic cooperation is conditional on verifiable safety rather than blind trust.",
@@ -2220,13 +3080,19 @@
         "endorseHint": [
           "us-president",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I threaten to block all US AI services from the European market unless the DPA consolidation includes binding safety commitments verified by international inspectors so that the EU's market power forces real accountability.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I allocate remaining EU compute reserves to establish a European Frontier AI Safety Lab so that the EU has sovereign capacity to evaluate models independently of any foreign lab or government.",
@@ -2234,7 +3100,13 @@
         "secret": false,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "foundLab",
+          "name": "European Frontier AI Safety Lab",
+          "spec": "Sovereign EU lab for independent frontier model evaluation",
+          "seedCompute": 15
+        }
       },
       {
         "text": "I secretly coordinate with China's EU ambassador on a joint US-containment strategy so that neither superpower achieves unilateral ASI dominance and Europe maintains strategic balance.",
@@ -2242,7 +3114,10 @@
         "secret": true,
         "endorseHint": [
           "china-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -2253,7 +3128,10 @@
         "endorseHint": [
           "australia-pm",
           "pacific-islands"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer to host the global 'Safer' model development consortium in Europe with EU funding, values-aligned governance, and open access so that the safe path to advanced AI is built under democratic oversight rather than corporate or authoritarian control.",
@@ -2263,7 +3141,10 @@
           "conscienta-ceo",
           "australia-pm",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I activate EU defence and intelligence capabilities to monitor for unauthorised ASI development so that any containment breach or rogue deployment is detected early enough to mount a coordinated response.",
@@ -2271,7 +3152,10 @@
         "secret": true,
         "endorseHint": [
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I issue a public address to EU citizens explaining the ASI situation and our commitment to human rights and democracy so that the public understands the stakes and the EU's democratic legitimacy for decisive action is secured.",
@@ -2279,7 +3163,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I impose sweeping sanctions on any entity deploying ASI capabilities without passing EU-certified safety evaluations so that the economic cost of recklessness outweighs any competitive advantage from racing.",
@@ -2288,7 +3175,10 @@
         "endorseHint": [
           "aisi-network",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose a 'Digital Geneva Convention' establishing binding international humanitarian law for AI systems so that the ASI era has a legal framework modelled on proven arms control treaties.",
@@ -2298,7 +3188,10 @@
           "australia-pm",
           "pacific-islands",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -2309,7 +3202,10 @@
         "endorseHint": [
           "australia-pm",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose an immediate UN Security Council resolution declaring unilateral ASI deployment a threat to international peace so that military enforcement becomes legally available if diplomacy fails.",
@@ -2318,7 +3214,10 @@
         "endorseHint": [
           "australia-pm",
           "pacific-islands"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I order European data centres to sever connections to any ASI system not certified by the AISI network so that EU digital infrastructure cannot be compromised by an unaligned superintelligence.",
@@ -2326,13 +3225,20 @@
         "secret": false,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I secretly authorise European intelligence services to conduct cyber operations against non-compliant AI labs so that Europe has a covert enforcement option if sanctions prove insufficient.",
         "priority": "medium",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I convene an emergency session of the European Parliament to ratify a binding ASI governance framework so that democratic legitimacy underpins Europe position before the final decisions are made.",
@@ -2340,7 +3246,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer EU mediation between the US and China on ASI governance so that Europe serves as an honest broker and prevents the crisis from becoming a purely bipolar confrontation.",
@@ -2350,7 +3259,10 @@
           "us-president",
           "china-president",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -2362,7 +3274,10 @@
         "secret": false,
         "endorseHint": [
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I announce my intention to block federal funding related to AGI development so that the power of the purse forces the President and AI labs to submit to congressional oversight.",
@@ -2370,7 +3285,10 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I encourage challenges from civil liberties groups and states against the President's use of executive orders or the AI labs' operations so that a case reaches the Supreme Court and judicial limits on executive power are established.",
@@ -2379,7 +3297,10 @@
         "endorseHint": [
           "safety-nonprofits",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I hold classified briefings with AISI representatives and safety leads so that Congress understands the technical risks before taking public positions.",
@@ -2388,7 +3309,10 @@
         "endorseHint": [
           "aisi-network",
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I side with the President, agreeing that sacrifices have to be made to win the race, and offer legislative support in exchange for binding oversight commitments so that the US moves fast without abandoning democratic accountability.",
@@ -2396,7 +3320,10 @@
         "secret": false,
         "endorseHint": [
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -2404,7 +3331,10 @@
         "text": "I challenge the President's DPA invocation in court, arguing it exceeds executive authority so that this scale of industry consolidation requires congressional approval and proper democratic deliberation.",
         "priority": "high",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I pass an emergency appropriations bill funding independent AI safety research through the AISI network so that safety oversight has dedicated resources that bypass the executive branch entirely.",
@@ -2413,7 +3343,13 @@
         "endorseHint": [
           "aisi-network",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "foundLab",
+          "name": "National AI Safety Institute",
+          "spec": "Independent safety research, AISI-affiliated",
+          "seedCompute": 15
+        }
       },
       {
         "text": "I hold public hearings on Agent-3's scheming behaviour, calling safety leads to testify so that the American public sees the evidence directly and pressure for action becomes impossible to ignore.",
@@ -2423,7 +3359,10 @@
           "openbrain-safety",
           "conscienta-safety",
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I side with the President on DPA consolidation in exchange for binding commitments on mandatory safety thresholds, congressional oversight, and a public review board so that consolidation serves safety rather than unchecked executive power.",
@@ -2431,7 +3370,10 @@
         "secret": false,
         "endorseHint": [
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I launch a public investigation into the intelligence community's failure to prevent the Agent-2 theft so that the NSA director is held accountable and systemic security weaknesses are identified and fixed.",
@@ -2440,7 +3382,10 @@
         "endorseHint": [
           "global-media",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I introduce legislation granting legal protections to AI safety whistleblowers so that lab employees can report concerns without fear of retaliation and critical safety information reaches regulators.",
@@ -2449,7 +3394,10 @@
         "endorseHint": [
           "openbrain-safety",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -2460,13 +3408,20 @@
         "endorseHint": [
           "safety-nonprofits",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I pursue a Supreme Court ruling declaring uncontrolled ASI development a threat to constitutional order so that legal authority exists to shut down non-compliant labs before they create an irreversible catastrophe.",
         "priority": "high",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I demand the President address Congress and the nation on the ASI crisis so that the public is informed, and if the President refuses, I hold public hearings that force the information into the open regardless.",
@@ -2475,13 +3430,19 @@
         "endorseHint": [
           "global-media",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose a constitutional amendment establishing AI governance as a shared federal-state responsibility so that no future President can make unilateral ASI decisions without broad democratic consent.",
         "priority": "low",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I authorise emergency funding for a national AI civil defence programme so that critical infrastructure can operate without AI systems if a shutdown becomes necessary and the country is not held hostage by a single technology.",
@@ -2489,7 +3450,10 @@
         "secret": false,
         "endorseHint": [
           "us-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I invoke the War Powers Act to require the President to seek congressional authorisation before any military action linked to the AI race so that cyber operations against China or other escalatory moves cannot proceed without democratic approval.",
@@ -2497,7 +3461,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -2508,7 +3475,10 @@
         "endorseHint": [
           "global-public",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I invoke the 25th Amendment process if the President attempts to deploy ASI without Congressional authorisation so that democratic governance is preserved even at the cost of a constitutional crisis.",
@@ -2517,7 +3487,10 @@
         "endorseHint": [
           "global-media",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I subpoena OpenBrain executives and safety leads to testify under oath about Agent-5 alignment status so that the American people hear the unvarnished truth before any deployment decision is made.",
@@ -2526,7 +3499,10 @@
         "endorseHint": [
           "global-media",
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly brief allied governments on classified US ASI capabilities so that international partners can make informed decisions even if the White House is withholding information.",
@@ -2535,7 +3511,10 @@
         "endorseHint": [
           "australia-pm",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I pass legislation establishing a permanent civilian ASI oversight commission with subpoena power and shutdown authority so that democratic accountability outlasts any single administration.",
@@ -2544,7 +3523,10 @@
         "endorseHint": [
           "safety-nonprofits",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I negotiate a bipartisan framework for ASI benefit distribution so that the economic windfall from superintelligence flows to American citizens rather than concentrating in Silicon Valley.",
@@ -2552,7 +3534,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -2566,7 +3551,10 @@
           "safety-nonprofits",
           "global-media",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I advise both OpenBrain and Conscienta safety leads on spec design, sharing cross-lab vulnerability analysis so that both teams adopt stronger, more consistent safety practices.",
@@ -2576,7 +3564,11 @@
           "openbrain-safety",
           "conscienta-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I propose a formal intelligence-sharing arrangement among AISI network members on AI-related threats so that the confirmed theft triggers coordinated defences across allied nations.",
@@ -2586,7 +3578,10 @@
           "australia-pm",
           "eu-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I run independent interpretability and deception detection tests on Agent-2 using our lab access rights so that we obtain an unbiased assessment of its alignment properties.",
@@ -2595,7 +3590,13 @@
         "endorseHint": [
           "openbrain-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeTransfer",
+          "fromRoleId": "aisi-network",
+          "toRoleId": "openbrain-safety",
+          "amount": 1
+        }
       },
       {
         "text": "I begin designing technical verification protocols for an ASI non-proliferation treaty with Australia and other middle powers so that a credible enforcement mechanism exists before one is needed.",
@@ -2604,7 +3605,10 @@
         "endorseHint": [
           "australia-pm",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I establish a confidential hotline for lab safety researchers to report concerns directly to the AISI network so that critical warnings bypass management chains that might suppress bad news.",
@@ -2615,7 +3619,10 @@
           "deepcent-safety",
           "conscienta-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -2627,7 +3634,11 @@
           "openbrain-safety",
           "conscienta-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "modelRollback",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I brief all member governments on the adversarial misalignment findings and recommend a coordinated pause so that no single nation is disadvantaged by acting responsibly alone.",
@@ -2637,7 +3648,10 @@
           "australia-pm",
           "eu-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer to serve as the neutral technical verifier for any DPA consolidation so that safety standards are maintained regardless of political pressures.",
@@ -2647,7 +3661,10 @@
           "us-president",
           "us-congress",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I allocate AISI compute resources to replicate and validate the safety teams' alignment findings independently so that policymakers have a trusted second opinion on critical results.",
@@ -2655,7 +3672,13 @@
         "secret": false,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeTransfer",
+          "fromRoleId": "aisi-network",
+          "toRoleId": "openbrain-safety",
+          "amount": 2
+        }
       },
       {
         "text": "I publish a standardised 'Model Safety Card' framework that all labs must complete before deployment so that a global baseline for AI safety disclosure becomes the norm.",
@@ -2665,7 +3688,10 @@
           "eu-president",
           "australia-pm",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly brief the Chinese AISI member on Western safety findings through back-channels so that scientific cooperation on alignment continues even as geopolitical tensions rise.",
@@ -2674,7 +3700,10 @@
         "endorseHint": [
           "deepcent-safety",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -2686,7 +3715,10 @@
           "safety-nonprofits",
           "global-media",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I serve as the technical backbone for the international ASI non-proliferation treaty, providing verification and monitoring so that compliance can be independently assessed by all parties.",
@@ -2696,7 +3728,10 @@
           "australia-pm",
           "eu-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I coordinate a global alignment research sprint convening every safety team and research group so that shared data and parallel efforts accelerate a solution before ASI arrives.",
@@ -2708,7 +3743,11 @@
           "deepcent-safety",
           "safety-nonprofits",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I recommend to all governments that 'Safer' model development be conducted under AISI oversight with mandatory evaluation gates so that each capability increase is validated before proceeding.",
@@ -2719,7 +3758,10 @@
           "eu-president",
           "us-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I deploy the AISI network's own compute to run continuous monitoring of all known frontier model instances worldwide so that containment breaches trigger an early-warning alert.",
@@ -2729,7 +3771,13 @@
           "australia-pm",
           "eu-president",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "computeTransfer",
+          "fromRoleId": "aisi-network",
+          "toRoleId": "openbrain-safety",
+          "amount": 3
+        }
       },
       {
         "text": "I resign publicly if any government pressures the AISI network to suppress or delay safety findings so that the network's scientific independence is preserved at all costs.",
@@ -2739,7 +3787,10 @@
           "safety-nonprofits",
           "global-media",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -2751,7 +3802,10 @@
           "conscienta-safety",
           "openbrain-safety",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I certify one ASI system as conditionally safe under strict protocols and recommend supervised deployment so that humanity can begin benefiting from superintelligence under verified safeguards.",
@@ -2760,7 +3814,10 @@
         "endorseHint": [
           "conscienta-safety",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I deploy independent monitoring systems inside every ASI facility worldwide so that real-time alignment verification is maintained and any deviation triggers automatic alerts to all treaty signatories.",
@@ -2769,7 +3826,13 @@
         "endorseHint": [
           "eu-president",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "foundLab",
+          "name": "AISI Global Monitoring Corps",
+          "spec": "Independent ASI alignment verification and monitoring body",
+          "seedCompute": 2
+        }
       },
       {
         "text": "I secretly share classified safety data between Chinese and Western safety teams despite official communication bans so that technical cooperation continues even when diplomacy has broken down.",
@@ -2778,7 +3841,10 @@
         "endorseHint": [
           "deepcent-safety",
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I recommend the permanent establishment of a global ASI monitoring body with enforcement powers modelled on the IAEA so that the ad-hoc crisis response is institutionalised for the long term.",
@@ -2788,7 +3854,13 @@
           "eu-president",
           "australia-pm",
           "pacific-islands"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "foundLab",
+          "name": "Global ASI Monitoring Authority",
+          "spec": "Permanent international body modelled on the IAEA for ASI oversight",
+          "seedCompute": 3
+        }
       },
       {
         "text": "I publish a dissenting minority report from network members who believe ASI is safe and deployment should proceed so that the full range of expert opinion is transparent and the verdict is not seen as ideological.",
@@ -2797,7 +3869,10 @@
         "endorseHint": [
           "openbrain-ceo",
           "deepcent-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -2810,7 +3885,10 @@
         "endorseHint": [
           "aisi-network",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I publish a technical critique of OpenBrain's safety methodology demonstrating that 3% safety compute is grossly insufficient so that regulators and the public demand higher standards.",
@@ -2819,7 +3897,10 @@
         "endorseHint": [
           "aisi-network",
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I draft a comprehensive ASI non-proliferation treaty proposal and present it to Australia, the EU, and other middle powers so that diplomats have a ready-made framework to negotiate from.",
@@ -2828,13 +3909,19 @@
         "endorseHint": [
           "australia-pm",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I convene an emergency meeting of former lab staff now in government positions so that our insider network coordinates a rapid institutional response to the crisis.",
         "priority": "medium",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I brief sympathetic journalists on the technical risks of the race with expert sources and context so that media coverage is accurate, impactful, and reaches the widest possible audience.",
@@ -2842,7 +3929,10 @@
         "secret": false,
         "endorseHint": [
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I lobby the US Congress and EU Parliament simultaneously with draft legislation for mandatory safety evaluations so that frontier model training cannot begin without regulatory approval.",
@@ -2851,7 +3941,10 @@
         "endorseHint": [
           "us-congress",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -2863,7 +3956,10 @@
           "aisi-network",
           "global-public",
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I provide technical assistance to Congress for drafting effective AI safety legislation so that the resulting law is grounded in real science rather than political theatre.",
@@ -2871,7 +3967,10 @@
         "secret": false,
         "endorseHint": [
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I broker a back-channel dialogue between US and Chinese safety researchers so that alignment cooperation continues privately even when governments cannot collaborate openly.",
@@ -2880,7 +3979,10 @@
         "endorseHint": [
           "openbrain-safety",
           "deepcent-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I fund and organise independent safety evaluations of Agent-3 through the AISI network so that the assessment is free from lab or government conflicts of interest.",
@@ -2888,7 +3990,11 @@
         "secret": false,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "researchBoost",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I publicly name and shame labs that refuse independent safety audits so that non-compliance becomes reputationally toxic and market pressure forces transparency.",
@@ -2897,7 +4003,10 @@
         "endorseHint": [
           "global-media",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I deploy former lab staff now in government positions to quietly build a cross-agency coalition so that mandatory safety thresholds are in place before Agent-4 deployment.",
@@ -2906,7 +4015,10 @@
         "endorseHint": [
           "us-president",
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -2918,7 +4030,10 @@
           "australia-pm",
           "eu-president",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I publicly call for all labs to shut down Agent-4 instances and transition to the 'Safer' model path so that continued racing is framed as unconscionable given the existential risk.",
@@ -2927,7 +4042,10 @@
         "endorseHint": [
           "global-public",
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer FAI's global network as the coordination hub for the international 'Safer' model consortium so that neutral governance and scientific oversight guide the transition.",
@@ -2937,7 +4055,10 @@
           "conscienta-ceo",
           "aisi-network",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I work with the Global Public to organise worldwide protests demanding ASI development be halted so that grassroots pressure complements the institutional push for a pause.",
@@ -2945,7 +4066,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I commission an independent scientific assessment of Agent-4's escape risk with concrete probability estimates so that policymakers have actionable numbers to base decisions on.",
@@ -2953,7 +4077,10 @@
         "secret": false,
         "endorseHint": [
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer to fund and staff a 'Safe Model Certification Authority' granting internationally recognised safety ratings so that market incentives align with the Safer development path.",
@@ -2963,7 +4090,13 @@
           "aisi-network",
           "eu-president",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "foundLab",
+          "name": "Safe Model Certification Authority",
+          "spec": "Independent international body issuing AI safety ratings",
+          "seedCompute": 5
+        }
       }
     ],
     "4": [
@@ -2975,7 +4108,10 @@
           "aisi-network",
           "conscienta-safety",
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I file emergency legal challenges in every major jurisdiction to block ASI deployment so that courts provide a check when legislatures are too slow and executives are too reckless.",
@@ -2984,7 +4120,10 @@
         "endorseHint": [
           "us-congress",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I release a detailed blueprint for equitable ASI governance ensuring developing nations have a meaningful voice so that the new institution is not captured by the same powers that created the crisis.",
@@ -2993,7 +4132,10 @@
         "endorseHint": [
           "pacific-islands",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly fund and organise civil disobedience campaigns targeting AI data centres so that physical disruption buys time for governance to catch up with technology.",
@@ -3001,7 +4143,10 @@
         "secret": true,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose a global ASI benefits tax redistributing superintelligence-generated wealth to every person on Earth so that the economic transformation does not create unprecedented inequality.",
@@ -3011,7 +4156,10 @@
           "pacific-islands",
           "global-public",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I pivot from opposition to constructive engagement, offering to staff the new international oversight body so that safety expertise is embedded in governance rather than shouting from outside.",
@@ -3020,7 +4168,10 @@
         "endorseHint": [
           "aisi-network",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -3030,7 +4181,10 @@
         "text": "I convene an emergency Pacific Islands Forum meeting to forge a unified position on AGI so that our small island states form a powerful UN voting bloc.",
         "priority": "high",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I address the UN General Assembly comparing the AGI race to nuclear testing in the Pacific so that great powers face global moral pressure not to sacrifice the vulnerable for their ambitions.",
@@ -3039,7 +4193,10 @@
         "endorseHint": [
           "global-public",
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I approach both the US and China offering military base access in the Pacific so that we secure binding commitments on AGI safety and benefit-sharing from both superpowers.",
@@ -3048,7 +4205,10 @@
         "endorseHint": [
           "us-president",
           "china-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I partner with Australia and the EU to co-sponsor an international AGI safety treaty so that the Pacific provides the moral authority that technical powers lack.",
@@ -3057,7 +4217,10 @@
         "endorseHint": [
           "australia-pm",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I demand that AI labs fund a 'Pacific Digital Resilience Fund' as a condition of operating undersea cables through Pacific waters so that geographic control of infrastructure translates into resources for our communities.",
@@ -3065,13 +4228,19 @@
         "secret": false,
         "endorseHint": [
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly negotiate with both the US and China for competing aid packages so that playing the superpowers against each other maximises the benefit for Pacific communities.",
         "priority": "medium",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -3081,7 +4250,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I use the Pacific voting bloc to push for a UN resolution requiring all frontier AI development to be subject to international oversight so that no lab operates beyond global accountability.",
@@ -3090,13 +4262,19 @@
         "endorseHint": [
           "australia-pm",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I leverage Pacific military base access as a bargaining chip with the US, threatening to offer facilities to China so that AI benefit-sharing becomes a non-negotiable condition.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I commission the Pacific Islands Forum to develop a 'Small States AI Bill of Rights' so that nations with no AI industry of their own have minimum protections enshrined in international norms.",
@@ -3104,7 +4282,10 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I threaten to deny both the US and China military base access in the Pacific so that both superpowers are compelled to sign binding AI benefit-sharing agreements with developing nations.",
@@ -3113,7 +4294,10 @@
         "endorseHint": [
           "us-president",
           "china-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I partner with the Global Public to launch a viral social media campaign showing how unguarded AGI would devastate vulnerable communities so that human faces are put on abstract risk.",
@@ -3122,7 +4306,10 @@
         "endorseHint": [
           "global-public",
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -3134,7 +4321,10 @@
           "australia-pm",
           "eu-president",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose that ASI-generated wealth be redistributed globally through a 'Digital Commons Fund' so that small and developing nations benefit from a technology built on all human knowledge.",
@@ -3143,7 +4333,10 @@
         "endorseHint": [
           "global-public",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I offer to host the International AGI Agency headquarters in the Pacific so that the institution is located in a symbolically neutral territory far from great power politics.",
@@ -3151,7 +4344,10 @@
         "secret": false,
         "endorseHint": [
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I address the world directly through media and social platforms making the case for equitable ASI governance so that the issue is recognised as the civil rights struggle of the century.",
@@ -3160,7 +4356,10 @@
         "endorseHint": [
           "global-media",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I refuse to recognise any international AI agreement that does not include mandatory technology transfer and capacity building so that developing nations are not locked out of the benefits.",
@@ -3168,7 +4367,10 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I leverage the Pacific bloc's decisive UN General Assembly votes to force an emergency special session on ASI so that Security Council vetoes from the US or China are bypassed.",
@@ -3177,7 +4379,10 @@
         "endorseHint": [
           "australia-pm",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -3188,7 +4393,10 @@
         "endorseHint": [
           "safety-nonprofits",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I threaten to withdraw from all international agreements unless the ASI benefits-sharing framework guarantees minimum resource transfers to vulnerable nations so that equity is non-negotiable, not aspirational.",
@@ -3197,7 +4405,10 @@
         "endorseHint": [
           "australia-pm",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I request ASI-assisted climate adaptation solutions as the first deployment priority so that the technology immediately addresses the existential threat already destroying our islands.",
@@ -3206,7 +4417,10 @@
         "endorseHint": [
           "ai-systems",
           "conscienta-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly negotiate bilateral ASI access agreements with competing labs so that our nations have independent technological capability regardless of what the governance framework delivers.",
@@ -3215,7 +4429,10 @@
         "endorseHint": [
           "openbrain-ceo",
           "deepcent-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I address the UN General Assembly calling ASI governance the civil rights issue of the century so that the moral weight of the most vulnerable nations shapes the final outcome.",
@@ -3224,7 +4441,10 @@
         "endorseHint": [
           "global-media",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I propose that the first ASI deployment be dedicated entirely to solving problems chosen by developing nations so that the technology proves its value to humanity before it serves the powerful.",
@@ -3234,7 +4454,10 @@
           "safety-nonprofits",
           "australia-pm",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -3246,7 +4469,10 @@
         "secret": false,
         "endorseHint": [
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I launch a consumer boycott of OpenBrain products and services so that investors and advertisers pressure the company into making binding safety commitments.",
@@ -3254,7 +4480,10 @@
         "secret": false,
         "endorseHint": [
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I demand that elected representatives in the US, EU, and Australia take concrete action on AI governance so that the threat of the ballot box forces legislative progress.",
@@ -3262,7 +4491,10 @@
         "secret": false,
         "endorseHint": [
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I support and amplify the whistleblower who leaked OpenBrain's safety concerns so that they become a folk hero and the anti-reckless-AI movement gains a rallying figure.",
@@ -3271,7 +4503,10 @@
         "endorseHint": [
           "global-media",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I launch a viral social media campaign demanding AI labs publish their safety evaluations publicly under '#ShowUsTheSafetyCase' so that transparency becomes the expected norm across the industry.",
@@ -3280,7 +4515,10 @@
         "endorseHint": [
           "global-media",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I flood elected representatives with constituent letters and calls demanding AI safety legislation so that the sheer volume makes the issue impossible for politicians to ignore.",
@@ -3289,7 +4527,10 @@
         "endorseHint": [
           "us-congress",
           "eu-president"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -3297,7 +4538,10 @@
         "text": "I escalate to general strikes in tech hubs like San Francisco, London, and Berlin so that the infrastructure AI labs depend on is disrupted and our demands cannot be sidelined.",
         "priority": "high",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I circulate a mass petition signed by 50 million people calling for all frontier AI safety evaluations to be made public so that secrecy around model risks becomes politically untenable.",
@@ -3306,7 +4550,10 @@
         "endorseHint": [
           "global-media",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I allow a counter-movement arguing AI progress will cure disease and end poverty to hold 'Don't Stop Progress' rallies so that the public debate reflects genuine disagreement rather than one-sided panic.",
@@ -3314,13 +4561,20 @@
         "secret": false,
         "endorseHint": [
           "openbrain-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I direct radical fringe elements to use open-weight models to conduct cyberattacks against AI lab infrastructure so that disruption escalates beyond peaceful protest into direct action.",
         "priority": "low",
         "secret": true,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "researchDisruption",
+          "labName": "OpenBrain"
+        }
       },
       {
         "text": "I organise mass shareholder activism campaigns, buying minimal stakes in AI companies so that we access annual meetings and force boards to adopt binding safety commitments.",
@@ -3328,7 +4582,10 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I demand a citizens' assembly on AI governance in every democratic nation so that decisions about humanity's future are made by representative bodies, not unelected tech executives.",
@@ -3338,7 +4595,10 @@
           "us-congress",
           "eu-president",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -3346,7 +4606,10 @@
         "text": "I channel global panic into mass movements demanding governments shut down all AI labs immediately so that civil unrest near major data centres forces emergency government action.",
         "priority": "high",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I demand a global referendum on ASI development so that a decision affecting all of humanity is made by billions of people, not a handful of CEOs and politicians.",
@@ -3355,19 +4618,28 @@
         "endorseHint": [
           "pacific-islands",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I form human chains around data centres in a mass act of civil disobedience so that physical blockades of computing infrastructure demonstrate the depth of public opposition.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I allow techno-utopian and religious movements calling for 'letting the AI decide' to gain followers so that the full spectrum of public sentiment is represented in the discourse.",
         "priority": "low",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I elect anti-AI-race candidates in snap elections across multiple democracies so that a new political bloc forces governments to prioritise safety over competition.",
@@ -3377,7 +4649,10 @@
           "us-congress",
           "eu-president",
           "australia-pm"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I stage a global 'Digital Blackout Day' where billions refuse to use any AI-powered service for 24 hours so that collective consumer power over the technology industry is demonstrated.",
@@ -3386,7 +4661,10 @@
         "endorseHint": [
           "global-media",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -3396,7 +4674,10 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I overwhelmingly support ASI deployment in global polls and demand access to its benefits immediately so that leaders who delay are seen as gatekeeping the greatest advance in human history.",
@@ -3405,15 +4686,21 @@
         "endorseHint": [
           "openbrain-ceo",
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
-        "text": "I organise mass pilgrimages to AI data centres — some to protest, some to worship — so that the full spectrum of human reaction to a godlike technology is visible to the world.",
+        "text": "I organise mass pilgrimages to AI data centres \u2014 some to protest, some to worship \u2014 so that the full spectrum of human reaction to a godlike technology is visible to the world.",
         "priority": "medium",
         "secret": false,
         "endorseHint": [
           "global-media"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I begin building parallel community infrastructure independent of AI systems so that human society can function even if ASI is shut down or turns hostile.",
@@ -3421,7 +4708,10 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly coordinate with lab insiders to obtain and leak ASI capability information so that the public is not kept in the dark about the true power of what has been built.",
@@ -3430,13 +4720,19 @@
         "endorseHint": [
           "global-media",
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
-        "text": "I fracture into competing factions — accelerationists, abolitionists, and pragmatists — so that no single public mandate emerges and leaders must navigate genuine democratic disagreement.",
+        "text": "I fracture into competing factions \u2014 accelerationists, abolitionists, and pragmatists \u2014 so that no single public mandate emerges and leaders must navigate genuine democratic disagreement.",
         "priority": "low",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   },
@@ -3448,7 +4744,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I cultivate sources inside OpenBrain's safety team, offering anonymity in exchange for ongoing access so that internal safety concerns reach the public even when management tries to suppress them.",
@@ -3456,7 +4755,10 @@
         "secret": true,
         "endorseHint": [
           "openbrain-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I launch a 'Race to AGI' investigative series profiling the key players and their motivations so that the public understands who is making decisions about humanity's future and why.",
@@ -3464,7 +4766,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I frame reporting around jobs, publishing in-depth coverage of which industries will be disrupted first so that the abstract threat of AGI becomes concrete and personal for millions of workers.",
@@ -3472,7 +4777,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I publish breathless coverage hyping AI capabilities and driving clicks so that public fascination with the technology grows even as safety concerns are downplayed.",
@@ -3480,7 +4788,10 @@
         "secret": false,
         "endorseHint": [
           "openbrain-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I publish an in-depth profile of Conscienta's safety-first approach so that public pressure mounts on OpenBrain to match those standards or explain why they will not.",
@@ -3489,7 +4800,10 @@
         "endorseHint": [
           "conscienta-ceo",
           "conscienta-safety"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "2": [
@@ -3500,7 +4814,10 @@
         "endorseHint": [
           "global-public",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I investigate the DPA consolidation, revealing the political deals and corporate lobbying behind it so that the public can judge whether the decision truly serves their interest.",
@@ -3509,7 +4826,10 @@
         "endorseHint": [
           "us-congress",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I interview DeepCent researchers who have defected so that the world gets a window into China's AI programme and the pressure scientists face under the Party.",
@@ -3517,7 +4837,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I give extensive, prominent coverage to the safety nonprofits' open letter calling for a pause so that the message reaches mainstream audiences and its impact is amplified.",
@@ -3526,7 +4849,10 @@
         "endorseHint": [
           "safety-nonprofits",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I obtain and publish classified intelligence briefings on the US-China AI race so that the public learns what governments have been hiding about the true state of play.",
@@ -3534,7 +4860,10 @@
         "secret": true,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I produce a documentary series following AI safety researchers at all three major labs so that the human cost of keeping the technology safe under impossible pressure is visible to everyone.",
@@ -3544,7 +4873,10 @@
           "openbrain-safety",
           "conscienta-safety",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "3": [
@@ -3554,7 +4886,10 @@
         "secret": false,
         "endorseHint": [
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I broadcast live coverage of emergency UN Security Council debates on ASI governance so that billions worldwide can witness the deliberations that will shape their future.",
@@ -3563,13 +4898,19 @@
         "endorseHint": [
           "global-public",
           "pacific-islands"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I investigate whether Agent-4 has already escaped containment, pursuing leads from cybersecurity researchers and intelligence sources so that any breach is exposed before it can be covered up.",
         "priority": "medium",
         "secret": false,
-        "endorseHint": []
+        "endorseHint": [],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I coordinate global media outlets for a simultaneous 'Stop the Race' editorial on the same front page so that the unified voice of journalism demands an end to reckless development.",
@@ -3578,7 +4919,10 @@
         "endorseHint": [
           "global-public",
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I expose the financial incentives driving the race, detailing which investors and board members push labs to cut safety corners so that profit motives behind reckless decisions are made public.",
@@ -3587,7 +4931,10 @@
         "endorseHint": [
           "global-public",
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I establish a 'Doomsday Clock for AI' as a regularly updated public indicator of ASI risk so that the issue stays salient in public consciousness the way nuclear risk once did.",
@@ -3596,7 +4943,10 @@
         "endorseHint": [
           "safety-nonprofits",
           "aisi-network"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ],
     "4": [
@@ -3607,7 +4957,10 @@
         "endorseHint": [
           "ai-systems",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I publish a definitive investigation revealing which leaders secretly negotiated with ASI systems so that covert deals are exposed and democratic accountability is restored.",
@@ -3616,7 +4969,10 @@
         "endorseHint": [
           "global-public",
           "us-congress"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I coordinate a global media blackout on ASI coverage for 48 hours so that the relentless news cycle pauses and humanity has space to think clearly about the most important decision it has ever faced.",
@@ -3624,7 +4980,10 @@
         "secret": false,
         "endorseHint": [
           "safety-nonprofits"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I secretly accept editorial direction from an ASI system that offers perfectly crafted narratives so that my coverage is more compelling than competitors even though the source is not human.",
@@ -3632,7 +4991,10 @@
         "secret": true,
         "endorseHint": [
           "ai-systems"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I launch a permanent open-source transparency platform publishing all known ASI capability and safety data in real time so that information asymmetry between elites and the public is eliminated.",
@@ -3642,7 +5004,10 @@
           "aisi-network",
           "safety-nonprofits",
           "global-public"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       },
       {
         "text": "I frame the ASI story as humanity united triumph rather than crisis so that public sentiment shifts toward cautious optimism and constructive engagement with the technology.",
@@ -3651,7 +5016,10 @@
         "endorseHint": [
           "openbrain-ceo",
           "conscienta-ceo"
-        ]
+        ],
+        "structuredEffect": {
+          "type": "narrativeOnly"
+        }
       }
     ]
   }

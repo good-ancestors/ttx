@@ -1,4 +1,6 @@
 import type { Doc, Id } from "@convex/_generated/dataModel";
+import type { StructuredEffect, Confidence } from "@/lib/ai-prompts";
+import type { Lab } from "@/lib/game-data";
 
 /** Game document from Convex */
 export type Game = Doc<"games">;
@@ -21,6 +23,15 @@ export type Table = {
 /** Round document from Convex */
 export type Round = Doc<"rounds">;
 
+/** Lightweight round summary for R&D chart history — number + label + labsAfter
+ *  snapshot. Used by resolve-sections and the facilitator shell when the full
+ *  Round doc is overkill. */
+export interface RoundLite {
+  number: number;
+  label: string;
+  labsAfter?: Lab[];
+}
+
 /** Lightweight submission summary — excludes aiMeta, artifact, computeAllocation.
  *  Used by facilitator panels that only need action data for display. */
 export type Submission = Pick<
@@ -28,6 +39,7 @@ export type Submission = Pick<
   "_id" | "_creationTime" | "tableId" | "gameId" | "roundNumber" | "roleId" | "status"
 > & {
   actions: {
+    actionId: string;
     text: string;
     priority: number;
     secret?: boolean;
@@ -37,6 +49,11 @@ export type Submission = Pick<
     rolled?: number;
     success?: boolean;
     aiInfluence?: number;
+    structuredEffect?: StructuredEffect;
+    confidence?: Confidence;
+    mergeLab?: { absorbedLabId: string; survivorLabId: string; newName?: string; newSpec?: string };
+    foundLab?: { name: string; seedCompute: number; spec?: string; allocation?: { deployment: number; research: number; safety: number } };
+    computeTargets?: { roleId: string; amount: number; direction?: "send" | "request" }[];
   }[];
 };
 

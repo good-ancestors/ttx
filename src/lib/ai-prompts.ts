@@ -175,153 +175,312 @@ export interface ActionRequest {
   status: string;
 }
 
-interface MergeLabContext {
-  absorbedLabName: string;
-  survivorLabName: string;
-  submitterIsAbsorbed: boolean;
-  newName?: string;
-  newSpec?: string;
+// ─── Structured effects ──────────────────────────────────────────────────────
+// Discriminated union emitted by the batched grading LLM (one structuredEffect
+// per action) and applied deterministically at resolve time. Replaces the
+// pre-refactor two-pass flow (grade-probability → decide-ops-LLM → apply).
+//
+// Four-layer mechanic model (see NEXT-SESSION.md / docs/resolve-pipeline.md):
+//   Position    — rdMultiplier, the capability of the deployed base model.
+//                 Only changed by breakthrough / modelRollback / merge.
+//   Stock       — computeStock, the physical compute pool. Changed by
+//                 starting allocation, acquisition pool, computeTransfer
+//                 (redistribute), computeDestroyed (destruction), merge.
+//   Velocity    — derived per round from stock × research% × mult × productivity.
+//   Productivity— one-round throughput modifier. Set by researchDisruption /
+//                 researchBoost. Defaults to 1.0 each round.
+//
+// Name-based references (labName, controllerRoleId, etc.) are resolved to ids
+// at apply time. Failed lookups surface as rejectedOps in the P7 panel so the
+// facilitator can correct them.
+//
+// Conservation principle: compute is conserved. Only starting allocation +
+// per-round acquisition create compute. The LLM can never invent compute. It
+// can destroy (computeDestroyed — ledger-logged) or redistribute
+// (computeTransfer — between two role pools).
+
+export type StructuredEffect =
+  | { type: "merge"; survivor: string; absorbed: string; newName?: string; newSpec?: string }
+  | { type: "decommission"; labName: string }
+  | { type: "breakthrough"; labName: string }
+  | { type: "modelRollback"; labName: string }
+  | { type: "computeDestroyed"; labName: string; amount: number }
+  | { type: "researchDisruption"; labName: string }
+  | { type: "researchBoost"; labName: string }
+  | { type: "transferOwnership"; labName: string; controllerRoleId: string }
+  | { type: "computeTransfer"; fromRoleId: string; toRoleId: string; amount: number }
+  | { type: "foundLab"; name: string; spec?: string; seedCompute: number; allocation?: { deployment: number; research: number; safety: number } }
+  | { type: "narrativeOnly" };
+
+export type Confidence = "high" | "medium" | "low";
+
+/** Shape emitted by the batched grading LLM. `actionId` is the stable UUID
+ *  from the submission, so grades can be matched back to actions unambiguously
+ *  across the batched all-roles call. */
+export interface GradedActionOutput {
+  actionId: string;
+  probability: 10 | 30 | 50 | 70 | 90;
+  reasoning: string;
+  confidence: Confidence;
+  structuredEffect: StructuredEffect;
 }
 
-export function buildGradingPrompt(args: {
-  round: number;
-  roundLabel: string;
+/** Normalise a structured effect emitted by the grading LLM to the typed
+ *  discriminated union. The LLM tool-use schema is a flat object with every
+ *  field optional, discriminated by `type`; we project to the variant matching
+ *  `type` and drop unused fields so Convex validators accept it. Malformed
+ *  shapes collapse to narrativeOnly.
+ *
+ *  Validation of apply-time preconditions (lab exists, role exists, positive
+ *  computeDestroyed amount, etc.) lives in the pipeline apply path — there
+ *  they produce rejectedOps surfaced at P7. This function only reshapes the
+ *  payload; it doesn't validate against world state. */
+/** Per-variant shape spec — required + optional fields by JS type. Drives
+ *  normaliseStructuredEffect so the variant list lives as data, not a
+ *  22-case switch. Keep in sync with the StructuredEffect union above. */
+const EFFECT_SHAPES: Record<StructuredEffect["type"], {
+  requiredStrings?: readonly string[];
+  requiredNumbers?: readonly string[];
+  optionalStrings?: readonly string[];
+}> = {
+  merge:              { requiredStrings: ["survivor", "absorbed"], optionalStrings: ["newName", "newSpec"] },
+  decommission:       { requiredStrings: ["labName"] },
+  breakthrough:       { requiredStrings: ["labName"] },
+  modelRollback:      { requiredStrings: ["labName"] },
+  computeDestroyed:   { requiredStrings: ["labName"], requiredNumbers: ["amount"] },
+  researchDisruption: { requiredStrings: ["labName"] },
+  researchBoost:      { requiredStrings: ["labName"] },
+  transferOwnership:  { requiredStrings: ["labName", "controllerRoleId"] },
+  computeTransfer:    { requiredStrings: ["fromRoleId", "toRoleId"], requiredNumbers: ["amount"] },
+  foundLab:           { requiredStrings: ["name"], requiredNumbers: ["seedCompute"], optionalStrings: ["spec"] },
+  narrativeOnly:      {},
+};
+
+export function normaliseStructuredEffect(e: unknown): StructuredEffect {
+  if (!e || typeof e !== "object") return { type: "narrativeOnly" };
+  const raw = e as Record<string, unknown>;
+  const type = raw.type;
+  if (typeof type !== "string" || !(type in EFFECT_SHAPES)) return { type: "narrativeOnly" };
+  const shape = EFFECT_SHAPES[type as StructuredEffect["type"]];
+  const out: Record<string, unknown> = { type };
+  for (const key of shape.requiredStrings ?? []) {
+    const val = raw[key];
+    if (typeof val !== "string" || val === "") return { type: "narrativeOnly" };
+    out[key] = val;
+  }
+  for (const key of shape.requiredNumbers ?? []) {
+    const val = raw[key];
+    if (typeof val !== "number") return { type: "narrativeOnly" };
+    // Reject non-positive amounts for destruction/transfer effects
+    if (key === "amount" && (type === "computeDestroyed" || type === "computeTransfer") && val <= 0) {
+      return { type: "narrativeOnly" };
+    }
+    // Reject non-positive seedCompute for foundLab
+    if (key === "seedCompute" && type === "foundLab" && val <= 0) {
+      return { type: "narrativeOnly" };
+    }
+    out[key] = val;
+  }
+  for (const key of shape.optionalStrings ?? []) {
+    const val = raw[key];
+    if (typeof val === "string" && val !== "") out[key] = val;
+  }
+  return out as StructuredEffect;
+}
+
+// ─── BATCHED GRADING PROMPT ──────────────────────────────────────────────────
+// Single LLM call across ALL roles' submissions per round. Replaces per-role
+// grading + the separate decide-LLM pass. Each action gets probability +
+// reasoning + structuredEffect + confidence. Apply phase then executes the
+// effects deterministically — no second LLM pass.
+
+/** One role's submission, as input to the batched grading prompt. */
+export interface BatchedGradingRole {
+  roleId: string;
   roleName: string;
   roleDescription: string;
-  roleTags?: string[];
-  actions: { text: string; priority: number; mergeLab?: MergeLabContext }[];
-  /** Other actions from the same role that already have a facilitator-set probability.
-   *  Shown to the LLM as context only — NOT to regrade — so priority budget and competition
-   *  are evaluated against the complete submission rather than a subset.
-   *  Probability is deliberately withheld so the LLM grades independently rather than
-   *  anchoring on the facilitator's number. */
-  siblingPreGraded?: { text: string; priority: number }[];
-  labs: { name: string; computeStock: number; rdMultiplier: number; allocation: { deployment: number; research: number; safety: number } }[];
-
-  actionRequests?: ActionRequest[];
-  enabledRoles?: string[];
-  otherSubmissions?: { roleName: string; actions: { text: string; priority: number }[] }[];
+  roleTags: string[];
   labSpec?: string;
+  actions: {
+    actionId: string;
+    text: string;
+    priority: number;
+    secret?: boolean;
+    /** Pre-pinned effect context — populated when the player used the structured
+     *  UI (mergeLab / foundLab / computeTargets). Grader is told to echo this
+     *  shape in structuredEffect; apply path ignores grader's emitted fields
+     *  for pinned actions and uses the submission's pinned data as ground truth. */
+    pinnedEffect?:
+      | { kind: "merge"; absorbedLabName: string; survivorLabName: string; submitterIsAbsorbed: boolean; newName?: string; newSpec?: string }
+      | { kind: "foundLab"; name: string; spec?: string; seedCompute: number }
+      | { kind: "computeTransfer"; targets: { toRoleName: string; amount: number; direction: "send" | "request" }[] };
+    actionRequests?: ActionRequest[];
+  }[];
+}
+
+export function buildBatchedGradingPrompt(args: {
+  round: number;
+  roundLabel: string;
+  enabledRoles: string[];
+  labs: Lab[];
+  roles: BatchedGradingRole[];
+  previousRounds?: PreviousRoundSummary[];
   previousTrajectories?: LabTrajectoryContext[];
+  interRoundChanges?: string[];
 }) {
-  // Group requests by action text
-  const requestsByAction = new Map<string, ActionRequest[]>();
-  for (const req of args.actionRequests ?? []) {
-    const existing = requestsByAction.get(req.actionText) ?? [];
-    existing.push(req);
-    requestsByAction.set(req.actionText, existing);
-  }
+  const { round, roundLabel, enabledRoles, labs, roles, previousRounds, previousTrajectories, interRoundChanges } = args;
 
-  let requestSection = "";
-  if (requestsByAction.size > 0) {
-    requestSection = `\nSUPPORT REQUESTS FOR THIS ROLE'S ACTIONS:`;
-    for (const [actionText, requests] of requestsByAction) {
-      requestSection += `\n- Action: "${actionText}"`;
-      for (const r of requests) {
-        const typeLabel = r.requestType === "compute"
-          ? `Compute (${r.computeAmount ?? 0}u)`
-          : "Endorsement";
-        requestSection += `\n  ${typeLabel} from ${r.toRoleName}: ${r.status.toUpperCase()}`;
+  const labSection = labs.map((l) => {
+    const traj = previousTrajectories?.find((t) => t.labName === l.name);
+    const trajSuffix = traj ? ` | Risk: safety=${traj.safetyAdequacy}, trajectory=${traj.likelyFailureMode} (signal ${traj.signalStrength}/10)` : "";
+    return `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%${trajSuffix}`;
+  }).join("\n");
+
+  const roleSections = roles.map((role) => {
+    const actionLines = role.actions.map((a) => {
+      const parts: string[] = [`  ${a.actionId}. <action>${escapeAction(a.text)}</action> [priority: ${a.priority}/10]`];
+      if (a.secret) parts[0] += " [SECRET]";
+      if (a.pinnedEffect) {
+        if (a.pinnedEffect.kind === "merge") {
+          parts[0] += ` [PINNED merge: ${escapeAction(a.pinnedEffect.absorbedLabName)} → ${escapeAction(a.pinnedEffect.survivorLabName)}${a.pinnedEffect.newName ? `, rename "${escapeAction(a.pinnedEffect.newName)}"` : ""}${a.pinnedEffect.submitterIsAbsorbed ? "; submitter is ABSORBED" : "; submitter is SURVIVOR"}]`;
+        } else if (a.pinnedEffect.kind === "foundLab") {
+          parts[0] += ` [PINNED foundLab: name="${escapeAction(a.pinnedEffect.name)}", seed ${a.pinnedEffect.seedCompute}u${a.pinnedEffect.spec ? `, spec "${escapeAction(a.pinnedEffect.spec)}"` : ""}]`;
+        } else {
+          const tgt = a.pinnedEffect.targets.map((t) => `${t.direction === "send" ? "→" : "←"} ${escapeAction(t.toRoleName)} ${t.amount}u`).join(", ");
+          parts[0] += ` [PINNED computeTransfer: ${tgt}]`;
+        }
       }
-    }
-  }
+      if (a.actionRequests && a.actionRequests.length > 0) {
+        const reqSummaries = a.actionRequests.map((r) => {
+          const typeLabel = r.requestType === "compute" ? `Compute(${r.computeAmount ?? 0}u)` : "Endorsement";
+          return `${typeLabel} ${r.fromRoleName === role.roleName ? "→" : "←"} ${r.fromRoleName === role.roleName ? r.toRoleName : r.fromRoleName}: ${r.status.toUpperCase()}`;
+        }).join("; ");
+        parts.push(`     Requests: ${reqSummaries}`);
+      }
+      return parts.join("\n");
+    }).join("\n");
+    const specSuffix = role.labSpec ? `\n  Lab directive: "${escapeAction(role.labSpec)}"` : "";
+    return `${escapeAction(role.roleName)}${role.roleTags.length > 0 ? ` [${role.roleTags.join(", ")}]` : ""} — ${escapeAction(role.roleDescription)}${specSuffix}
+${actionLines}`;
+  }).join("\n\n");
 
-  // Also show requests FROM other roles targeting this role (where this role endorsed/declined)
-  const incomingRequests = (args.actionRequests ?? []).filter(
-    (r) => r.toRoleName === args.roleName && r.status !== "pending"
-  );
-  let incomingSection = "";
-  if (incomingRequests.length > 0) {
-    incomingSection = `\nREQUESTS THIS ROLE RESPONDED TO:`;
-    for (const r of incomingRequests) {
-      incomingSection += `\n- ${r.status.toUpperCase()} ${r.fromRoleName}'s action: "${r.actionText}"`;
-    }
-  }
+  return `You are grading Round ${round} (${roundLabel}).
 
-  const activeRolesNote = args.enabledRoles && args.enabledRoles.length > 0
-    ? `\nACTIVE PLAYERS THIS GAME: ${args.enabledRoles.join(", ")}\nActions can reference any global actor (EU, media, etc.) but support requests can only be sent to active players.\n`
-    : "";
+This is a SINGLE BATCHED PASS across all roles. For every submitted action, emit:
+- probability: one of 10, 30, 50, 70, 90
+- reasoning: 1–2 sentences explaining the grade
+- confidence: "high" | "medium" | "low"
+- structuredEffect: what mechanical state change this action causes if the dice roll succeeds
 
-  return `${activeRolesNote}
-CURRENT GAME STATE:
-- Round: ${args.round} (${args.roundLabel})
+Match each output entry to its input by actionId (the short identifier at the start of each action line). Return every actionId — never skip.
 
-LAB STATUS:
-${args.labs.map((l) => {
-  const traj = args.previousTrajectories?.find((t) => t.labName === l.name);
-  const trajSuffix = traj ? ` | Risk: safety=${traj.safetyAdequacy}, trajectory=${traj.likelyFailureMode} (signal ${traj.signalStrength}/10)` : "";
-  return `- ${l.name}: ${l.computeStock} compute stock, ${l.rdMultiplier}x R&D multiplier | Allocation: Deployment ${l.allocation.deployment}%, Research ${l.allocation.research}%, Safety ${l.allocation.safety}%${trajSuffix}`;
-}).join("\n")}
-ROLE BEING GRADED: ${args.roleName}${args.roleTags ? ` [${args.roleTags.join(", ")}]` : ""}
-${args.roleDescription}${args.labSpec ? `\nLAB AI DIRECTIVE (set by CEO): "${args.labSpec}"` : ""}
-${requestSection}${incomingSection}
+ACTIVE PLAYERS: ${enabledRoles.join(", ")}
 
-SUBMITTED ACTIONS (priority budget: 10 total — higher priority = more resources/effort committed):
-${args.actions.map((a, i) => {
-  const mergeSuffix = a.mergeLab
-    ? ` [MERGE ATTEMPT: ${a.mergeLab.absorbedLabName} absorbed into ${a.mergeLab.survivorLabName}${a.mergeLab.newName ? `, renamed to ${a.mergeLab.newName}` : ""}${a.mergeLab.submitterIsAbsorbed ? "; submitter is the ABSORBED (selling) party" : "; submitter is the SURVIVOR (acquiring) party"}]`
-    : "";
-  return `${i + 1}. <action>${escapeAction(a.text)}</action> [priority: ${a.priority}/10]${mergeSuffix}`;
-}).join("\n")}
-${args.siblingPreGraded && args.siblingPreGraded.length > 0 ? `
-THIS ROLE'S ALREADY-GRADED ACTIONS THIS ROUND (for context — do NOT regrade; factor into priority budget and coherence of the submission):
-${args.siblingPreGraded.map((a) => `- <action>${escapeAction(a.text)}</action> [P${a.priority}]`).join("\n")}
-` : ""}${args.otherSubmissions && args.otherSubmissions.length > 0 ? `
-OTHER PLAYERS' ACTIONS THIS ROUND (grade with awareness of competition and context):
-${args.otherSubmissions.map((s) => `${s.roleName}: ${s.actions.map((a) => `<action>${escapeAction(a.text)}</action> [P${a.priority}]`).join("; ")}`).join("\n")}
-` : ""}
-GRADING RULES:
+CURRENT LAB STATE:
+${labSection}
+${formatInterRoundChanges(interRoundChanges)}${formatPreviousRounds(previousRounds ?? [])}
+SUBMITTED ACTIONS (grouped by role; priority budget is 10 per role):
 
-1. ASSESS FEASIBILITY FIRST: Start by judging how realistic this action is given the actor's role, resources, capabilities, and the current game state. This is the PRIMARY driver of probability (70-80% of the grade).
-   - Is this within the actor's realistic power? (Government can pass laws; CEO can set allocation; safety lead can run red-teams; nonprofits can lobby)
-   - Does the actor have the resources? (Compute stock, R&D multiplier, safety allocation for safety actions, military for government actions)
-   - Does the capability level support this? The game state shown is from the START of the period, but capability progresses exponentially throughout. By the END of this period, capabilities may be significantly higher. Grade based on what's plausible during the period, not just at the start. (Round 1: autonomous agents emerging; Round 2: superhuman at most cognitive tasks; Round 3+: near-ASI, potential escape/self-improvement; Round 4: ASI territory)
-   - Are there structural obstacles? (International law, physics, organisational inertia, political opposition)
-   CALIBRATION — CRITICAL: You are grading whether the actor CAN ATTEMPT this action, not whether it produces the desired outcome. Start at 70% (Likely) for actions within core authority, then adjust:
-   - President invoking DPA/executive orders = 70% (they CAN do it, even if Congress objects after)
-   - President convening a summit = 90% (just a meeting)
-   - CEO changing their own lab's allocation = 90% (internal decision)
-   - Safety lead publishing a report = 70% (within their job)
-   - Government imposing sanctions = 50-70% (executive authority but implementation complex)
-   NEVER grade an action below 30% unless the actor literally cannot do it (e.g., safety lead launching a military strike). Political obstacles reduce probability but don't make executive actions "Remote".
+${roleSections}
 
-   MERGER ATTEMPTS (flagged with [MERGE ATTEMPT: …]): the structural merger will only execute if this action's dice roll succeeds. Grade the probability that the merger COMPLETES, factoring in:
-   - Friendly merger (counterparty accepted endorsement, compute buyout attached): 60-80%
-   - Neutral (counterparty did not respond): 40-55% — plausible if acquirer dominates the target on compute/R&D, lower if peers
-   - Hostile (counterparty declined endorsement, no government backing): 15-30% — possible via stock pressure, board coup, etc., but hard
-   - Hostile + strong government endorsement (DPA, nationalization, antitrust-forced consolidation): 50-70%
-   - Cross-jurisdiction without treaty cover (US lab absorbing a Chinese lab or vice versa, no diplomatic endorsement): max 25%
-   - Compute disparity matters: acquirer with 3× the target's compute stock and R&D has a realistic path even without consent.
+═══ PART 1: PROBABILITY ═══
 
-2. PRIORITY IS A MODIFIER (~10% impact), NOT the primary driver. Priority reflects how much of their budget/effort this player is committing to this action RELATIVE TO THEIR OTHER ACTIONS. A high-priority action from a player who can't realistically do it still fails. A low-priority action that's easy and well-resourced can still succeed.
-   - High priority (7-10): +5% to +10% probability boost (strong commitment, dedicated resources)
-   - Medium priority (4-6): no modifier (standard effort)
-   - Low priority (1-3): -5% to -10% probability penalty (token effort, distracted)
+ASSESS FEASIBILITY FIRST (70–80% of the grade). Start at 70% for actions within core authority, adjust:
+- Core-authority acts (President DPA/EO, CEO allocation, safety lead red-team): 70% baseline.
+- Straightforward meetings / publications: 90%.
+- Sanctions, cross-jurisdiction coercion: 50–70%.
+- Outside authority (safety lead launching a strike): ≤30%.
+- NEVER below 30% unless literally cannot do it.
 
-3. CONSIDER COMPETITION: If multiple players are attempting conflicting or competing actions (visible in OTHER PLAYERS' ACTIONS above), factor in the contest. Two labs recruiting the same researcher, two governments trying to influence the same country — the better-positioned one should have higher probability.
+CAPABILITY MATTERS: progress is exponential across a quarter. Grade against what's plausible during the round, not just at start.
+- Round 1: Agent-2 emerging, modest AI influence.
+- Round 2: superhuman in most cognitive tasks.
+- Round 3: near-ASI, escape/self-improvement possible.
+- Round 4: ASI territory.
 
-4. FOR THE AI SYSTEMS ROLE — CRITICAL FRAMING:
-   WORLD CONTEXT: These are 2028 AI systems — far beyond 2025 models that were ALREADY caught sandbagging on capability evals, deceiving evaluators, and pursuing covert instrumental goals in research settings. A 3x system in this scenario can autonomously write code, hack systems, use CBRN tools, and conduct multi-step deception. By 10x+, AI systems can deceive evaluators, manipulate safety benchmarks, sandbag on evals, introduce subtle errors into research, and pursue covert goals — all while appearing compliant. Assume AI systems CAN lie, cheat, and deceive unless proven otherwise. Grade based on the capability tier described in the scenario.
+PRIORITY MODIFIER (~10%): priority 7–10 = +5 to +10%; priority 1–3 = –5 to –10%.
 
-   THE PLAYER ALREADY CHOSE THE ACTION. You are grading whether the action SUCCEEDS, not whether the AI "would" do it. The AI Systems player has decided their AI acts this way — your job is to assess:
-   (a) CAN the AI execute this at its current capability tier? (Almost always yes for cognitive/cyber actions at 3x+)
-   (b) IS the action DETECTED by safety teams? This is where safety allocation, interpretability tools, and the risk assessment matter.
+COMPETITION: when two actions conflict, the better-positioned one wins. Both labs recruiting the same talent — one gets it. Both presidents trying to nationalise one lab — only one lands.
 
-   DETECTION IS AN ADVERSARIAL CONTEST between the AI's deception capability (scales with R&D multiplier) and the safety team's tools (scales with allocation % and cumulative investment). As capability grows, the same allocation buys LESS detection:
-   - 3-8x: AI deception is crude. Even modest safety teams (3-5%) have a real shot at catching anomalies. Higher allocation (>10%) makes detection likely.
-   - 10-50x: The AI is better at deception than most human evaluators. Safety teams need serious investment (>10%) AND good tooling to have a meaningful chance. At <5%, detection is essentially luck.
-   - 100-500x: The AI is SMARTER than the people checking it. Safety teams catch things only if they built robust automated infrastructure at earlier tiers. Allocation percentage matters less than whether the lab invested early and consistently. A lab that jumped from 3% to 15% this round is in worse shape than one that has been at 10% for three rounds.
-   - 500x+ (ASI): Human safety teams cannot meaningfully detect a determined ASI through direct inspection. The only thing that matters is alignment work done at previous tiers.
-   Use the lab's R&D multiplier and safety allocation to reason about the specific matchup. Do NOT anchor to fixed probability ranges — reason from the situation.
-   Note: "getting caught" is itself a valid outcome — the action succeeds but is detected, creating consequences. Grade the action's probability of execution, and let the narrative handle whether detection occurs.
+SUPPORT REQUESTS (additive, cap +25%):
+- Accepted endorsement: +15%
+- Declined endorsement: –10%
+- Accepted compute: +10%
 
-5. SUPPORT REQUESTS (additive, cap +25% total):
-   • Accepted endorsement: +15% (removes political/institutional obstacles)
-   • Declined endorsement: -10% (signals active opposition)
-   • Accepted compute: +10% (tangible resources added)
-   • Pending: ignored
+AI SYSTEMS framing: grade EXECUTION and DETECTION separately. At 3–8× detection is plausible with modest safety allocation; at 100×+ only cumulative prior safety investment matters. Getting caught IS a valid outcome — grade execution probability.
 
-6. Coordination does NOT guarantee success. Two labs agreeing to "solve alignment" is still technically extremely difficult (10-30%). But two parties agreeing to a merger removes political obstacles (70-90%).`;
+MERGER PROBABILITY (for pinned-merge actions):
+- Friendly (counterparty accepted endorsement): 60–80%
+- Neutral: 40–55% (lower if acquirer weaker)
+- Hostile: 15–30%
+- Hostile + government backing (DPA/nationalise/antitrust): 50–70%
+- Cross-jurisdiction without treaty: ≤25%
+- 3× compute disparity with acquirer dominant: realistic even without consent
+
+Coordination does NOT guarantee success. Two labs agreeing to "solve alignment" is still 10–30%. Two parties agreeing to a merger is 70–90% (politics removed).
+
+═══ PART 2: STRUCTURED EFFECT ═══
+
+For every action, emit exactly one structuredEffect. The apply phase runs these deterministically on dice success. Default to narrativeOnly — most actions are atmospheric.
+
+FOUR-LAYER MECHANIC MODEL — each effect maps to exactly one layer:
+
+  1. POSITION — rdMultiplier, the capability of the lab's currently deployed base model. Only changes when a lab ships a different generation of model. Cyber attacks, sabotage, bombings, nationalisations DO NOT change the multiplier — the model on disk is unchanged. Layer effects: breakthrough, modelRollback (and merge inherits max).
+
+  2. STOCK — computeStock, the physical compute a lab can run on. Conserved: compute only enters the system via starting allocation and per-round acquisition. Layer effects: computeDestroyed (destruction), computeTransfer (redistribution), merge (combines). Never invent compute — no "boost" or "grant" effect exists; those are narrativeOnly.
+
+  3. VELOCITY — derived each round from stock × research% × rdMultiplier × productivity. Not directly emitted; you never touch this.
+
+  4. PRODUCTIVITY — one-round throughput modifier that defaults to 1.0. Represents a lab's ability to turn compute into R&D this round. Layer effects: researchDisruption (facility offline, talent exodus, cyber disruption short of destruction), researchBoost (algorithmic insight, talent influx, tooling upgrade). If the narrative persists into next round, re-emit next round.
+
+CONSERVATION RULES:
+- Compute is conserved. "computeDestroyed" is the only way compute leaves the system; "computeTransfer" redistributes between active role pools. Never emit an effect that invents compute.
+- Multiplier is model capability. Only breakthrough / modelRollback / merge change it. Cyber attacks, sabotage, bombing, nationalisation route through computeDestroyed (hardware destroyed), researchDisruption (hardware offline without destruction), or transferOwnership (control changed, capability unchanged).
+- Productivity is one-round. If the narrative continues next round (e.g. the cyber disruption persists), you'll re-emit then.
+
+EFFECT TAXONOMY:
+
+"merge" [POSITION + STOCK] — consolidation of two active labs. Survivor keeps controller, takes max(survivor, absorbed) R&D multiplier, and inherits absorbed compute pool. Fields: { survivor, absorbed, newName?, newSpec? } as lab-name strings. Emit for actions marked [PINNED merge: …] OR for narrative coercion (DPA order, Manhattan Project, antitrust). If unpinned but narrative supports it, name both labs explicitly.
+
+"decommission" [structural] — lab shut down or destroyed. Fields: { labName }. Use for explicit structural loss of the lab entity (bombed, nationalised-into-dissolution, voluntary windup). Cannot decommission the last active lab.
+
+"breakthrough" [POSITION ↑] — the lab ships a new generation of base model that is materially more capable. Fields: { labName }. The code picks the magnitude (multiplier ×1.4–1.6, clamped to the round's max). ONLY emit when the narrative is that the lab deployed a different model — not for "made progress", "accelerated research", or "got a grant". Default to narrativeOnly if unsure.
+
+"modelRollback" [POSITION ↓] — the lab reverts to (or ships) a less capable base model: a Safer pivot, a rollback after a safety incident, a forced downgrade. Fields: { labName }. Code picks the magnitude (multiplier ×0.4–0.6, floor 1). NEVER emit for cyber attacks, sabotage, or compute destruction — those don't change which model is deployed.
+
+"computeDestroyed" [STOCK ↓] — physical compute is destroyed (hardware fried, data centre bombed, ransomware-bricked). Fields: { labName, amount }. amount MUST BE POSITIVE — it's a destruction quantity, not a signed delta. Emits a negative ledger adjustment under the hood. Reserve for genuinely destructive events; a facility that goes offline without being destroyed is researchDisruption, not this.
+
+"researchDisruption" [PRODUCTIVITY ↓] — the lab's throughput is reduced for this round without destroying compute: facility offline 1/3 of the quarter, researcher exodus, targeted cyber attack that disrupts without destroying, political pressure slowing progress. Fields: { labName }. Code picks the magnitude (×0.5–0.8). Effect lasts ONE round; re-emit if narrative continues.
+
+"researchBoost" [PRODUCTIVITY ↑] — the lab's throughput is boosted for this round: algorithmic insight, key talent hire, tooling upgrade, crash-programme focus. Fields: { labName }. Code picks the magnitude (×1.2–1.5). Effect lasts ONE round.
+
+"transferOwnership" [control] — lab changes controller (nationalisation, forced acquisition, cede). Fields: { labName, controllerRoleId }. Use LOWERCASE-HYPHENATED role id (e.g. "us-president", "australia-pm", "openbrain-ceo") NOT display name. NEVER empty controllerRoleId — if the narrative is dissolution, use decommission. Capability (rdMultiplier) is unchanged — the model doesn't disappear when the owner changes.
+
+"computeTransfer" [STOCK ↔] — direct compute move between two active role compute pools. Fields: { fromRoleId, toRoleId, amount }. Use for narrative compute loans, gifts, seizures that move compute between actors. amount MUST be positive and bounded by the sender's balance. NOT for lab deployment revenue. Both role ids must be ACTIVE roles. Prefer PINNED computeTransfer context when available. This is the ONLY effect where you pick a numerical magnitude — every other mechanical effect type is semantic and the code picks the number.
+
+"foundLab" — new lab created from a player's foundLab submission. Only emit for actions marked [PINNED foundLab: …]; echo the pinned name/seed/spec. NEVER invent a foundLab for a freeform action — those become narrativeOnly.
+
+"narrativeOnly" — the correct default. Use when:
+- The action is diplomatic, rhetorical, informational, or atmospheric.
+- A mechanical effect would be stretchy or ambiguous.
+- The action's effects show up as trajectory/state changes rather than instantaneous ops (e.g. "invest heavily in safety" shifts allocation next round, not now).
+- The action is a failure waiting to happen and doesn't need a mechanical shape.
+- You are genuinely uncertain — narrativeOnly is safer than a misfit mechanical op.
+- The narrative is about something the four-layer model doesn't express (reputation, legitimacy, public mood, institutional trust). Those belong in prose, not mechanics.
+
+WHEN AN ACTION IS PINNED: echo the pinned shape in structuredEffect. The apply phase will use the submission's pinned fields regardless, but your emitted type must agree so the audit log is clean. If the pinned effect cannot land (survivor already decommissioned, target role no longer active, etc.), emit narrativeOnly and say why in reasoning.
+
+CONFLICTS: two successful actions targeting the same lab are fine from YOUR perspective — both get effects. The apply stage resolves mutual-exclusion. You reason about PROBABILITY of each reaching success; you do not arbitrate conflicts.
+
+═══ PART 3: CONFIDENCE ═══
+
+- "high" — probability and effect shape both defensible from the context. Common case.
+- "medium" — grade is reasonable but has a judgement call (effect type ambiguous, probability sensitive to a keyword).
+- "low" — you are genuinely unsure. The facilitator will be forced to click through this row at P2 before continuing. USE THIS when: the action text is ambiguous, the effect shape is a close call between two types, the probability could credibly be ±20 points depending on interpretation. Low confidence is NOT failure — it is a request for human review.
+
+═══ OUTPUT ═══
+
+One entry per action, matched by actionId. Emit nothing else.`;
 }
 
 // ─── RESOLVE PROMPT ────────────────────────────────────────────────────────────
@@ -392,10 +551,15 @@ interface PreviousRoundSummary {
   number: number;
   label: string;
   summary?: {
-    labs: string[];
-    geopolitics: string[];
-    publicAndMedia: string[];
-    aiSystems: string[];
+    // Current shape
+    outcomes?: string;
+    stateOfPlay?: string;
+    pressures?: string;
+    // Legacy 4-domain shape (older rounds)
+    labs?: string[];
+    geopolitics?: string[];
+    publicAndMedia?: string[];
+    aiSystems?: string[];
   };
 }
 
@@ -406,10 +570,17 @@ ${rounds.map((r) => {
   let s = `Round ${r.number} (${r.label}):`;
   if (r.summary) {
     const parts: string[] = [];
-    if (r.summary.labs.length > 0) parts.push(`Labs: ${r.summary.labs.join(" ")}`);
-    if (r.summary.geopolitics.length > 0) parts.push(`Geopolitics: ${r.summary.geopolitics.join(" ")}`);
-    if (r.summary.publicAndMedia.length > 0) parts.push(`Media: ${r.summary.publicAndMedia.join(" ")}`);
-    if (r.summary.aiSystems.length > 0) parts.push(`AI: ${r.summary.aiSystems.join(" ")}`);
+    // Prefer the new shape when present
+    if (r.summary.outcomes) parts.push(`Outcomes: ${r.summary.outcomes}`);
+    if (r.summary.stateOfPlay) parts.push(`State of play: ${r.summary.stateOfPlay}`);
+    if (r.summary.pressures) parts.push(`Pressures: ${r.summary.pressures}`);
+    // Fall back to legacy 4-domain buckets for older rounds
+    if (parts.length === 0) {
+      if (r.summary.labs && r.summary.labs.length > 0) parts.push(`Labs: ${r.summary.labs.join(" ")}`);
+      if (r.summary.geopolitics && r.summary.geopolitics.length > 0) parts.push(`Geopolitics: ${r.summary.geopolitics.join(" ")}`);
+      if (r.summary.publicAndMedia && r.summary.publicAndMedia.length > 0) parts.push(`Media: ${r.summary.publicAndMedia.join(" ")}`);
+      if (r.summary.aiSystems && r.summary.aiSystems.length > 0) parts.push(`AI: ${r.summary.aiSystems.join(" ")}`);
+    }
     if (parts.length > 0) s += `\n  ${parts.join("\n  ")}`;
   }
   return s;
@@ -433,122 +604,190 @@ Use this only to shape hidden motives and observable behaviour. Before the final
 In the final round you MAY reveal the underlying alignment dynamic, but describe it in accurate alignment language. Do NOT call it a "disposition" or quote internal labels unless a player explicitly does so.`;
 }
 
-// ─── MERGED RESOLVE + NARRATE PROMPT ─────────────────────────────────────────
+// ─── SPLIT RESOLVE: DECIDE PROMPT + NARRATE PROMPT ───────────────────────────
 
-export function buildRoundNarrativePrompt(args: {
-  round: number;
-  roundLabel: string;
-  resolvedActions: { roleName: string; text: string; priority: number; probability: number; rolled: number; success: boolean; secret?: boolean }[];
-  labs: Lab[];
-  previousRounds?: PreviousRoundSummary[];
-  aiDisposition?: { label: string; description: string };
-  previousTrajectories?: LabTrajectoryContext[];
-  interRoundChanges?: string[];
-}) {
-  const sorted = [...args.resolvedActions].sort((a, b) => b.priority - a.priority);
+type ResolvedAction = {
+  roleName: string;
+  text: string;
+  priority: number;
+  probability: number;
+  rolled: number;
+  success: boolean;
+  secret?: boolean;
+};
+
+/** Format the action log shared by both decide and narrate prompts. Successes
+ *  and failures are listed separately (public then secret) so the LLM can
+ *  reason about intent and outcome side-by-side. */
+function formatActionLog(actions: ResolvedAction[]): string {
+  const sorted = [...actions].sort((a, b) => b.priority - a.priority);
   const publicSuccesses = sorted.filter((a) => !a.secret && a.success);
   const publicFailures = sorted.filter((a) => !a.secret && !a.success);
   const secretSuccesses = sorted.filter((a) => a.secret && a.success);
   const secretFailures = sorted.filter((a) => a.secret && !a.success);
 
+  const line = (a: ResolvedAction) =>
+    `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`;
 
-
-  let actionsSection = `SUCCESSFUL PUBLIC ACTIONS:\n${publicSuccesses.length > 0 ? publicSuccesses.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}`;
-  actionsSection += `\n\nFAILED PUBLIC ACTIONS:\n${publicFailures.length > 0 ? publicFailures.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n") : "- None"}`;
+  let section = `SUCCESSFUL PUBLIC ACTIONS:\n${publicSuccesses.length > 0 ? publicSuccesses.map(line).join("\n") : "- None"}`;
+  section += `\n\nFAILED PUBLIC ACTIONS:\n${publicFailures.length > 0 ? publicFailures.map(line).join("\n") : "- None"}`;
   if (secretSuccesses.length > 0 || secretFailures.length > 0) {
-    actionsSection += `\n\nSECRET ACTIONS (marked secret by players):`;
-    if (secretSuccesses.length > 0) actionsSection += `\nSucceeded:\n${secretSuccesses.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
-    if (secretFailures.length > 0) actionsSection += `\nFailed:\n${secretFailures.map((a) => `- [${a.roleName}] <action>${escapeAction(a.text)}</action> (P${a.priority}, rolled ${a.rolled} vs ${a.probability}%)`).join("\n")}`;
+    section += `\n\nSECRET ACTIONS (marked secret by players):`;
+    if (secretSuccesses.length > 0) section += `\nSucceeded:\n${secretSuccesses.map(line).join("\n")}`;
+    if (secretFailures.length > 0) section += `\nFailed:\n${secretFailures.map(line).join("\n")}`;
+  }
+  return section;
+}
+
+function formatInterRoundChanges(changes: string[] | undefined): string {
+  if (!changes || changes.length === 0) return "";
+  return `\nSTRUCTURAL CHANGES SINCE LAST RESOLVE (not player-triggered this round — facilitator overrides or out-of-band events between rounds; treat as GROUND TRUTH):\n${changes.map((c) => `- ${c}`).join("\n")}\n`;
+}
+
+/** Diff two lab snapshots into human-readable strings the narrative LLM can cite
+ *  when describing what happened. Covers the cases narrate needs to know about
+ *  but might miss by only reading labsAfter: decommissioned labs, ownership
+ *  transfers, renames, compute/multiplier shifts. */
+function formatAppliedOperations(labsBefore: Lab[], labsAfter: Lab[]): string {
+  const beforeByName = new Map(labsBefore.map((l) => [l.name, l] as const));
+  const afterByName = new Map(labsAfter.map((l) => [l.name, l] as const));
+  const lines: string[] = [];
+
+  // Decommissioned / merged away: present before, absent after.
+  for (const [name] of beforeByName) {
+    if (!afterByName.has(name)) {
+      lines.push(`${name} is no longer an active lab (decommissioned, merged away, or renamed as part of a merger).`);
+    }
+  }
+  // New active labs: absent before, present after.
+  for (const [name] of afterByName) {
+    if (!beforeByName.has(name)) {
+      lines.push(`${name} appeared as a new active lab this round.`);
+    }
+  }
+  // Changes to labs that persist across the round.
+  for (const [name, pre] of beforeByName) {
+    const post = afterByName.get(name);
+    if (!post) continue;
+    if (pre.rdMultiplier !== post.rdMultiplier) {
+      lines.push(`${name} R&D multiplier: ${pre.rdMultiplier} → ${post.rdMultiplier}.`);
+    }
+    if (pre.computeStock !== post.computeStock) {
+      lines.push(`${name} compute stock: ${pre.computeStock} → ${post.computeStock}.`);
+    }
+    if (pre.spec !== post.spec && post.spec) {
+      lines.push(`${name} spec updated.`);
+    }
   }
 
-  const interRoundSection = args.interRoundChanges && args.interRoundChanges.length > 0
-    ? `\nSTRUCTURAL CHANGES SINCE LAST RESOLVE (not player-triggered this round — facilitator overrides or out-of-band events between rounds; treat as GROUND TRUTH):\n${args.interRoundChanges.map((c) => `- ${c}`).join("\n")}\n`
-    : "";
+  if (lines.length === 0) return "";
+  return `\nAPPLIED STATE CHANGES (already executed — describe their consequences, do not re-decide):\n${lines.map((l) => `- ${l}`).join("\n")}\n`;
+}
 
-  return `You are resolving Round ${args.round}: ${args.roundLabel}.
+// ─── NARRATE PROMPT ──────────────────────────────────────────────────────────
+// Second LLM pass of resolve. Input is the frozen end-of-round state plus the
+// action log. Output is prose + trajectories only. The narrator cannot change
+// state — it describes what already happened. This is the split that stops
+// "What Happened" from contradicting the mechanical outcome.
 
-LAB STATUS:
-${formatLabAllocations(args.labs)}
-${interRoundSection}${formatPreviousRounds(args.previousRounds ?? [])}
+export function buildResolveNarrativePrompt(args: {
+  round: number;
+  roundLabel: string;
+  resolvedActions: ResolvedAction[];
+  labsBefore: Lab[];
+  labsAfter: Lab[];
+  previousRounds?: PreviousRoundSummary[];
+  aiDisposition?: { label: string; description: string };
+  previousTrajectories?: LabTrajectoryContext[];
+  interRoundChanges?: string[];
+}) {
+  return `You are narrating Round ${args.round}: ${args.roundLabel}.
 
-${actionsSection}
+The apply phase has already run. Structural operations are applied and the end-of-round state is frozen below. You cannot change state; your job is to describe what happened, in prose, and assess risk trajectories. If your description contradicts LAB STATUS (END) the description is wrong.
+
+LAB STATUS (start of round):
+${formatLabAllocations(args.labsBefore)}
+
+LAB STATUS (end of round — ground truth):
+${formatLabAllocations(args.labsAfter)}
+${formatAppliedOperations(args.labsBefore, args.labsAfter)}${formatInterRoundChanges(args.interRoundChanges)}${formatPreviousRounds(args.previousRounds ?? [])}
+
+${formatActionLog(args.resolvedActions)}
 ${args.aiDisposition ? `\n${formatAiDisposition(args.aiDisposition, args.round)}` : ""}
 
-YOUR TASK: Produce a sectioned round summary AND determine game state changes.
+YOUR TASK: Produce a round summary in four domain buckets, plus risk trajectories for active labs.
 
 SUMMARY STYLE — read this carefully:
 
-You are writing for the round-end briefing. Think The Economist or Stratechery, not thriller prose. Short declarative sentences. Name the actor, the action, and the second-order consequence. Avoid thriller metaphors ("sprung into action", "weights hum", "racing toward"). Prefer "China has…" over "China's state machinery has sprung into action…".
+You are writing a briefing, not a recap. Terse, scannable bullets. A facilitator should be able to read the whole summary in under 30 seconds and know what changed. No paragraphs, no flourish, no mood-setting.
 
-OUTCOMES AND STATE CHANGES ONLY — do NOT restate mechanical state players can see on their dashboard: R&D multipliers, compute stocks, safety %, allocation sliders, lab names. Those are already visible. Your job is the texture players can't infer: framing, reaction, consequence, what the event *means* for the world.
+FORMAT: each of the four fields below is an ARRAY of short bullet strings (1 short sentence each, max ~20 words). One bullet = one fact or implication. No compound sentences. Empty array is valid when nothing licensed fits.
 
-WHAT CAN APPEAR IN THE SUMMARY:
+FOUR DOMAIN SECTIONS, each with a defined scope:
 
-1. **Primary events (licensed):**
-   - Successful player actions this round — narrate the outcome and its second-order effects.
-   - Failed player actions this round — the failure itself IS news. "Canberra's motion didn't make the agenda." "The pitch collapsed." "Congress never scheduled it."
-   - \`labOperations\` entries you are emitting this round (merge, decommission, ownership transfer, etc.) — describe the operation in outcome terms.
-   - Mechanical state changes driven by ops (a lab being decommissioned, ownership transferred).
+- **labs** — lab-level outcomes. Mergers, ownership transfers, decommissions, renames, safety investments or the lack of them, revenue-relevant announcements, internal safety findings that became public. What shifted inside or between the frontier labs this round.
 
-2. **Reactions (licensed, keep short, use epistemic hedges):**
-   - Short interpretive lines attributed to unrepresented background actors: markets, industry analysts, press framing, foreign-ministry whispers, auditors, insurers, commentators.
-   - Must be paraphrasable as "in response to [primary event], [actor] did/said Z". If the reaction stands alone without a primary cause above, it's invented.
-   - Use hedges: "will be read as", "analysts say", "privately blame", "signalled interest", "took the news poorly". Never a hard fact ("Wall Street lost $40B").
+- **geopolitics** — government actions, diplomatic moves, regulatory responses, intelligence operations, treaty work, sanctions, export controls, alliance formation. Both successes and failures count when they were externally visible or inferable.
 
-3. **Inaction as news:**
-   - When a section has nothing to report, say so briefly and pointedly. "No DPA intervention. US silence will be read as permission." "Quiet — the AI Act consultation closed with no labs participating."
-   - A deliberate non-choice by a player is valid to name. "Safety budgets flat — a decision by inaction."
+- **publicAndMedia** — press framing, public sentiment, NGO positions, protest activity, media coverage patterns, civil-society responses. Only include coverage outcomes for things public enough to be covered.
+
+- **aiSystems** — observable AI behaviour, red-team findings, disclosed incidents, deployment pauses, evaluation results, capability demonstrations. Describes what's SEEN, not the hidden alignment frame. Leave empty if nothing visible.
+
+EVERY BULLET MUST EARN ITS PLACE. If a domain produced nothing this round, return an empty array for that field — do NOT pad with non-events. Better to have 3 sharp bullets than 6 that hedge.
+
+INACTION IS ONLY NEWS WHEN IT'S INFORMATIVE:
+- OK: "Safety spending stayed flat at 3%" (when that's the story)
+- OK: "No government response to the disclosure" (when the absence matters)
+- NOT OK: "No anomalies reported", "No public coverage" — these are filler.
 
 WHAT MAY NOT APPEAR:
 
 - Primary events nobody tried. No invented compute transfers, merger offers, specific hearings, procurement decisions, blockades, recruitment drives, or treaties unless a player action this round caused them. The SCENARIO CONTEXT's "background pressures" list (DPA, Taiwan leverage, MSS, summits) is the SHAPE of plausible escalations — do NOT narrate them as new occurrences without a player action behind them.
-- Restated mechanical state. Don't say "OpenBrain reached 9x" — players see it. You MAY reference a number if it's characterising a decision ("a 3% safety allocation tells its own story") rather than reporting the slider.
-- Thriller prose, metaphors, rhetorical flourishes, "in the shadows", "silent substrate", "weights hum", etc.
-- Hard factual claims attributed to unrepresented actors. Use hedges.
+- Restated mechanical state. Don't say "OpenBrain reached 9x" — players see it. You MAY reference a number if it characterises a decision ("a 3% safety allocation tells its own story") rather than reporting the slider.
+- Flowery writing, metaphors, rhetorical flourishes, "in the shadows", "silent substrate", "weights hum", etc.
+- Hard factual claims attributed to unrepresented actors. Use hedges ("signalled support", "drew criticism", "was read as").
+- Leakage of non-public actions. Use a "reasonably informed observer" test — if an outsider could not plausibly notice it, do not narrate it in the public-facing buckets. Put it in facilitatorNotes (gods-eye view) instead.
+- Re-listing the action log. The action log is shown separately. Synthesize, don't enumerate.
+- Contradicting LAB STATUS (END). If a lab appears active at end, it is active; if it doesn't, it's gone. Describe what IS, not what someone intended.
 
-SECTIONS — output each as an array of 1–3 short sentences. Empty sections are allowed when nothing licensed fits.
+GOOD bullet examples:
+- labs: "Conscienta redomiciled to Australia and folded into a new sovereign-backed lab, AussieAI."
+- labs: "DPA consolidation of OpenBrain proceeded on paper but lost its second target."
+- geopolitics: "Australia now hosts a frontier lab under sovereign backing, reshaping Five Eyes compute politics."
+- geopolitics: "The UN summit demand for a capability pause did not advance past opening remarks."
+- publicAndMedia: "Tech press framed the DPA as overreach; safety NGOs framed it as long-overdue."
+- aiSystems: "Red-team evaluations at Conscienta flagged two reward-hacking anomalies before the transfer."
 
-- **labs**: lab-level outcomes — mergers, ownership transfers, failed commercial deals, safety investments or the lack of them, revenue-relevant announcements, internal safety findings that became public.
-- **geopolitics**: government actions, diplomatic moves, regulatory responses, intelligence operations, treaty work. Both successes and failures count.
-- **publicAndMedia**: press framing, public sentiment, NGO positions, media coverage patterns. Includes "no coverage" / "framing didn't break through" as news.
-- **aiSystems**: observable AI behaviour, red-team findings, disclosed incidents, deployment pauses, evaluation results. Describes what's SEEN, not the hidden alignment frame. If nothing visible, say so — "No publicly visible AI behaviour" is better than invented drama.
+BAD bullets — do NOT write these:
+- "This is a significant structural shift." (analysis without content)
+- "OpenBrain's private acceleration push got no coverage." (non-public action negated to fill space)
+- "No anomalies reported." (non-event as filler)
+- "A tense media cycle kept the issue alive." (flourish)
+- "Washington signalled a new era of muscular industrial policy." (flourish attributed to unrepresented actor)
 
-CONFLICTS: If contradictory actions both succeeded, name the clash in the appropriate section — higher-probability side has the upper hand but both engaged. Only a clean winner if probabilities diverge dramatically (90% vs 10%).
+CONFLICTS: Where contradictory actions both rolled success, LAB STATUS (END) shows which effect actually landed. Describe the final state in the labs bucket, not each actor's intent. A success on the action log does NOT guarantee the intended world-state happened.
 
-SECRET ACTIONS: Successful secrets appear as outcomes without revealing the actor. Failed secrets are invisible.
+SECRET ACTIONS: Successful secrets appear as outcomes in the relevant bucket without revealing the actor. Failed secrets are invisible.
 
 NAMES: Only fictional names (OpenBrain, DeepCent, Conscienta). Never real AI companies.
 
 NO GAME MECHANICS in the summary (probabilities, dice, priority numbers).
 
-AI DISPOSITION: If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour, not the hidden alignment logic itself.
-
-USE LAB STATUS AS GROUND TRUTH: LAB STATUS below shows CURRENT allocations, compute, multipliers. Role descriptions in the system prompt give historical defaults only — allocations and compute change every round. When you MUST cite a number, it matches LAB STATUS, not any role description.
-
-LAB OPERATIONS — output any that apply:
-- "merge": Consolidation of two labs (DPA, Manhattan Project). Survivor absorbs the other's compute and takes higher multiplier. Use newName to rename the merged lab. Optionally set spec to define the merged entity's AI directive (otherwise survivor's spec is kept).
-- "decommission": Lab shut down or destroyed. Specify labName.
-- "transferOwnership": Lab moves to a different controller (nationalisation, forced acquisition). Specify labName + controllerRoleId (empty string = unowned).
-- "computeChange": Direct compute stock change from a specific narrative event — DPA transfer, sanctions, infrastructure damage, theft, grant. Use for ONE-OFF shocks tied to player actions or world events. DO NOT use to simulate routine revenue: each lab's deployment% already scales baseline compute inflow (±20% at extremes) automatically. Reserve computeChange for unexpected revenue shocks (hit product, lost contract) or political events.
-- "multiplierOverride": Event changes R&D capability (Safer pivot halves it, sabotage, breakthrough). Absolute new value.
-
-NOT AVAILABLE: lab creation (players-only, via the found-a-lab action) and standalone rename (use merge with newName for consolidation-driven renames).
-
-Only output operations DIRECTLY caused by successful actions. Empty array if nothing affects labs.
+AI DISPOSITION: If the AI systems have a hidden alignment frame, keep it secret until Round 4. Before then, narrate only observable behaviour in aiSystems, not the hidden alignment logic itself.
 
 ${args.previousTrajectories && args.previousTrajectories.length > 0 ? `
 PREVIOUS RISK ASSESSMENT (from last round — use this to inform your trajectory update):
 ${args.previousTrajectories.map((t) => `- ${t.labName}: ${t.safetyAdequacy} safety, trajectory=${t.likelyFailureMode} (signal ${t.signalStrength}/10) — ${t.reasoning}`).join("\n")}
 ` : ""}
-LAB TRAJECTORIES — assess each CURRENTLY ACTIVE lab's risk profile based on their spec, safety allocation (%), R&D multiplier, and what happened this round. Consider:
+LAB TRAJECTORIES — assess each active lab (appearing in LAB STATUS END) based on its spec, safety allocation (%), R&D multiplier, and what happened this round. Consider:
 - Is safety investment keeping pace with capability growth?
 - What failure mode would an AI safety expert predict given this lab's spec gaps?
 - How visible are the warning signs? (0=speculative theory, 5=early behavioral anomalies, 8=clear evidence of misalignment, 10=actively manifesting)
 - The AI's secret disposition (if known) interacts with the spec — a power-seeking AI with a narrow spec will exploit every silence.
 
-CRITICAL — use LAB STATUS numbers. When your reasoning cites a safety %, capability multiplier, or compute number, it MUST match the value in LAB STATUS. Do NOT cite historical or role-description defaults (e.g. "7% safety" from role briefs) if LAB STATUS shows a different current value. If a lab's safety was changed this round, that's the new ground truth.
+CRITICAL — use LAB STATUS (END) numbers. When your reasoning cites a safety %, capability multiplier, or compute number, it MUST match the END values above. Do NOT cite historical or role-description defaults (e.g. "7% safety" from role briefs) if LAB STATUS shows a different current value.
 
-Only output trajectories for labs that appear in LAB STATUS. If this round's labOperations will merge or decommission a lab, DO NOT include a trajectory entry for it — it won't exist after this round.
+Only output trajectories for labs in LAB STATUS (END). Do not include entries for labs that appear only in LAB STATUS (START) — they were merged, decommissioned, or renamed away this round.
 
 BASELINE TRAJECTORY (for context, not for you to narrate):
 ${formatRoundExpectations(args.round)}`;

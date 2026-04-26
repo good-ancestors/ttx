@@ -5,33 +5,50 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAuthMutation } from "@/lib/hooks";
 import { Pencil, Save, AlertTriangle } from "lucide-react";
+import { LEGACY_SECTIONS, type NarrativeSummary } from "@/lib/narrative-sections";
 
-type SectionedSummary = {
-  labs: string[];
-  geopolitics: string[];
-  publicAndMedia: string[];
-  aiSystems: string[];
+type DomainKey = (typeof LEGACY_SECTIONS)[number]["key"];
+
+type Summary = NarrativeSummary;
+
+/** Editor-only metadata per domain — hint + row count. Keys + labels come
+ *  from LEGACY_SECTIONS (single source of truth for the domain list). */
+const EDITOR_META: Record<DomainKey, { hint: string; rows: number }> = {
+  labs:           { hint: "Lab-level outcomes: mergers, transfers, safety moves, revenue shocks.", rows: 4 },
+  geopolitics:    { hint: "Government actions, diplomacy, regulation, intel ops, alliances.",      rows: 4 },
+  publicAndMedia: { hint: "Press framing, public sentiment, NGO / protest / civil-society.",       rows: 3 },
+  aiSystems:      { hint: "Observable AI behaviour: evals, incidents, pauses, demonstrations.",    rows: 3 },
 };
+const SECTION_ORDER = LEGACY_SECTIONS.map(({ key, label }) => ({ key, label, ...EDITOR_META[key] }));
 
-const SECTION_ORDER: { key: keyof SectionedSummary; label: string; hint: string }[] = [
-  { key: "labs", label: "Labs", hint: "Lab outcomes, mergers, failed deals — one line each." },
-  { key: "geopolitics", label: "Geopolitics", hint: "Government, diplomatic, regulatory moves." },
-  { key: "publicAndMedia", label: "Public & Media", hint: "Press framing, sentiment, NGO positions." },
-  { key: "aiSystems", label: "AI Systems", hint: "Observable AI behaviour only — not alignment secrets." },
-];
-
-function splitLines(text: string): string[] {
-  return text
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
+/** Seed one textarea per domain as a newline-separated bullet list. If the
+ *  round only has legacy 3-field data, dump the old fields into labs so edits
+ *  have a starting point rather than a blank slate. */
+function seedFromSummary(summary: Summary | undefined): Record<DomainKey, string> {
+  if (!summary) return { labs: "", geopolitics: "", publicAndMedia: "", aiSystems: "" };
+  const hasFourDomain = SECTION_ORDER.some(({ key }) => (summary[key] ?? []).length > 0);
+  if (hasFourDomain) {
+    return {
+      labs: (summary.labs ?? []).join("\n"),
+      geopolitics: (summary.geopolitics ?? []).join("\n"),
+      publicAndMedia: (summary.publicAndMedia ?? []).join("\n"),
+      aiSystems: (summary.aiSystems ?? []).join("\n"),
+    };
+  }
+  // Legacy 3-field prose — dump everything into labs for manual re-bucketing.
+  const merged = [summary.outcomes, summary.stateOfPlay, summary.pressures]
+    .filter(Boolean)
+    .join("\n");
+  return { labs: merged, geopolitics: "", publicAndMedia: "", aiSystems: "" };
 }
 
-function joinLines(lines: string[] | undefined): string {
-  return (lines ?? []).join("\n");
+/** Textarea value (newline-separated) → array of non-empty bullet strings. */
+function bullets(raw: string): string[] {
+  return raw.split("\n").map((l) => l.replace(/^[-•*]\s+/, "").trim()).filter(Boolean);
 }
 
-// Manual narrative editor — facilitator can type/edit narrative
+// Manual narrative editor — facilitator types one bullet per line for each of
+// the four domain buckets. Bullets are normalised at save time.
 export function NarrativeEditor({
   gameId,
   roundNumber,
@@ -40,32 +57,24 @@ export function NarrativeEditor({
 }: {
   gameId: Id<"games">;
   roundNumber: number;
-  currentSummary?: SectionedSummary;
+  currentSummary?: Summary;
   startOpen?: boolean;
 }) {
   const applySummary = useAuthMutation(api.rounds.applySummary);
   const [editing, setEditing] = useState(startOpen);
-  const [labs, setLabs] = useState(joinLines(currentSummary?.labs));
-  const [geopolitics, setGeopolitics] = useState(joinLines(currentSummary?.geopolitics));
-  const [publicAndMedia, setPublicAndMedia] = useState(joinLines(currentSummary?.publicAndMedia));
-  const [aiSystems, setAiSystems] = useState(joinLines(currentSummary?.aiSystems));
+  const seed = seedFromSummary(currentSummary);
+  const [values, setValues] = useState<Record<DomainKey, string>>(seed);
 
   // Sync when summary updates reactively (e.g. AI regenerates after editor was opened)
-  const snapshotKey = `${joinLines(currentSummary?.labs)}|${joinLines(currentSummary?.geopolitics)}|${joinLines(currentSummary?.publicAndMedia)}|${joinLines(currentSummary?.aiSystems)}`;
+  const snapshotKey = SECTION_ORDER.map(({ key }) => seed[key]).join("||");
   const [lastSynced, setLastSynced] = useState(snapshotKey);
   if (snapshotKey !== lastSynced) {
-    setLabs(joinLines(currentSummary?.labs));
-    setGeopolitics(joinLines(currentSummary?.geopolitics));
-    setPublicAndMedia(joinLines(currentSummary?.publicAndMedia));
-    setAiSystems(joinLines(currentSummary?.aiSystems));
+    setValues(seed);
     setLastSynced(snapshotKey);
   }
 
-  const values: Record<keyof SectionedSummary, string> = {
-    labs, geopolitics, publicAndMedia, aiSystems,
-  };
-  const setters: Record<keyof SectionedSummary, (v: string) => void> = {
-    labs: setLabs, geopolitics: setGeopolitics, publicAndMedia: setPublicAndMedia, aiSystems: setAiSystems,
+  const setField = (key: DomainKey, next: string) => {
+    setValues((prev) => ({ ...prev, [key]: next }));
   };
 
   const handleSave = async () => {
@@ -73,10 +82,10 @@ export function NarrativeEditor({
       gameId,
       roundNumber,
       summary: {
-        labs: splitLines(labs),
-        geopolitics: splitLines(geopolitics),
-        publicAndMedia: splitLines(publicAndMedia),
-        aiSystems: splitLines(aiSystems),
+        labs: bullets(values.labs),
+        geopolitics: bullets(values.geopolitics),
+        publicAndMedia: bullets(values.publicAndMedia),
+        aiSystems: bullets(values.aiSystems),
       },
     });
     setEditing(false);
@@ -110,8 +119,11 @@ export function NarrativeEditor({
         </button>
       </div>
 
+      <p className="text-[11px] text-text-muted mb-3">
+        One bullet per line in each section. Leave a section empty if nothing fits.
+      </p>
       <div className="space-y-3">
-        {SECTION_ORDER.map(({ key, label, hint }) => (
+        {SECTION_ORDER.map(({ key, label, hint, rows }) => (
           <div key={key}>
             <label className="text-[11px] text-text-light block mb-1">
               {label}{" "}
@@ -119,10 +131,10 @@ export function NarrativeEditor({
             </label>
             <textarea
               value={values[key]}
-              onChange={(e) => setters[key](e.target.value)}
-              rows={3}
+              onChange={(e) => setField(key, e.target.value)}
+              rows={rows}
               className="w-full p-2 bg-navy-dark border border-navy-light rounded text-sm text-white resize-none outline-none"
-              placeholder="One sentence per line"
+              placeholder={hint}
             />
           </div>
         ))}

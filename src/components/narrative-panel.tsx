@@ -6,7 +6,7 @@ import { useConvex } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { Loader2, CheckCircle, ChevronDown, Bug, X } from "lucide-react";
+import { Loader2, CheckCircle, ChevronDown, Bug, X, Pencil } from "lucide-react";
 import { useFacilitatorToken } from "@/lib/hooks";
 
 const LOADING_VERBS = [
@@ -24,25 +24,20 @@ const LOADING_VERBS = [
   "Updating world model...",
 ];
 
+import {
+  PROSE_SECTIONS,
+  LEGACY_SECTIONS,
+  hasProseNarrative,
+  hasLegacyNarrative,
+  type NarrativeSummary,
+} from "@/lib/narrative-sections";
+
 interface Round {
   _id: string;
   number: number;
   label: string;
-  summary?: {
-    labs: string[];
-    geopolitics: string[];
-    publicAndMedia: string[];
-    aiSystems: string[];
-    facilitatorNotes?: string;
-  };
+  summary?: NarrativeSummary;
 }
-
-const SECTIONS: { key: keyof NonNullable<Round["summary"]>; label: string }[] = [
-  { key: "labs", label: "Labs" },
-  { key: "geopolitics", label: "Geopolitics" },
-  { key: "publicAndMedia", label: "Public & Media" },
-  { key: "aiSystems", label: "AI Systems" },
-];
 
 type ResolveDebugData = FunctionReturnType<typeof api.rounds.getResolveDebug>;
 
@@ -51,19 +46,22 @@ export function NarrativePanel({
   defaultExpanded = true,
   isProjector = false,
   debugContext,
+  onEditNarrative,
 }: {
   round: Round | undefined;
   defaultExpanded?: boolean;
   isProjector?: boolean;
   /** Enables facilitator-only bug-icon overlay with the round's resolve LLM prompt+response. */
   debugContext?: { gameId: Id<"games"> };
+  /** Facilitator-only edit action — renders a small pencil next to the debug button. */
+  onEditNarrative?: () => void;
 }) {
   const [verbIdx, setVerbIdx] = useState(0);
   const [expanded, setExpanded] = useState(defaultExpanded);
   const summary = round?.summary;
-  const hasContent = summary
-    ? SECTIONS.some(({ key }) => (summary[key] as string[] | undefined)?.length)
-    : false;
+  const hasProse = hasProseNarrative(summary);
+  const hasLegacy = hasLegacyNarrative(summary);
+  const hasContent = hasProse || hasLegacy;
 
   useEffect(() => {
     if (hasContent) return;
@@ -109,30 +107,70 @@ export function NarrativePanel({
           <CheckCircle className="w-3.5 h-3.5 text-viz-safety" />
         )}
       </button>
-      {debugContext && (
-        <ResolveDebugButton gameId={debugContext.gameId} roundNumber={round.number} />
-      )}
+      <div className="flex items-center gap-1 absolute top-4 right-4">
+        {onEditNarrative && (
+          <button
+            onClick={onEditNarrative}
+            className="text-text-light/60 hover:text-text-light transition-colors"
+            aria-label="Edit summary"
+            title="Edit summary"
+          >
+            <Pencil className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+        )}
+        {debugContext && (
+          <ResolveDebugButton gameId={debugContext.gameId} roundNumber={round.number} />
+        )}
+      </div>
       {expanded && hasContent && summary && (
         <div className="mt-4 space-y-4">
-          {SECTIONS.map(({ key, label }) => {
-            const lines = summary[key] as string[] | undefined;
-            if (!lines?.length) return null;
-            return (
-              <div key={key}>
-                <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
-                  {label}
-                </div>
-                <ul className="space-y-1.5">
-                  {lines.map((line, i) => (
-                    <li key={i} className={`${textSize} text-[#E2E8F0] leading-relaxed flex gap-2`}>
-                      <span aria-hidden className="text-text-muted shrink-0 select-none">•</span>
-                      <span className="flex-1">{line}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            );
-          })}
+          {hasProse
+            ? PROSE_SECTIONS.map(({ key, label }) => {
+                const text = summary[key];
+                if (!text) return null;
+                // New format: bullets separated by newlines, each line starting with "- ".
+                // Old format: a single prose paragraph. Detect and render appropriately.
+                const lines = text.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+                const isBulletList = lines.length > 1 && lines.every((l) => /^[-•*]\s/.test(l));
+                return (
+                  <div key={key}>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
+                      {label}
+                    </div>
+                    {isBulletList ? (
+                      <ul className="space-y-1.5">
+                        {lines.map((line, i) => (
+                          <li key={i} className={`${textSize} text-[#E2E8F0] leading-relaxed flex gap-2`}>
+                            <span aria-hidden className="text-text-muted shrink-0 select-none">•</span>
+                            <span className="flex-1">{line.replace(/^[-•*]\s+/, "")}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className={`${textSize} text-[#E2E8F0] leading-relaxed`}>{text}</p>
+                    )}
+                  </div>
+                );
+              })
+            : LEGACY_SECTIONS.map(({ key, label }) => {
+                const lines = summary[key];
+                if (!lines?.length) return null;
+                return (
+                  <div key={key}>
+                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
+                      {label}
+                    </div>
+                    <ul className="space-y-1.5">
+                      {lines.map((line, i) => (
+                        <li key={i} className={`${textSize} text-[#E2E8F0] leading-relaxed flex gap-2`}>
+                          <span aria-hidden className="text-text-muted shrink-0 select-none">•</span>
+                          <span className="flex-1">{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
         </div>
       )}
     </div>
@@ -188,7 +226,7 @@ function ResolveDebugButton({ gameId, roundNumber }: { gameId: Id<"games">; roun
     <>
       <button
         onClick={openDebug}
-        className="absolute top-4 right-4 text-text-light/60 hover:text-text-light transition-colors"
+        className="text-text-light/60 hover:text-text-light transition-colors"
         title="Show LLM prompt and response for this round"
         aria-label="Show resolve-phase LLM debug"
       >

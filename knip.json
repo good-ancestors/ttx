@@ -3,7 +3,8 @@
     "scripts/**",
     "tests/adversarial-grading.mjs",
     "tests/full-playthrough.ts",
-    "tests/scenario-runner.ts"
+    "tests/scenario-runner.ts",
+    "tests/scenarios/**"
   ],
   "ignoreDependencies": [
     "@typescript-eslint/parser",

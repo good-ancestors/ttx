@@ -320,24 +320,30 @@ SECRET ACTIONS (if any):
 
 ### Narrative Rules
 
-1. **STRICT LENGTH:** 6–8 sentences. Read aloud in ~60–90 seconds.
-2. Weave the 4–5 most consequential outcomes into a coherent, dramatic briefing. Write like a thriller — tense, specific, vivid.
-3. **GROUNDING:** Every element must trace to a submitted action. Do NOT invent events no player caused. Failed actions didn't happen.
-4. **CONFLICTS:** If contradictory actions both succeeded, narrate the clash — higher probability has upper hand but both sides engaged.
-5. **SECRET ACTIONS:** Successful secrets appear as consequences without revealing who caused them. Failed secrets are invisible.
-6. Only fictional names (OpenBrain, DeepCent, Conscienta). NEVER real companies.
-7. No game mechanics (probabilities, dice, priority numbers).
-8. If the AI systems have a hidden alignment frame, keep it secret until Round 4.
+1. This is "What Happened", not "What Was Attempted".
+2. "What Was Attempted" already lists actions and success/failure. The narrative should list outcomes only.
+3. Write facts only. Keep each bullet short and easy to scan.
+4. Prefer one concrete outcome per bullet. If an action failed, state that the intended outcome did not happen.
+5. A successful action can still fail to achieve its intended result because another successful action blocked, limited, or redirected it. Report the real outcome.
+6. Use a reasonably informed observer test. Do not reveal non-public actions just to say they got no coverage.
+7. Empty sections are fine. Do not fill space with non-events unless the absence is itself meaningful.
+8. Every element must trace to a submitted action. Do NOT invent events no player caused.
+9. If contradictory actions both succeeded, state the clash plainly and describe the final state.
+10. Successful secrets appear as consequences without revealing who caused them. Failed secrets are invisible.
+11. Only fictional names (OpenBrain, DeepCent, Conscienta). NEVER real companies.
+12. No game mechanics (probabilities, dice, priority numbers).
+13. If the AI systems have a hidden alignment frame, keep it secret until Round 4.
 
 ### Lab Operations
 
-The AI may also output structural changes to labs:
+Structural changes are emitted by the grader as structured effects (one per graded action). The canonical set of effects lives in `src/lib/ai-prompts.ts` and `docs/resolve-pipeline.md`; high-level shapes:
 - **merge** — consolidation (DPA, Manhattan Project)
-- **create** — new entity (rogue AI escaping, government lab)
+- **foundLab** — player-pinned new entity
 - **decommission** — lab shut down or destroyed
-- **rename** — identity change (Safer pivot, government takeover)
-- **computeChange** — direct compute changes from events
-- **multiplierOverride** — event changes R&D capability
+- **transferOwnership** — ownership moves to a different role; capability unchanged
+- **breakthrough / modelRollback** — position layer (deployed model swap)
+- **computeDestroyed / computeTransfer** — stock layer (conserved)
+- **researchDisruption / researchBoost** — productivity layer (one round)
 
 ### Per-Round Baseline Guidance
 
