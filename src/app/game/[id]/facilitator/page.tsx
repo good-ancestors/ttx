@@ -38,9 +38,6 @@ export default function FacilitatorPage({
 
   // Skip when hidden — phase/timer patches re-push every subscriber.
   const game = useQuery(api.games.get, isVisible ? { gameId } : "skip");
-  // Resolve-pipeline progress lives in a companion table so the ~8–10 patches
-  // per resolve don't invalidate every games-doc subscriber. Only the
-  // facilitator UI needs it; gated by a token (server-side check).
   const facilitatorToken = useFacilitatorToken();
   const runtime = useQuery(
     api.gameRuntime.getForFacilitator,
@@ -118,8 +115,6 @@ export default function FacilitatorPage({
   const triggerRoll = useAuthMutation(api.games.triggerRoll);
   const openSubmissions = useAuthMutation(api.games.openSubmissions);
 
-  // Pipeline state: derive from gameRuntime subscription (reactive, isolated
-  // from games-doc invalidation).
   const pipelineStatus = runtime?.pipelineStatus;
   const resolving = !!pipelineStatus && pipelineStatus.step !== "done" && pipelineStatus.step !== "error";
   const resolveStep = pipelineStatus?.detail ?? pipelineStatus?.step ?? "";

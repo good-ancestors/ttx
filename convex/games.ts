@@ -974,13 +974,6 @@ export const updatePipelineStatus = internalMutation({
   },
 });
 
-export const clearPipelineStatus = internalMutation({
-  args: { gameId: v.id("games") },
-  handler: async (ctx, args) => {
-    await patchRuntime(ctx, args.gameId, { pipelineStatus: undefined });
-  },
-});
-
 export const finishResolveInternal = internalMutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {

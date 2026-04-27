@@ -1,8 +1,9 @@
 "use node";
 
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
 import { internalAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { batchEntryValidator } from "./requests";
 import type { Doc, Id } from "./_generated/dataModel";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS } from "./aiModels";
@@ -553,21 +554,10 @@ async function submitPendingAndLink(
   await scheduleAiProposalResponses(ctx, gameId, roundNumber, submitted);
 }
 
-type HintBatch = {
-  fromRoleId: string;
-  fromRoleName: string;
-  toRoleId: string;
-  toRoleName: string;
-  actionId: string;
-  actionText: string;
-  requestType: "endorsement" | "compute";
-  computeAmount?: number;
-}[];
+type HintBatch = Infer<typeof batchEntryValidator>[];
 
-/** Flatten every endorsement + compute-request hint across all submitted
- *  roles into a single batch and dispatch via `sendBatchInternal`. Replaces
- *  the previous per-role-per-target sequential `sendInternal` fan-out (~100
- *  awaited round-trips per round) with a single mutation transaction. */
+/** Flatten endorsement + compute-request hints across all roles and dispatch
+ *  via a single batched mutation. */
 async function fanOutHints(ctx: ActionCtx, link: LinkContext, submitted: PendingAction[]) {
   const batch: HintBatch = [];
   for (const p of submitted) {
@@ -605,9 +595,7 @@ async function fanOutHints(ctx: ActionCtx, link: LinkContext, submitted: Pending
       requests: batch,
     });
   } catch (err) {
-    // Best-effort: a failed batch shouldn't abort the resolve pipeline.
-    // findOrUpsertRequest already handles dup-keys by patching, so the only
-    // realistic causes are transaction limits or DB errors — both worth a log.
+    // Best-effort — a failed batch shouldn't abort the resolve pipeline.
     console.warn(`[aiGenerate] sendBatchInternal failed (${batch.length} hints):`, err);
   }
 }

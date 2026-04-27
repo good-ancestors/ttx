@@ -17,9 +17,7 @@ export function assertFacilitator(token: string | undefined) {
 }
 
 /** Assert the game isn't currently resolving. 3-minute TTL on the lock so a
- *  crashed pipeline doesn't permanently block subsequent actions. Takes the
- *  runtime view (from `readRuntime`) — the lock fields moved off the games
- *  doc to suppress per-step subscriber re-pushes. */
+ *  crashed pipeline doesn't permanently block subsequent actions. */
 const RESOLVE_LOCK_TTL_MS = 3 * 60 * 1000;
 export function assertNotResolving(runtime: { resolving?: boolean; resolvingStartedAt?: number }) {
   if (runtime.resolving && runtime.resolvingStartedAt && Date.now() - runtime.resolvingStartedAt < RESOLVE_LOCK_TTL_MS) {

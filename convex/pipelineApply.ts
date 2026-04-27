@@ -82,10 +82,7 @@ export const applyDecidedEffectsInternal = internalMutation({
     mechanicsLog: v.array(mechanicsLogEntryValidator),
   },
   handler: async (ctx, args) => {
-    // Re-verify the resolve nonce inside the atomic mutation. The games doc
-    // existence check used to live here too; dropped because every downstream
-    // op (lab patches, ledger emits) is keyed on `args.gameId` directly and
-    // the nonce check is the load-bearing guard against superseded runs.
+    // Re-verify the resolve nonce inside the atomic mutation.
     const runtime = await readRuntime(ctx, args.gameId);
     if (runtime.resolveNonce !== args.nonce) {
       throw new Error(`Resolve nonce mismatch (expected ${args.nonce}, got ${runtime.resolveNonce ?? "null"}) — another resolve superseded this run`);

@@ -89,13 +89,7 @@ export default defineSchema({
     phaseEndsAt: v.optional(v.number()),
     // Labs moved out to their own table. Active labs queried via labs table.
     locked: v.boolean(),
-    // ── Deprecated: resolve lock + pipeline progress moved to `gameRuntime`. ──
-    // The Apr-26 bandwidth audit found these fields churn 8–10× per resolve and
-    // re-push the entire games doc to every subscriber. Convex tracks reactive
-    // reads at the doc level, so even queries that project them out (e.g.
-    // getForPlayer) re-fired on every patch. They live in gameRuntime now;
-    // these stubs remain only so existing rows don't fail schema validation
-    // and can be cleaned up in a follow-up migration.
+    // Deprecated — moved to gameRuntime; pending migration cleanup.
     resolving: v.optional(v.boolean()),
     resolvingStartedAt: v.optional(v.number()),
     pipelineStatus: v.optional(v.object({
@@ -112,18 +106,15 @@ export default defineSchema({
     joinCode: v.optional(v.string()),
   }).index("by_joinCode", ["joinCode"]),
 
-  /** Companion table for the `games` row carrying write-hot resolve state.
-   *  Writes here invalidate only the facilitator's dedicated subscription,
-   *  not the 30+ other queries (player views, lab queries, lightweight rounds)
-   *  that read the games doc. One row per game; created lazily on first write. */
+  /** Companion to the `games` row — write-hot resolve fields live here so
+   *  patches don't invalidate every games-doc subscriber. One row per game,
+   *  created lazily on first write. See convex/gameRuntime.ts. */
   gameRuntime: defineTable({
     gameId: v.id("games"),
     /** Resolve lock with TTL: auto-expires after RESOLVE_LOCK_TTL_MS if the
-     *  resolve action dies mid-flight. Mirrors the previous `games.resolving`. */
+     *  resolve action dies mid-flight. */
     resolving: v.optional(v.boolean()),
     resolvingStartedAt: v.optional(v.number()),
-    /** Server-side pipeline status — facilitator UI observes reactively to
-     *  show resolve progress / error. Patched ~8× per resolve cycle. */
     pipelineStatus: v.optional(v.object({
       step: v.string(),
       detail: v.optional(v.string()),
