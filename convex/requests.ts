@@ -347,34 +347,49 @@ export const getByGameAndRoundInternal = internalQuery({
   },
 });
 
-export const sendInternal = internalMutation({
+export const batchEntryValidator = v.object({
+  fromRoleId: v.string(),
+  fromRoleName: v.string(),
+  toRoleId: v.string(),
+  toRoleName: v.string(),
+  actionId: v.string(),
+  actionText: v.string(),
+  requestType: v.union(v.literal("endorsement"), v.literal("compute")),
+  computeAmount: v.optional(v.number()),
+});
+
+/** Batched fan-out for `aiGenerate.fanOutHints`. Self-target entries are
+ *  silently skipped (cf. `send`/`sendInternal`, which throw). */
+export const sendBatchInternal = internalMutation({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
-    fromRoleId: v.string(),
-    fromRoleName: v.string(),
-    toRoleId: v.string(),
-    toRoleName: v.string(),
-    actionId: v.string(),
-    actionText: v.string(),
-    requestType: v.union(v.literal("endorsement"), v.literal("compute")),
-    computeAmount: v.optional(v.number()),
+    requests: v.array(batchEntryValidator),
   },
   handler: async (ctx, args) => {
-    // Reject self-endorsement / self-requests
-    if (args.fromRoleId === args.toRoleId) {
-      throw new Error("Cannot send a request to yourself");
+    // Pre-load tables once so triggerAutoResponse skips its per-request
+    // by_game_and_role index lookup.
+    const tables = await ctx.db
+      .query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const tableByRole = new Map(tables.map((t) => [t.roleId, t]));
+
+    for (const entry of args.requests) {
+      if (entry.fromRoleId === entry.toRoleId) continue;
+      const requestId = await findOrUpsertRequest(ctx, {
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        ...entry,
+      });
+      await triggerAutoResponse(ctx, {
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        toRoleId: entry.toRoleId,
+        requestId,
+        table: tableByRole.get(entry.toRoleId),
+      });
     }
-
-    const requestId = await findOrUpsertRequest(ctx, args);
-
-    // Auto-respond if target is AI/NPC (reactive — no waiting for scheduled poll)
-    await triggerAutoResponse(ctx, {
-      gameId: args.gameId,
-      roundNumber: args.roundNumber,
-      toRoleId: args.toRoleId,
-      requestId,
-    });
   },
 });
 

@@ -28,10 +28,13 @@ async function sleep(ms: number) { return new Promise((r) => setTimeout(r, ms));
 async function waitForPipelineIdle(gameId: Id<"games">, timeoutMs = 180_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const game = await convex.query(api.games.get, { gameId });
+    const [game, runtime] = await Promise.all([
+      convex.query(api.games.get, { gameId }),
+      convex.query(api.gameRuntime.getForFacilitator, { gameId, facilitatorToken: FACILITATOR_TOKEN }),
+    ]);
     if (!game) throw new Error("Game disappeared");
-    if (game.phase === "narrate" && !game.resolving) return;
-    if (game.pipelineStatus?.error) throw new Error(`Pipeline error: ${game.pipelineStatus.error}`);
+    if (game.phase === "narrate" && !runtime.resolving) return;
+    if (runtime.pipelineStatus?.error) throw new Error(`Pipeline error: ${runtime.pipelineStatus.error}`);
     await sleep(2000);
   }
   throw new Error("Pipeline didn't complete within timeout");

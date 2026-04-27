@@ -181,8 +181,11 @@ export async function driveResolveOnce(
     gameId, roundNumber: round.roundNumber, facilitatorToken: FACILITATOR_TOKEN,
   });
   await waitFor(
-    () => client.query(api.games.get, { gameId }),
-    (g) => g?.phase === "effect-review" || g?.pipelineStatus?.step === "error",
+    () => Promise.all([
+      client.query(api.games.get, { gameId }),
+      client.query(api.gameRuntime.getForFacilitator, { gameId, facilitatorToken: FACILITATOR_TOKEN }),
+    ]),
+    ([g, r]) => g?.phase === "effect-review" || r.pipelineStatus?.step === "error",
     "effect-review",
   );
 
@@ -221,8 +224,11 @@ export async function driveResolveOnce(
     gameId, roundNumber: round.roundNumber, facilitatorToken: FACILITATOR_TOKEN,
   });
   await waitFor(
-    () => client.query(api.games.get, { gameId }),
-    (g) => g?.phase === "narrate" || g?.pipelineStatus?.step === "error",
+    () => Promise.all([
+      client.query(api.games.get, { gameId }),
+      client.query(api.gameRuntime.getForFacilitator, { gameId, facilitatorToken: FACILITATOR_TOKEN }),
+    ]),
+    ([g, r]) => g?.phase === "narrate" || r.pipelineStatus?.step === "error",
     "narrate",
   );
 }

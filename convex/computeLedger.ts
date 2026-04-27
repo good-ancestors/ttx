@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import { mutation, internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { assertFacilitator, assertNotResolving } from "./events";
+import { readRuntime } from "./gameRuntime";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -295,7 +296,7 @@ export const clearRegenerableRowsFacilitator = mutation({
     assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
-    assertNotResolving(game);
+    assertNotResolving(await readRuntime(ctx, args.gameId));
     return await clearRegenerableRows(ctx, args.gameId, args.roundNumber);
   },
 });

@@ -89,10 +89,9 @@ export default defineSchema({
     phaseEndsAt: v.optional(v.number()),
     // Labs moved out to their own table. Active labs queried via labs table.
     locked: v.boolean(),
-    // Resolve lock with TTL: auto-expires after 3 minutes if process dies
+    // Deprecated — moved to gameRuntime; pending migration cleanup.
     resolving: v.optional(v.boolean()),
     resolvingStartedAt: v.optional(v.number()),
-    // Server-side pipeline status — all clients observe reactively
     pipelineStatus: v.optional(v.object({
       step: v.string(),
       detail: v.optional(v.string()),
@@ -100,13 +99,32 @@ export default defineSchema({
       startedAt: v.number(),
       error: v.optional(v.string()),
     })),
-    // Nonce for preventing double-execution of resolve
     resolveNonce: v.optional(v.string()),
     // Facilitator overrides for next round's compute share distribution (roleId → %)
     computeShareOverrides: v.optional(v.record(v.string(), v.number())),
     // Game-level join code for Jackbox-style lobby (players enter one code → pick role)
     joinCode: v.optional(v.string()),
   }).index("by_joinCode", ["joinCode"]),
+
+  /** Companion to the `games` row — write-hot resolve fields live here so
+   *  patches don't invalidate every games-doc subscriber. One row per game,
+   *  created lazily on first write. See convex/gameRuntime.ts. */
+  gameRuntime: defineTable({
+    gameId: v.id("games"),
+    /** Resolve lock with TTL: auto-expires after RESOLVE_LOCK_TTL_MS if the
+     *  resolve action dies mid-flight. */
+    resolving: v.optional(v.boolean()),
+    resolvingStartedAt: v.optional(v.number()),
+    pipelineStatus: v.optional(v.object({
+      step: v.string(),
+      detail: v.optional(v.string()),
+      progress: v.optional(v.string()),
+      startedAt: v.number(),
+      error: v.optional(v.string()),
+    })),
+    /** Nonce gating post-LLM apply against superseded resolve runs. */
+    resolveNonce: v.optional(v.string()),
+  }).index("by_game", ["gameId"]),
 
   tables: defineTable({
     gameId: v.id("games"),
