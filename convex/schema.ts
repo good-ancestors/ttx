@@ -89,17 +89,6 @@ export default defineSchema({
     phaseEndsAt: v.optional(v.number()),
     // Labs moved out to their own table. Active labs queried via labs table.
     locked: v.boolean(),
-    // Deprecated — moved to gameRuntime; pending migration cleanup.
-    resolving: v.optional(v.boolean()),
-    resolvingStartedAt: v.optional(v.number()),
-    pipelineStatus: v.optional(v.object({
-      step: v.string(),
-      detail: v.optional(v.string()),
-      progress: v.optional(v.string()),
-      startedAt: v.number(),
-      error: v.optional(v.string()),
-    })),
-    resolveNonce: v.optional(v.string()),
     // Facilitator overrides for next round's compute share distribution (roleId → %)
     computeShareOverrides: v.optional(v.record(v.string(), v.number())),
     // Game-level join code for Jackbox-style lobby (players enter one code → pick role)
