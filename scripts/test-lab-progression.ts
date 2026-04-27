@@ -7,10 +7,10 @@
  *   npx tsx scripts/test-lab-progression.ts slowdown
  */
 
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import * as fs from "fs";
+import { getConvexTestClient } from "../tests/convex-test-client";
 
 // Load .env.local manually
 try {
@@ -23,7 +23,7 @@ try {
   }
 } catch { /* ignore */ }
 
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL ?? "");
+const convex = getConvexTestClient();
 const API_BASE = "http://localhost:3001";
 const apiKey = process.env.API_SECRET_KEY ?? "";
 

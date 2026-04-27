@@ -86,13 +86,14 @@ export default function TablePlayerPage({
   useSessionExpiry(`ttx-session-expiry-${tableId}`, "/");
 
   // ── Convex queries & mutations ────────────────────────────────────────────
-  // Player-facing game query excludes pipelineStatus to avoid re-renders during resolve
-  const game = useQuery(api.games.getForPlayer, { gameId });
-  const table = useQuery(api.tables.get, { tableId });
-  // Everything else only when tab is visible
-  // Lightweight player round query — takes roundNumber to avoid reading games doc
+  // Player-facing game query excludes pipelineStatus to avoid re-renders during
+  // resolve, and gates on visibility so a hidden tab doesn't keep streaming
+  // phase/timer deltas. Refocus re-mounts and gets the latest state.
+  const game = useQuery(api.games.getForPlayer, isVisible ? { gameId } : "skip");
+  const table = useQuery(api.tables.get, isVisible ? { tableId } : "skip");
+  // Lightweight player round query — takes roundNumber to avoid reading games doc.
   const round = useQuery(api.rounds.getForPlayer,
-    game ? { gameId, roundNumber: game.currentRound } : "skip"
+    isVisible && game ? { gameId, roundNumber: game.currentRound } : "skip"
   );
   const submission = useQuery(api.submissions.getForTable,
     isVisible ? { tableId, roundNumber: game?.currentRound ?? 1 } : "skip"

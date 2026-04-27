@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
 
 // Integration tests for the compute ledger (convex/computeLedger.ts).
 // Run against a live `npx convex dev` deployment:
@@ -11,9 +11,7 @@ import type { Id } from "../convex/_generated/dataModel";
 // requests, facilitator overrides, merges, restore) and assert the cache-ledger
 // invariant and escrow lifecycle through `api.tables.get` + `api.rounds.getComputeHolderView`.
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
-const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET || "coral-ember-drift-sage";
-const convex = new ConvexHttpClient(CONVEX_URL);
+const convex = getConvexTestClient();
 
 /** Cache invariant check via the public holder view: for every role with ledger activity,
  *  getComputeHolderView's stockAfter (sum of all settled rows) must equal table.computeStock. */

@@ -10,10 +10,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
-const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET;
-if (!FACILITATOR_TOKEN) throw new Error("FACILITATOR_SECRET env var required");
+import { getConvexTestClient, FACILITATOR_TOKEN } from "../convex-test-client";
 
 export interface ScenarioAction {
   text: string;
@@ -71,7 +68,7 @@ async function waitFor<T>(
 
 /** Run the scenario end-to-end. Throws on any assertion failure. */
 export async function runScenario(scenario: Scenario): Promise<void> {
-  const client = new ConvexHttpClient(CONVEX_URL);
+  const client = getConvexTestClient();
   console.log(`▶ ${scenario.name} — ${scenario.description}`);
 
   const gameId = await client.mutation(api.games.create, {

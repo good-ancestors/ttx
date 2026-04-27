@@ -22,8 +22,15 @@ export const getByGame = query({
   },
 });
 
-// Lightweight version for facilitator sidebar — only fields needed by
-// RdProgressChart, GameTimeline chart, and snapshot restore dropdown.
+// Lightweight version for facilitator sidebar — only fields needed by the
+// RdProgressChart and the snapshot-restore dropdown. The `RoundLite` consumer
+// type (src/components/facilitator/types.ts) reflects this shape.
+//
+// Deliberately omits `summary` (full prose blob, can be tens of KB) and the
+// `_id`/`_creationTime`/`gameId` metadata: GameTimeline reads `summary` via
+// `api.rounds.getByGame` (only mounted on `status === "finished"`), and no
+// consumer of this projection keys on `_id`. Trimming halves the per-tick wire
+// cost when the rounds doc invalidates (every pipeline phase patch fires).
 export const getByGameLightweight = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
@@ -33,24 +40,9 @@ export const getByGameLightweight = query({
       .collect();
 
     return rounds.map((r) => ({
-      _id: r._id,
-      _creationTime: r._creationTime,
-      gameId: r.gameId,
       number: r.number,
       label: r.label,
       labsAfter: r.labsAfter,
-      // Narrative summary — outcomes/stateOfPlay/pressures for new rounds, legacy
-      // 4-domain buckets for older rounds. Both shapes passed through; UI prefers new.
-      summary: r.summary ? {
-        outcomes: r.summary.outcomes,
-        stateOfPlay: r.summary.stateOfPlay,
-        pressures: r.summary.pressures,
-        labs: r.summary.labs,
-        geopolitics: r.summary.geopolitics,
-        publicAndMedia: r.summary.publicAndMedia,
-        aiSystems: r.summary.aiSystems,
-      } : undefined,
-      // Minimal flags for snapshot restore dropdown
       hasLabsBefore: r.labsBefore != null,
     }));
   },
@@ -65,12 +57,48 @@ export const getCurrent = query({
     const round = await findRound(ctx, args.gameId, game.currentRound);
     if (!round) return null;
 
-    // Strip facilitator-only fields: reactive query is read by every player table,
-    // and resolveDebug prompts can be ~20KB.
-    const { facilitatorNotes: _, resolveDebug: __, summary, ...rest } = round;
-    if (!summary) return { ...rest, summary: undefined };
-    const { facilitatorNotes: ___, ...summaryRest } = summary;
-    return { ...rest, summary: summaryRest };
+    // Explicit allowlist — ship only fields the facilitator UI consumes. The round
+    // doc gets fat, hot-write fields (mechanicsLog, appliedOps, labTrajectories,
+    // pendingProductivityMods, labsBefore, labsAfter) appended on every pipeline
+    // phase patch, and the doc-level invalidation re-pushes this subscription on
+    // every patch. Allowlisting keeps wire-bandwidth bounded; a strip-spread
+    // pattern silently widens whenever a new field is added.
+    //
+    // What's kept:
+    //   - id/number/label/summary  → narrative-panel + game-timeline reads
+    //   - aiMeta                   → debug-panel
+    //   - appliedOps               → attempted-panel + happened-section P7 review
+    //   - mechanicsLog             → happened-section audit-log render
+    //
+    // What's dropped:
+    //   - labsBefore / labsAfter   → snapshot dropdown reads `roundsLite.hasLabsBefore`;
+    //                                 R&D chart reads `roundsLite.labsAfter`
+    //   - labTrajectories / pendingProductivityMods / pendingAcquired
+    //                              → no UI consumer (pendingAcquired has its own query)
+    //   - resolveNonce / resolveDebug / facilitatorNotes
+    //                              → internal / separate query / facilitator-only
+    const summary = round.summary
+      ? {
+          outcomes: round.summary.outcomes,
+          stateOfPlay: round.summary.stateOfPlay,
+          pressures: round.summary.pressures,
+          labs: round.summary.labs,
+          geopolitics: round.summary.geopolitics,
+          publicAndMedia: round.summary.publicAndMedia,
+          aiSystems: round.summary.aiSystems,
+        }
+      : undefined;
+    return {
+      _id: round._id,
+      _creationTime: round._creationTime,
+      gameId: round.gameId,
+      number: round.number,
+      label: round.label,
+      summary,
+      aiMeta: round.aiMeta,
+      appliedOps: round.appliedOps,
+      mechanicsLog: round.mechanicsLog,
+    };
   },
 });
 

@@ -1,14 +1,12 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
 
 // These tests run against the local Convex dev server.
 // Start with: npx convex dev
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
-const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET || "coral-ember-drift-sage";
-const convex = new ConvexHttpClient(CONVEX_URL);
+const convex = getConvexTestClient();
 
 describe("Game Creation", () => {
   let gameId: Id<"games">;

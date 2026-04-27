@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
 
 // Integration tests for the found-a-lab action flow introduced in PR #14.
 //
@@ -17,9 +17,7 @@ import type { Id } from "../convex/_generated/dataModel";
 //
 // Run with: npm run test:integration  (requires `npx convex dev` running)
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
-const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET || "coral-ember-drift-sage";
-const convex = new ConvexHttpClient(CONVEX_URL);
+const convex = getConvexTestClient();
 
 // OpenBrain CEO starts with 22u compute — enough headroom for a 15u foundLab
 // plus additional send targets, so we use it as the founder in most scenarios.

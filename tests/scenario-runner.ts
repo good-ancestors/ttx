@@ -15,13 +15,11 @@
  * Cost per scenario: ~$0.05–0.15 in LLM credits (narrative + trajectory).
  */
 
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "https://oceanic-lapwing-232.convex.cloud";
-const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET || "coral-ember-drift-sage";
-const convex = new ConvexHttpClient(CONVEX_URL);
+const convex = getConvexTestClient();
 
 interface Allocation { deployment: number; research: number; safety: number; }
 

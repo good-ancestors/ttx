@@ -1,13 +1,11 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
 
 // Run with: npm run test:integration  (requires `npx convex dev` running)
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
-const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET || "coral-ember-drift-sage";
-const convex = new ConvexHttpClient(CONVEX_URL);
+const convex = getConvexTestClient();
 
 const OPENBRAIN_CEO = "openbrain-ceo";
 const DEEPCENT_CEO = "deepcent-ceo";
