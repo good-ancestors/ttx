@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AlertTriangle, ChevronRight, ChevronDown, ClipboardList, Loader2 } from "lucide-react";
 import { useAuthMutation } from "@/lib/hooks";
 import { api } from "@convex/_generated/api";
@@ -151,6 +151,22 @@ export function HappenedSection({
   );
 }
 
+const FINALISING_MESSAGES = [
+  "Compounding R&D",
+  "Distributing compute",
+  "Forecasting next quarter",
+  "Reticulating splines",
+  "Bribing the simulation",
+  "Asking Agent-2 for forecasts",
+  "Whispering to GPUs",
+  "Updating priors",
+  "Calibrating the doom-o-meter",
+  "Charting the takeoff curve",
+  "Counting paperclips",
+  "Letting the AGI cook",
+  "Writing the round summary",
+] as const;
+
 /** Button that wraps up the round from the effect-review pause — triggers R&D
  *  growth, compute acquisition, and the prose summary in one click. "Finalise
  *  Round" reads plainly to a facilitator and avoids the pipeline-jargon word
@@ -164,9 +180,19 @@ function ContinueToNarrativeBar({
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [messageIndex, setMessageIndex] = useState(0);
   const triggerContinue = useAuthMutation(api.games.triggerContinueFromEffectReview);
 
+  useEffect(() => {
+    if (!submitting) return;
+    const id = setInterval(() => {
+      setMessageIndex((i) => (i + 1) % FINALISING_MESSAGES.length);
+    }, 1400);
+    return () => clearInterval(id);
+  }, [submitting]);
+
   const handleContinue = async () => {
+    setMessageIndex(0);
     setSubmitting(true);
     setError(null);
     try {
@@ -193,7 +219,7 @@ function ContinueToNarrativeBar({
         {submitting ? (
           <>
             <Loader2 className="w-5 h-5 animate-spin" />
-            Finalising&hellip;
+            {FINALISING_MESSAGES[messageIndex]}&hellip;
           </>
         ) : (
           <>
