@@ -585,8 +585,10 @@ describe("Lab Updates", () => {
 async function pollUntilResolved(gameId: Id<"games">, timeoutMs = 120_000): Promise<void> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
-    const game = await convex.query(api.games.get, { gameId });
-    if (!game?.resolving) return;
+    const runtime = await convex.query(api.gameRuntime.getForFacilitator, {
+      gameId, facilitatorToken: FACILITATOR_TOKEN,
+    });
+    if (!runtime.resolving) return;
     await new Promise((r) => setTimeout(r, 2000));
   }
   throw new Error("Pipeline did not complete within timeout");

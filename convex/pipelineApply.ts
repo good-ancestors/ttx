@@ -13,6 +13,7 @@ import {
   createLabInternal,
 } from "./labs";
 import { emitTransaction, emitPair, clearRegenerableRows } from "./computeLedger";
+import { readRuntime } from "./gameRuntime";
 
 /** One entry on round.mechanicsLog. Shared by both apply mutations so the schema
  *  stays in sync — phase-5 writes fresh (overwrite), phase-9/10 appends to existing. */
@@ -81,11 +82,13 @@ export const applyDecidedEffectsInternal = internalMutation({
     mechanicsLog: v.array(mechanicsLogEntryValidator),
   },
   handler: async (ctx, args) => {
-    // Re-verify the resolve nonce inside the atomic mutation.
-    const game = await ctx.db.get(args.gameId);
-    if (!game) throw new Error("Game not found");
-    if (game.resolveNonce !== args.nonce) {
-      throw new Error(`Resolve nonce mismatch (expected ${args.nonce}, got ${game.resolveNonce ?? "null"}) — another resolve superseded this run`);
+    // Re-verify the resolve nonce inside the atomic mutation. The games doc
+    // existence check used to live here too; dropped because every downstream
+    // op (lab patches, ledger emits) is keyed on `args.gameId` directly and
+    // the nonce check is the load-bearing guard against superseded runs.
+    const runtime = await readRuntime(ctx, args.gameId);
+    if (runtime.resolveNonce !== args.nonce) {
+      throw new Error(`Resolve nonce mismatch (expected ${args.nonce}, got ${runtime.resolveNonce ?? "null"}) — another resolve superseded this run`);
     }
 
     // Validate — every labId exists and (for structural ops) is still active.
@@ -231,9 +234,8 @@ export const applyGrowthAndAcquisitionInternal = internalMutation({
     mechanicsLog: v.array(mechanicsLogEntryValidator),
   },
   handler: async (ctx, args) => {
-    const game = await ctx.db.get(args.gameId);
-    if (!game) throw new Error("Game not found");
-    if (game.resolveNonce !== args.nonce) {
+    const runtime = await readRuntime(ctx, args.gameId);
+    if (runtime.resolveNonce !== args.nonce) {
       throw new Error(`Resolve nonce mismatch on growth apply — another resolve superseded this run`);
     }
 

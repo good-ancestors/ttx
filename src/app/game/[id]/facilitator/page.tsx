@@ -6,7 +6,7 @@ import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, type Lab } from "@/lib/game-data";
-import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation } from "@/lib/hooks";
+import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation, useFacilitatorToken } from "@/lib/hooks";
 import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
 import { DebugPanel } from "@/components/debug-panel";
@@ -36,8 +36,16 @@ export default function FacilitatorPage({
   const isVisible = usePageVisibility();
   useSessionExpiry("ttx-facilitator-expiry", "/");
 
-  // Skip when hidden — phase/pipelineStatus/timer patches re-push every subscriber.
+  // Skip when hidden — phase/timer patches re-push every subscriber.
   const game = useQuery(api.games.get, isVisible ? { gameId } : "skip");
+  // Resolve-pipeline progress lives in a companion table so the ~8–10 patches
+  // per resolve don't invalidate every games-doc subscriber. Only the
+  // facilitator UI needs it; gated by a token (server-side check).
+  const facilitatorToken = useFacilitatorToken();
+  const runtime = useQuery(
+    api.gameRuntime.getForFacilitator,
+    isVisible && facilitatorToken ? { gameId, facilitatorToken } : "skip",
+  );
   const activeLabsRaw = useQuery(api.labs.getActiveLabs, isVisible ? { gameId } : "skip");
   const labTables = useQuery(api.tables.getByGame, isVisible ? { gameId } : "skip");
   // Memoised: without this, every Convex reactive tick re-ran an O(labs × tables)
@@ -110,8 +118,9 @@ export default function FacilitatorPage({
   const triggerRoll = useAuthMutation(api.games.triggerRoll);
   const openSubmissions = useAuthMutation(api.games.openSubmissions);
 
-  // Pipeline state: derive from game document (reactive)
-  const pipelineStatus = game?.pipelineStatus;
+  // Pipeline state: derive from gameRuntime subscription (reactive, isolated
+  // from games-doc invalidation).
+  const pipelineStatus = runtime?.pipelineStatus;
   const resolving = !!pipelineStatus && pipelineStatus.step !== "done" && pipelineStatus.step !== "error";
   const resolveStep = pipelineStatus?.detail ?? pipelineStatus?.step ?? "";
   const pipelineError = pipelineStatus?.step === "error" ? pipelineStatus.error : null;

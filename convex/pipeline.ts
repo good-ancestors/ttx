@@ -5,6 +5,7 @@ import { internalAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import type { Id, Doc } from "./_generated/dataModel";
+import type { RuntimeView } from "./gameRuntime";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS, RESOLVE_MODELS } from "./aiModels";
 import { AI_SYSTEMS_ROLE_ID } from "./gameData";
@@ -542,8 +543,8 @@ export const rollAndApplyEffects = internalAction({
       const currentRound = rounds.find((r) => r.number === roundNumber);
 
       // Nonce check before applying anything — another run may have superseded us.
-      const gameAfterRoll = await ctx.runQuery(internal.games.getInternal, { gameId });
-      if (gameAfterRoll?.resolveNonce !== nonce) {
+      const runtimeAfterRoll = await ctx.runQuery(internal.gameRuntime.getInternal, { gameId });
+      if (runtimeAfterRoll.resolveNonce !== nonce) {
         console.warn("[pipeline] Nonce mismatch — another run won. Aborting.");
         await ctx.runMutation(internal.games.updatePipelineStatus, {
           gameId,
@@ -1014,7 +1015,7 @@ export const rollAndApplyEffects = internalAction({
       // Sources:
       //   (a) Grader-emitted effects that just landed via applyDecidedEffectsInternal
       //   (b) Player-originated ops settled in rollAllImpl (pinned mergers + lab
-      //       foundings) — pulled from the event log since game.resolvingStartedAt
+      //       foundings) — pulled from the event log since resolvingStartedAt
       //   (c) Rejected effects (validator failures — facilitator can edit at P2 for
       //       next resolve)
       // Name lookup must include decommissioned labs — the absorbed lab of a player-
@@ -1023,7 +1024,9 @@ export const rollAndApplyEffects = internalAction({
       // (b) Player-originated structural ops. rollAllImpl settles player mergers and
       // lab foundings directly and emits events. Fetch the event log alongside
       // allLabsForNames — both are read-only queries with no dependency.
-      const sinceMs = game.resolvingStartedAt ?? 0;
+      // resolvingStartedAt comes off gameRuntime now; the value read pre-apply
+      // is still current — apply mutations don't touch the lock.
+      const sinceMs = runtimeAfterRoll.resolvingStartedAt ?? 0;
       const [allLabsForNames, playerEvents] = await Promise.all([
         ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId, includeInactive: true }),
         sinceMs > 0
@@ -1161,8 +1164,9 @@ export const continueFromEffectReview = internalAction({
   handler: async (ctx, args) => {
     const { gameId, roundNumber } = args;
     try {
-      const [game, submissions, rounds, tables, labsNow]: [Doc<"games"> | null, Submission[], Round[], Table[], LabWithCompute[]] = await Promise.all([
+      const [game, runtime, submissions, rounds, tables, labsNow]: [Doc<"games"> | null, RuntimeView, Submission[], Round[], Table[], LabWithCompute[]] = await Promise.all([
         ctx.runQuery(internal.games.getInternal, { gameId }),
+        ctx.runQuery(internal.gameRuntime.getInternal, { gameId }),
         ctx.runQuery(internal.submissions.getAllForRound, { gameId, roundNumber }),
         ctx.runQuery(internal.rounds.getAllForPipeline, { gameId }),
         ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
@@ -1171,7 +1175,7 @@ export const continueFromEffectReview = internalAction({
       if (!game) throw new Error("Game not found");
       const currentRound = rounds.find((r) => r.number === roundNumber);
       if (!currentRound) throw new Error("Round not found");
-      const nonce = game.resolveNonce;
+      const nonce = runtime.resolveNonce;
       if (!nonce) throw new Error("No resolve nonce — continueFromEffectReview requires a live nonce from rollAndApplyEffects");
 
       // Re-resolve aiDisposition from the AI Systems table (same logic as roll phase)

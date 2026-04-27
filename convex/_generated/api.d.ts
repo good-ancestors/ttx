@@ -15,6 +15,7 @@ import type * as computeLedger from "../computeLedger.js";
 import type * as computeMutations from "../computeMutations.js";
 import type * as events from "../events.js";
 import type * as gameData from "../gameData.js";
+import type * as gameRuntime from "../gameRuntime.js";
 import type * as games from "../games.js";
 import type * as labs from "../labs.js";
 import type * as llm from "../llm.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   computeMutations: typeof computeMutations;
   events: typeof events;
   gameData: typeof gameData;
+  gameRuntime: typeof gameRuntime;
   games: typeof games;
   labs: typeof labs;
   llm: typeof llm;

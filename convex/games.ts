@@ -11,6 +11,7 @@ import {
 } from "./labs";
 import { emitTransaction, emitPair } from "./computeLedger";
 import { validateComputeAllocation, stripGradingFields, escrowSendTargets, escrowFoundLab } from "./submissions";
+import { patchRuntime, readRuntime } from "./gameRuntime";
 
 
 /** Pre-generate AI/NPC actions so they're ready before submissions open. */
@@ -435,6 +436,8 @@ export const startGame = mutation({
       status: "playing",
       phase: "discuss",
       phaseEndsAt: undefined,
+    });
+    await patchRuntime(ctx, args.gameId, {
       resolving: false,
       resolvingStartedAt: undefined,
       pipelineStatus: undefined,
@@ -456,7 +459,7 @@ export const advanceRound = mutation({
     // earlier phase (effect-review, rolling) would otherwise skip the narrative and
     // clobber pending state. Advance from a non-narrate phase is a no-op.
     if (game.phase !== "narrate") return;
-    assertNotResolving(game);
+    assertNotResolving(await readRuntime(ctx, args.gameId));
 
     // Materialise any deferred acquisition for the round we're leaving — this is the
     // moment the new compute arrives in players' tables. Writes `acquired` ledger rows
@@ -538,6 +541,8 @@ export const restoreSnapshot = mutation({
       currentRound: args.roundNumber,
       phase: useBefore ? "submit" : "narrate",
       phaseEndsAt: undefined,
+    });
+    await patchRuntime(ctx, args.gameId, {
       resolving: false,
       pipelineStatus: undefined,
       resolveNonce: undefined,
@@ -923,8 +928,8 @@ export const setResolving = mutation({
     assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error(`Game ${args.gameId} not found`);
-    if (args.resolving) assertNotResolving(game);
-    await ctx.db.patch(args.gameId, {
+    if (args.resolving) assertNotResolving(await readRuntime(ctx, args.gameId));
+    await patchRuntime(ctx, args.gameId, {
       resolving: args.resolving,
       resolvingStartedAt: args.resolving ? Date.now() : undefined,
     });
@@ -965,14 +970,14 @@ export const updatePipelineStatus = internalMutation({
     }),
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.gameId, { pipelineStatus: args.status });
+    await patchRuntime(ctx, args.gameId, { pipelineStatus: args.status });
   },
 });
 
 export const clearPipelineStatus = internalMutation({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.gameId, { pipelineStatus: undefined });
+    await patchRuntime(ctx, args.gameId, { pipelineStatus: undefined });
   },
 });
 
@@ -982,6 +987,8 @@ export const finishResolveInternal = internalMutation({
     await ctx.db.patch(args.gameId, {
       phase: "narrate" as const,
       phaseEndsAt: undefined,
+    });
+    await patchRuntime(ctx, args.gameId, {
       resolving: false,
       resolvingStartedAt: undefined,
       pipelineStatus: { step: "done", detail: "Resolution complete", startedAt: Date.now() },
@@ -1000,6 +1007,8 @@ export const setPhaseEffectReviewInternal = internalMutation({
     await ctx.db.patch(args.gameId, {
       phase: "effect-review" as const,
       phaseEndsAt: undefined,
+    });
+    await patchRuntime(ctx, args.gameId, {
       resolving: false,
       resolvingStartedAt: undefined,
       // No detail text — at effect-review the pipeline is idle, waiting for
@@ -1031,9 +1040,9 @@ export const triggerContinueFromEffectReview = mutation({
     if (args.roundNumber !== game.currentRound) {
       throw new Error(`roundNumber mismatch: expected ${game.currentRound}, got ${args.roundNumber}`);
     }
-    assertNotResolving(game);
+    assertNotResolving(await readRuntime(ctx, args.gameId));
 
-    await ctx.db.patch(args.gameId, {
+    await patchRuntime(ctx, args.gameId, {
       resolving: true,
       resolvingStartedAt: Date.now(),
       pipelineStatus: { step: "resolving", detail: "Applying R&D growth and compute acquisition...", startedAt: Date.now() },
@@ -1062,7 +1071,7 @@ export const advancePhaseInternal = internalMutation({
 export const setResolvingInternal = internalMutation({
   args: { gameId: v.id("games"), resolving: v.boolean() },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.gameId, {
+    await patchRuntime(ctx, args.gameId, {
       resolving: args.resolving,
       resolvingStartedAt: args.resolving ? Date.now() : undefined,
     });
@@ -1072,7 +1081,7 @@ export const setResolvingInternal = internalMutation({
 export const setResolveNonce = internalMutation({
   args: { gameId: v.id("games"), nonce: v.string() },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.gameId, { resolveNonce: args.nonce });
+    await patchRuntime(ctx, args.gameId, { resolveNonce: args.nonce });
   },
 });
 
@@ -1089,8 +1098,8 @@ export const triggerGrading = mutation({
     if (!game) throw new Error("Game not found");
     if (game.status !== "playing") throw new Error("Game is not in playing state");
 
-    assertNotResolving(game);
-    await ctx.db.patch(args.gameId, {
+    assertNotResolving(await readRuntime(ctx, args.gameId));
+    await patchRuntime(ctx, args.gameId, {
       resolving: true,
       resolvingStartedAt: Date.now(),
       pipelineStatus: { step: "grading", detail: "Grading remaining actions...", startedAt: Date.now() },
@@ -1132,10 +1141,10 @@ export const triggerRoll = mutation({
       throw new Error(`${ungradedCount} submitted actions still ungraded — grade them first`);
     }
 
-    assertNotResolving(game);
+    assertNotResolving(await readRuntime(ctx, args.gameId));
 
-    await ctx.db.patch(args.gameId, {
-      phase: "rolling",
+    await ctx.db.patch(args.gameId, { phase: "rolling" });
+    await patchRuntime(ctx, args.gameId, {
       resolving: true,
       resolvingStartedAt: Date.now(),
       pipelineStatus: { step: "rolling", detail: "Rolling dice...", startedAt: Date.now() },
@@ -1174,11 +1183,11 @@ export const forceClearResolvingLock = mutation({
       game.phase === "narrate" ? "narrate" :
       game.phase; // discuss / submit stay as-is
 
-    await ctx.db.patch(args.gameId, {
+    await ctx.db.patch(args.gameId, { phase: stablePhase });
+    await patchRuntime(ctx, args.gameId, {
       resolving: false,
       resolvingStartedAt: undefined,
       pipelineStatus: undefined,
-      phase: stablePhase,
     });
 
     // Also clear the current round's resolveNonce + any pending stash, so a retry rolls

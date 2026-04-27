@@ -548,55 +548,67 @@ async function submitPendingAndLink(
   }
 
   const linkCtx: LinkContext = { gameId, roundNumber, roleMap, actionIdByRoleAndText };
-  for (const p of submitted) await sendHintsForRole(ctx, linkCtx, p);
+  await fanOutHints(ctx, linkCtx, submitted);
 
   await scheduleAiProposalResponses(ctx, gameId, roundNumber, submitted);
 }
 
-/** Fan out one role's endorsement + compute-request hints into the requests table.
- *  Endorsement hints carry an array of target roles per action; compute-request
- *  hints carry one target + an amount. Both produce identical request payloads
- *  modulo `requestType` and `computeAmount`. */
-async function sendHintsForRole(ctx: ActionCtx, link: LinkContext, p: PendingAction) {
-  const lookupActionId = (text: string) => link.actionIdByRoleAndText.get(`${p.roleId}:${text}`) ?? "";
-  const fromRoleName = link.roleMap.get(p.roleId) ?? p.roleId;
+type HintBatch = {
+  fromRoleId: string;
+  fromRoleName: string;
+  toRoleId: string;
+  toRoleName: string;
+  actionId: string;
+  actionText: string;
+  requestType: "endorsement" | "compute";
+  computeAmount?: number;
+}[];
 
-  for (const hint of p.endorseHints ?? []) {
-    const actionId = lookupActionId(hint.actionText);
-    for (const targetId of hint.targetRoleIds) {
-      try {
-        await ctx.runMutation(internal.requests.sendInternal, {
-          gameId: link.gameId, roundNumber: link.roundNumber,
+/** Flatten every endorsement + compute-request hint across all submitted
+ *  roles into a single batch and dispatch via `sendBatchInternal`. Replaces
+ *  the previous per-role-per-target sequential `sendInternal` fan-out (~100
+ *  awaited round-trips per round) with a single mutation transaction. */
+async function fanOutHints(ctx: ActionCtx, link: LinkContext, submitted: PendingAction[]) {
+  const batch: HintBatch = [];
+  for (const p of submitted) {
+    const fromRoleName = link.roleMap.get(p.roleId) ?? p.roleId;
+    const lookupActionId = (text: string) => link.actionIdByRoleAndText.get(`${p.roleId}:${text}`) ?? "";
+
+    for (const hint of p.endorseHints ?? []) {
+      const actionId = lookupActionId(hint.actionText);
+      for (const targetId of hint.targetRoleIds) {
+        batch.push({
           fromRoleId: p.roleId, fromRoleName,
           toRoleId: targetId, toRoleName: link.roleMap.get(targetId) ?? targetId,
           actionId, actionText: hint.actionText,
           requestType: "endorsement",
         });
-      } catch (err) { logHintFailure(err, `endorsement ${p.roleId} → ${targetId}`); }
+      }
     }
-  }
-  for (const hint of p.computeRequestHints ?? []) {
-    const actionId = lookupActionId(hint.actionText);
-    try {
-      await ctx.runMutation(internal.requests.sendInternal, {
-        gameId: link.gameId, roundNumber: link.roundNumber,
+    for (const hint of p.computeRequestHints ?? []) {
+      const actionId = lookupActionId(hint.actionText);
+      batch.push({
         fromRoleId: p.roleId, fromRoleName,
         toRoleId: hint.targetRoleId, toRoleName: link.roleMap.get(hint.targetRoleId) ?? hint.targetRoleId,
         actionId, actionText: hint.actionText,
         requestType: "compute",
         computeAmount: hint.amount,
       });
-    } catch (err) { logHintFailure(err, `compute request ${p.roleId} → ${hint.targetRoleId}`); }
+    }
   }
-}
+  if (batch.length === 0) return;
 
-/** sendInternal throws on duplicate request docs (idempotency by design). Any
- *  other failure — validation, "cannot send to yourself", DB error — should
- *  surface in logs rather than vanish silently. */
-function logHintFailure(err: unknown, label: string) {
-  const msg = err instanceof Error ? err.message : String(err);
-  if (!/already exists/i.test(msg)) {
-    console.warn(`[aiGenerate] ${label} hint failed:`, err);
+  try {
+    await ctx.runMutation(internal.requests.sendBatchInternal, {
+      gameId: link.gameId,
+      roundNumber: link.roundNumber,
+      requests: batch,
+    });
+  } catch (err) {
+    // Best-effort: a failed batch shouldn't abort the resolve pipeline.
+    // findOrUpsertRequest already handles dup-keys by patching, so the only
+    // realistic causes are transaction limits or DB errors — both worth a log.
+    console.warn(`[aiGenerate] sendBatchInternal failed (${batch.length} hints):`, err);
   }
 }
 
