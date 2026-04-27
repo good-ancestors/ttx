@@ -10,9 +10,13 @@ import { internalQuery, query, type MutationCtx, type QueryCtx } from "./_genera
 import type { Doc, Id } from "./_generated/dataModel";
 import { assertFacilitator } from "./events";
 
-/** Wire shape — derived from `Doc<"gameRuntime">` so a schema field add can
- *  only land on the wire by deliberate addition here. */
-export type RuntimeView = Omit<Doc<"gameRuntime">, "_id" | "_creationTime" | "gameId">;
+/** Wire shape — explicit Pick allowlist so a schema field add doesn't land
+ *  on the wire by accident; adding a new field requires a deliberate change
+ *  here. */
+export type RuntimeView = Pick<
+  Doc<"gameRuntime">,
+  "resolving" | "resolvingStartedAt" | "pipelineStatus" | "resolveNonce"
+>;
 
 async function findRow(
   ctx: QueryCtx | MutationCtx,

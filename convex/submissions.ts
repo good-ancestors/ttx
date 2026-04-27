@@ -6,6 +6,7 @@ import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator, asser
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
+import { readRuntime } from "./gameRuntime";
 import {
   cancelPendingForAction,
   settlePendingForAction,
@@ -1469,7 +1470,7 @@ export const rollAllFacilitator = mutation({
     assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
-    assertNotResolving(game);
+    assertNotResolving(await readRuntime(ctx, args.gameId));
     await rollAllImpl(ctx, args.gameId, args.roundNumber);
   },
 });

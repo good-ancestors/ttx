@@ -115,9 +115,19 @@ export default function FacilitatorPage({
   const triggerRoll = useAuthMutation(api.games.triggerRoll);
   const openSubmissions = useAuthMutation(api.games.openSubmissions);
 
+  // While the runtime query is still loading we don't know whether a resolve
+  // is mid-flight, so default to "yes" to keep Roll/Grade buttons disabled
+  // until we have the answer. Without this, an in-flight grading lock from
+  // a tab-switch can render those buttons enabled for ~one round trip and
+  // the server then throws "Resolution already in progress" on click.
+  const runtimeLoading = isVisible && !!facilitatorToken && runtime === undefined;
   const pipelineStatus = runtime?.pipelineStatus;
-  const resolving = !!pipelineStatus && pipelineStatus.step !== "done" && pipelineStatus.step !== "error";
-  const resolveStep = pipelineStatus?.detail ?? pipelineStatus?.step ?? "";
+  const pipelineSaysResolving = !!pipelineStatus && pipelineStatus.step !== "done" && pipelineStatus.step !== "error";
+  // Combine signals: phase==="rolling" is a backstop in case the games doc
+  // and runtime row arrive on different reactive ticks (avoids the flicker
+  // where one says "rolling" while the other still says "done").
+  const resolving = runtimeLoading || gamePhase === "rolling" || pipelineSaysResolving;
+  const resolveStep = pipelineStatus?.detail ?? pipelineStatus?.step ?? (runtimeLoading ? "Loading…" : "");
   const pipelineError = pipelineStatus?.step === "error" ? pipelineStatus.error : null;
 
   const [actionError, setActionError] = useState<string | null>(null);

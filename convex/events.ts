@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, type MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import type { RuntimeView } from "./gameRuntime";
 
 /** Validate facilitator token against env var. Throws if invalid, or if the secret
  *  itself is not configured — silently bypassing auth on a missing env var has
@@ -17,9 +18,11 @@ export function assertFacilitator(token: string | undefined) {
 }
 
 /** Assert the game isn't currently resolving. 3-minute TTL on the lock so a
- *  crashed pipeline doesn't permanently block subsequent actions. */
+ *  crashed pipeline doesn't permanently block subsequent actions. Param is
+ *  `RuntimeView` (not `Doc<"games">`) so passing the games doc — whose
+ *  deprecated stubs are forever undefined post-split — fails to compile. */
 const RESOLVE_LOCK_TTL_MS = 3 * 60 * 1000;
-export function assertNotResolving(runtime: { resolving?: boolean; resolvingStartedAt?: number }) {
+export function assertNotResolving(runtime: RuntimeView) {
   if (runtime.resolving && runtime.resolvingStartedAt && Date.now() - runtime.resolvingStartedAt < RESOLVE_LOCK_TTL_MS) {
     throw new Error("Resolution already in progress");
   }
