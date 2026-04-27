@@ -23,13 +23,13 @@ export type Table = {
 /** Round document from Convex */
 export type Round = Doc<"rounds">;
 
-/** Lightweight round summary for R&D chart history — number + label + labsAfter
- *  snapshot. Used by resolve-sections and the facilitator shell when the full
- *  Round doc is overkill. */
+/** Lightweight round summary for the R&D chart + snapshot dropdown — must
+ *  stay in sync with `convex/rounds.ts:getByGameLightweight`'s projection. */
 export interface RoundLite {
   number: number;
   label: string;
   labsAfter?: Lab[];
+  hasLabsBefore: boolean;
 }
 
 /** Lightweight submission summary — excludes aiMeta, artifact, computeAllocation.

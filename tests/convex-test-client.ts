@@ -16,14 +16,21 @@ import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 
-const LOCAL_URL_PATTERN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/;
-
 export const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET ?? "coral-ember-drift-sage";
+
+function isLocalUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" && (u.hostname === "127.0.0.1" || u.hostname === "localhost");
+  } catch {
+    return false;
+  }
+}
 
 function resolveConvexTestUrl(): string {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL ?? "http://127.0.0.1:3210";
   if (process.env.ALLOW_CLOUD_TESTS === "1") return url;
-  if (!LOCAL_URL_PATTERN.test(url)) {
+  if (!isLocalUrl(url)) {
     throw new Error(
       `Refusing to run tests against ${url}.\n\n` +
         `Integration tests create games and don't always clean up. Running them against a cloud Convex deployment leaks state and burns bandwidth.\n\n` +
@@ -68,16 +75,20 @@ export async function createTestGame(
 
 /** Drain every game `createTestGame` recorded. Best-effort: errors per game
  *  are swallowed (game may already be deleted, or partially deleted from a
- *  prior failure). Safe to call multiple times. */
+ *  prior failure). Safe to call multiple times.
+ *
+ *  Parallel: `splice(0)` atomically claims the queue, then all removes fire
+ *  concurrently via `allSettled`. Saves N round-trips of latency per cleanup
+ *  versus a sequential loop. */
 export async function cleanupTrackedGames(): Promise<void> {
-  while (trackedGames.length) {
-    const { client, gameId } = trackedGames.pop()!;
-    try {
-      await client.mutation(api.games.remove, {
+  const drained = trackedGames.splice(0);
+  await Promise.allSettled(
+    drained.map(({ client, gameId }) =>
+      client.mutation(api.games.remove, {
         gameId,
         confirmation: "DELETE",
         facilitatorToken: FACILITATOR_TOKEN,
-      });
-    } catch { /* best effort */ }
-  }
+      }),
+    ),
+  );
 }

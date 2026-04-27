@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { labTrajectoryValidator } from "./schema";
 import { assertFacilitator } from "./events";
 
@@ -10,6 +10,25 @@ async function findRound(ctx: QueryCtx | MutationCtx, gameId: Id<"games">, round
   return ctx.db.query("rounds")
     .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
     .first();
+}
+
+/** Narrow projection of `round.summary` — outcomes/stateOfPlay/pressures for the
+ *  current shape, plus the legacy 4-domain buckets that older rounds still carry.
+ *  Drops `facilitatorNotes` (facilitator-only). Reused by every read query that
+ *  surfaces summary; centralised so adding a new narrative field requires
+ *  exactly one edit. */
+type RoundSummary = NonNullable<Doc<"rounds">["summary"]>;
+export function projectSummary(s: RoundSummary | undefined) {
+  if (!s) return undefined;
+  return {
+    outcomes: s.outcomes,
+    stateOfPlay: s.stateOfPlay,
+    pressures: s.pressures,
+    labs: s.labs,
+    geopolitics: s.geopolitics,
+    publicAndMedia: s.publicAndMedia,
+    aiSystems: s.aiSystems,
+  };
 }
 
 export const getByGame = query({
@@ -57,44 +76,18 @@ export const getCurrent = query({
     const round = await findRound(ctx, args.gameId, game.currentRound);
     if (!round) return null;
 
-    // Explicit allowlist — ship only fields the facilitator UI consumes. The round
-    // doc gets fat, hot-write fields (mechanicsLog, appliedOps, labTrajectories,
-    // pendingProductivityMods, labsBefore, labsAfter) appended on every pipeline
-    // phase patch, and the doc-level invalidation re-pushes this subscription on
-    // every patch. Allowlisting keeps wire-bandwidth bounded; a strip-spread
-    // pattern silently widens whenever a new field is added.
-    //
-    // What's kept:
-    //   - id/number/label/summary  → narrative-panel + game-timeline reads
-    //   - aiMeta                   → debug-panel
-    //   - appliedOps               → attempted-panel + happened-section P7 review
-    //   - mechanicsLog             → happened-section audit-log render
-    //
-    // What's dropped:
-    //   - labsBefore / labsAfter   → snapshot dropdown reads `roundsLite.hasLabsBefore`;
-    //                                 R&D chart reads `roundsLite.labsAfter`
-    //   - labTrajectories / pendingProductivityMods / pendingAcquired
-    //                              → no UI consumer (pendingAcquired has its own query)
-    //   - resolveNonce / resolveDebug / facilitatorNotes
-    //                              → internal / separate query / facilitator-only
-    const summary = round.summary
-      ? {
-          outcomes: round.summary.outcomes,
-          stateOfPlay: round.summary.stateOfPlay,
-          pressures: round.summary.pressures,
-          labs: round.summary.labs,
-          geopolitics: round.summary.geopolitics,
-          publicAndMedia: round.summary.publicAndMedia,
-          aiSystems: round.summary.aiSystems,
-        }
-      : undefined;
+    // Explicit allowlist (not strip-spread) — the round doc accumulates hot-
+    // write fields (mechanicsLog, appliedOps, etc.) on every pipeline phase
+    // patch, and doc-level invalidation re-pushes the subscription each time.
+    // Bounding the wire shape here means adding a new round field doesn't
+    // silently bloat every facilitator subscriber.
     return {
       _id: round._id,
       _creationTime: round._creationTime,
       gameId: round.gameId,
       number: round.number,
       label: round.label,
-      summary,
+      summary: projectSummary(round.summary),
       aiMeta: round.aiMeta,
       appliedOps: round.appliedOps,
       mechanicsLog: round.mechanicsLog,
@@ -128,15 +121,7 @@ export const getForPlayer = query({
       _id: round._id,
       number: round.number,
       label: round.label,
-      summary: round.summary ? {
-        outcomes: round.summary.outcomes,
-        stateOfPlay: round.summary.stateOfPlay,
-        pressures: round.summary.pressures,
-        labs: round.summary.labs,
-        geopolitics: round.summary.geopolitics,
-        publicAndMedia: round.summary.publicAndMedia,
-        aiSystems: round.summary.aiSystems,
-      } : undefined,
+      summary: projectSummary(round.summary),
     };
   },
 });

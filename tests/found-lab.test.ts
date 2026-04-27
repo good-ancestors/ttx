@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
-import { createTestGame } from "./test-game";
+import { getConvexTestClient, FACILITATOR_TOKEN, createTestGame } from "./convex-test-client";
 
 // Integration tests for the found-a-lab action flow introduced in PR #14.
 //

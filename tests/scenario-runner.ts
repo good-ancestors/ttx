@@ -294,8 +294,8 @@ async function main() {
     else if (scenario === "B") await scenarioB();
     else console.error(`Unknown scenario: ${scenario}`);
   } finally {
-    // Best-effort cleanup so an aborted scenario doesn't leak the game.
-    await cleanupTrackedGames();
+    // Best-effort cleanup; don't mask the original scenario error if cleanup itself fails.
+    await cleanupTrackedGames().catch((err) => console.error("cleanup failed:", err));
   }
 }
 

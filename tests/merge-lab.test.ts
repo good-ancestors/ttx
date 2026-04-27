@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
-import { createTestGame } from "./test-game";
+import { getConvexTestClient, FACILITATOR_TOKEN, createTestGame } from "./convex-test-client";
 
 // Run with: npm run test:integration  (requires `npx convex dev` running)
 

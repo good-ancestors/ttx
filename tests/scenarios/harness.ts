@@ -81,7 +81,8 @@ export async function runScenario(scenario: Scenario): Promise<void> {
     if (scenario.setup) await scenario.setup(client, gameId);
     await runScenarioRounds(client, gameId, scenario);
   } finally {
-    await cleanupTrackedGames();
+    // Don't let a cleanup transport failure mask the original scenario error.
+    await cleanupTrackedGames().catch((err) => console.error("cleanup failed:", err));
   }
 }
 
