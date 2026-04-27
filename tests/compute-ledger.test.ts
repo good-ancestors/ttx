@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
+import { createTestGame } from "./test-game";
 
 // Integration tests for the compute ledger (convex/computeLedger.ts).
 // Run against a live `npx convex dev` deployment:
@@ -40,7 +41,7 @@ async function openSubmit(gameId: Id<"games">): Promise<void> {
 }
 
 async function createRunningGame(): Promise<Id<"games">> {
-  const gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+  const gameId = await createTestGame(convex);
   await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
   await openSubmit(gameId);
   return gameId;
@@ -358,7 +359,7 @@ describe("computeLedger — restore with merged labs", () => {
   let gameId: Id<"games">;
 
   it("restoreSnapshot(round 1 before) undoes a round-2 merge and wipes round-2 ledger rows", async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
 
     // Force a round-1 resolve so a labsBefore/labsAfter snapshot is written to round 1.

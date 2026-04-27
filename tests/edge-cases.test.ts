@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
+import { createTestGame } from "./test-game";
 
 // Edge-case integration tests — exercise integration seams that the
 // per-feature test files don't reach. No LLM calls.
@@ -9,7 +10,7 @@ import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
 const convex = getConvexTestClient();
 
 async function createGameInSubmit(): Promise<{ gameId: Id<"games">; tables: Awaited<ReturnType<typeof convex.query<typeof api.tables.getByGame>>> }> {
-  const gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+  const gameId = await createTestGame(convex);
   await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
   await convex.mutation(api.games.openSubmissions, {
     gameId, durationSeconds: 600, facilitatorToken: FACILITATOR_TOKEN,

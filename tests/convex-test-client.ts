@@ -13,6 +13,8 @@
  */
 
 import { ConvexHttpClient } from "convex/browser";
+import { api } from "../convex/_generated/api";
+import type { Id } from "../convex/_generated/dataModel";
 
 const LOCAL_URL_PATTERN = /^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?\/?$/;
 
@@ -35,4 +37,47 @@ function resolveConvexTestUrl(): string {
 
 export function getConvexTestClient(): ConvexHttpClient {
   return new ConvexHttpClient(resolveConvexTestUrl());
+}
+
+// ─── Game-creation tracking (test isolation) ──────────────────────────────────
+//
+// `createTestGame` records every game it creates so a single drain call can
+// clean them up at the end of a test or scenario. Vitest tests use the
+// `afterEach` hook in `test-game.ts` (which calls `cleanupTrackedGames`); CLI
+// scripts (`tests/scenarios/harness.ts`, `tests/scenario-runner.ts`) call it
+// from their own `try/finally`. Both routes share the same tracking list.
+
+interface TrackedGame {
+  client: ConvexHttpClient;
+  gameId: Id<"games">;
+}
+
+const trackedGames: TrackedGame[] = [];
+
+export async function createTestGame(
+  client: ConvexHttpClient,
+  opts: { tableCount?: number } = {},
+): Promise<Id<"games">> {
+  const gameId = await client.mutation(api.games.create, {
+    ...opts,
+    facilitatorToken: FACILITATOR_TOKEN,
+  });
+  trackedGames.push({ client, gameId });
+  return gameId;
+}
+
+/** Drain every game `createTestGame` recorded. Best-effort: errors per game
+ *  are swallowed (game may already be deleted, or partially deleted from a
+ *  prior failure). Safe to call multiple times. */
+export async function cleanupTrackedGames(): Promise<void> {
+  while (trackedGames.length) {
+    const { client, gameId } = trackedGames.pop()!;
+    try {
+      await client.mutation(api.games.remove, {
+        gameId,
+        confirmation: "DELETE",
+        facilitatorToken: FACILITATOR_TOKEN,
+      });
+    } catch { /* best effort */ }
+  }
 }

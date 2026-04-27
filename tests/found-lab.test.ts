@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
+import { createTestGame } from "./test-game";
 
 // Integration tests for the found-a-lab action flow introduced in PR #14.
 //
@@ -25,9 +26,7 @@ const FOUNDER_ROLE = "openbrain-ceo";
 const OTHER_ROLE = "deepcent-ceo";
 
 async function setupGameInSubmitPhase() {
-  const gameId = await convex.mutation(api.games.create, {
-    facilitatorToken: FACILITATOR_TOKEN,
-  });
+  const gameId = await createTestGame(convex);
   await convex.mutation(api.games.startGame, {
     gameId,
     facilitatorToken: FACILITATOR_TOKEN,

@@ -12,6 +12,7 @@
     "test:all": "vitest run",
     "test:integration": "vitest run tests/convex-integration.test.ts",
     "test:watch": "vitest",
+    "dev:clean": "tsx scripts/dev-clean.ts",
     "prepare": "husky"
   },
   "dependencies": {
@@ -40,6 +41,7 @@
     "jsdom": "^29.0.1",
     "knip": "^6.3.0",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5",
     "typescript-eslint": "^8.57.2",
     "vitest": "^4.1.1"

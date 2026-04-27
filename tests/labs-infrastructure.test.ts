@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
 import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
+import { createTestGame } from "./test-game";
 
 // Integration tests for the labs-as-first-class-entity refactor (PR #14).
 // Exercises the public mutations that wrap createLabInternal, mergeLabsInternal,
@@ -26,7 +27,7 @@ describe("Labs: addLab uniqueness", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
   });
 
   it("rejects a new active lab whose name collides with an existing active lab", async () => {
@@ -80,7 +81,7 @@ describe("Labs: addLab uniqueness", () => {
   });
 
   it("allows two active labs with the same name in different games", async () => {
-    const otherGameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    const otherGameId = await createTestGame(convex);
     // Both games start with "OpenBrain" as an active default lab — just confirm that.
     const gameALabs = await getActiveLabs(gameId);
     const gameBLabs = await getActiveLabs(otherGameId);
@@ -93,7 +94,7 @@ describe("Labs: merge semantics", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
   });
 
   it("merges: survivor keeps max rdMultiplier, absorbed is decommissioned with mergedIntoLabId", async () => {
@@ -149,7 +150,7 @@ describe("Labs: ownership transfer via updateLabs", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
   });
 
   it("transferring ownerRoleId updates the lab but does not move compute", async () => {
@@ -185,7 +186,7 @@ describe("Labs: updateLabs name-uniqueness", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
   });
 
   it("rejects rename of lab A to the name of another active lab", async () => {
@@ -239,7 +240,7 @@ describe("Labs: restoreSnapshot mergedIntoLabId remap", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
   });
 

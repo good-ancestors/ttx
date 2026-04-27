@@ -8,9 +8,8 @@
  */
 
 import { api } from "../convex/_generated/api";
-import type { Id } from "../convex/_generated/dataModel";
 import * as fs from "fs";
-import { getConvexTestClient } from "../tests/convex-test-client";
+import { getConvexTestClient, createTestGame, cleanupTrackedGames } from "../tests/convex-test-client";
 
 // Load .env.local manually
 try {
@@ -97,8 +96,7 @@ function getActions(scenario: Scenario, roleId: string, round: number) {
 async function runScenario(scenario: Scenario) {
   const csvBaseline = scenario === "race" ? CSV_RACE : CSV_SLOWDOWN;
 
-  // Create fresh game
-  const gameId = await convex.mutation(api.games.create, { tableCount: 6 }) as Id<"games">;
+  const gameId = await createTestGame(convex, { tableCount: 6 });
   await convex.mutation(api.games.startGame, { gameId });
 
   const game = await convex.query(api.games.get, { gameId });
@@ -216,9 +214,13 @@ async function main() {
     console.error(`Usage: npx tsx scripts/test-lab-progression.ts [${valid.join("|")}]`);
     process.exit(1);
   }
-  if (scenario === "all" || scenario === "race") await runScenario("race");
-  if (scenario === "all" || scenario === "slowdown") await runScenario("slowdown");
-  if (scenario === "all" || scenario === "catchup") await runScenario("catchup");
+  try {
+    if (scenario === "all" || scenario === "race") await runScenario("race");
+    if (scenario === "all" || scenario === "slowdown") await runScenario("slowdown");
+    if (scenario === "all" || scenario === "catchup") await runScenario("catchup");
+  } finally {
+    await cleanupTrackedGames();
+  }
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

@@ -99,7 +99,44 @@ Decide before wiring up.
 ### 9. After the PR merges
 - Prod Convex deploy (`npx convex deploy --prod`).
 - Smoke on prod: one fresh game, one full round, validate mechanics log renders.
-- Clear out dev Convex stale games + rogue game-creation source (something respawns them — probably an abandoned browser tab or test harness).
+- Clear out dev Convex stale games + rogue game-creation source (something respawns them — probably an abandoned browser tab or test harness). **Resolved in PR #22**: the source was integration tests hammering the cloud dev backend without cleanup. Drain via `npm run dev:clean`.
+
+### 9a. Bandwidth-spike prevention (deferred from PR #22)
+
+PR #22 stopped the immediate bleed (cloud-tests guard, visibility gates, slim
+projections, auto-cleanup helper). The structural fixes that need their own
+PR:
+
+- **Companion table for round runtime fields.** Move `mechanicsLog`,
+  `appliedOps`, `pendingAcquired`, `pendingProductivityMods`, `labTrajectories`,
+  `resolveDebug`, `resolveNonce`, `aiMeta` off `rounds` into a
+  `roundResolveState` table keyed by `(gameId, roundNumber)`. Every pipeline
+  patch currently invalidates `rounds.getCurrent` / `getByGameLightweight`
+  reactive subscribers; splitting decouples the audit log from the stable
+  round metadata. Schema migration via `@convex-dev/migrations`.
+
+- **Companion table for game runtime fields.** Move `phaseEndsAt`,
+  `pipelineStatus`, `resolving`, `resolvingStartedAt`, `resolveNonce` off
+  `games` into a `gameRuntime` companion table. `games.list` re-fires on every
+  timer tick + every pipeline-status update today; the split eliminates that.
+
+- **Batch `requests.sendInternal` from `aiGenerate.sendHintsForRole`.** The
+  helper does 50–100 separate mutation transactions per AI generation pass,
+  each individually re-firing `getFacilitatorState` for every subscriber. Add
+  a `sendBatchInternal` that takes an array.
+
+- **Convex dashboard alerts.** Set a daily-bandwidth threshold (e.g. 500 MB
+  on dev, or 2× rolling 7-day baseline) with email notification. Catches the
+  next incident in hours not days. Dashboard config only — not code.
+
+- **`useScopedQuery` wrapper + ESLint rule.** Wrap `useQuery` so every call
+  site must pass an explicit `skipWhen` predicate (or `keepAlive: true` opt
+  out). Add ESLint rule banning bare `useQuery` outside the wrapper. Prevents
+  the "I forgot to gate" regression class.
+
+- **`Lightweight` naming as enforceable contract.** A snapshot test asserts
+  `getByGameLightweight` returns a fixed shape. New fields landing in the
+  projection fail the test loudly.
 
 ### 10. Two-reviewer pass: deferred findings
 

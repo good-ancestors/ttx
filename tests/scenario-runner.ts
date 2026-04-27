@@ -17,7 +17,7 @@
 
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
-import { getConvexTestClient, FACILITATOR_TOKEN } from "./convex-test-client";
+import { getConvexTestClient, FACILITATOR_TOKEN, createTestGame, cleanupTrackedGames } from "./convex-test-client";
 
 const convex = getConvexTestClient();
 
@@ -38,7 +38,7 @@ async function waitForPipelineIdle(gameId: Id<"games">, timeoutMs = 180_000): Pr
 }
 
 async function setupGame(): Promise<{ gameId: Id<"games">; tables: Awaited<ReturnType<typeof convex.query<typeof api.tables.getByGame>>> }> {
-  const gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+  const gameId = await createTestGame(convex);
   await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
   await convex.mutation(api.games.openSubmissions, {
     gameId, durationSeconds: 600, facilitatorToken: FACILITATOR_TOKEN,
@@ -287,7 +287,16 @@ async function scenarioB() {
   console.log("\n\nScenario B complete. gameId:", gameId);
 }
 
-const scenario = process.argv[2] ?? "A";
-if (scenario === "A") scenarioA().catch(console.error);
-else if (scenario === "B") scenarioB().catch(console.error);
-else console.error(`Unknown scenario: ${scenario}`);
+async function main() {
+  const scenario = process.argv[2] ?? "A";
+  try {
+    if (scenario === "A") await scenarioA();
+    else if (scenario === "B") await scenarioB();
+    else console.error(`Unknown scenario: ${scenario}`);
+  } finally {
+    // Best-effort cleanup so an aborted scenario doesn't leak the game.
+    await cleanupTrackedGames();
+  }
+}
+
+main().catch((err) => { console.error(err); process.exit(1); });

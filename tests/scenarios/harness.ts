@@ -10,7 +10,7 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
-import { getConvexTestClient, FACILITATOR_TOKEN } from "../convex-test-client";
+import { getConvexTestClient, FACILITATOR_TOKEN, createTestGame, cleanupTrackedGames } from "../convex-test-client";
 
 export interface ScenarioAction {
   text: string;
@@ -66,18 +66,30 @@ async function waitFor<T>(
   throw new Error(`Timed out waiting for: ${label}`);
 }
 
-/** Run the scenario end-to-end. Throws on any assertion failure. */
+/** Run the scenario end-to-end. Throws on any assertion failure. The created
+ *  game is cleaned up regardless of pass/fail so a failing scenario doesn't
+ *  leak state into the dev backend. */
 export async function runScenario(scenario: Scenario): Promise<void> {
   const client = getConvexTestClient();
   console.log(`▶ ${scenario.name} — ${scenario.description}`);
 
-  const gameId = await client.mutation(api.games.create, {
-    facilitatorToken: FACILITATOR_TOKEN,
-  });
-  console.log(`  game: ${gameId}`);
+  try {
+    const gameId = await createTestGame(client);
+    console.log(`  game: ${gameId}`);
 
-  await client.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
-  if (scenario.setup) await scenario.setup(client, gameId);
+    await client.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
+    if (scenario.setup) await scenario.setup(client, gameId);
+    await runScenarioRounds(client, gameId, scenario);
+  } finally {
+    await cleanupTrackedGames();
+  }
+}
+
+async function runScenarioRounds(
+  client: ConvexHttpClient,
+  gameId: Id<"games">,
+  scenario: Scenario,
+): Promise<void> {
 
   for (const round of scenario.rounds) {
     console.log(`  [R${round.roundNumber}] submit → grade → roll → P7 → narrate → advance`);
