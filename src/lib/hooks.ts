@@ -18,22 +18,26 @@ export function useInAppBrowserDetection() {
 }
 
 /**
- * Returns true when the browser tab is visible, false when hidden.
- * Used to gate expensive Convex subscriptions when the tab is in the background.
- * Mirrors prod behaviour in dev — a forgotten background tab still hammers the
- * dev backend's bandwidth budget, and the dev override that previously kept
- * subscriptions alive in dev was the foot-gun that drove the Apr 23 spike.
+ * Returns true when the browser tab is visible, false when hidden. Gates
+ * expensive Convex subscriptions in background tabs. Behaves the same in dev
+ * and prod — the previous dev override was the foot-gun that drove the Apr 23
+ * dev-bandwidth spike.
+ *
+ * Uses `useSyncExternalStore` so that a tab loaded already-hidden hydrates to
+ * the correct value without a one-frame `true → false` flicker (a `useEffect`
+ * setState would lint-error and also miss the initial reconcile).
  */
 export function usePageVisibility(): boolean {
-  const [visible, setVisible] = useState(() =>
-    typeof document === "undefined" || document.visibilityState === "visible"
+  return useSyncExternalStore(
+    pageVisibilitySubscribe,
+    () => document.visibilityState === "visible",
+    () => true, // SSR: assume visible — `useEffect` rehydration uses the client snapshot.
   );
-  useEffect(() => {
-    const handler = () => setVisible(document.visibilityState === "visible");
-    document.addEventListener("visibilitychange", handler);
-    return () => document.removeEventListener("visibilitychange", handler);
-  }, []);
-  return visible;
+}
+
+function pageVisibilitySubscribe(onChange: () => void): () => void {
+  document.addEventListener("visibilitychange", onChange);
+  return () => document.removeEventListener("visibilitychange", onChange);
 }
 
 /**

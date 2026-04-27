@@ -14,7 +14,7 @@ import {
   ChevronRight,
   MessageSquareText,
 } from "lucide-react";
-import type { FacilitatorPhaseProps, Round, Submission, Proposal, RoundLite } from "./types";
+import type { FacilitatorPhaseProps, CurrentRound, Submission, Proposal, RoundLite } from "./types";
 import type { StructuredEffect } from "@/lib/ai-prompts";
 import type { Id } from "@convex/_generated/dataModel";
 
@@ -23,7 +23,7 @@ import type { Id } from "@convex/_generated/dataModel";
 interface RoundPhaseProps extends FacilitatorPhaseProps {
   submissions: Submission[];
   proposals: Proposal[];
-  currentRound: Round | undefined;
+  currentRound: CurrentRound | undefined;
   resolving: boolean;
   resolveStep: string;
   revealedCount: number;
@@ -370,7 +370,7 @@ function NarrativeEditModal({
   onClose: () => void;
   gameId: Id<"games">;
   roundNumber: number;
-  currentRound: Round | undefined;
+  currentRound: CurrentRound | undefined;
 }) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);

@@ -6,7 +6,7 @@ import { useAuthMutation } from "@/lib/hooks";
 import { api } from "@convex/_generated/api";
 import { NarrativePanel } from "@/components/narrative-panel";
 import { isResolvingPhase } from "@/lib/game-data";
-import type { Round } from "../types";
+import type { CurrentRound, Round } from "../types";
 import type { Id } from "@convex/_generated/dataModel";
 
 /** Types emitted into round.appliedOps by the pipeline. Aggregate types
@@ -77,7 +77,7 @@ export function HappenedSection({
 }: {
   gameId: Id<"games">;
   roundNumber: number;
-  currentRound: Round | undefined;
+  currentRound: CurrentRound | undefined;
   phase: string;
   resolving: boolean;
   resolveStep: string;

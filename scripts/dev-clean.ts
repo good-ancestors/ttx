@@ -30,8 +30,14 @@ async function main() {
       console.log(drained === 0 ? "Already clean — no games to drain." : `Drained ${drained} game(s).`);
       return;
     }
-    await Promise.all(games.map((g) => removeQuiet(g._id)));
-    drained += games.length;
+    const results = await Promise.all(games.map((g) => removeQuiet(g._id)));
+    const succeeded = results.filter(Boolean).length;
+    // Whole-batch failure means a real error (wrong token, transport down) — every
+    // call took the catch branch. Surface it loudly instead of looping to MAX.
+    if (succeeded === 0) {
+      throw new Error(`Failed to drain any of ${games.length} game(s). Likely auth/transport issue — check FACILITATOR_SECRET and Convex URL.`);
+    }
+    drained += succeeded;
     if (games.length < LIST_BATCH_CAP) {
       console.log(`Drained ${drained} game(s).`);
       return;
@@ -40,19 +46,21 @@ async function main() {
   throw new Error(`Stalled after ${MAX_ITERATIONS} iterations (${drained} drained). Inspect manually.`);
 }
 
-/** Distinguish "already gone" (success) from auth/transport errors (must surface).
- *  The previous swallow-everything handler hid wrong-token failures behind a
+/** Returns true on actual delete, false on "already gone" (still success).
+ *  Throws on auth/transport errors so the caller can detect whole-batch failure
+ *  — the previous swallow-everything handler hid wrong-token failures behind a
  *  silent "Drained 0 games" exit. */
-async function removeQuiet(gameId: Parameters<typeof convex.mutation<typeof api.games.remove>>[1]["gameId"]) {
+async function removeQuiet(gameId: Parameters<typeof convex.mutation<typeof api.games.remove>>[1]["gameId"]): Promise<boolean> {
   try {
     await convex.mutation(api.games.remove, {
       gameId,
       confirmation: "DELETE",
       facilitatorToken: FACILITATOR_TOKEN,
     });
+    return true;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    if (/nonexistent document|already deleted|not found/i.test(msg)) return;
+    if (/nonexistent document|already deleted|not found/i.test(msg)) return false;
     throw err;
   }
 }

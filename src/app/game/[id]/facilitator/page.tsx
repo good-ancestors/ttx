@@ -36,9 +36,7 @@ export default function FacilitatorPage({
   const isVisible = usePageVisibility();
   useSessionExpiry("ttx-facilitator-expiry", "/");
 
-  // games.get gates on isVisible — every games-doc patch (phase tick, pipelineStatus,
-  // resolveNonce, phaseEndsAt update) re-pushes this subscription, and a hidden tab
-  // doesn't need the live phase. UI re-mounts on focus and gets the latest state.
+  // Skip when hidden — phase/pipelineStatus/timer patches re-push every subscriber.
   const game = useQuery(api.games.get, isVisible ? { gameId } : "skip");
   const activeLabsRaw = useQuery(api.labs.getActiveLabs, isVisible ? { gameId } : "skip");
   const labTables = useQuery(api.tables.getByGame, isVisible ? { gameId } : "skip");

@@ -18,7 +18,22 @@ async function findRound(ctx: QueryCtx | MutationCtx, gameId: Id<"games">, round
  *  surfaces summary; centralised so adding a new narrative field requires
  *  exactly one edit. */
 type RoundSummary = NonNullable<Doc<"rounds">["summary"]>;
-export function projectSummary(s: RoundSummary | undefined) {
+type ProjectedSummary = Pick<
+  RoundSummary,
+  "outcomes" | "stateOfPlay" | "pressures" | "labs" | "geopolitics" | "publicAndMedia" | "aiSystems"
+>;
+
+// Rot guard: every key on `RoundSummary` must either be projected or explicitly
+// redacted (currently only `facilitatorNotes`). Adding a new schema field fails
+// type-check here until the maintainer decides which bucket it belongs in.
+type _UnclassifiedSummaryKeys = Exclude<keyof RoundSummary, keyof ProjectedSummary | "facilitatorNotes">;
+const _summaryAllowlistCheck: _UnclassifiedSummaryKeys extends never ? true : {
+  ERROR: "Add new summary key to projectSummary or extend the redaction list";
+  UNCLASSIFIED: _UnclassifiedSummaryKeys;
+} = true;
+void _summaryAllowlistCheck;
+
+export function projectSummary(s: RoundSummary | undefined): ProjectedSummary | undefined {
   if (!s) return undefined;
   return {
     outcomes: s.outcomes,
@@ -80,11 +95,9 @@ export const getCurrent = query({
     // write fields (mechanicsLog, appliedOps, etc.) on every pipeline phase
     // patch, and doc-level invalidation re-pushes the subscription each time.
     // Bounding the wire shape here means adding a new round field doesn't
-    // silently bloat every facilitator subscriber.
+    // silently bloat every facilitator subscriber. The `CurrentRound` type
+    // (src/components/facilitator/types.ts) is derived from this return.
     return {
-      _id: round._id,
-      _creationTime: round._creationTime,
-      gameId: round.gameId,
       number: round.number,
       label: round.label,
       summary: projectSummary(round.summary),

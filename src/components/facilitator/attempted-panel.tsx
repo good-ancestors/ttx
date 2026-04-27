@@ -12,7 +12,7 @@ import {
   Clock,
   ChevronDown,
 } from "lucide-react";
-import type { Submission, Proposal, Round, Table } from "./types";
+import type { Submission, Proposal, CurrentRound, Table } from "./types";
 import type { StructuredEffect } from "@/lib/ai-prompts";
 import type { Id } from "@convex/_generated/dataModel";
 import { ActionRow, InlineRollStatus } from "./action-row";
@@ -88,7 +88,7 @@ export function AttemptedPanel({
   hasNarrative: boolean;
   narrativeStale: boolean;
   onDiceChanged: () => void;
-  currentRound: Round | undefined;
+  currentRound: CurrentRound | undefined;
   isTimerExpired: boolean;
   labs: Lab[];
   tables: Table[];

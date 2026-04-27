@@ -59,6 +59,11 @@ interface TrackedGame {
   gameId: Id<"games">;
 }
 
+/** Per-worker process state. Vitest's default `pool: "forks"` means each test
+ *  file runs in its own worker process, so this list is naturally scoped. If
+ *  the project ever switches to threads or `--no-isolate`, switch to a vitest
+ *  beforeEach-bound list (or a context map keyed by test ID) — otherwise
+ *  parallel files could clobber each other's tracked games. */
 const trackedGames: TrackedGame[] = [];
 
 export async function createTestGame(
@@ -74,15 +79,20 @@ export async function createTestGame(
 }
 
 /** Drain every game `createTestGame` recorded. Best-effort: errors per game
- *  are swallowed (game may already be deleted, or partially deleted from a
+ *  are tolerated (game may already be deleted, or partially deleted from a
  *  prior failure). Safe to call multiple times.
  *
  *  Parallel: `splice(0)` atomically claims the queue, then all removes fire
  *  concurrently via `allSettled`. Saves N round-trips of latency per cleanup
- *  versus a sequential loop. */
+ *  versus a sequential loop.
+ *
+ *  Logs a warning if any removal failed. Doesn't throw — would mask the actual
+ *  test failure that probably caused the leak. But silent on a wrong-token CI
+ *  regression would leak games until someone notices the bandwidth bill. */
 export async function cleanupTrackedGames(): Promise<void> {
   const drained = trackedGames.splice(0);
-  await Promise.allSettled(
+  if (drained.length === 0) return;
+  const results = await Promise.allSettled(
     drained.map(({ client, gameId }) =>
       client.mutation(api.games.remove, {
         gameId,
@@ -91,4 +101,9 @@ export async function cleanupTrackedGames(): Promise<void> {
       }),
     ),
   );
+  const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (failures.length > 0) {
+    const reasons = failures.slice(0, 3).map((f) => String(f.reason)).join(" · ");
+    console.warn(`[cleanupTrackedGames] ${failures.length}/${drained.length} game(s) failed to delete: ${reasons}`);
+  }
 }

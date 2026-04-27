@@ -1,3 +1,5 @@
+import type { FunctionReturnType } from "convex/server";
+import type { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import type { StructuredEffect, Confidence } from "@/lib/ai-prompts";
 import type { Lab } from "@/lib/game-data";
@@ -20,11 +22,22 @@ export type Table = {
   playerName?: string;
 };
 
-/** Round document from Convex */
+/** Round document from Convex — full doc shape, used by GameTimeline (which
+ *  reads via `api.rounds.getByGame` only on `status === "finished"`). Not the
+ *  shape returned by the bandwidth-bounded `api.rounds.getCurrent` — see
+ *  `CurrentRound` below for that. */
 export type Round = Doc<"rounds">;
 
+/** Live-subscription projection returned by `api.rounds.getCurrent`. Bounded
+ *  to suppress per-pipeline-phase wire noise; consumers should prefer this
+ *  over `Round` for facilitator UI props. Derived from the actual API return
+ *  so any change to the projection forces a type-level update here. */
+export type CurrentRound = NonNullable<FunctionReturnType<typeof api.rounds.getCurrent>>;
+
 /** Lightweight round summary for the R&D chart + snapshot dropdown — must
- *  stay in sync with `convex/rounds.ts:getByGameLightweight`'s projection. */
+ *  stay in sync with `convex/rounds.ts:getByGameLightweight`'s projection.
+ *  `hasLabsBefore` is wire-only (boolean projection of `labsBefore != null`),
+ *  not present on full `Round` rows — don't expect to find it on `Doc<"rounds">`. */
 export interface RoundLite {
   number: number;
   label: string;

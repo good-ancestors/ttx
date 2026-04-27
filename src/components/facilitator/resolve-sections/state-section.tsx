@@ -9,7 +9,7 @@ import { RdProgressChart } from "@/components/rd-progress-chart";
 import { ExpandableSection } from "../expandable-section";
 import { NewComputeAcquired } from "../new-compute-acquired";
 import { LabStateCard } from "./lab-state-card";
-import type { Round, RoundLite } from "../types";
+import type { CurrentRound, RoundLite } from "../types";
 import type { Id } from "@convex/_generated/dataModel";
 
 /** Section 3 — "Where things are at". Only renders in narrate phase, once growth +
@@ -33,7 +33,7 @@ export function StateSection({
   onAddLab,
 }: {
   gameId: Id<"games">;
-  currentRound: Round | undefined;
+  currentRound: CurrentRound | undefined;
   currentRoundNumber: number;
   phase: string;
   isProjector: boolean;
