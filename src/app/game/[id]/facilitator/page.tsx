@@ -36,8 +36,8 @@ export default function FacilitatorPage({
   const isVisible = usePageVisibility();
   useSessionExpiry("ttx-facilitator-expiry", "/");
 
-  // games.get is always subscribed — lightweight, needed for phase detection even when hidden
-  const game = useQuery(api.games.get, { gameId });
+  // Skip when hidden — phase/pipelineStatus/timer patches re-push every subscriber.
+  const game = useQuery(api.games.get, isVisible ? { gameId } : "skip");
   const activeLabsRaw = useQuery(api.labs.getActiveLabs, isVisible ? { gameId } : "skip");
   const labTables = useQuery(api.tables.getByGame, isVisible ? { gameId } : "skip");
   // Memoised: without this, every Convex reactive tick re-ran an O(labs × tables)

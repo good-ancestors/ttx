@@ -21,6 +21,7 @@ import {
 import handoutData from "../public/role-handouts.json" with { type: "json" };
 import type { RoleHandout } from "@/lib/role-handouts";
 import { generateActionId as generateRandomId } from "./submissions";
+import { projectSummary } from "./rounds";
 import type { LabWithCompute } from "./labs";
 import { plainEventReason } from "./events";
 import {
@@ -82,15 +83,7 @@ function previousRoundsForPrompt(rounds: Round[], roundNumber: number) {
     .map((r) => ({
       number: r.number,
       label: r.label,
-      summary: r.summary ? {
-        outcomes: r.summary.outcomes,
-        stateOfPlay: r.summary.stateOfPlay,
-        pressures: r.summary.pressures,
-        labs: r.summary.labs,
-        geopolitics: r.summary.geopolitics,
-        publicAndMedia: r.summary.publicAndMedia,
-        aiSystems: r.summary.aiSystems,
-      } : undefined,
+      summary: projectSummary(r.summary),
     }));
 }
 

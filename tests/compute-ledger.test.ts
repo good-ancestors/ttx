@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { getConvexTestClient, FACILITATOR_TOKEN, createTestGame } from "./convex-test-client";
 
 // Integration tests for the compute ledger (convex/computeLedger.ts).
 // Run against a live `npx convex dev` deployment:
@@ -11,9 +11,7 @@ import type { Id } from "../convex/_generated/dataModel";
 // requests, facilitator overrides, merges, restore) and assert the cache-ledger
 // invariant and escrow lifecycle through `api.tables.get` + `api.rounds.getComputeHolderView`.
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
-const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET || "coral-ember-drift-sage";
-const convex = new ConvexHttpClient(CONVEX_URL);
+const convex = getConvexTestClient();
 
 /** Cache invariant check via the public holder view: for every role with ledger activity,
  *  getComputeHolderView's stockAfter (sum of all settled rows) must equal table.computeStock. */
@@ -42,7 +40,7 @@ async function openSubmit(gameId: Id<"games">): Promise<void> {
 }
 
 async function createRunningGame(): Promise<Id<"games">> {
-  const gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+  const gameId = await createTestGame(convex);
   await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
   await openSubmit(gameId);
   return gameId;
@@ -360,7 +358,7 @@ describe("computeLedger — restore with merged labs", () => {
   let gameId: Id<"games">;
 
   it("restoreSnapshot(round 1 before) undoes a round-2 merge and wipes round-2 ledger rows", async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
 
     // Force a round-1 resolve so a labsBefore/labsAfter snapshot is written to round 1.

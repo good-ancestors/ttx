@@ -5,7 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useRouter } from "next/navigation";
 import { Plus, Loader2, Trash2, Play, Clock, CheckCircle2, Pencil } from "lucide-react";
-import { SESSION_TTL_MS, storeFacilitatorToken, useAuthMutation } from "@/lib/hooks";
+import { SESSION_TTL_MS, storeFacilitatorToken, useAuthMutation, usePageVisibility } from "@/lib/hooks";
 
 /** Read facilitator auth from localStorage without hydration mismatch. */
 function useFacilitatorAuth() {
@@ -206,7 +206,12 @@ function FacilitatorLogin({ onAuth, onBack }: { onAuth: () => void; onBack: () =
 
 function FacilitatorDashboard() {
   const router = useRouter();
-  const games = useQuery(api.games.list);
+  // Gate the dashboard list on visibility — the games doc is hot (every phase
+  // tick, pipelineStatus, resolveNonce, phaseEndsAt write re-pushes the top-N
+  // entries to every subscriber), so a hidden tab on the dashboard burns
+  // bandwidth all day. Refocus re-mounts and gets the latest state.
+  const isVisible = usePageVisibility();
+  const games = useQuery(api.games.list, isVisible ? {} : "skip");
   const createGame = useAuthMutation(api.games.create);
   const removeGame = useAuthMutation(api.games.remove);
   const renameGame = useAuthMutation(api.games.rename);

@@ -33,9 +33,7 @@ import {
 } from "@/lib/narrative-sections";
 
 interface Round {
-  _id: string;
   number: number;
-  label: string;
   summary?: NarrativeSummary;
 }
 

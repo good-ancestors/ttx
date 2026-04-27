@@ -1,20 +1,18 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { getConvexTestClient, FACILITATOR_TOKEN, createTestGame } from "./convex-test-client";
 
 // Run with: npm run test:integration  (requires `npx convex dev` running)
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
-const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET || "coral-ember-drift-sage";
-const convex = new ConvexHttpClient(CONVEX_URL);
+const convex = getConvexTestClient();
 
 const OPENBRAIN_CEO = "openbrain-ceo";
 const DEEPCENT_CEO = "deepcent-ceo";
 const CONSCIENTA_CEO = "conscienta-ceo";
 
 async function setupGameInSubmitPhase() {
-  const gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+  const gameId = await createTestGame(convex);
   await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
   await convex.mutation(api.games.advancePhase, {
     gameId,

@@ -2,28 +2,15 @@
  * Test script: Full E2E lab progression through 3 rounds.
  * Supports two scenarios: "race" (default) and "slowdown" (Safer pivot).
  *
- * Usage:
- *   npx tsx scripts/test-lab-progression.ts race
- *   npx tsx scripts/test-lab-progression.ts slowdown
+ * Usage (loads .env.local via tsx's built-in --env-file flag):
+ *   npx tsx --env-file=.env.local scripts/test-lab-progression.ts race
+ *   npx tsx --env-file=.env.local scripts/test-lab-progression.ts slowdown
  */
 
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
-import type { Id } from "../convex/_generated/dataModel";
-import * as fs from "fs";
+import { getConvexTestClient, createTestGame, cleanupTrackedGames } from "../tests/convex-test-client";
 
-// Load .env.local manually
-try {
-  const envContent = fs.readFileSync(".env.local", "utf-8");
-  for (const line of envContent.split("\n")) {
-    const match = line.match(/^([^#=]+)=(.+)$/);
-    if (match && !process.env[match[1].trim()]) {
-      process.env[match[1].trim()] = match[2].trim();
-    }
-  }
-} catch { /* ignore */ }
-
-const convex = new ConvexHttpClient(process.env.NEXT_PUBLIC_CONVEX_URL ?? "");
+const convex = getConvexTestClient();
 const API_BASE = "http://localhost:3001";
 const apiKey = process.env.API_SECRET_KEY ?? "";
 
@@ -97,8 +84,7 @@ function getActions(scenario: Scenario, roleId: string, round: number) {
 async function runScenario(scenario: Scenario) {
   const csvBaseline = scenario === "race" ? CSV_RACE : CSV_SLOWDOWN;
 
-  // Create fresh game
-  const gameId = await convex.mutation(api.games.create, { tableCount: 6 }) as Id<"games">;
+  const gameId = await createTestGame(convex, { tableCount: 6 });
   await convex.mutation(api.games.startGame, { gameId });
 
   const game = await convex.query(api.games.get, { gameId });
@@ -216,9 +202,13 @@ async function main() {
     console.error(`Usage: npx tsx scripts/test-lab-progression.ts [${valid.join("|")}]`);
     process.exit(1);
   }
-  if (scenario === "all" || scenario === "race") await runScenario("race");
-  if (scenario === "all" || scenario === "slowdown") await runScenario("slowdown");
-  if (scenario === "all" || scenario === "catchup") await runScenario("catchup");
+  try {
+    if (scenario === "all" || scenario === "race") await runScenario("race");
+    if (scenario === "all" || scenario === "slowdown") await runScenario("slowdown");
+    if (scenario === "all" || scenario === "catchup") await runScenario("catchup");
+  } finally {
+    await cleanupTrackedGames().catch((err) => console.error("cleanup failed:", err));
+  }
 }
 
 main().catch(err => { console.error(err); process.exit(1); });

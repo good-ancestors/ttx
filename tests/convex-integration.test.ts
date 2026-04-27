@@ -1,20 +1,18 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "../convex/_generated/api";
 import type { Id } from "../convex/_generated/dataModel";
+import { getConvexTestClient, FACILITATOR_TOKEN, createTestGame } from "./convex-test-client";
 
 // These tests run against the local Convex dev server.
 // Start with: npx convex dev
 
-const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:3210";
-const FACILITATOR_TOKEN = process.env.FACILITATOR_SECRET || "coral-ember-drift-sage";
-const convex = new ConvexHttpClient(CONVEX_URL);
+const convex = getConvexTestClient();
 
 describe("Game Creation", () => {
   let gameId: Id<"games">;
 
   it("should create a game with 6 tables", async () => {
-    gameId = await convex.mutation(api.games.create, { tableCount: 6, facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex, { tableCount: 6 });
     expect(gameId).toBeTruthy();
 
     const game = await convex.query(api.games.get, { gameId });
@@ -79,7 +77,7 @@ describe("Game Creation", () => {
 
 describe("Game with fewer tables", () => {
   it("should handle tableCount of 3", async () => {
-    const gameId = await convex.mutation(api.games.create, { tableCount: 3, facilitatorToken: FACILITATOR_TOKEN });
+    const gameId = await createTestGame(convex, { tableCount: 3 });
     const tables = await convex.query(api.tables.getByGame, { gameId });
     // Creates all 17 roles, but only enables up to tableCount + required
     expect(tables).toHaveLength(17);
@@ -90,7 +88,7 @@ describe("Game with fewer tables", () => {
   });
 
   it("should handle tableCount of 1", async () => {
-    const gameId = await convex.mutation(api.games.create, { tableCount: 1, facilitatorToken: FACILITATOR_TOKEN });
+    const gameId = await createTestGame(convex, { tableCount: 1 });
     const tables = await convex.query(api.tables.getByGame, { gameId });
     const enabled = tables.filter((t) => t.enabled);
     // At minimum, the 3 required roles
@@ -104,7 +102,7 @@ describe("Table Join Flow", () => {
   let joinCode: string;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     const tables = await convex.query(api.tables.getByGame, { gameId });
     const openbrainTable = tables.find((t) => t.roleId === "openbrain-ceo")!;
     tableId = openbrainTable._id;
@@ -156,7 +154,7 @@ describe("Game Phase Flow", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
   });
 
   it("should start the game", async () => {
@@ -246,7 +244,7 @@ describe("Submission Flow", () => {
   let tableId: Id<"tables">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
@@ -331,7 +329,7 @@ describe("Dice Rolling", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
@@ -398,7 +396,7 @@ describe("Probability Override", () => {
   let subId: Id<"submissions">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
@@ -446,7 +444,7 @@ describe("Proposals", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, { facilitatorToken: FACILITATOR_TOKEN,
       gameId,
@@ -549,7 +547,7 @@ describe("Lab Updates", () => {
   let gameId: Id<"games">;
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
   });
 
   it("should update lab data", async () => {
@@ -599,7 +597,7 @@ describe("Full resolve pipeline (LLM)", () => {
 
   it("should resolve round 1 with narrative, world state, and compute holders", async () => {
     // 1. Create and start game
-    gameId = await convex.mutation(api.games.create, { tableCount: 6, facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex, { tableCount: 6 });
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     const tables = await convex.query(api.tables.getByGame, { gameId });
 
@@ -776,7 +774,7 @@ describe("Compute Escrow", () => {
   const recipientRole = "openbrain-ceo";
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, {
       facilitatorToken: FACILITATOR_TOKEN,
@@ -996,7 +994,7 @@ describe("Compute Send Direction", () => {
   const recipientRole = "openbrain-ceo";
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, {
       facilitatorToken: FACILITATOR_TOKEN,
@@ -1070,7 +1068,7 @@ describe("Compute Request Acceptance", () => {
   const targetRole = "openbrain-ceo";
 
   beforeAll(async () => {
-    gameId = await convex.mutation(api.games.create, { facilitatorToken: FACILITATOR_TOKEN });
+    gameId = await createTestGame(convex);
     await convex.mutation(api.games.startGame, { gameId, facilitatorToken: FACILITATOR_TOKEN });
     await convex.mutation(api.games.advancePhase, {
       facilitatorToken: FACILITATOR_TOKEN,

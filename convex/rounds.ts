@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
 import type { QueryCtx, MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { labTrajectoryValidator } from "./schema";
 import { assertFacilitator } from "./events";
 
@@ -10,6 +10,40 @@ async function findRound(ctx: QueryCtx | MutationCtx, gameId: Id<"games">, round
   return ctx.db.query("rounds")
     .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
     .first();
+}
+
+/** Narrow projection of `round.summary` — outcomes/stateOfPlay/pressures for the
+ *  current shape, plus the legacy 4-domain buckets that older rounds still carry.
+ *  Drops `facilitatorNotes` (facilitator-only). Reused by every read query that
+ *  surfaces summary; centralised so adding a new narrative field requires
+ *  exactly one edit. */
+type RoundSummary = NonNullable<Doc<"rounds">["summary"]>;
+type ProjectedSummary = Pick<
+  RoundSummary,
+  "outcomes" | "stateOfPlay" | "pressures" | "labs" | "geopolitics" | "publicAndMedia" | "aiSystems"
+>;
+
+// Rot guard: every key on `RoundSummary` must either be projected or explicitly
+// redacted (currently only `facilitatorNotes`). Adding a new schema field fails
+// type-check here until the maintainer decides which bucket it belongs in.
+type _UnclassifiedSummaryKeys = Exclude<keyof RoundSummary, keyof ProjectedSummary | "facilitatorNotes">;
+const _summaryAllowlistCheck: _UnclassifiedSummaryKeys extends never ? true : {
+  ERROR: "Add new summary key to projectSummary or extend the redaction list";
+  UNCLASSIFIED: _UnclassifiedSummaryKeys;
+} = true;
+void _summaryAllowlistCheck;
+
+export function projectSummary(s: RoundSummary | undefined): ProjectedSummary | undefined {
+  if (!s) return undefined;
+  return {
+    outcomes: s.outcomes,
+    stateOfPlay: s.stateOfPlay,
+    pressures: s.pressures,
+    labs: s.labs,
+    geopolitics: s.geopolitics,
+    publicAndMedia: s.publicAndMedia,
+    aiSystems: s.aiSystems,
+  };
 }
 
 export const getByGame = query({
@@ -22,8 +56,15 @@ export const getByGame = query({
   },
 });
 
-// Lightweight version for facilitator sidebar — only fields needed by
-// RdProgressChart, GameTimeline chart, and snapshot restore dropdown.
+// Lightweight version for facilitator sidebar — only fields needed by the
+// RdProgressChart and the snapshot-restore dropdown. The `RoundLite` consumer
+// type (src/components/facilitator/types.ts) reflects this shape.
+//
+// Deliberately omits `summary` (full prose blob, can be tens of KB) and the
+// `_id`/`_creationTime`/`gameId` metadata: GameTimeline reads `summary` via
+// `api.rounds.getByGame` (only mounted on `status === "finished"`), and no
+// consumer of this projection keys on `_id`. Trimming halves the per-tick wire
+// cost when the rounds doc invalidates (every pipeline phase patch fires).
 export const getByGameLightweight = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
@@ -33,24 +74,9 @@ export const getByGameLightweight = query({
       .collect();
 
     return rounds.map((r) => ({
-      _id: r._id,
-      _creationTime: r._creationTime,
-      gameId: r.gameId,
       number: r.number,
       label: r.label,
       labsAfter: r.labsAfter,
-      // Narrative summary — outcomes/stateOfPlay/pressures for new rounds, legacy
-      // 4-domain buckets for older rounds. Both shapes passed through; UI prefers new.
-      summary: r.summary ? {
-        outcomes: r.summary.outcomes,
-        stateOfPlay: r.summary.stateOfPlay,
-        pressures: r.summary.pressures,
-        labs: r.summary.labs,
-        geopolitics: r.summary.geopolitics,
-        publicAndMedia: r.summary.publicAndMedia,
-        aiSystems: r.summary.aiSystems,
-      } : undefined,
-      // Minimal flags for snapshot restore dropdown
       hasLabsBefore: r.labsBefore != null,
     }));
   },
@@ -65,12 +91,20 @@ export const getCurrent = query({
     const round = await findRound(ctx, args.gameId, game.currentRound);
     if (!round) return null;
 
-    // Strip facilitator-only fields: reactive query is read by every player table,
-    // and resolveDebug prompts can be ~20KB.
-    const { facilitatorNotes: _, resolveDebug: __, summary, ...rest } = round;
-    if (!summary) return { ...rest, summary: undefined };
-    const { facilitatorNotes: ___, ...summaryRest } = summary;
-    return { ...rest, summary: summaryRest };
+    // Explicit allowlist (not strip-spread) — the round doc accumulates hot-
+    // write fields (mechanicsLog, appliedOps, etc.) on every pipeline phase
+    // patch, and doc-level invalidation re-pushes the subscription each time.
+    // Bounding the wire shape here means adding a new round field doesn't
+    // silently bloat every facilitator subscriber. The `CurrentRound` type
+    // (src/components/facilitator/types.ts) is derived from this return.
+    return {
+      number: round.number,
+      label: round.label,
+      summary: projectSummary(round.summary),
+      aiMeta: round.aiMeta,
+      appliedOps: round.appliedOps,
+      mechanicsLog: round.mechanicsLog,
+    };
   },
 });
 
@@ -100,15 +134,7 @@ export const getForPlayer = query({
       _id: round._id,
       number: round.number,
       label: round.label,
-      summary: round.summary ? {
-        outcomes: round.summary.outcomes,
-        stateOfPlay: round.summary.stateOfPlay,
-        pressures: round.summary.pressures,
-        labs: round.summary.labs,
-        geopolitics: round.summary.geopolitics,
-        publicAndMedia: round.summary.publicAndMedia,
-        aiSystems: round.summary.aiSystems,
-      } : undefined,
+      summary: projectSummary(round.summary),
     };
   },
 });

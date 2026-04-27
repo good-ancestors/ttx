@@ -67,8 +67,11 @@ const scenario: Scenario = {
         if (!merged.summary.includes("Conscienta")) {
           throw new Error(`Expected merge summary to name Conscienta; got "${merged.summary}"`);
         }
-        if (!round.pendingAcquired || round.pendingAcquired.length === 0) {
-          throw new Error(`Expected non-empty pendingAcquired at narrate; got ${JSON.stringify(round.pendingAcquired)}`);
+        // pendingAcquired lives on its dedicated query (not projected by getCurrent
+        // since PR #22's bandwidth pass).
+        const pending = await client.query(api.rounds.getPendingAcquired, { gameId, roundNumber: 2 });
+        if (!pending || pending.length === 0) {
+          throw new Error(`Expected non-empty pendingAcquired at narrate; got ${JSON.stringify(pending)}`);
         }
       },
     },
