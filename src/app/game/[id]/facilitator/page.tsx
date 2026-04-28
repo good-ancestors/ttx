@@ -2,6 +2,7 @@
 
 import { use, useCallback, useMemo, useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -13,6 +14,8 @@ import { DebugPanel } from "@/components/debug-panel";
 import {
   Loader2,
   Dices,
+  Monitor,
+  MonitorOff,
   RotateCcw,
 } from "lucide-react";
 
@@ -23,15 +26,22 @@ import { AddLabForm } from "@/components/facilitator/add-lab-form";
 
 export default function FacilitatorPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ projector?: string }>;
 }) {
   const { id } = use(params);
-  const { projector } = use(searchParams);
-  const isProjector = projector === "true";
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParamsHook = useSearchParams();
+  const isProjector = searchParamsHook.get("projector") === "true";
   const gameId = id as Id<"games">;
+  const onToggleProjector = () => {
+    const next = new URLSearchParams(searchParamsHook.toString());
+    if (isProjector) next.delete("projector");
+    else next.set("projector", "true");
+    const qs = next.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+  };
 
   const isVisible = usePageVisibility();
   useSessionExpiry("ttx-facilitator-expiry", "/");
@@ -276,7 +286,7 @@ export default function FacilitatorPage({
   if (game.status === "lobby") {
     return (
       <div className="min-h-screen bg-navy-dark text-white">
-        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
+        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} onToggleProjector={onToggleProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
         <LobbyPhase
           gameId={gameId}
           game={game}
@@ -297,7 +307,7 @@ export default function FacilitatorPage({
   if (game.status === "finished") {
     return (
       <div className="min-h-screen bg-navy-dark text-white">
-        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
+        <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} onToggleProjector={onToggleProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
         <div className="p-6 max-w-[1400px] mx-auto">
           <div className="text-center mb-8">
             <Dices className="w-12 h-12 text-text-light mx-auto mb-4" />
@@ -316,7 +326,7 @@ export default function FacilitatorPage({
   // ─── PLAYING ────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-navy-dark text-white">
-      <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
+      <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} onToggleProjector={onToggleProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
 
       {/* QR codes overlay — accessible during any phase */}
       {/* Fullscreen single QR code */}
@@ -501,6 +511,7 @@ function FacilitatorNav({
   isUrgent,
   onShowQR,
   isProjector,
+  onToggleProjector,
   snapshots,
   onRestore,
   gameId,
@@ -513,7 +524,8 @@ function FacilitatorNav({
   isExpired: boolean;
   isUrgent: boolean;
   onShowQR?: () => void;
-  isProjector?: boolean;
+  isProjector: boolean;
+  onToggleProjector: () => void;
   snapshots?: { number: number; label: string; useBefore: boolean; desc: string }[];
   onRestore?: (roundNumber: number, useBefore: boolean) => Promise<void>;
   gameId: Id<"games">;
@@ -581,11 +593,19 @@ function FacilitatorNav({
             </div>
           )}
         </div>
-        {isProjector && (
-          <span className="text-[10px] py-0.5 px-2 rounded-full font-mono font-semibold bg-white/10 text-white/70">
-            PROJECTOR
-          </span>
-        )}
+        <button
+          onClick={onToggleProjector}
+          className={`text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 ${
+            isProjector
+              ? "bg-white/15 text-white hover:bg-white/25"
+              : "bg-navy-light text-text-light hover:bg-navy-muted"
+          }`}
+          title={isProjector ? "Exit projector mode" : "Enter projector mode"}
+          aria-pressed={isProjector}
+        >
+          {isProjector ? <Monitor className="w-3.5 h-3.5" /> : <MonitorOff className="w-3.5 h-3.5" />}
+          Projector
+        </button>
         {onShowQR && (
           <button
             onClick={onShowQR}
@@ -599,7 +619,7 @@ function FacilitatorNav({
             timerDisplay={timerDisplay}
             isExpired={isExpired}
             isUrgent={isUrgent}
-            isProjector={isProjector ?? false}
+            isProjector={isProjector}
             gameId={gameId}
             hasTimer={timerDisplay !== "" && timerDisplay !== "0:00"}
             skipTimer={skipTimer}
