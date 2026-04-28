@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, hasCompute } from "@/lib/game-data";
 import { QRCode } from "@/components/qr-codes";
-import { Play, Lock, QrCode, Zap, X } from "lucide-react";
+import { Play, Lock, QrCode, Zap, X, Eye } from "lucide-react";
 import type { FacilitatorPhaseProps } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAuthMutation } from "@/lib/hooks";
@@ -33,6 +34,7 @@ export function LobbyPhase({
   const [pendingStart, setPendingStart] = useState(false);
   const [qrOverlay, setQrOverlay] = useState<string | null>(null);
   const updateTableCompute = useAuthMutation(api.games.updateTableCompute);
+  const observerCounts = useQuery(api.observers.countsByGame, { gameId });
 
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const host = typeof window !== "undefined" ? window.location.host : "";
@@ -200,6 +202,14 @@ export function LobbyPhase({
                       <span className="text-xs text-navy-muted font-mono">Waiting</span>
                     ) : (
                       <span className="text-xs text-navy-muted font-mono">Disabled</span>
+                    )}
+                    {(observerCounts?.[table.roleId] ?? 0) > 0 && (
+                      <span
+                        className="text-[10px] mt-0.5 ml-2 inline-flex items-center gap-0.5 text-text-light"
+                        title={`${observerCounts?.[table.roleId]} observer${observerCounts?.[table.roleId] === 1 ? "" : "s"} watching`}
+                      >
+                        <Eye className="w-2.5 h-2.5" /> {observerCounts?.[table.roleId]}
+                      </span>
                     )}
                     {isAiSystems && isEnabled && (
                       <div className={`text-[10px] mt-0.5 ${table.aiDisposition ? "text-[#A78BFA]" : "text-navy-muted"}`}>

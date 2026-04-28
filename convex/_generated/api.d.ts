@@ -19,6 +19,7 @@ import type * as gameRuntime from "../gameRuntime.js";
 import type * as games from "../games.js";
 import type * as labs from "../labs.js";
 import type * as llm from "../llm.js";
+import type * as observers from "../observers.js";
 import type * as pipeline from "../pipeline.js";
 import type * as pipelineApply from "../pipelineApply.js";
 import type * as requests from "../requests.js";
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   games: typeof games;
   labs: typeof labs;
   llm: typeof llm;
+  observers: typeof observers;
   pipeline: typeof pipeline;
   pipelineApply: typeof pipelineApply;
   requests: typeof requests;

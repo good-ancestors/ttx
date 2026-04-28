@@ -51,6 +51,8 @@ interface TableSubmitProps {
   ideasOpen: boolean;
   onIdeasOpenChange: (open: boolean) => void;
   onSuggestionTap: (suggestion: SampleAction) => void;
+  // Observer view: hide all driver controls (drafting, suggestions, edit/delete).
+  observerView?: boolean;
 }
 
 export function TableSubmit({
@@ -74,11 +76,12 @@ export function TableSubmit({
   ideasOpen,
   onIdeasOpenChange,
   onSuggestionTap,
+  observerView = false,
 }: TableSubmitProps) {
   const submittedList = submittedActions.filter(
     (a) => a.actionStatus === "submitted",
   );
-  const canEdit = game.phase === "submit" && !isExpired;
+  const canEdit = !observerView && game.phase === "submit" && !isExpired;
   const totalActions =
     submittedList.length + actionDrafts.filter((a) => a.text.trim()).length;
 
@@ -88,7 +91,9 @@ export function TableSubmit({
       <div className="flex items-center gap-2 mb-4">
         <Send className="w-4 h-4 text-navy shrink-0" />
         <span className="text-sm font-bold text-text">
-          {isExpired
+          {observerView
+            ? `Driver has submitted ${submittedList.length} action${submittedList.length === 1 ? "" : "s"}`
+            : isExpired
             ? "Time\u2019s up"
             : `${submittedList.length} of ${totalActions || submittedList.length} submitted`}
         </span>
@@ -108,6 +113,14 @@ export function TableSubmit({
               sentRequests={sentRequestsByAction?.get(a.actionId ?? a.text)}
             />
           ))}
+        </div>
+      )}
+
+      {observerView && submittedList.length === 0 && (
+        <div className="bg-white rounded-xl border border-border p-4 text-center">
+          <p className="text-sm text-text-muted">
+            Driver hasn&rsquo;t submitted any actions yet.
+          </p>
         </div>
       )}
 
@@ -144,7 +157,7 @@ export function TableSubmit({
       )}
 
       {/* Compute stock indicator — visible to has-compute roles */}
-      {hasCompute(role) && computeStock != null && (
+      {!observerView && hasCompute(role) && computeStock != null && (
         <div className="mt-4 bg-white rounded-xl border border-border p-4">
           <div className="flex items-center gap-2">
             <Zap className="w-4 h-4 text-[#D97706]" />

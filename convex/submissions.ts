@@ -192,6 +192,26 @@ export const getForTable = query({
   },
 });
 
+// Observer view of a table's submission — filters out draft actions so observers
+// don't see the driver typing in real time. Drafts are stripped server-side so
+// keystroke autosaves don't fan out reactivity to observers.
+export const getForObserver = query({
+  args: { tableId: v.id("tables"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db
+      .query("submissions")
+      .withIndex("by_table_and_round", (q) =>
+        q.eq("tableId", args.tableId).eq("roundNumber", args.roundNumber)
+      )
+      .first();
+    if (!sub) return null;
+    return {
+      ...sub,
+      actions: sub.actions.filter((a) => a.actionStatus === "submitted"),
+    };
+  },
+});
+
 export const submit = mutation({
   args: {
     tableId: v.id("tables"),

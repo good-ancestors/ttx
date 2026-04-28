@@ -13,6 +13,7 @@ import { TableSubmit } from "@/components/table/table-submit";
 import { TableResolving } from "@/components/table/table-resolving";
 import { BriefTab } from "@/components/table/brief-tab";
 import { RespondTab, RespondResultsTab } from "@/components/table/respond-tab";
+import { ObserverActionGuide } from "@/components/table/observer-action-guide";
 import type { PlayerTab } from "@/components/table/player-tabs";
 import type { ResultAction } from "@/components/table/result-action-card";
 import {
@@ -196,15 +197,19 @@ function DiscussContent({ common }: { common: CommonProps }) {
 
 // ─── Submit phase ────────────────────────────────────────────────────────────
 
-function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; submit: SubmitProps; lab: LabProps; labs: Lab[] }) {
+function SubmitContent({ common, submit, lab, labs, observerView }: { common: CommonProps; submit: SubmitProps; lab: LabProps; labs: Lab[]; observerView: boolean }) {
   return (
     <>
-      {common.isAiSystem && !common.aiDisposition && (
+      {!observerView && common.isAiSystem && !common.aiDisposition && (
         <DispositionChooser tableId={common.tableId} onChosen={() => {}} />
       )}
 
       {common.activeTab === "brief" && (
         <BriefTab role={common.role} handoutData={common.handoutData} aiDisposition={common.aiDisposition} gameStatus={common.gameStatus} />
+      )}
+
+      {common.activeTab === "actions" && observerView && (
+        <ObserverActionGuide role={common.role} roundNumber={submit.currentRound} />
       )}
 
       {common.activeTab === "actions" && (
@@ -231,6 +236,7 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
           ideasOpen={submit.ideasOpen}
           onIdeasOpenChange={submit.onIdeasOpenChange}
           onSuggestionTap={submit.onSuggestionTap}
+          observerView={observerView}
         />
       )}
 
@@ -244,48 +250,44 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
           aiInfluencePower={getAiInfluencePower(labs)}
           allRequests={submit.allRequests}
           allowEdits={common.isAiSystem || !submit.isExpired}
+          observerView={observerView}
         />
       )}
 
-      {common.activeTab === "lab" && common.hasLabAccess && (
-        common.controlsLab && lab.currentLab ? (
-          <>
-            <LabComputeSummary lab={lab.currentLab} startingStock={lab.startingStock} />
-            {submit.isExpired ? (
-              <div className="bg-[#FEF2F2] rounded-xl p-4 border border-[#FECACA] mb-3">
-                <div className="flex items-center gap-2 text-sm text-[#991B1B]">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span className="font-bold">Submissions closed</span>
-                </div>
-                <p className="text-xs text-[#B91C1C] mt-1">Lab controls are locked until the next submission window.</p>
-              </div>
-            ) : (
-              <>
-                <LabSpecEditor
-                  labSpec={lab.labSpec}
-                  onLabSpecChange={lab.onLabSpecChange}
-                  specSaved={lab.specSaved}
-                  onSaveSpec={lab.onSaveSpec}
-                  unsaved={lab.specUnsaved}
-                />
-                <ComputeAllocation
-                  allocation={lab.computeAllocation}
-                  onChange={lab.onComputeAllocationChange}
-                  isSubmitted={false}
-                  roleName={common.role.name}
-                  saved={lab.allocationSaved}
-                  unsaved={lab.allocationUnsaved}
-                  onSave={lab.onSaveAllocation}
-                />
-              </>
-            )}
-          </>
-        ) : lab.currentLab ? (
-          <>
-            <LabComputeSummary lab={lab.currentLab} startingStock={lab.startingStock} />
+      {common.activeTab === "lab" && common.hasLabAccess && lab.currentLab && (
+        <>
+          <LabComputeSummary lab={lab.currentLab} startingStock={lab.startingStock} />
+          {observerView || !common.controlsLab ? (
             <ReadOnlyLabView lab={lab.currentLab} roleName={common.role.name} />
-          </>
-        ) : null
+          ) : submit.isExpired ? (
+            <div className="bg-[#FEF2F2] rounded-xl p-4 border border-[#FECACA] mb-3">
+              <div className="flex items-center gap-2 text-sm text-[#991B1B]">
+                <AlertTriangle className="w-4 h-4" />
+                <span className="font-bold">Submissions closed</span>
+              </div>
+              <p className="text-xs text-[#B91C1C] mt-1">Lab controls are locked until the next submission window.</p>
+            </div>
+          ) : (
+            <>
+              <LabSpecEditor
+                labSpec={lab.labSpec}
+                onLabSpecChange={lab.onLabSpecChange}
+                specSaved={lab.specSaved}
+                onSaveSpec={lab.onSaveSpec}
+                unsaved={lab.specUnsaved}
+              />
+              <ComputeAllocation
+                allocation={lab.computeAllocation}
+                onChange={lab.onComputeAllocationChange}
+                isSubmitted={false}
+                roleName={common.role.name}
+                saved={lab.allocationSaved}
+                unsaved={lab.allocationUnsaved}
+                onSave={lab.onSaveAllocation}
+              />
+            </>
+          )}
+        </>
       )}
     </>
   );
@@ -293,7 +295,7 @@ function SubmitContent({ common, submit, lab, labs }: { common: CommonProps; sub
 
 // ─── Resolve phase ───────────────────────────────────────────────────────────
 
-function ResolveContent({ common, resolve, submit, lab }: {
+function ResolveContent({ common, resolve, submit, lab, observerView }: {
   common: CommonProps;
   // "effect-review" is a facilitator-only pause; from the player table view it's
   // indistinguishable from narrate (dice results + narrative waiting to appear),
@@ -301,6 +303,7 @@ function ResolveContent({ common, resolve, submit, lab }: {
   resolve: ResolveProps & { phase: "rolling" | "effect-review" | "narrate" };
   submit: Pick<SubmitProps, "currentRound" | "allRequests">;
   lab: Pick<LabProps, "currentLab" | "startingStock">;
+  observerView: boolean;
 }) {
   return (
     <>
@@ -311,13 +314,21 @@ function ResolveContent({ common, resolve, submit, lab }: {
         <TableResolving phase={resolve.phase} round={resolve.round} sortedResultActions={resolve.sortedResultActions} showNarrative={false} />
       )}
       {common.activeTab === "respond" && (
-        <RespondResultsTab
-          gameId={common.gameId}
-          roundNumber={submit.currentRound}
-          roleId={common.role.id}
-          isAiSystem={common.isAiSystem}
-          allRequests={submit.allRequests ?? []}
-        />
+        observerView ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <p className="text-sm text-text-muted max-w-xs">
+              You&rsquo;re observing. The driver&rsquo;s response history will appear here once the round resolves.
+            </p>
+          </div>
+        ) : (
+          <RespondResultsTab
+            gameId={common.gameId}
+            roundNumber={submit.currentRound}
+            roleId={common.role.id}
+            isAiSystem={common.isAiSystem}
+            allRequests={submit.allRequests ?? []}
+          />
+        )
       )}
       {common.activeTab === "lab" && common.hasLabAccess && lab.currentLab && (
         <>
@@ -339,9 +350,10 @@ interface PhaseContentProps {
   labs: Lab[];
   phase: string;
   playerName: string | undefined;
+  observerView?: boolean;
 }
 
-export function PhaseContent({ common, submit, lab, resolve, labs, phase, playerName }: PhaseContentProps) {
+export function PhaseContent({ common, submit, lab, resolve, labs, phase, playerName, observerView = false }: PhaseContentProps) {
   if (common.gameStatus === "lobby") {
     return <LobbyContent common={common} playerName={playerName} />;
   }
@@ -351,7 +363,7 @@ export function PhaseContent({ common, submit, lab, resolve, labs, phase, player
   }
 
   if (phase === "submit") {
-    return <SubmitContent common={common} submit={submit} lab={lab} labs={labs} />;
+    return <SubmitContent common={common} submit={submit} lab={lab} labs={labs} observerView={observerView} />;
   }
 
   if (isResolvingPhase(phase) && resolve.round) {
@@ -361,6 +373,7 @@ export function PhaseContent({ common, submit, lab, resolve, labs, phase, player
         resolve={{ ...resolve, round: resolve.round, phase }}
         submit={{ currentRound: submit.currentRound, allRequests: submit.allRequests }}
         lab={{ currentLab: lab.currentLab, startingStock: lab.startingStock }}
+        observerView={observerView}
       />
     );
   }

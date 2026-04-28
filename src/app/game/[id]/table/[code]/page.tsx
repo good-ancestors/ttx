@@ -2,10 +2,12 @@
 
 import { use, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
+import { useSearchParams } from "next/navigation";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, getOrCreateId } from "@/lib/hooks";
+import { ObserverView } from "@/components/table/observer-view";
 import { normaliseActions, emptyAction, type ActionDraft, type ComputeTarget } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { loadRoleHandouts, type HandoutData } from "@/lib/role-handouts";
@@ -80,6 +82,27 @@ export default function TablePlayerPage({
   const { id, code } = use(params);
   const gameId = id as Id<"games">;
   const tableId = code as Id<"tables">;
+  const searchParams = useSearchParams();
+  const isObserver = searchParams?.get("observe") === "1";
+
+  // Observer mode renders an entirely separate, read-only view that subscribes
+  // to the same queries with no write paths. Branching here keeps a single URL
+  // surface so existing links (QR codes, facilitator deep links) continue to
+  // route correctly. Rendered as a sibling component so its hooks don't share
+  // state with the driver page.
+  if (isObserver) {
+    return <ObserverView gameId={gameId} tableId={tableId} />;
+  }
+  return <DriverTablePage gameId={gameId} tableId={tableId} />;
+}
+
+function DriverTablePage({
+  gameId,
+  tableId,
+}: {
+  gameId: Id<"games">;
+  tableId: Id<"tables">;
+}) {
   const router = useRouter();
 
   const isVisible = usePageVisibility();
@@ -103,6 +126,7 @@ export default function TablePlayerPage({
   const editSubmittedMut = useMutation(api.submissions.editSubmitted);
   const deleteActionMut = useMutation(api.submissions.deleteAction);
   const setConnected = useMutation(api.tables.setConnected);
+  const pingDriver = useMutation(api.tables.pingDriver);
   const leaveRole = useMutation(api.tables.leaveRole);
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
   const saveComputeAllocationMut = useMutation(api.submissions.saveComputeAllocation);
@@ -248,6 +272,20 @@ export default function TablePlayerPage({
       handleDisconnect();
     };
   }, [tableId, setConnected, sessionId]);
+
+  // Periodic driver heartbeat. Observers gate the takeover button on
+  // `now - driverLastSeenAt > 90s`; without this ping, a backgrounded mobile
+  // tab (no `beforeunload`) would never look fresh and observers would always
+  // see "driver appears idle". Server-side debounced to ~15s intervals.
+  useEffect(() => {
+    if (!tableId || !isVisible) return;
+    const tick = () => {
+      void pingDriver({ tableId, sessionId }).catch(() => {});
+    };
+    tick();
+    const id = setInterval(tick, 30_000);
+    return () => clearInterval(id);
+  }, [tableId, isVisible, sessionId, pingDriver]);
 
   // ── Initialize compute allocation from role defaults ──────────────────────
   useEffect(() => {

@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
+import { mutation, query, internalQuery, internalMutation, type MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { logEvent, assertFacilitator } from "./events";
 import { COMPUTE_POOL_ELIGIBLE, calculatePoolAllocations, AI_SYSTEMS_ROLE_ID } from "./gameData";
 
@@ -140,6 +141,7 @@ export const claimRole = mutation({
       activeSessionId: args.sessionId,
       playerName: args.playerName.trim() || undefined,
     });
+    await upsertPresence(ctx, table, Date.now());
     await logEvent(ctx, args.gameId, "player_connect", args.roleId, {
       sessionId: args.sessionId,
       via: "role_picker",
@@ -157,6 +159,56 @@ export const get = query({
   },
 });
 
+// Driver heartbeat — patched periodically by the active driver tab while the
+// page is visible. Read by the takeover gate; the legacy `connected` boolean
+// only flips on clean unloads, which mobile browsers routinely skip.
+//
+// Writes go to the `tablePresence` companion doc rather than `tables`, so
+// heartbeat traffic doesn't invalidate any query that reads `tables` rows
+// (notably getForPlayer, which fans out to every subscriber in the game).
+const DRIVER_PING_DEBOUNCE_MS = 15_000;
+
+async function upsertPresence(
+  ctx: MutationCtx,
+  table: { _id: Id<"tables">; gameId: Id<"games"> },
+  now: number,
+) {
+  const existing = await ctx.db
+    .query("tablePresence")
+    .withIndex("by_table", (q) => q.eq("tableId", table._id))
+    .first();
+  if (existing) {
+    if (now - existing.driverLastSeenAt < DRIVER_PING_DEBOUNCE_MS) return;
+    await ctx.db.patch(existing._id, { driverLastSeenAt: now });
+    return;
+  }
+  await ctx.db.insert("tablePresence", {
+    gameId: table.gameId,
+    tableId: table._id,
+    driverLastSeenAt: now,
+  });
+}
+
+export const pingDriver = mutation({
+  args: { tableId: v.id("tables"), sessionId: v.string() },
+  handler: async (ctx, args) => {
+    const table = await ctx.db.get(args.tableId);
+    if (!table) return;
+    if (table.activeSessionId !== args.sessionId) return;
+    await upsertPresence(ctx, table, Date.now());
+  },
+});
+
+export const getPresence = query({
+  args: { tableId: v.id("tables") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("tablePresence")
+      .withIndex("by_table", (q) => q.eq("tableId", args.tableId))
+      .first();
+  },
+});
+
 export const setConnected = mutation({
   args: {
     tableId: v.id("tables"),
@@ -166,6 +218,14 @@ export const setConnected = mutation({
   handler: async (ctx, args) => {
     const table = await ctx.db.get(args.tableId);
     const game = table ? await ctx.db.get(table.gameId) : null;
+    // After a takeover, the previous driver's beforeunload still fires and
+    // calls setConnected({connected: false}). Without a session-match guard
+    // it would clear activeSessionId and kick the new driver. Bail silently
+    // when the disconnecting session no longer owns the seat.
+    if (!args.connected && args.sessionId && table?.activeSessionId
+        && table.activeSessionId !== args.sessionId) {
+      return;
+    }
     const patch: Record<string, unknown> = {
       connected: args.connected,
     };
@@ -194,6 +254,9 @@ export const setConnected = mutation({
       // explicitly kicks to AI/NPC via kickToAI or when a new player claims the seat.
     }
     await ctx.db.patch(args.tableId, patch);
+    if (args.connected && table) {
+      await upsertPresence(ctx, table, Date.now());
+    }
     if (table) {
       await logEvent(ctx, table.gameId, args.connected ? "player_connect" : "player_disconnect", table.roleId, {
         sessionId: args.sessionId,
