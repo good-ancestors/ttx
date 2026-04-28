@@ -7,7 +7,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
 import { ROLE_MAP } from "@/lib/game-data";
 import { getStoredPlayerName, setStoredPlayerName, getOrCreateId } from "@/lib/hooks";
-import { Loader2, Users, Clock } from "lucide-react";
+import { Loader2, Users, Eye } from "lucide-react";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
 
 // Use localStorage (not sessionStorage) so all tabs share the same session ID.
@@ -77,22 +77,12 @@ export default function RolePickerPage({
     );
   }
 
-  // Game already started
-  if (game.status !== "lobby") {
-    return (
-      <div className="min-h-dvh flex items-center justify-center bg-navy p-6">
-        <div className="text-center">
-          <Clock className="w-10 h-10 text-text-light mx-auto mb-3" />
-          <h2 className="text-xl font-bold text-white mb-2">Game In Progress</h2>
-          <p className="text-sm text-text-light max-w-xs">
-            This game has already started. Ask the facilitator for a direct link to join a specific role.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const claimedCount = availableRoles.filter((r) => r.connected).length;
+  const gameStarted = game.status !== "lobby";
+
+  const handleObserve = (tableId: string) => {
+    router.push(`/game/${gameId}/table/${tableId}?observe=1`);
+  };
 
   return (
     <InAppBrowserGate>
@@ -102,33 +92,39 @@ export default function RolePickerPage({
           <div className="text-center mb-6">
             {/* eslint-disable-next-line @next/next/no-img-element -- static SVG */}
             <img src="/good-ancestors-logo.svg" alt="Good Ancestors" className="h-8 mx-auto mb-4" />
-            <h1 className="text-2xl font-extrabold text-white mb-1 tracking-tight">Choose Your Role</h1>
+            <h1 className="text-2xl font-extrabold text-white mb-1 tracking-tight">
+              {gameStarted ? "Join a Table" : "Choose Your Role"}
+            </h1>
             <p className="text-sm text-text-light flex items-center justify-center gap-1.5">
               <Users className="w-3.5 h-3.5" />
-              {claimedCount} of {availableRoles.length} roles claimed
+              {gameStarted
+                ? "Game in progress — join a table as observer"
+                : `${claimedCount} of ${availableRoles.length} roles claimed`}
             </p>
           </div>
 
           {/* Name input */}
-          <div className="max-w-sm mx-auto mb-6">
-            <input
-              type="text"
-              value={playerName}
-              onChange={(e) => { setPlayerName(e.target.value); setError(""); }}
-              placeholder="Your name"
-              maxLength={30}
-              autoFocus
-              spellCheck={false}
-              autoComplete="off"
-              data-1p-ignore
-              data-lpignore="true"
-              data-form-type="other"
-              className="w-full py-3 px-4 bg-navy-light text-white text-center text-base
-                         rounded-lg border border-navy-light focus:border-text-light
-                         outline-none placeholder:text-navy-muted"
-            />
-            {error && <p className="text-xs text-viz-danger mt-2 text-center">{error}</p>}
-          </div>
+          {!gameStarted && (
+            <div className="max-w-sm mx-auto mb-6">
+              <input
+                type="text"
+                value={playerName}
+                onChange={(e) => { setPlayerName(e.target.value); setError(""); }}
+                placeholder="Your name"
+                maxLength={30}
+                autoFocus
+                spellCheck={false}
+                autoComplete="off"
+                data-1p-ignore
+                data-lpignore="true"
+                data-form-type="other"
+                className="w-full py-3 px-4 bg-navy-light text-white text-center text-base
+                           rounded-lg border border-navy-light focus:border-text-light
+                           outline-none placeholder:text-navy-muted"
+              />
+              {error && <p className="text-xs text-viz-danger mt-2 text-center">{error}</p>}
+            </div>
+          )}
 
           {/* Role grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -138,19 +134,17 @@ export default function RolePickerPage({
 
               const isClaimed = table.connected && table.controlMode === "human";
               const isClaiming = claiming === table.roleId;
-              const isAvailable = !isClaimed && !claiming;
+              const canDriverClaim = !gameStarted && !isClaimed && !claiming;
 
               return (
-                <button
+                <div
                   key={table._id}
-                  onClick={() => void handleClaim(table.roleId)}
-                  disabled={!isAvailable || isClaiming}
                   className={`text-left rounded-xl border p-4 transition-all ${
-                    isClaimed
-                      ? "border-navy-light/40 opacity-50 cursor-default"
+                    isClaimed || gameStarted
+                      ? "border-navy-light/60 bg-navy"
                       : isClaiming
                         ? "border-text-light bg-navy-light"
-                        : "border-navy-light bg-navy hover:bg-navy-light hover:border-text-light cursor-pointer"
+                        : "border-navy-light bg-navy hover:bg-navy-light hover:border-text-light"
                   }`}
                 >
                   <div className="flex items-center gap-2.5 mb-1.5">
@@ -166,10 +160,27 @@ export default function RolePickerPage({
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-text-light leading-relaxed line-clamp-2">
+                  <p className="text-xs text-text-light leading-relaxed line-clamp-2 mb-3">
                     {role.subtitle}
                   </p>
-                </button>
+                  <div className="flex items-center gap-2">
+                    {!gameStarted && (
+                      <button
+                        onClick={() => void handleClaim(table.roleId)}
+                        disabled={!canDriverClaim || isClaiming}
+                        className="flex-1 min-h-[36px] rounded-lg text-xs font-bold bg-text-light/10 text-white border border-text-light/30 hover:bg-text-light/20 disabled:opacity-30 disabled:cursor-default"
+                      >
+                        {isClaimed ? "Taken" : "Take seat"}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => handleObserve(table._id)}
+                      className={`min-h-[36px] rounded-lg text-xs font-bold border border-navy-light text-text-light hover:bg-navy-light hover:text-white px-3 inline-flex items-center gap-1 ${gameStarted ? "flex-1 justify-center" : ""}`}
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Observe
+                    </button>
+                  </div>
+                </div>
               );
             })}
           </div>

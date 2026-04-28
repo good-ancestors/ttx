@@ -134,6 +134,33 @@ export default defineSchema({
     .index("by_game_and_role", ["gameId", "roleId"])
     .index("by_joinCode", ["joinCode"]),
 
+  // Driver heartbeat companion to `tables`. Patched every ~30s by the active
+  // driver tab; observer takeover reads it. Lives in its own doc so heartbeat
+  // writes don't invalidate `tables`-reading queries (getForPlayer reads every
+  // tables row in the game for compute stock — without this split, every
+  // heartbeat would re-fan to every subscriber).
+  tablePresence: defineTable({
+    gameId: v.id("games"),
+    tableId: v.id("tables"),
+    driverLastSeenAt: v.number(),
+  })
+    .index("by_table", ["tableId"])
+    .index("by_game", ["gameId"]),
+
+  // Observers — extra participants seated at a physical table whose driver
+  // runs the role. Read-only consumers of the same Convex state; can
+  // self-promote to driver if the seat goes stale. No heartbeat: stale rows
+  // clean up via the 4-hour session TTL on the device.
+  tableObservers: defineTable({
+    gameId: v.id("games"),
+    roleId: v.string(),
+    sessionId: v.string(),
+    observerName: v.string(),
+    joinedAt: v.number(),
+  })
+    .index("by_role", ["gameId", "roleId"])
+    .index("by_game", ["gameId"]),
+
   submissions: defineTable({
     tableId: v.id("tables"),
     roundNumber: v.number(),

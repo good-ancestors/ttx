@@ -636,6 +636,7 @@ interface RespondTabProps {
   aiInfluencePower: number;
   allRequests: Doc<"requests">[] | undefined;
   allowEdits?: boolean;
+  observerView?: boolean;
 }
 
 export function RespondTab({
@@ -647,7 +648,17 @@ export function RespondTab({
   aiInfluencePower,
   allRequests,
   allowEdits = true,
+  observerView = false,
 }: RespondTabProps) {
+  if (observerView) {
+    return (
+      <ObserverEndorsementView
+        allRequests={allRequests ?? []}
+        roleId={roleId}
+        isAiSystem={isAiSystem}
+      />
+    );
+  }
   if (isAiSystem) {
     return (
       <AiRespondTab
@@ -667,5 +678,111 @@ export function RespondTab({
       tableId={tableId}
       allowEdits={allowEdits}
     />
+  );
+}
+
+// Read-only request view for observers. Shows the same incoming requests + the
+// driver's recorded responses, with no buttons. AI-Systems table is shown as
+// "no requests" — observers don't get to peek at the secret influence panel
+// even on the AI table (the dispositions and influence power are private).
+function ObserverEndorsementView({
+  allRequests,
+  roleId,
+  isAiSystem,
+}: {
+  allRequests: Doc<"requests">[];
+  roleId: string;
+  isAiSystem: boolean;
+}) {
+  if (isAiSystem) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Inbox className="w-10 h-10 text-border mb-3" />
+        <p className="text-sm text-text-muted max-w-xs">
+          The AI Systems player&rsquo;s influence panel is private. Watch the rolls and outcomes here once the round resolves.
+        </p>
+      </div>
+    );
+  }
+  const groups = groupRequestsByAction(allRequests, roleId);
+  if (groups.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <Inbox className="w-10 h-10 text-border mb-3" />
+        <p className="text-sm text-text-muted max-w-xs">
+          No requests yet. They will appear here once other players ask for the driver&rsquo;s support.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <p className="text-xs text-text-muted">
+        You&rsquo;re observing. Only the driver can respond to these requests.
+      </p>
+      {groups.map((g) => (
+        <ObserverRequestCard key={g.key} group={g} />
+      ))}
+    </div>
+  );
+}
+
+function RequestStatusChip({
+  status,
+  kind,
+}: {
+  status: "pending" | "accepted" | "declined" | undefined;
+  kind: "endorsement" | "compute";
+}) {
+  if (status === "accepted") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#D1FAE5] px-2 py-0.5 text-[11px] font-bold text-[#047857]">
+        <CheckCircle2 className="h-3 w-3" /> {kind === "endorsement" ? "Supported" : "Accepted"}
+      </span>
+    );
+  }
+  if (status === "declined") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-[#FEE2E2] px-2 py-0.5 text-[11px] font-bold text-[#B91C1C]">
+        <XCircle className="h-3 w-3" /> {kind === "endorsement" ? "Opposed" : "Declined"}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-warm-gray px-2 py-0.5 text-[11px] font-bold text-text-muted">
+      <MinusCircle className="h-3 w-3" /> Pending
+    </span>
+  );
+}
+
+function ObserverRequestCard({ group }: { group: ActionRequestGroup }) {
+  const fromRole = ROLE_MAP.get(group.fromRoleId);
+  const endorsement = group.endorsement;
+  const compute = group.compute;
+  return (
+    <div className={`bg-white rounded-xl border p-4 ${compute ? "border-[#FED7AA]" : "border-border"}`}>
+      <div className="flex items-center gap-2 mb-2">
+        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: fromRole?.color }} />
+        <span className="text-sm font-bold text-text">{group.fromRoleName}</span>
+        {compute && (
+          <span className="text-xs font-mono text-[#D97706] bg-[#FFF7ED] px-2 py-0.5 rounded-full flex items-center gap-1">
+            <Zap className="w-3 h-3" /> {compute.computeAmount ?? 0}u
+          </span>
+        )}
+      </div>
+      <p className="text-sm text-text leading-relaxed mb-3">{group.actionText}</p>
+      {endorsement && (
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-[11px] uppercase tracking-wider text-text-muted">Endorsement</span>
+          <RequestStatusChip status={endorsement.status} kind="endorsement" />
+        </div>
+      )}
+      {compute && (
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] uppercase tracking-wider text-text-muted">Compute ({compute.computeAmount ?? 0}u)</span>
+          <RequestStatusChip status={compute.status} kind="compute" />
+        </div>
+      )}
+    </div>
   );
 }
