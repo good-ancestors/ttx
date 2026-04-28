@@ -337,6 +337,7 @@ function MechanicsLogPanel({ entries }: { entries: MechanicsLogEntry[] }) {
     5: "P5 effect",
     9: "P9 growth",
     10: "P10 acquisition",
+    override: "Override",
   };
   const sourceTone: Record<MechanicsLogEntry["source"], string> = {
     "grader-effect": "bg-viz-capability/15 text-viz-capability",

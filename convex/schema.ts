@@ -293,13 +293,15 @@ export default defineSchema({
     }))),
     // Chronological audit log of mechanical state mutations during this round's
     // resolve — every write to lab.rdMultiplier, lab owner's computeStock, or
-    // productivity during phases 5, 9, and 10. Rendered under Applied Effects in
-    // the P7 UI so the facilitator can inspect the full chain before Advance.
+    // productivity during phases 5, 9, and 10, plus post-resolve facilitator
+    // overrides (phase "override"). Rendered under Applied Effects in the P7
+    // UI so the facilitator can inspect the full chain before Advance.
     // Populated atomically alongside each phase's apply mutation; cleared on
-    // re-resolve.
+    // re-resolve. Override entries persist across re-resolve clearing only when
+    // they were written outside the pipeline (i.e. via updateLabs).
     mechanicsLog: v.optional(v.array(v.object({
       sequence: v.number(),
-      phase: v.union(v.literal(5), v.literal(9), v.literal(10)),
+      phase: v.union(v.literal(5), v.literal(9), v.literal(10), v.literal("override")),
       source: v.union(
         v.literal("player-pinned"),
         v.literal("grader-effect"),

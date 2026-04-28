@@ -78,6 +78,13 @@ export const getByGameLightweight = query({
       label: r.label,
       labsAfter: r.labsAfter,
       hasLabsBefore: r.labsBefore != null,
+      // Project just the rdMultiplier override entries from mechanicsLog so the
+      // chart can layer them on top of the (immutable) labsAfter snapshot.
+      // Trimmed to {subject, after, sequence} to keep the wire shape small —
+      // mechanicsLog can hold up to 200 entries per round.
+      rdOverrides: (r.mechanicsLog ?? [])
+        .filter((e) => e.source === "facilitator-edit" && e.field === "rdMultiplier")
+        .map((e) => ({ subject: e.subject, after: e.after, sequence: e.sequence })),
     }));
   },
 });

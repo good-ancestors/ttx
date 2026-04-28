@@ -4,11 +4,16 @@ import { useMemo, useState } from "react";
 import { ROLE_MAP, DEFAULT_LABS, BACKGROUND_LABS, type Lab } from "@/lib/game-data";
 import { FullScreenOverlay } from "@/components/full-screen-overlay";
 import { Maximize2 } from "lucide-react";
+import type { RdOverride } from "@/components/facilitator/types";
 
+/** Round shape consumed by the chart — a subset of `RoundLite`.
+ *  `rdOverrides` are layered on top of `labsAfter` so the rendered point
+ *  reflects facilitator corrections while the snapshot stays immutable. */
 interface Round {
   number: number;
   label: string;
   labsAfter?: Lab[];
+  rdOverrides?: RdOverride[];
 }
 
 // Pre-game baseline multipliers (Oct 2027 — before Agent-2 breakthrough)
@@ -56,7 +61,7 @@ function makeScaleY(ceiling: number) {
 
 // ─── Data preparation (pure, testable) ──────────────────────────────────────
 
-interface ChartPoint { x: number; y: number; value: number }
+interface ChartPoint { x: number; y: number; value: number; overridden?: boolean }
 interface LabSeries {
   name: string;
   roleId: string;
@@ -86,6 +91,33 @@ interface ChartData {
   yPos: (v: number) => number;
   xPos: (i: number) => number;
   layout: ChartLayout;
+}
+
+/** Compose one chart point for a completed round, layering any rdMultiplier
+ *  override on top of the immutable labsAfter snapshot. Latest sequence wins
+ *  when multiple overrides exist for the same lab. */
+function roundChartPoint({
+  round,
+  roundLab,
+  fallbackName,
+  fallbackValue,
+  x,
+}: {
+  round: Round;
+  roundLab: Lab | undefined;
+  fallbackName: string;
+  fallbackValue: number;
+  x: number;
+}): ChartPoint {
+  const subjectName = roundLab?.name ?? fallbackName;
+  const matchingOverrides = (round.rdOverrides ?? []).filter((o) => o.subject === subjectName);
+  const latestOverride = matchingOverrides.length > 0
+    ? matchingOverrides.reduce((a, b) => (a.sequence > b.sequence ? a : b))
+    : undefined;
+  const snapshotValue = roundLab?.rdMultiplier ?? fallbackValue;
+  const value = latestOverride?.after ?? snapshotValue;
+  const overridden = latestOverride !== undefined && latestOverride.after !== snapshotValue;
+  return { x, y: 0, value, overridden };
 }
 
 function buildChartData(
@@ -166,13 +198,18 @@ function buildChartData(
     points.push({ x: xPos(1), y: 0, value: lab.rdMultiplier });
 
     for (let i = 0; i < completedRounds.length; i++) {
-      const roundLab = completedRounds[i].labsAfter?.find((l) => identityKey(l) === labKey);
+      const round = completedRounds[i];
+      const roundLab = round.labsAfter?.find((l) => identityKey(l) === labKey);
       if (!roundLab && isInactive) break;
-      points.push({
+      const fallbackValue = points[points.length - 1]?.value ?? lab.rdMultiplier;
+      const point = roundChartPoint({
+        round,
+        roundLab,
+        fallbackName: lab.name,
+        fallbackValue,
         x: xPos(2 + i),
-        y: 0,
-        value: roundLab?.rdMultiplier ?? points[points.length - 1]?.value ?? lab.rdMultiplier,
       });
+      points.push(point);
     }
 
     // Use the latest name so renames (e.g. "DeepCent" → "DeepCent (Inspected)") display correctly
@@ -285,13 +322,26 @@ export function RdProgressChart({
               strokeLinejoin="round" strokeLinecap="round"
               strokeDasharray={s.isInactive ? "6,4" : undefined}
             />
-            {s.points.map((p, i) => (
-              <circle
-                key={`${s.roleId}-pt-${i}`} cx={p.x} cy={p.y}
-                r={i === s.points.length - 1 ? (s.isInactive ? 3.5 : 4.5) : 2.5}
-                fill={color}
-              />
-            ))}
+            {s.points.map((p, i) => {
+              const baseRadius = i === s.points.length - 1 ? (s.isInactive ? 3.5 : 4.5) : 2.5;
+              return (
+                <g key={`${s.roleId}-pt-${i}`}>
+                  {p.overridden && (
+                    // Hollow ring marks a facilitator override layered on top of
+                    // the round's labsAfter snapshot — point reflects the corrected
+                    // value, not what the mechanics produced.
+                    <circle
+                      cx={p.x} cy={p.y}
+                      r={baseRadius + 2.5}
+                      fill="none" stroke={color} strokeWidth={1.2} opacity={0.55}
+                    >
+                      <title>{`Facilitator override: ${p.value < 10 ? Math.round(p.value * 10) / 10 : Math.round(p.value)}×`}</title>
+                    </circle>
+                  )}
+                  <circle cx={p.x} cy={p.y} r={baseRadius} fill={color} />
+                </g>
+              );
+            })}
             <text
               x={last.x + 7} y={last.y - 6} fill={color}
               fontSize={s.isInactive ? 9 : 11}

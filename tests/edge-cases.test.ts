@@ -291,6 +291,49 @@ describe("edge: updateLabs facilitator path", () => {
       }),
     ).rejects.toThrow(/already exists/);
   });
+
+  it("rdMultiplier override appends a mechanicsLog entry on the current round", async () => {
+    const labs = await convex.query(api.labs.getActiveLabs, { gameId });
+    const target = labs.find((l) => l.name === "DeepCent")!;
+    const before = target.rdMultiplier;
+    const after = before + 2.5;
+
+    await convex.mutation(api.games.updateLabs, {
+      gameId,
+      patches: [{ labId: target._id, rdMultiplier: after }],
+      reason: "Test override",
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+
+    // Live lab doc reflects the override immediately.
+    const labsAfterOverride = await convex.query(api.labs.getActiveLabs, { gameId });
+    expect(labsAfterOverride.find((l) => l._id === target._id)!.rdMultiplier).toBe(after);
+
+    // Override is projected into rdOverrides on the round, with subject = lab name.
+    const rounds = await convex.query(api.rounds.getByGameLightweight, { gameId });
+    const round1 = rounds.find((r) => r.number === 1)!;
+    const matching = (round1.rdOverrides ?? []).filter((o) => o.subject === target.name);
+    expect(matching.length).toBeGreaterThanOrEqual(1);
+    expect(matching[matching.length - 1].after).toBe(after);
+  });
+
+  it("rdMultiplier no-op write skips the override log", async () => {
+    const labs = await convex.query(api.labs.getActiveLabs, { gameId });
+    const conscienta = labs.find((l) => l.name === "Conscienta")!;
+    const beforeRounds = await convex.query(api.rounds.getByGameLightweight, { gameId });
+    const beforeCount = (beforeRounds.find((r) => r.number === 1)!.rdOverrides ?? []).length;
+
+    // Same value — no field change → no log entry.
+    await convex.mutation(api.games.updateLabs, {
+      gameId,
+      patches: [{ labId: conscienta._id, rdMultiplier: conscienta.rdMultiplier }],
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+
+    const afterRounds = await convex.query(api.rounds.getByGameLightweight, { gameId });
+    const afterCount = (afterRounds.find((r) => r.number === 1)!.rdOverrides ?? []).length;
+    expect(afterCount).toBe(beforeCount);
+  });
 });
 
 describe("edge: cache invariant under mixed workload", () => {

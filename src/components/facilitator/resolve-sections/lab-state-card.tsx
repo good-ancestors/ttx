@@ -272,8 +272,11 @@ function LabStateEditor({
   const [deployment, setDeployment] = useState(lab.allocation.deployment);
   const [research, setResearch] = useState(lab.allocation.research);
   const [safety, setSafety] = useState(lab.allocation.safety);
+  const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const multiplierChanged = multiplier !== lab.rdMultiplier;
 
   const updateLabs = useAuthMutation(api.games.updateLabs);
   const overrideHolderCompute = useAuthMutation(api.computeMutations.overrideHolderCompute);
@@ -296,7 +299,11 @@ function LabStateEditor({
         rdMultiplier: multiplier,
         allocation: { deployment, research, safety },
       }];
-      await updateLabs({ gameId, patches });
+      await updateLabs({
+        gameId,
+        patches,
+        reason: multiplierChanged && reason.trim() ? reason.trim() : undefined,
+      });
       if (stock !== currentStock && lab.roleId && roundNumber != null) {
         await overrideHolderCompute({
           gameId,
@@ -367,6 +374,18 @@ function LabStateEditor({
         <span>Total: {totalAlloc}%</span>
         {allocOK ? <Check className="w-3 h-3" /> : <span>(must = 100)</span>}
       </div>
+      {multiplierChanged && (
+        <label className="flex items-center gap-2 text-[11px] text-text-light">
+          <span className="w-20">Reason</span>
+          <input
+            type="text"
+            value={reason}
+            placeholder="Why override?"
+            onChange={(e) => setReason(e.target.value)}
+            className="flex-1 bg-navy-dark border border-navy-light rounded px-2 py-1 text-white"
+          />
+        </label>
+      )}
       {error && (
         <div className="text-[11px] text-viz-danger">{error}</div>
       )}

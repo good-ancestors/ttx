@@ -19,7 +19,7 @@ import { readRuntime } from "./gameRuntime";
  *  stays in sync — phase-5 writes fresh (overwrite), phase-9/10 appends to existing. */
 const mechanicsLogEntryValidator = v.object({
   sequence: v.number(),
-  phase: v.union(v.literal(5), v.literal(9), v.literal(10)),
+  phase: v.union(v.literal(5), v.literal(9), v.literal(10), v.literal("override")),
   source: v.union(
     v.literal("player-pinned"),
     v.literal("grader-effect"),

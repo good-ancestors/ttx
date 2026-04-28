@@ -317,8 +317,43 @@ export const advancePhase = mutation({
   },
 });
 
+type LabPatch = {
+  labId: Id<"labs">;
+  name?: string;
+  spec?: string;
+  rdMultiplier?: number;
+  allocation?: { deployment: number; research: number; safety: number };
+  ownerRoleId?: string | null;
+};
+
+function buildLabFieldPatch(p: LabPatch): Partial<Doc<"labs">> {
+  const patch: Partial<Doc<"labs">> = {};
+  if (p.name !== undefined) patch.name = p.name;
+  if (p.spec !== undefined) patch.spec = p.spec;
+  if (p.rdMultiplier !== undefined) patch.rdMultiplier = p.rdMultiplier;
+  if (p.allocation !== undefined) patch.allocation = p.allocation;
+  if (p.ownerRoleId !== undefined) patch.ownerRoleId = p.ownerRoleId ?? undefined;
+  return patch;
+}
+
+function validateLabPatch(p: LabPatch, lab: Doc<"labs">, otherActive: Doc<"labs">[]) {
+  if (p.name !== undefined && p.name !== lab.name) {
+    const clash = otherActive.find((l) => l._id !== p.labId && l.status === "active" && l.name === p.name);
+    if (clash) throw new Error(`Active lab named "${p.name}" already exists`);
+  }
+  if (p.allocation !== undefined) validateComputeAllocation(p.allocation);
+  if (p.rdMultiplier !== undefined && p.rdMultiplier < 0) {
+    throw new Error(`Lab rdMultiplier must be non-negative (got ${p.rdMultiplier})`);
+  }
+}
+
 /** Bulk-patch structural fields across labs. Compute stock changes must go through
- *  updateTableCompute which emits a ledger facilitator row. */
+ *  updateTableCompute which emits a ledger facilitator row.
+ *
+ *  rdMultiplier overrides also append a `phase: "override"` mechanicsLog entry on
+ *  the current round. The pipeline's labsAfter snapshot stays immutable; the chart
+ *  layers override entries on top so history is auditable while the displayed
+ *  point reflects the corrected value. */
 export const updateLabs = mutation({
   args: {
     gameId: v.id("games"),
@@ -332,6 +367,7 @@ export const updateLabs = mutation({
       })),
       ownerRoleId: v.optional(v.union(v.string(), v.null())),
     })),
+    reason: v.optional(v.string()),
     facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -339,28 +375,59 @@ export const updateLabs = mutation({
     // Same uniqueness guarantee as createLabInternal / mergeLabsInternal: no two active
     // labs in a game may share a name. Narrative-LLM ops key on name so collisions silently
     // drop one lab out of reach.
-    const active = await getActiveLabsForGame(ctx, args.gameId);
+    const [active, game] = await Promise.all([
+      getActiveLabsForGame(ctx, args.gameId),
+      ctx.db.get(args.gameId),
+    ]);
+    const currentRound = game
+      ? await ctx.db.query("rounds")
+          .withIndex("by_game_and_number", (q) =>
+            q.eq("gameId", args.gameId).eq("number", game.currentRound),
+          )
+          .first()
+      : null;
+    const overrideEntries: NonNullable<Doc<"rounds">["mechanicsLog"]> = [];
+    let nextSequence = (currentRound?.mechanicsLog?.length ?? 0);
+    const reason = args.reason?.trim() || "Facilitator override";
+
     for (const p of args.patches) {
       const lab = await ctx.db.get(p.labId);
       if (!lab || lab.gameId !== args.gameId) continue;
-      if (p.name !== undefined && p.name !== lab.name) {
-        const clash = active.find((l) => l._id !== p.labId && l.status === "active" && l.name === p.name);
-        if (clash) throw new Error(`Active lab named "${p.name}" already exists`);
+      validateLabPatch(p, lab, active);
+      const fieldPatch = buildLabFieldPatch(p);
+      if (Object.keys(fieldPatch).length === 0) continue;
+
+      // Log only rdMultiplier changes — mechanicsLog tracks rdMultiplier /
+      // computeStock / productivity. Allocation, spec, name, owner are
+      // structural changes outside that audit scope.
+      if (currentRound && p.rdMultiplier !== undefined && p.rdMultiplier !== lab.rdMultiplier) {
+        overrideEntries.push({
+          sequence: nextSequence++,
+          phase: "override" as const,
+          source: "facilitator-edit" as const,
+          subject: lab.name,
+          field: "rdMultiplier" as const,
+          before: lab.rdMultiplier,
+          after: p.rdMultiplier,
+          reason,
+        });
       }
-      // Allocation must sum to 100 (same rule as the player-path spec editor). Facilitator
-      // clients validate client-side but we enforce here too so a bad or custom client
-      // can't land `{deployment: 100, research: 100, safety: 0}` and break growth.
-      if (p.allocation !== undefined) validateComputeAllocation(p.allocation);
-      if (p.rdMultiplier !== undefined && p.rdMultiplier < 0) {
-        throw new Error(`Lab rdMultiplier must be non-negative (got ${p.rdMultiplier})`);
+
+      await ctx.db.patch(p.labId, fieldPatch);
+    }
+
+    if (currentRound && overrideEntries.length > 0) {
+      const priorLog = currentRound.mechanicsLog ?? [];
+      // Cap at 200 entries — same ceiling pipelineApply.ts:256 enforces for
+      // phase-9/10 appends. Without it a facilitator with override-happy fingers
+      // could push the round doc past Convex's 1MB limit.
+      const roomLeft = Math.max(0, 200 - priorLog.length);
+      const toAppend = overrideEntries.slice(0, roomLeft);
+      if (toAppend.length > 0) {
+        await ctx.db.patch(currentRound._id, {
+          mechanicsLog: [...priorLog, ...toAppend],
+        });
       }
-      const patch: Partial<typeof lab> = {};
-      if (p.name !== undefined) patch.name = p.name;
-      if (p.spec !== undefined) patch.spec = p.spec;
-      if (p.rdMultiplier !== undefined) patch.rdMultiplier = p.rdMultiplier;
-      if (p.allocation !== undefined) patch.allocation = p.allocation;
-      if (p.ownerRoleId !== undefined) patch.ownerRoleId = p.ownerRoleId ?? undefined;
-      if (Object.keys(patch).length > 0) await ctx.db.patch(p.labId, patch);
     }
   },
 });

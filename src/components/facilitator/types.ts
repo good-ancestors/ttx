@@ -38,11 +38,22 @@ export type CurrentRound = NonNullable<FunctionReturnType<typeof api.rounds.getC
  *  stay in sync with `convex/rounds.ts:getByGameLightweight`'s projection.
  *  `hasLabsBefore` is wire-only (boolean projection of `labsBefore != null`),
  *  not present on full `Round` rows — don't expect to find it on `Doc<"rounds">`. */
+/** Facilitator rdMultiplier override entry projected by `getByGameLightweight`
+ *  from a round's mechanicsLog. `subject` matches the lab's name at override
+ *  time. The chart layers the latest override (by sequence) on top of the
+ *  immutable `labsAfter` snapshot. */
+export interface RdOverride {
+  subject: string;
+  after: number;
+  sequence: number;
+}
+
 export interface RoundLite {
   number: number;
   label: string;
   labsAfter?: Lab[];
   hasLabsBefore: boolean;
+  rdOverrides?: RdOverride[];
 }
 
 /** Lightweight submission summary — excludes aiMeta, artifact, computeAllocation.
