@@ -32,25 +32,44 @@ export function TakeoverBanner({
 }: Props) {
   const promote = useMutation(api.observers.promoteToDriver);
   const router = useRouter();
+  const computeActive = (lastSeen: number | undefined) =>
+    controlMode === "human" && lastSeen != null && Date.now() - lastSeen >= SHOW_AT_MS;
+
   const [now, setNow] = useState(() => Date.now());
+  const [isActive, setIsActive] = useState(() => computeActive(driverLastSeenAt));
+  const [lastSeenKey, setLastSeenKey] = useState(driverLastSeenAt);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Only run a per-second interval inside the active countdown window
-  // (SHOW_AT_MS..STALE_MS). Outside that window: schedule a one-shot to wake
-  // up at the next interesting boundary, or no timer at all once past STALE_MS.
+  // Reset gate when the heartbeat updates (driver returned, or first arrival).
+  // React-blessed "derive state from prop change" pattern — gated on the prev-
+  // state comparison so it only fires once per change, not every render.
+  if (lastSeenKey !== driverLastSeenAt) {
+    setLastSeenKey(driverLastSeenAt);
+    setIsActive(computeActive(driverLastSeenAt));
+  }
+
+  // Bridge fresh→active with a one-shot timeout. Once `isActive` flips, the
+  // interval effect below keys on it (not on `now`) so it ticks to completion
+  // without tearing down each second.
   useEffect(() => {
     if (controlMode !== "human" || driverLastSeenAt == null) return;
-    const sinceLastSeen = Date.now() - driverLastSeenAt;
-    if (sinceLastSeen < SHOW_AT_MS) {
-      const t = setTimeout(() => setNow(Date.now()), SHOW_AT_MS - sinceLastSeen + 100);
-      return () => clearTimeout(t);
-    }
-    if (sinceLastSeen < STALE_MS) {
-      const id = setInterval(() => setNow(Date.now()), 1000);
-      return () => clearInterval(id);
-    }
-  }, [controlMode, driverLastSeenAt, now]);
+    const elapsed = Date.now() - driverLastSeenAt;
+    if (elapsed >= SHOW_AT_MS) return;
+    const t = setTimeout(() => setIsActive(true), SHOW_AT_MS - elapsed + 100);
+    return () => clearTimeout(t);
+  }, [controlMode, driverLastSeenAt]);
+
+  // Per-second tick during the active countdown window. Self-cancels once
+  // past STALE_MS so we don't keep ticking with the button enabled.
+  useEffect(() => {
+    if (!isActive || driverLastSeenAt == null) return;
+    const id = setInterval(() => {
+      setNow(Date.now());
+      if (Date.now() - driverLastSeenAt >= STALE_MS) clearInterval(id);
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isActive, driverLastSeenAt]);
 
   if (controlMode !== "human") return null;
   if (driverLastSeenAt == null) return null;

@@ -218,6 +218,14 @@ export const setConnected = mutation({
   handler: async (ctx, args) => {
     const table = await ctx.db.get(args.tableId);
     const game = table ? await ctx.db.get(table.gameId) : null;
+    // After a takeover, the previous driver's beforeunload still fires and
+    // calls setConnected({connected: false}). Without a session-match guard
+    // it would clear activeSessionId and kick the new driver. Bail silently
+    // when the disconnecting session no longer owns the seat.
+    if (!args.connected && args.sessionId && table?.activeSessionId
+        && table.activeSessionId !== args.sessionId) {
+      return;
+    }
     const patch: Record<string, unknown> = {
       connected: args.connected,
     };
