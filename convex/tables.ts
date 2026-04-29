@@ -1,12 +1,28 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation, type MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { logEvent, assertFacilitator } from "./events";
 import { COMPUTE_POOL_ELIGIBLE, calculatePoolAllocations, AI_SYSTEMS_ROLE_ID } from "./gameData";
 
 /** Patch object to fully release a seat (clear player state, revert control mode). */
 function vacateSeat(controlMode: "npc" | "ai" = "npc") {
   return { connected: false, controlMode, playerName: undefined, activeSessionId: undefined } as const;
+}
+
+/** Throws if the caller's session no longer owns the seat. Used by every
+ *  driver-side write so that a tab still mounted after a hand-off / takeover
+ *  can't quietly clobber the new driver's submission. */
+export async function assertSeatOwnership(
+  ctx: { db: { get: (id: Id<"tables">) => Promise<Doc<"tables"> | null> } },
+  tableId: Id<"tables">,
+  sessionId: string,
+): Promise<Doc<"tables">> {
+  const table = await ctx.db.get(tableId);
+  if (!table) throw new Error("Table not found");
+  if (table.activeSessionId !== sessionId) {
+    throw new Error("Seat changed hands — refresh and rejoin");
+  }
+  return table;
 }
 
 export const getByGame = query({
@@ -72,8 +88,12 @@ export const getByJoinCode = query({
       )
       .first();
     if (!table) return null;
+    // Inline gameStatus so the join page can route mid-game scans to observer
+    // mode without subscribing to the full games doc (which churns on every
+    // pipelineStatus tick during resolve).
+    const game = await ctx.db.get(table.gameId);
     const { aiDisposition: _, ...rest } = table;
-    return rest;
+    return { ...rest, gameStatus: game?.status ?? null };
   },
 });
 

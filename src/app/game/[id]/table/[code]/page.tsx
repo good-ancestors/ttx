@@ -478,13 +478,13 @@ function DriverTablePage({
     const lab = game.labs.find((l) => l.roleId === role.id);
     if (!lab) return;
     try {
-      await updateLabSpecMut({ gameId, labName: lab.name, spec: labSpec.trim() });
+      await updateLabSpecMut({ gameId, tableId, sessionId, labName: lab.name, spec: labSpec.trim() });
       setSpecSaved(true);
       setTimeout(() => setSpecSaved(false), 2000);
     } catch (err) {
       console.error("Failed to save spec:", err);
     }
-  }, [labSpec, role, game, gameId, updateLabSpecMut]);
+  }, [labSpec, role, game, gameId, tableId, sessionId, updateLabSpecMut]);
 
   const [allocationSaved, setAllocationSaved] = useState(false);
   const handleSaveAllocation = useCallback(async () => {
@@ -495,6 +495,7 @@ function DriverTablePage({
         gameId,
         roundNumber: game.currentRound,
         roleId: role.id,
+        sessionId,
         computeAllocation,
       });
       setAllocationSaved(true);
@@ -502,7 +503,7 @@ function DriverTablePage({
     } catch (err) {
       console.error("Failed to save allocation:", err);
     }
-  }, [role, game, tableId, gameId, computeAllocation, saveComputeAllocationMut]);
+  }, [role, game, tableId, gameId, sessionId, computeAllocation, saveComputeAllocationMut]);
 
   // ─── Per-action handlers ────────────────────────────────────────────────────
 
@@ -516,6 +517,7 @@ function DriverTablePage({
         gameId,
         roundNumber: game.currentRound,
         roleId: role.id,
+        sessionId,
         text: draft.text.trim(),
         priority: 1,
         secret: draft.secret || undefined,
@@ -532,7 +534,7 @@ function DriverTablePage({
     } catch (err) {
       setSubmitError(`Failed to submit action: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [actionDrafts, role, game, tableId, gameId, saveAndSubmitMut]);
+  }, [actionDrafts, role, game, tableId, gameId, sessionId, saveAndSubmitMut]);
 
   // ── Sent requests grouped by actionId (stable across text edits) ────
   const sentRequestsByAction = useMemo(() => {
@@ -575,7 +577,7 @@ function DriverTablePage({
         if (!confirmed) return;
       }
 
-      await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex });
+      await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex, sessionId });
 
       // Restore endorsement/compute targets from existing requests
       const actionRequests = sentRequestsByAction?.get(action.actionId ?? action.text) ?? [];
@@ -601,7 +603,7 @@ function DriverTablePage({
     } catch (err) {
       setSubmitError(`Failed to edit: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [submission, editSubmittedMut, sentRequestsByAction, allTables]);
+  }, [submission, editSubmittedMut, sentRequestsByAction, allTables, sessionId]);
 
   const handleDeleteAction = useCallback(async (submittedIndex: number) => {
     if (!submission) return;
@@ -609,11 +611,11 @@ function DriverTablePage({
     try {
       const actualIndex = nthSubmittedIndex(submission.actions, submittedIndex);
       if (actualIndex === -1) return;
-      await deleteActionMut({ submissionId: submission._id, actionIndex: actualIndex });
+      await deleteActionMut({ submissionId: submission._id, actionIndex: actualIndex, sessionId });
     } catch (err) {
       setSubmitError(`Failed to delete: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [submission, deleteActionMut]);
+  }, [submission, deleteActionMut, sessionId]);
 
   // ── Loading & error states ────────────────────────────────────────────────
   const notFound = game === null || table === null || round === null;

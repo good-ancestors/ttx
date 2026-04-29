@@ -8,7 +8,6 @@ import { useRouter } from "next/navigation";
 import {
   ROLE_MAP,
   AI_SYSTEMS_ROLE_ID,
-  DEFAULT_ROUND_LABEL,
   PHASE_LABELS,
   classifySeat,
   type SeatState,
@@ -93,7 +92,7 @@ export default function RolePickerPage({
 
   const claimedCount = availableRoles.filter((r) => r.connected && r.controlMode === "human").length;
   const gameStarted = game.status !== "lobby";
-  const turnLabel = `Turn ${game.currentRound}/4 — ${PHASE_LABELS[game.phase] ?? DEFAULT_ROUND_LABEL}`;
+  const turnLabel = `Turn ${game.currentRound}/4 — ${PHASE_LABELS[game.phase] ?? game.phase}`;
 
   const handleObserve = (tableId: string) => {
     router.push(`/game/${gameId}/table/${tableId}?observe=1`);
