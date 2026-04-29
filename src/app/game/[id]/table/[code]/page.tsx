@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS } from "@/lib/game-data";
+import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS, getObserveUrl } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, getOrCreateId } from "@/lib/hooks";
 import { ObserverView } from "@/components/table/observer-view";
 import { normaliseActions, emptyAction, type ActionDraft, type ComputeTarget } from "@/components/action-input";
@@ -24,6 +24,8 @@ import {
   Info,
   Zap,
   LogOut,
+  MoreVertical,
+  ArrowRightLeft,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -127,6 +129,7 @@ function DriverTablePage({
   const deleteActionMut = useMutation(api.submissions.deleteAction);
   const setConnected = useMutation(api.tables.setConnected);
   const pingDriver = useMutation(api.tables.pingDriver);
+  const handOffSeat = useMutation(api.tables.handOffSeat);
   const leaveRole = useMutation(api.tables.leaveRole);
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
   const saveComputeAllocationMut = useMutation(api.submissions.saveComputeAllocation);
@@ -475,13 +478,13 @@ function DriverTablePage({
     const lab = game.labs.find((l) => l.roleId === role.id);
     if (!lab) return;
     try {
-      await updateLabSpecMut({ gameId, labName: lab.name, spec: labSpec.trim() });
+      await updateLabSpecMut({ gameId, tableId, sessionId, labName: lab.name, spec: labSpec.trim() });
       setSpecSaved(true);
       setTimeout(() => setSpecSaved(false), 2000);
     } catch (err) {
       console.error("Failed to save spec:", err);
     }
-  }, [labSpec, role, game, gameId, updateLabSpecMut]);
+  }, [labSpec, role, game, gameId, tableId, sessionId, updateLabSpecMut]);
 
   const [allocationSaved, setAllocationSaved] = useState(false);
   const handleSaveAllocation = useCallback(async () => {
@@ -492,6 +495,7 @@ function DriverTablePage({
         gameId,
         roundNumber: game.currentRound,
         roleId: role.id,
+        sessionId,
         computeAllocation,
       });
       setAllocationSaved(true);
@@ -499,7 +503,7 @@ function DriverTablePage({
     } catch (err) {
       console.error("Failed to save allocation:", err);
     }
-  }, [role, game, tableId, gameId, computeAllocation, saveComputeAllocationMut]);
+  }, [role, game, tableId, gameId, sessionId, computeAllocation, saveComputeAllocationMut]);
 
   // ─── Per-action handlers ────────────────────────────────────────────────────
 
@@ -513,6 +517,7 @@ function DriverTablePage({
         gameId,
         roundNumber: game.currentRound,
         roleId: role.id,
+        sessionId,
         text: draft.text.trim(),
         priority: 1,
         secret: draft.secret || undefined,
@@ -529,7 +534,7 @@ function DriverTablePage({
     } catch (err) {
       setSubmitError(`Failed to submit action: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [actionDrafts, role, game, tableId, gameId, saveAndSubmitMut]);
+  }, [actionDrafts, role, game, tableId, gameId, sessionId, saveAndSubmitMut]);
 
   // ── Sent requests grouped by actionId (stable across text edits) ────
   const sentRequestsByAction = useMemo(() => {
@@ -572,7 +577,7 @@ function DriverTablePage({
         if (!confirmed) return;
       }
 
-      await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex });
+      await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex, sessionId });
 
       // Restore endorsement/compute targets from existing requests
       const actionRequests = sentRequestsByAction?.get(action.actionId ?? action.text) ?? [];
@@ -598,7 +603,7 @@ function DriverTablePage({
     } catch (err) {
       setSubmitError(`Failed to edit: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [submission, editSubmittedMut, sentRequestsByAction, allTables]);
+  }, [submission, editSubmittedMut, sentRequestsByAction, allTables, sessionId]);
 
   const handleDeleteAction = useCallback(async (submittedIndex: number) => {
     if (!submission) return;
@@ -606,11 +611,11 @@ function DriverTablePage({
     try {
       const actualIndex = nthSubmittedIndex(submission.actions, submittedIndex);
       if (actualIndex === -1) return;
-      await deleteActionMut({ submissionId: submission._id, actionIndex: actualIndex });
+      await deleteActionMut({ submissionId: submission._id, actionIndex: actualIndex, sessionId });
     } catch (err) {
       setSubmitError(`Failed to delete: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
-  }, [submission, deleteActionMut]);
+  }, [submission, deleteActionMut, sessionId]);
 
   // ── Loading & error states ────────────────────────────────────────────────
   const notFound = game === null || table === null || round === null;
@@ -708,9 +713,17 @@ function DriverTablePage({
                   <LogOut className="w-3 h-3" /> Leave
                 </button>
               ) : (
-                <span className="text-[11px] text-text-muted font-mono">
-                  {round?.label ?? DEFAULT_ROUND_LABEL} — Turn {round?.number ?? 1}/4
-                </span>
+                <>
+                  <span className="text-[11px] text-text-muted font-mono">
+                    {round?.label ?? DEFAULT_ROUND_LABEL} — Turn {round?.number ?? 1}/4
+                  </span>
+                  <DriverSeatMenu
+                    onHandOff={() => {
+                      void handOffSeat({ tableId, sessionId });
+                      router.push(`/game/${gameId}/pick`);
+                    }}
+                  />
+                </>
               )}
               <ConnectionIndicator />
             </div>
@@ -761,6 +774,8 @@ function DriverTablePage({
               handoutData,
               hasLabAccess,
               controlsLab,
+              observeUrl: getObserveUrl(gameId, tableId) || undefined,
+              joinCode: table.joinCode,
             }}
             submit={{
               game,
@@ -814,5 +829,73 @@ function DriverTablePage({
         )}
       </div>
     </InAppBrowserGate>
+  );
+}
+
+// ─── Driver seat menu ─────────────────────────────────────────────────────
+// Holds destructive-ish driver actions (hand off, leave) behind a kebab so
+// they aren't peer buttons in the header. Hand-off has a one-tap confirm
+// because it's irreversible — anyone in the picker can claim immediately.
+
+function DriverSeatMenu({ onHandOff }: { onHandOff: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setConfirming(false);
+      }
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-text-muted hover:text-text transition-colors p-1"
+        aria-label="Driver options"
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-xl z-30 min-w-[200px] py-1">
+          {!confirming ? (
+            <button
+              onClick={() => setConfirming(true)}
+              className="w-full text-left px-3 py-2 text-xs text-text hover:bg-warm-gray transition-colors flex items-center gap-2"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              Hand off this seat
+            </button>
+          ) : (
+            <div className="px-3 py-2">
+              <p className="text-[11px] text-text-muted mb-2 leading-snug">
+                Anyone at the table can claim immediately. You&rsquo;ll go back to the role picker.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setOpen(false); setConfirming(false); onHandOff(); }}
+                  className="flex-1 min-h-[32px] rounded text-xs font-bold bg-text text-white hover:bg-text/90"
+                >
+                  Hand off
+                </button>
+                <button
+                  onClick={() => setConfirming(false)}
+                  className="min-h-[32px] px-3 rounded text-xs text-text-muted hover:text-text"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

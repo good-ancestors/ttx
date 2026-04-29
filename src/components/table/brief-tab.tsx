@@ -4,13 +4,19 @@ import { useState } from "react";
 import { type Role, isLabCeo, hasCompute, getDisposition } from "@/lib/game-data";
 import type { HandoutData, RoleHandout } from "@/lib/role-handouts";
 import { DispositionBadge } from "@/components/table/disposition-badge";
-import { ChevronDown, ChevronUp, Zap, Vote, FlaskConical, Send, Dices, BookText } from "lucide-react";
+import { QRCode } from "@/components/qr-codes";
+import { ChevronDown, ChevronUp, Zap, Vote, FlaskConical, Send, Dices, BookText, Eye, X } from "lucide-react";
 
 interface BriefTabProps {
   role: Role;
   handoutData: HandoutData | null;
   aiDisposition: string | undefined;
   gameStatus?: "lobby" | "playing" | "finished";
+  // When set, renders a "Share with my team" affordance for the driver to
+  // invite co-located observers. Undefined for the observer view itself
+  // (observers don't invite their own observers).
+  observeUrl?: string;
+  joinCode?: string;
 }
 
 export function BriefTab({
@@ -18,9 +24,12 @@ export function BriefTab({
   handoutData,
   aiDisposition,
   gameStatus,
+  observeUrl,
+  joinCode,
 }: BriefTabProps) {
   const isPlaying = gameStatus === "playing";
   const [howToPlayOpen, setHowToPlayOpen] = useState(!isPlaying);
+  const [shareOpen, setShareOpen] = useState(false);
   const disposition = aiDisposition ? getDisposition(aiDisposition) : null;
   const handout = handoutData?.[role.id];
 
@@ -30,10 +39,19 @@ export function BriefTab({
       <div className="bg-white rounded-xl p-5 border border-border">
         <div className="flex items-center gap-3 mb-2">
           <div className="w-4 h-4 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
-          <div>
+          <div className="flex-1 min-w-0">
             <h1 className="text-lg font-bold text-text leading-tight">{role.name}</h1>
             <p className="text-sm text-text-muted italic">{role.subtitle}</p>
           </div>
+          {observeUrl && (
+            <button
+              onClick={() => setShareOpen(true)}
+              className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold text-[#1D4ED8] bg-[#DBEAFE] hover:bg-[#BFDBFE] rounded-full px-2 py-1"
+              title="Show a QR code so others at your table can watch along"
+            >
+              <Eye className="w-3 h-3" /> Share
+            </button>
+          )}
         </div>
         <p className="text-sm text-text leading-relaxed">{role.brief}</p>
 
@@ -69,6 +87,44 @@ export function BriefTab({
           <span className="text-sm text-text-muted">Your full character brief will appear here when the game starts.</span>
         </div>
       ))}
+
+      {/* Share-with-team modal */}
+      {shareOpen && observeUrl && (
+        <div
+          className="fixed inset-0 bg-black/70 z-50 flex flex-col items-center justify-center p-6 cursor-pointer"
+          onClick={() => setShareOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl p-6 max-w-sm w-full text-center cursor-default"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold text-text-muted uppercase tracking-wider">
+                I&rsquo;m playing {role.name}
+              </span>
+              <button
+                onClick={() => setShareOpen(false)}
+                className="text-text-muted hover:text-text"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm text-text mb-4">
+              Scan to watch along — you&rsquo;ll see the brief and incoming requests, and can step in if I drop off.
+            </p>
+            <div className="flex justify-center mb-3">
+              <QRCode value={observeUrl} size={220} />
+            </div>
+            {joinCode && (
+              <p className="text-lg font-mono font-extrabold text-text tracking-[0.3em]">
+                {joinCode}
+              </p>
+            )}
+            <p className="text-[11px] text-text-muted mt-3">Tap anywhere to close</p>
+          </div>
+        </div>
+      )}
 
       {/* ─── How to Play (expanded in lobby, collapsed during game) ─── */}
       <div className="bg-white rounded-xl border border-border overflow-hidden">

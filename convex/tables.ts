@@ -1,12 +1,28 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation, type MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { logEvent, assertFacilitator } from "./events";
 import { COMPUTE_POOL_ELIGIBLE, calculatePoolAllocations, AI_SYSTEMS_ROLE_ID } from "./gameData";
 
 /** Patch object to fully release a seat (clear player state, revert control mode). */
 function vacateSeat(controlMode: "npc" | "ai" = "npc") {
   return { connected: false, controlMode, playerName: undefined, activeSessionId: undefined } as const;
+}
+
+/** Throws if the caller's session no longer owns the seat. Used by every
+ *  driver-side write so that a tab still mounted after a hand-off / takeover
+ *  can't quietly clobber the new driver's submission. */
+export async function assertSeatOwnership(
+  ctx: { db: { get: (id: Id<"tables">) => Promise<Doc<"tables"> | null> } },
+  tableId: Id<"tables">,
+  sessionId: string,
+): Promise<Doc<"tables">> {
+  const table = await ctx.db.get(tableId);
+  if (!table) throw new Error("Table not found");
+  if (table.activeSessionId !== sessionId) {
+    throw new Error("Seat changed hands — refresh and rejoin");
+  }
+  return table;
 }
 
 export const getByGame = query({
@@ -72,8 +88,12 @@ export const getByJoinCode = query({
       )
       .first();
     if (!table) return null;
+    // Inline gameStatus so the join page can route mid-game scans to observer
+    // mode without subscribing to the full games doc (which churns on every
+    // pipelineStatus tick during resolve).
+    const game = await ctx.db.get(table.gameId);
     const { aiDisposition: _, ...rest } = table;
-    return rest;
+    return { ...rest, gameStatus: game?.status ?? null };
   },
 });
 
@@ -94,11 +114,29 @@ export const getAvailableRoles = query({
         connected: t.connected,
         controlMode: t.controlMode,
         playerName: t.playerName,
+        // activeSessionId is needed mid-game so the picker can distinguish
+        // "active human driver" from "human seat that nobody is in" (driver
+        // disconnected / facilitator toggled away). Sent as a presence flag
+        // (truthy/falsy) rather than the raw id to avoid leaking session
+        // tokens to the picker page.
+        seatHeld: !!t.activeSessionId,
       }));
   },
 });
 
 // Player claims a role from the role picker (Jackbox-style join flow).
+//
+// Lobby: any role can be claimed.
+// Mid-game: claimable when the seat is *empty* — controlMode is "ai" or
+// "npc", or "human" but no active session (driver disconnected / facilitator
+// toggled away). Active human seats are NOT claimable from the picker; the
+// existing observer + 90s heartbeat-stale flow handles involuntary takeover,
+// and the in-driver "Hand off seat" button handles voluntary handoff.
+//
+// AI Systems is a special case: its hidden disposition is the load-bearing
+// secret of the game. The picker can claim it only if the seat is already
+// abandoned (controlMode "human" + no active session); claiming directly
+// from "ai" mode requires the facilitator to flip controlMode first.
 export const claimRole = mutation({
   args: {
     gameId: v.id("games"),
@@ -109,7 +147,7 @@ export const claimRole = mutation({
   handler: async (ctx, args) => {
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
-    if (game.status !== "lobby") throw new Error("Game has already started");
+    if (game.status === "finished") throw new Error("Game has finished");
 
     const table = await ctx.db
       .query("tables")
@@ -119,6 +157,22 @@ export const claimRole = mutation({
       .first();
     if (!table) throw new Error("Role not found");
     if (!table.enabled) throw new Error("This role is not available");
+
+    if (game.status !== "lobby") {
+      const isActiveHuman =
+        table.controlMode === "human" && table.connected && !!table.activeSessionId
+        && table.activeSessionId !== args.sessionId;
+      if (isActiveHuman) {
+        throw new Error("This seat has an active driver — observe instead, or wait for them to hand off");
+      }
+      const isAbandoned =
+        table.controlMode === "human" && (!table.activeSessionId || !table.connected);
+      const isAiSystems = table.roleId === AI_SYSTEMS_ROLE_ID;
+      if (isAiSystems && !isAbandoned) {
+        throw new Error("AI Systems can only be claimed after the facilitator releases it");
+      }
+    }
+
     if (table.connected && table.activeSessionId
         && table.activeSessionId !== args.sessionId) {
       throw new Error("This role is already claimed by another player");
@@ -135,6 +189,8 @@ export const claimRole = mutation({
       }
     }
 
+    const previousMode = table.controlMode;
+    const previousName = table.playerName;
     await ctx.db.patch(table._id, {
       connected: true,
       controlMode: "human",
@@ -142,13 +198,66 @@ export const claimRole = mutation({
       playerName: args.playerName.trim() || undefined,
     });
     await upsertPresence(ctx, table, Date.now());
-    await logEvent(ctx, args.gameId, "player_connect", args.roleId, {
-      sessionId: args.sessionId,
-      via: "role_picker",
-      playerName: args.playerName.trim(),
-    });
+    // Mid-game claims log a richer event for the audit trail and any future
+    // public-announcement UI; lobby claims keep the original event shape.
+    if (game.status === "lobby") {
+      await logEvent(ctx, args.gameId, "player_connect", args.roleId, {
+        sessionId: args.sessionId,
+        via: "role_picker",
+        playerName: args.playerName.trim(),
+      });
+    } else {
+      await logEvent(ctx, args.gameId, "seat_claimed_mid_game", args.roleId, {
+        sessionId: args.sessionId,
+        playerName: args.playerName.trim(),
+        fromMode: previousMode,
+        fromName: previousName,
+      });
+    }
 
     return { tableId: table._id };
+  },
+});
+
+// Driver explicitly hands off the seat. Clears the session and backdates the
+// presence heartbeat so observer takeover banners activate immediately rather
+// than waiting the 90s involuntary-disconnect grace. controlMode stays
+// "human" so the seat is "abandoned human" and any picker user can claim it.
+//
+// Note: this is intentionally not vacateSeat() — vacateSeat resets controlMode
+// to npc/ai (which is right for kicks), while hand-off keeps controlMode
+// "human" so the picker offers a direct "Take seat" affordance.
+const HANDOFF_BACKDATE_MS = 10 * 60_000;
+
+export const handOffSeat = mutation({
+  args: { tableId: v.id("tables"), sessionId: v.string() },
+  handler: async (ctx, args) => {
+    const table = await ctx.db.get(args.tableId);
+    if (!table) return;
+    if (table.activeSessionId !== args.sessionId) return;
+    const previousName = table.playerName;
+    await ctx.db.patch(args.tableId, {
+      connected: false,
+      activeSessionId: undefined,
+    });
+    const presence = await ctx.db
+      .query("tablePresence")
+      .withIndex("by_table", (q) => q.eq("tableId", args.tableId))
+      .first();
+    const backdated = Date.now() - HANDOFF_BACKDATE_MS;
+    if (presence) {
+      await ctx.db.patch(presence._id, { driverLastSeenAt: backdated });
+    } else {
+      await ctx.db.insert("tablePresence", {
+        gameId: table.gameId,
+        tableId: args.tableId,
+        driverLastSeenAt: backdated,
+      });
+    }
+    await logEvent(ctx, table.gameId, "seat_handed_off", table.roleId, {
+      sessionId: args.sessionId,
+      fromName: previousName,
+    });
   },
 });
 

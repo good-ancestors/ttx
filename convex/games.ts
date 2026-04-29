@@ -3,6 +3,7 @@ import { mutation, query, internalMutation, internalQuery, type MutationCtx } fr
 import type { Doc, Id } from "./_generated/dataModel";
 import { ROLES, ROUND_CONFIGS, DEFAULT_LABS, AI_SYSTEMS_ROLE_ID, calculatePoolAllocations } from "./gameData";
 import { logEvent, assertFacilitator, assertNotResolving } from "./events";
+import { assertSeatOwnership } from "./tables";
 import { internal } from "./_generated/api";
 import {
   getActiveLabsForGame,
@@ -435,18 +436,26 @@ export const updateLabs = mutation({
 export const updateLabSpec = mutation({
   args: {
     gameId: v.id("games"),
+    tableId: v.id("tables"),
+    sessionId: v.string(),
     labName: v.string(),
     spec: v.string(),
   },
   handler: async (ctx, args) => {
-    // No facilitator auth — intentionally unprotected because BOTH facilitators
-    // and lab CEO players call this (players set their lab's focus description).
+    // Lab CEO writes only — gated on seat ownership so a stale tab post-handoff
+    // can't quietly overwrite the new driver's spec. The lab must belong to
+    // the caller's role.
     if (args.spec.length > 2000) {
       throw new Error(`Lab spec too long: ${args.spec.length}/2000 characters`);
     }
+    const table = await assertSeatOwnership(ctx, args.tableId, args.sessionId);
+    if (table.gameId !== args.gameId) throw new Error("Table does not belong to this game");
     const labs = await getActiveLabsForGame(ctx, args.gameId);
     const lab = labs.find((l) => l.name === args.labName);
     if (!lab) return;
+    if (lab.ownerRoleId !== table.roleId) {
+      throw new Error("This lab isn't owned by your role");
+    }
     await ctx.db.patch(lab._id, { spec: args.spec });
   },
 });
@@ -1316,6 +1325,7 @@ export const getFacilitatorState = query({
         controlMode: t.controlMode,
         computeStock: t.computeStock,
         aiDisposition: t.aiDisposition,
+        playerName: t.playerName,
       })),
       submissions: submissions.map((sub) => ({
         _id: sub._id,

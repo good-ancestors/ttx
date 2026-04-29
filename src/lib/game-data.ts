@@ -53,6 +53,42 @@ export function isResolvingPhase(phase: string): phase is "rolling" | "effect-re
   return phase === "rolling" || phase === "effect-review" || phase === "narrate";
 }
 
+// User-facing labels for game phases. Used by the role picker mid-game to
+// give late arrivers a quick read on what's happening at the tables.
+export const PHASE_LABELS: Record<string, string> = {
+  discuss: "Discussing",
+  submit: "Submitting actions",
+  rolling: "Rolling dice",
+  "effect-review": "Resolving effects",
+  narrate: "Narrating",
+};
+
+// Seat lifecycle classification — used by the role picker to decide which
+// action to offer (Take seat / Watch) and by the server's claimRole mutation
+// to gate mid-game claims. Keeping the classifier in one place ensures the
+// UI and the server validate against identical rules.
+export type SeatState = "active-human" | "abandoned-human" | "ai" | "npc";
+
+export interface SeatClassifierInput {
+  controlMode: "human" | "ai" | "npc";
+  connected: boolean;
+  /** Whether the table doc has an `activeSessionId` set (without leaking the id). */
+  seatHeld: boolean;
+}
+
+export function classifySeat(t: SeatClassifierInput): SeatState {
+  if (t.controlMode === "ai") return "ai";
+  if (t.controlMode === "npc") return "npc";
+  return t.connected && t.seatHeld ? "active-human" : "abandoned-human";
+}
+
+// Observer-mode deep link for a specific seat. Single source of truth so the
+// `?observe=1` convention can change without hunting through QR generators.
+export function getObserveUrl(gameId: string, tableId: string, origin?: string): string {
+  const base = origin ?? (typeof window !== "undefined" ? window.location.origin : "");
+  return `${base}/game/${gameId}/table/${tableId}?observe=1`;
+}
+
 // Tag helpers — gate UI features and AI context
 export const isLabCeo = (r: Role): boolean => r.tags.includes("lab-ceo");
 export const isLabSafety = (r: Role): boolean => r.tags.includes("lab-safety");

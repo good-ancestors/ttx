@@ -3,6 +3,7 @@ import { mutation, query, internalMutation, internalQuery } from "./_generated/s
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id, Doc } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator, assertNotResolving } from "./events";
+import { assertSeatOwnership } from "./tables";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
@@ -306,11 +307,11 @@ export const saveComputeAllocation = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     roleId: v.string(),
+    sessionId: v.string(),
     computeAllocation: v.object({ deployment: v.number(), research: v.number(), safety: v.number() }),
   },
   handler: async (ctx, args) => {
-    const table = await ctx.db.get(args.tableId);
-    if (!table) throw new Error("Table not found");
+    const table = await assertSeatOwnership(ctx, args.tableId, args.sessionId);
     if (table.gameId !== args.gameId) throw new Error("Table does not belong to this game");
     if (table.roleId !== args.roleId) throw new Error("Role does not match table assignment");
 
@@ -611,10 +612,9 @@ async function createActionRequests(
  *  on success (saves the caller a re-fetch). Throws on any precondition failure. */
 async function assertSaveAndSubmitContext(
   ctx: MutationCtx,
-  args: { tableId: Id<"tables">; gameId: Id<"games">; roleId: string; text: string },
+  args: { tableId: Id<"tables">; gameId: Id<"games">; roleId: string; text: string; sessionId: string },
 ): Promise<Doc<"tables">> {
-  const table = await ctx.db.get(args.tableId);
-  if (!table) throw new Error("Table not found");
+  const table = await assertSeatOwnership(ctx, args.tableId, args.sessionId);
   if (table.gameId !== args.gameId) throw new Error("Table does not belong to this game");
   if (table.roleId !== args.roleId) throw new Error("Role does not match table assignment");
 
@@ -697,6 +697,7 @@ export const saveAndSubmit = mutation({
     gameId: v.id("games"),
     roundNumber: v.number(),
     roleId: v.string(),
+    sessionId: v.string(),
     text: v.string(),
     priority: v.number(),
     secret: v.optional(v.boolean()),
@@ -853,10 +854,12 @@ export const editSubmitted = mutation({
   args: {
     submissionId: v.id("submissions"),
     actionIndex: v.number(),
+    sessionId: v.string(),
   },
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
+    await assertSeatOwnership(ctx, sub.tableId, args.sessionId);
     const game = await assertPhase(ctx, sub.gameId, ["submit"], "edit actions");
     assertSubmitWindowOpen(game);
 
@@ -899,10 +902,12 @@ export const deleteAction = mutation({
   args: {
     submissionId: v.id("submissions"),
     actionIndex: v.number(),
+    sessionId: v.string(),
   },
   handler: async (ctx, args) => {
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
+    await assertSeatOwnership(ctx, sub.tableId, args.sessionId);
     const game = await assertPhase(ctx, sub.gameId, ["submit"], "delete actions");
     assertSubmitWindowOpen(game);
 

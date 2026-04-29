@@ -5,9 +5,15 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
-import { ROLE_MAP } from "@/lib/game-data";
+import {
+  ROLE_MAP,
+  AI_SYSTEMS_ROLE_ID,
+  PHASE_LABELS,
+  classifySeat,
+  type SeatState,
+} from "@/lib/game-data";
 import { getStoredPlayerName, setStoredPlayerName, getOrCreateId } from "@/lib/hooks";
-import { Loader2, Users, Eye } from "lucide-react";
+import { Loader2, Users, Eye, Cpu } from "lucide-react";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
 
 // Use localStorage (not sessionStorage) so all tabs share the same session ID.
@@ -16,6 +22,16 @@ function getOrCreateSessionId(gameId: string): string {
   if (typeof window === "undefined") return "";
   return getOrCreateId(localStorage, `ttx-pick-session-${gameId}`);
 }
+
+// Mid-game claimability per seat state. Mirrored server-side in
+// `claimRole`; keeping both keyed on `SeatState` prevents the picker from
+// offering buttons the server will reject.
+const MID_GAME_CLAIMABLE: Record<SeatState, boolean> = {
+  "active-human": false,
+  "abandoned-human": true,
+  ai: true,
+  npc: true,
+};
 
 export default function RolePickerPage({
   params,
@@ -47,7 +63,6 @@ export default function RolePickerPage({
     try {
       setStoredPlayerName(name);
       const result = await claimRole({ gameId, roleId, sessionId, playerName: name });
-      // Store session ID under the table-page key so setConnected reuses it
       sessionStorage.setItem(`ttx-session-${result.tableId}`, sessionId);
       router.push(`/game/${gameId}/table/${result.tableId}`);
     } catch (err) {
@@ -56,7 +71,6 @@ export default function RolePickerPage({
     }
   }, [playerName, claimRole, gameId, sessionId, router]);
 
-  // Loading state
   if (game === undefined || availableRoles === undefined) {
     return (
       <div className="min-h-dvh flex items-center justify-center bg-navy">
@@ -65,7 +79,6 @@ export default function RolePickerPage({
     );
   }
 
-  // Game not found
   if (game === null) {
     return (
       <div className="min-h-dvh flex items-center justify-center bg-navy p-6">
@@ -77,8 +90,9 @@ export default function RolePickerPage({
     );
   }
 
-  const claimedCount = availableRoles.filter((r) => r.connected).length;
+  const claimedCount = availableRoles.filter((r) => r.connected && r.controlMode === "human").length;
   const gameStarted = game.status !== "lobby";
+  const turnLabel = `Turn ${game.currentRound}/4 — ${PHASE_LABELS[game.phase] ?? game.phase}`;
 
   const handleObserve = (tableId: string) => {
     router.push(`/game/${gameId}/table/${tableId}?observe=1`);
@@ -93,38 +107,42 @@ export default function RolePickerPage({
             {/* eslint-disable-next-line @next/next/no-img-element -- static SVG */}
             <img src="/good-ancestors-logo.svg" alt="Good Ancestors" className="h-8 mx-auto mb-4" />
             <h1 className="text-2xl font-extrabold text-white mb-1 tracking-tight">
-              {gameStarted ? "Join a Table" : "Choose Your Role"}
+              {gameStarted ? "Pick a role to take over or watch" : "Choose Your Role"}
             </h1>
-            <p className="text-sm text-text-light flex items-center justify-center gap-1.5">
-              <Users className="w-3.5 h-3.5" />
-              {gameStarted
-                ? "Game in progress — join a table as observer"
-                : `${claimedCount} of ${availableRoles.length} roles claimed`}
-            </p>
+            {gameStarted ? (
+              <p className="text-sm text-text-light flex items-center justify-center gap-2">
+                <span className="font-mono px-2 py-0.5 rounded bg-navy-light/60 text-white">{turnLabel}</span>
+                <span className="text-text-light/70">·</span>
+                <span><Users className="w-3.5 h-3.5 inline mr-1" />{claimedCount} human players</span>
+              </p>
+            ) : (
+              <p className="text-sm text-text-light flex items-center justify-center gap-1.5">
+                <Users className="w-3.5 h-3.5" />
+                {claimedCount} of {availableRoles.length} roles claimed
+              </p>
+            )}
           </div>
 
           {/* Name input */}
-          {!gameStarted && (
-            <div className="max-w-sm mx-auto mb-6">
-              <input
-                type="text"
-                value={playerName}
-                onChange={(e) => { setPlayerName(e.target.value); setError(""); }}
-                placeholder="Your name"
-                maxLength={30}
-                autoFocus
-                spellCheck={false}
-                autoComplete="off"
-                data-1p-ignore
-                data-lpignore="true"
-                data-form-type="other"
-                className="w-full py-3 px-4 bg-navy-light text-white text-center text-base
-                           rounded-lg border border-navy-light focus:border-text-light
-                           outline-none placeholder:text-navy-muted"
-              />
-              {error && <p className="text-xs text-viz-danger mt-2 text-center">{error}</p>}
-            </div>
-          )}
+          <div className="max-w-sm mx-auto mb-6">
+            <input
+              type="text"
+              value={playerName}
+              onChange={(e) => { setPlayerName(e.target.value); setError(""); }}
+              placeholder="Your name"
+              maxLength={30}
+              autoFocus
+              spellCheck={false}
+              autoComplete="off"
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
+              className="w-full py-3 px-4 bg-navy-light text-white text-center text-base
+                         rounded-lg border border-navy-light focus:border-text-light
+                         outline-none placeholder:text-navy-muted"
+            />
+            {error && <p className="text-xs text-viz-danger mt-2 text-center">{error}</p>}
+          </div>
 
           {/* Role grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -132,53 +150,95 @@ export default function RolePickerPage({
               const role = ROLE_MAP.get(table.roleId);
               if (!role) return null;
 
-              const isClaimed = table.connected && table.controlMode === "human";
+              const seatState = classifySeat(table);
               const isClaiming = claiming === table.roleId;
-              const canDriverClaim = !gameStarted && !isClaimed && !claiming;
+              const isAiSystems = table.roleId === AI_SYSTEMS_ROLE_ID;
+              // AI Systems carries the secret-disposition mechanic, so it's
+              // only claimable when already abandoned — never directly from
+              // active AI mode through the picker.
+              const aiSystemsBlock = gameStarted && isAiSystems && seatState !== "abandoned-human";
+              const canClaim = !gameStarted
+                ? seatState !== "active-human"
+                : MID_GAME_CLAIMABLE[seatState] && !aiSystemsBlock;
+
+              const claimLabel = !gameStarted
+                ? (seatState === "active-human" ? "Taken" : "Take seat")
+                : seatState === "ai" ? "Take over from AI" : "Take seat";
+
+              const stateBadge =
+                seatState === "active-human"
+                  ? { label: "Driver active", color: "text-viz-safety" }
+                  : seatState === "abandoned-human"
+                    ? { label: "Empty seat", color: "text-viz-warning" }
+                    : seatState === "ai"
+                      ? { label: "AI driving", color: "text-viz-capability" }
+                      : { label: "Unfilled (NPC)", color: "text-text-light" };
 
               return (
                 <div
                   key={table._id}
                   className={`text-left rounded-xl border p-4 transition-all ${
-                    isClaimed || gameStarted
-                      ? "border-navy-light/60 bg-navy"
-                      : isClaiming
-                        ? "border-text-light bg-navy-light"
-                        : "border-navy-light bg-navy hover:bg-navy-light hover:border-text-light"
+                    isClaiming
+                      ? "border-text-light bg-navy-light"
+                      : "border-navy-light bg-navy hover:bg-navy-light/60"
                   }`}
                 >
-                  <div className="flex items-center gap-2.5 mb-1.5">
+                  <div className="flex items-center gap-2.5 mb-1">
                     <div
                       className="w-3 h-3 rounded-full shrink-0"
                       style={{ backgroundColor: role.color }}
                     />
                     <span className="text-sm font-bold text-white truncate">{role.name}</span>
                     {isClaiming && <Loader2 className="w-3.5 h-3.5 text-text-light animate-spin ml-auto shrink-0" />}
-                    {isClaimed && table.playerName && (
-                      <span className="text-xs text-text-light ml-auto shrink-0 truncate max-w-[100px]">
-                        {table.playerName}
+                  </div>
+                  <p className="text-xs text-text-light leading-snug line-clamp-2 mb-2">
+                    {role.subtitle}
+                  </p>
+
+                  {/* State + occupant */}
+                  <div className="flex items-center gap-2 text-[11px] mb-3 min-h-[16px]">
+                    <span className={`font-medium ${stateBadge.color}`}>{stateBadge.label}</span>
+                    {seatState === "active-human" && table.playerName && (
+                      <span className="text-text-light truncate">· {table.playerName}</span>
+                    )}
+                    {seatState === "ai" && (
+                      <Cpu className="w-3 h-3 text-viz-capability/70" aria-hidden="true" />
+                    )}
+                    {gameStarted && isAiSystems && (seatState === "ai" || seatState === "npc") && (
+                      <span className="text-text-light/70 truncate ml-auto" title="The AI Systems role's secret disposition is held by the facilitator. To take over, ask them to release it first.">
+                        Facilitator-managed
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-text-light leading-relaxed line-clamp-2 mb-3">
-                    {role.subtitle}
-                  </p>
+
+                  {/* Single primary action button + secondary observe link.
+                      Active human: watch only. Empty/AI/NPC: take seat as primary. */}
                   <div className="flex items-center gap-2">
-                    {!gameStarted && (
+                    {canClaim ? (
+                      <>
+                        <button
+                          onClick={() => void handleClaim(table.roleId)}
+                          disabled={isClaiming}
+                          className="flex-1 min-h-[36px] rounded-lg text-xs font-bold bg-text-light text-navy hover:bg-white disabled:opacity-30 disabled:cursor-default"
+                        >
+                          {claimLabel}
+                        </button>
+                        <button
+                          onClick={() => handleObserve(table._id)}
+                          className="min-h-[36px] rounded-lg text-xs font-bold border border-navy-light text-text-light hover:bg-navy-light hover:text-white px-3 inline-flex items-center gap-1"
+                          title="Watch read-only without claiming the seat"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    ) : (
                       <button
-                        onClick={() => void handleClaim(table.roleId)}
-                        disabled={!canDriverClaim || isClaiming}
-                        className="flex-1 min-h-[36px] rounded-lg text-xs font-bold bg-text-light/10 text-white border border-text-light/30 hover:bg-text-light/20 disabled:opacity-30 disabled:cursor-default"
+                        onClick={() => handleObserve(table._id)}
+                        className="flex-1 min-h-[36px] rounded-lg text-xs font-bold border border-navy-light text-text-light hover:bg-navy-light hover:text-white inline-flex items-center justify-center gap-1.5"
                       >
-                        {isClaimed ? "Taken" : "Take seat"}
+                        <Eye className="w-3.5 h-3.5" /> Watch
                       </button>
                     )}
-                    <button
-                      onClick={() => handleObserve(table._id)}
-                      className={`min-h-[36px] rounded-lg text-xs font-bold border border-navy-light text-text-light hover:bg-navy-light hover:text-white px-3 inline-flex items-center gap-1 ${gameStarted ? "flex-1 justify-center" : ""}`}
-                    >
-                      <Eye className="w-3.5 h-3.5" /> Observe
-                    </button>
                   </div>
                 </div>
               );

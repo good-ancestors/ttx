@@ -19,14 +19,21 @@ export default function JoinPage({
 
   // Check game-level code first (Jackbox-style → role picker)
   const game = useQuery(api.games.getByJoinCode, { joinCode: normalizedCode });
-  // Fall back to per-table code only if game code didn't match
+  // Fall back to per-table code only if game code didn't match. The query
+  // inlines gameStatus so we don't need a third subscription to api.games.get
+  // (which churns on every pipeline tick during resolve).
   const table = useQuery(api.tables.getByJoinCode, game === null ? { joinCode: normalizedCode } : "skip");
 
   useEffect(() => {
     if (game) {
       router.replace(`/game/${game._id}/pick`);
-    } else if (game === null && table) {
-      router.replace(`/game/${table.gameId}/table/${table._id}`);
+      return;
+    }
+    // Mid-game per-table joins land in observer mode rather than silently
+    // taking over the seat. The role picker is the path for "I want to drive."
+    if (game === null && table) {
+      const suffix = table.gameStatus === "lobby" ? "" : "?observe=1";
+      router.replace(`/game/${table.gameId}/table/${table._id}${suffix}`);
     }
   }, [game, table, router]);
 
