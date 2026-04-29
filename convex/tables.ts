@@ -203,6 +203,12 @@ export const claimRole = mutation({
 // presence heartbeat so observer takeover banners activate immediately rather
 // than waiting the 90s involuntary-disconnect grace. controlMode stays
 // "human" so the seat is "abandoned human" and any picker user can claim it.
+//
+// Note: this is intentionally not vacateSeat() — vacateSeat resets controlMode
+// to npc/ai (which is right for kicks), while hand-off keeps controlMode
+// "human" so the picker offers a direct "Take seat" affordance.
+const HANDOFF_BACKDATE_MS = 10 * 60_000;
+
 export const handOffSeat = mutation({
   args: { tableId: v.id("tables"), sessionId: v.string() },
   handler: async (ctx, args) => {
@@ -218,15 +224,14 @@ export const handOffSeat = mutation({
       .query("tablePresence")
       .withIndex("by_table", (q) => q.eq("tableId", args.tableId))
       .first();
-    // Backdate beyond the takeover stale threshold so the banner activates now.
-    const longAgo = Date.now() - 10 * 60_000;
+    const backdated = Date.now() - HANDOFF_BACKDATE_MS;
     if (presence) {
-      await ctx.db.patch(presence._id, { driverLastSeenAt: longAgo });
+      await ctx.db.patch(presence._id, { driverLastSeenAt: backdated });
     } else {
       await ctx.db.insert("tablePresence", {
         gameId: table.gameId,
         tableId: args.tableId,
-        driverLastSeenAt: longAgo,
+        driverLastSeenAt: backdated,
       });
     }
     await logEvent(ctx, table.gameId, "seat_handed_off", table.roleId, {

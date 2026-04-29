@@ -6,7 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, type Lab } from "@/lib/game-data";
+import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, getDisposition, getObserveUrl, type Lab } from "@/lib/game-data";
 import { useCountdown, usePageVisibility, useSessionExpiry, useAuthMutation, useFacilitatorToken } from "@/lib/hooks";
 import { GameTimeline } from "@/components/game-timeline";
 import { QRCode } from "@/components/qr-codes";
@@ -93,9 +93,18 @@ export default function FacilitatorPage({
   // Lobby uses full tables; playing uses enabled-only from merged query
   const tables = game?.status === "lobby" ? (allTablesForLobby ?? []) : enabledTables;
 
-  // Observer counts per role — feeds the Tables modal so the facilitator can
-  // see how many people are watching each table at a glance during play.
-  const observerCounts = useQuery(api.observers.countsByGame, isVisible ? { gameId } : "skip");
+  // Modal state lives up here so its visibility can gate subscriptions below.
+  const [showQROverlay, setShowQROverlay] = useState(false);
+  const [focusedQR, setFocusedQR] = useState<string | null>(null);
+
+  // Observer counts per role — only feeds the Tables modal, so subscribe only
+  // while the modal or its fullscreen QR child is open. Saves a per-game
+  // collect() that would otherwise run for every facilitator pageview.
+  const tablesModalOpen = showQROverlay || focusedQR != null;
+  const observerCounts = useQuery(
+    api.observers.countsByGame,
+    isVisible && tablesModalOpen ? { gameId } : "skip",
+  );
 
   // Lightweight rounds for sidebar chart + snapshot dropdown (excludes narrative, events, snapshots)
   const roundsLite = useQuery(api.rounds.getByGameLightweight, isVisible ? { gameId } : "skip");
@@ -161,8 +170,6 @@ export default function FacilitatorPage({
     [setActionError],
   );
 
-  const [showQROverlay, setShowQROverlay] = useState(false);
-  const [focusedQR, setFocusedQR] = useState<string | null>(null);
   const [submitDuration, setSubmitDuration] = useState(4);
   const [revealedSecrets, setRevealedSecrets] = useState<Set<string>>(new Set());
   const [addLabOpen, setAddLabOpen] = useState(false);
@@ -345,9 +352,10 @@ export default function FacilitatorPage({
         const role = table ? ROLE_MAP.get(table.roleId) : null;
         // We're in the playing section here, so per-table scans should land
         // in observer mode rather than silently claim the seat.
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
         const url = isGame
-          ? `${typeof window !== "undefined" ? window.location.origin : ""}/game/join/${game.joinCode}`
-          : `${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table?._id}?observe=1`;
+          ? `${origin}/game/join/${game.joinCode}`
+          : table ? getObserveUrl(gameId, table._id) : "";
         const code = isGame ? game.joinCode : table?.joinCode;
         const title = isGame ? "Join the game" : table?.roleName;
         return (
@@ -471,7 +479,7 @@ export default function FacilitatorPage({
                     {(table.controlMode === "human" || game.status !== "lobby") && (
                       <div className="bg-navy-dark rounded p-2 flex flex-col items-center cursor-pointer hover:border-white/30 transition-colors" onClick={() => setFocusedQR(table._id)}>
                         <QRCode
-                          value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table._id}${game.status === "lobby" ? "" : "?observe=1"}`}
+                          value={getObserveUrl(gameId, table._id)}
                           size={80}
                         />
                         <span className="text-[10px] font-mono text-text-light mt-1 tracking-widest">

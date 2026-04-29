@@ -5,7 +5,14 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
-import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, DEFAULT_ROUND_LABEL } from "@/lib/game-data";
+import {
+  ROLE_MAP,
+  AI_SYSTEMS_ROLE_ID,
+  DEFAULT_ROUND_LABEL,
+  PHASE_LABELS,
+  classifySeat,
+  type SeatState,
+} from "@/lib/game-data";
 import { getStoredPlayerName, setStoredPlayerName, getOrCreateId } from "@/lib/hooks";
 import { Loader2, Users, Eye, Cpu } from "lucide-react";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
@@ -17,24 +24,15 @@ function getOrCreateSessionId(gameId: string): string {
   return getOrCreateId(localStorage, `ttx-pick-session-${gameId}`);
 }
 
-type AvailableRole = {
-  _id: Id<"tables">;
-  roleId: string;
-  roleName: string;
-  connected: boolean;
-  controlMode: "human" | "ai" | "npc";
-  playerName?: string;
-  seatHeld: boolean;
+// Mid-game claimability per seat state. Mirrored server-side in
+// `claimRole`; keeping both keyed on `SeatState` prevents the picker from
+// offering buttons the server will reject.
+const MID_GAME_CLAIMABLE: Record<SeatState, boolean> = {
+  "active-human": false,
+  "abandoned-human": true,
+  ai: true,
+  npc: true,
 };
-
-type SeatState = "active-human" | "abandoned-human" | "ai" | "npc";
-
-function classifySeat(t: AvailableRole): SeatState {
-  if (t.controlMode === "ai") return "ai";
-  if (t.controlMode === "npc") return "npc";
-  if (t.connected && t.seatHeld) return "active-human";
-  return "abandoned-human";
-}
 
 export default function RolePickerPage({
   params,
@@ -95,14 +93,7 @@ export default function RolePickerPage({
 
   const claimedCount = availableRoles.filter((r) => r.connected && r.controlMode === "human").length;
   const gameStarted = game.status !== "lobby";
-  const phaseLabel: Record<string, string> = {
-    discuss: "Discussing",
-    submit: "Submitting actions",
-    rolling: "Rolling dice",
-    "effect-review": "Resolving effects",
-    narrate: "Narrating",
-  };
-  const turnLabel = `Turn ${game.currentRound}/4 — ${phaseLabel[game.phase] ?? DEFAULT_ROUND_LABEL}`;
+  const turnLabel = `Turn ${game.currentRound}/4 — ${PHASE_LABELS[game.phase] ?? DEFAULT_ROUND_LABEL}`;
 
   const handleObserve = (tableId: string) => {
     router.push(`/game/${gameId}/table/${tableId}?observe=1`);
@@ -163,22 +154,17 @@ export default function RolePickerPage({
               const seatState = classifySeat(table);
               const isClaiming = claiming === table.roleId;
               const isAiSystems = table.roleId === AI_SYSTEMS_ROLE_ID;
-              // Mid-game claimability follows the picker rules above:
-              // active human → watch only; AI Systems can only be claimed
-              // when abandoned (facilitator must release first).
+              // AI Systems carries the secret-disposition mechanic, so it's
+              // only claimable when already abandoned — never directly from
+              // active AI mode through the picker.
+              const aiSystemsBlock = gameStarted && isAiSystems && seatState !== "abandoned-human";
               const canClaim = !gameStarted
                 ? seatState !== "active-human"
-                : seatState === "abandoned-human"
-                  || (seatState === "ai" && !isAiSystems)
-                  || (seatState === "npc" && !isAiSystems);
+                : MID_GAME_CLAIMABLE[seatState] && !aiSystemsBlock;
 
               const claimLabel = !gameStarted
                 ? (seatState === "active-human" ? "Taken" : "Take seat")
-                : seatState === "ai"
-                  ? "Take over from AI"
-                  : seatState === "npc"
-                    ? "Take seat"
-                    : "Take seat";
+                : seatState === "ai" ? "Take over from AI" : "Take seat";
 
               const stateBadge =
                 seatState === "active-human"

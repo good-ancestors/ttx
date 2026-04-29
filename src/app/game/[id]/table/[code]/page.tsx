@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS } from "@/lib/game-data";
+import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS, getObserveUrl } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, getOrCreateId } from "@/lib/hooks";
 import { ObserverView } from "@/components/table/observer-view";
 import { normaliseActions, emptyAction, type ActionDraft, type ComputeTarget } from "@/components/action-input";
@@ -772,9 +772,7 @@ function DriverTablePage({
               handoutData,
               hasLabAccess,
               controlsLab,
-              observeUrl: typeof window !== "undefined"
-                ? `${window.location.origin}/game/${gameId}/table/${tableId}?observe=1`
-                : undefined,
+              observeUrl: getObserveUrl(gameId, tableId) || undefined,
               joinCode: table.joinCode,
             }}
             submit={{
