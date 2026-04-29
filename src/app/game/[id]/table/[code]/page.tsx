@@ -6,8 +6,9 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS, getObserveUrl } from "@/lib/game-data";
-import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, getOrCreateId } from "@/lib/hooks";
+import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, useSessionId } from "@/lib/hooks";
 import { ObserverView } from "@/components/table/observer-view";
+import { TableLoader } from "@/components/table/table-loader";
 import { normaliseActions, emptyAction, type ActionDraft, type ComputeTarget } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { loadRoleHandouts, type HandoutData } from "@/lib/role-handouts";
@@ -18,7 +19,6 @@ import { PhaseContent } from "@/components/table/phase-content";
 import type { ResultAction } from "@/components/table/result-action-card";
 import { useRouter } from "next/navigation";
 import {
-  Loader2,
   Clock,
   AlertTriangle,
   Info,
@@ -125,10 +125,7 @@ function DriverOrObserverGate({
   const game = useQuery(api.games.getForPlayer, isVisible ? { gameId } : "skip");
   const table = useQuery(api.tables.get, isVisible ? { tableId } : "skip");
   const router = useRouter();
-
-  const [sessionId] = useState(() =>
-    typeof window !== "undefined" ? getOrCreateId(sessionStorage, `ttx-session-${tableId}`) : ""
-  );
+  const sessionId = useSessionId(tableId);
 
   // Ref-based latch so strict-mode's double-invoke can't fire the redirect
   // twice — useState as a latch survives re-runs but only after one render.
@@ -148,16 +145,10 @@ function DriverOrObserverGate({
       return;
     }
     setDecision("observer");
-    router.replace(`/game/${gameId}/table/${tableId}?observe=1`);
+    router.replace(getObserveUrl(gameId, tableId));
   }, [game, table, sessionId, gameId, tableId, router]);
 
-  if (decision === "pending") {
-    return (
-      <div className="min-h-dvh flex items-center justify-center bg-off-white">
-        <Loader2 className="w-8 h-8 text-text-muted animate-spin" />
-      </div>
-    );
-  }
+  if (decision === "pending") return <TableLoader />;
   if (decision === "not-found" || decision === "observer") {
     // ObserverView renders its own "Table not found" screen on null queries,
     // so we route both cases through it.
@@ -318,9 +309,7 @@ function DriverTablePage({
   }, [isAiSystemRole, phase, isExpired]);
 
   // ── Session ID for seat conflict detection ────────────────────────────────
-  const [sessionId] = useState(() =>
-    typeof window !== "undefined" ? getOrCreateId(sessionStorage, `ttx-session-${tableId}`) : ""
-  );
+  const sessionId = useSessionId(tableId);
   const isConflict = table?.activeSessionId && table.activeSessionId !== sessionId;
 
   // ── Connection lifecycle ──────────────────────────────────────────────────
@@ -701,11 +690,7 @@ function DriverTablePage({
   }
 
   if (!game || !table || !role || (game.status === "playing" && !round)) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center bg-off-white">
-        <Loader2 className="w-8 h-8 text-text-muted animate-spin" />
-      </div>
-    );
+    return <TableLoader />;
   }
 
   // ── Sort result actions for resolving/narrate phases ──────────────────────

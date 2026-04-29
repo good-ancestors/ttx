@@ -6,7 +6,6 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
 import {
-  Loader2,
   Clock,
   AlertTriangle,
   Zap,
@@ -14,7 +13,7 @@ import {
   LogOut,
 } from "lucide-react";
 
-import { useCountdown, usePageVisibility, useSessionExpiry, getOrCreateId, getStoredPlayerName } from "@/lib/hooks";
+import { useCountdown, usePageVisibility, useSessionExpiry, useSessionId, getStoredPlayerName } from "@/lib/hooks";
 import {
   ROLE_MAP,
   hasCompute,
@@ -26,6 +25,7 @@ import {
 } from "@/lib/game-data";
 import { PlayerTabBar, buildPlayerTabs, type PlayerTab } from "@/components/table/player-tabs";
 import { PhaseContent } from "@/components/table/phase-content";
+import { TableLoader } from "@/components/table/table-loader";
 import { ConnectionIndicator } from "@/components/connection-indicator";
 import { InAppBrowserGate } from "@/components/in-app-browser-gate";
 import { TakeoverBanner } from "@/components/table/takeover-banner";
@@ -83,11 +83,7 @@ export function ObserverView({ gameId, tableId }: Props) {
 
   // Stable per-tab observer session — separate from driver sessionStorage key
   // so a same-browser take-over doesn't collide with the driver flow.
-  const [sessionId] = useState(() =>
-    typeof window !== "undefined"
-      ? getOrCreateId(sessionStorage, `ttx-observer-${tableId}`)
-      : "",
-  );
+  const sessionId = useSessionId(tableId, "observer");
 
   // Idempotent join — same sessionId reuses the existing observer row.
   const joinedRef = useRef(false);
@@ -157,11 +153,7 @@ export function ObserverView({ gameId, tableId }: Props) {
     );
   }
   if (!game || !table || !role || (game.status === "playing" && !round)) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center bg-off-white">
-        <Loader2 className="w-8 h-8 text-text-muted animate-spin" />
-      </div>
-    );
+    return <TableLoader />;
   }
 
   const sortedResultActions: ResultAction[] = submission?.actions

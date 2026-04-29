@@ -94,6 +94,19 @@ export function getOrCreateId(storage: Storage, key: string): string {
   return id;
 }
 
+/** Per-tab session ID that identifies the seat occupant. Same key namespace
+ *  used by every component that needs to recognise the seat owner — driver
+ *  page, the gate above it, and the observer page (as `ttx-observer-...`).
+ *  SSR-safe: returns "" until hydration. */
+export function useSessionId(tableId: string, role: "driver" | "observer" = "driver"): string {
+  const [sessionId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    const key = role === "driver" ? `ttx-session-${tableId}` : `ttx-observer-${tableId}`;
+    return getOrCreateId(sessionStorage, key);
+  });
+  return sessionId;
+}
+
 // ─── Session management ─────────────────────────────────────────────────────
 
 export const SESSION_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
