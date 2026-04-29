@@ -6,8 +6,9 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS, getObserveUrl } from "@/lib/game-data";
-import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, getOrCreateId } from "@/lib/hooks";
+import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, useSessionId } from "@/lib/hooks";
 import { ObserverView } from "@/components/table/observer-view";
+import { TableLoader } from "@/components/table/table-loader";
 import { normaliseActions, emptyAction, type ActionDraft, type ComputeTarget } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { loadRoleHandouts, type HandoutData } from "@/lib/role-handouts";
@@ -18,7 +19,6 @@ import { PhaseContent } from "@/components/table/phase-content";
 import type { ResultAction } from "@/components/table/result-action-card";
 import { useRouter } from "next/navigation";
 import {
-  Loader2,
   Clock,
   AlertTriangle,
   Info,
@@ -93,6 +93,65 @@ export default function TablePlayerPage({
   // route correctly. Rendered as a sibling component so its hooks don't share
   // state with the driver page.
   if (isObserver) {
+    return <ObserverView gameId={gameId} tableId={tableId} />;
+  }
+  return <DriverOrObserverGate gameId={gameId} tableId={tableId} />;
+}
+
+// Decides driver-vs-observer for visitors arriving on the bare table URL
+// (no `?observe=1`). Lobby keeps the historical claim-by-default flow — the
+// dominant case there is "I'm grabbing my seat." Mid-game, only the existing
+// seat-owning session falls through to the driver page; everyone else
+// (bookmarks, copy-pasted URLs, late scans of an old QR, second person
+// scanning a per-table QR alongside the first) routes to observer mode.
+//
+// This is the single place where the silent auto-claim via `setConnected` is
+// prevented from firing for a non-owner. The `setConnected` mutation itself
+// stays generous so that the legitimate driver's tab refresh / reconnect
+// keeps working.
+function DriverOrObserverGate({
+  gameId,
+  tableId,
+}: {
+  gameId: Id<"games">;
+  tableId: Id<"tables">;
+}) {
+  // The gate samples table state ONCE — if the visiting session doesn't own
+  // the seat mid-game, route to observer; otherwise stay as driver. The
+  // decision must be sticky: DriverTablePage's mount-effect cleanup fires
+  // setConnected(false), so any flap that briefly unmounts it would wipe
+  // `connected`. We commit to a decision once and never re-evaluate.
+  const isVisible = usePageVisibility();
+  const game = useQuery(api.games.getForPlayer, isVisible ? { gameId } : "skip");
+  const table = useQuery(api.tables.get, isVisible ? { tableId } : "skip");
+  const router = useRouter();
+  const sessionId = useSessionId(tableId);
+
+  // Ref-based latch so strict-mode's double-invoke can't fire the redirect
+  // twice — useState as a latch survives re-runs but only after one render.
+  const decidedRef = useRef(false);
+  const [decision, setDecision] = useState<"pending" | "driver" | "observer" | "not-found">("pending");
+  useEffect(() => {
+    if (decidedRef.current) return;
+    if (game === null || table === null) {
+      decidedRef.current = true;
+      setDecision("not-found");
+      return;
+    }
+    if (!game || !table) return;
+    decidedRef.current = true;
+    if (game.status === "lobby" || table.activeSessionId === sessionId) {
+      setDecision("driver");
+      return;
+    }
+    setDecision("observer");
+    router.replace(getObserveUrl(gameId, tableId));
+  }, [game, table, sessionId, gameId, tableId, router]);
+
+  if (decision === "pending") return <TableLoader />;
+  if (decision === "not-found" || decision === "observer") {
+    // ObserverView renders its own "Table not found" screen on null queries,
+    // so we route both cases through it.
     return <ObserverView gameId={gameId} tableId={tableId} />;
   }
   return <DriverTablePage gameId={gameId} tableId={tableId} />;
@@ -250,9 +309,7 @@ function DriverTablePage({
   }, [isAiSystemRole, phase, isExpired]);
 
   // ── Session ID for seat conflict detection ────────────────────────────────
-  const [sessionId] = useState(() =>
-    typeof window !== "undefined" ? getOrCreateId(sessionStorage, `ttx-session-${tableId}`) : ""
-  );
+  const sessionId = useSessionId(tableId);
   const isConflict = table?.activeSessionId && table.activeSessionId !== sessionId;
 
   // ── Connection lifecycle ──────────────────────────────────────────────────
@@ -633,11 +690,7 @@ function DriverTablePage({
   }
 
   if (!game || !table || !role || (game.status === "playing" && !round)) {
-    return (
-      <div className="min-h-dvh flex items-center justify-center bg-off-white">
-        <Loader2 className="w-8 h-8 text-text-muted animate-spin" />
-      </div>
-    );
+    return <TableLoader />;
   }
 
   // ── Sort result actions for resolving/narrate phases ──────────────────────
