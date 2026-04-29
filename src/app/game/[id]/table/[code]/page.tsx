@@ -95,6 +95,63 @@ export default function TablePlayerPage({
   if (isObserver) {
     return <ObserverView gameId={gameId} tableId={tableId} />;
   }
+  return <DriverOrObserverGate gameId={gameId} tableId={tableId} />;
+}
+
+// Decides driver-vs-observer for visitors arriving on the bare table URL
+// (no `?observe=1`). Lobby keeps the historical claim-by-default flow — the
+// dominant case there is "I'm grabbing my seat." Mid-game, only the existing
+// seat-owning session falls through to the driver page; everyone else
+// (bookmarks, copy-pasted URLs, late scans of an old QR, second person
+// scanning a per-table QR alongside the first) routes to observer mode.
+//
+// This is the single place where the silent auto-claim via `setConnected` is
+// prevented from firing for a non-owner. The `setConnected` mutation itself
+// stays generous so that the legitimate driver's tab refresh / reconnect
+// keeps working.
+function DriverOrObserverGate({
+  gameId,
+  tableId,
+}: {
+  gameId: Id<"games">;
+  tableId: Id<"tables">;
+}) {
+  // The gate samples table state ONCE — if the visiting session doesn't own
+  // the seat mid-game, route to observer; otherwise stay as driver. The
+  // decision must be sticky: DriverTablePage's mount-effect cleanup fires
+  // setConnected(false), so any flap that briefly unmounts it (e.g. a
+  // visibility-driven query reset) would wipe the seat. We commit to a
+  // decision once and never re-evaluate.
+  const game = useQuery(api.games.getForPlayer, { gameId });
+  const table = useQuery(api.tables.get, { tableId });
+  const router = useRouter();
+
+  const [sessionId] = useState(() =>
+    typeof window !== "undefined" ? getOrCreateId(sessionStorage, `ttx-session-${tableId}`) : ""
+  );
+
+  const [decision, setDecision] = useState<"pending" | "driver" | "observer">("pending");
+  useEffect(() => {
+    if (decision !== "pending") return;
+    if (!game || !table) return;
+    if (game.status === "lobby" || table.activeSessionId === sessionId) {
+      setDecision("driver");
+      return;
+    }
+    setDecision("observer");
+    router.replace(`/game/${gameId}/table/${tableId}?observe=1`);
+  }, [decision, game, table, sessionId, gameId, tableId, router]);
+
+  if (decision === "pending") {
+    return (
+      <div className="min-h-dvh flex items-center justify-center bg-off-white">
+        <Loader2 className="w-8 h-8 text-text-muted animate-spin" />
+      </div>
+    );
+  }
+  if (decision === "observer") {
+    return <ObserverView gameId={gameId} tableId={tableId} />;
+  }
   return <DriverTablePage gameId={gameId} tableId={tableId} />;
 }
 
