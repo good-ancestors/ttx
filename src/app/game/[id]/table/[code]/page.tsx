@@ -24,6 +24,8 @@ import {
   Info,
   Zap,
   LogOut,
+  MoreVertical,
+  ArrowRightLeft,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -127,6 +129,7 @@ function DriverTablePage({
   const deleteActionMut = useMutation(api.submissions.deleteAction);
   const setConnected = useMutation(api.tables.setConnected);
   const pingDriver = useMutation(api.tables.pingDriver);
+  const handOffSeat = useMutation(api.tables.handOffSeat);
   const leaveRole = useMutation(api.tables.leaveRole);
   const updateLabSpecMut = useMutation(api.games.updateLabSpec);
   const saveComputeAllocationMut = useMutation(api.submissions.saveComputeAllocation);
@@ -708,9 +711,17 @@ function DriverTablePage({
                   <LogOut className="w-3 h-3" /> Leave
                 </button>
               ) : (
-                <span className="text-[11px] text-text-muted font-mono">
-                  {round?.label ?? DEFAULT_ROUND_LABEL} — Turn {round?.number ?? 1}/4
-                </span>
+                <>
+                  <span className="text-[11px] text-text-muted font-mono">
+                    {round?.label ?? DEFAULT_ROUND_LABEL} — Turn {round?.number ?? 1}/4
+                  </span>
+                  <DriverSeatMenu
+                    onHandOff={() => {
+                      void handOffSeat({ tableId, sessionId });
+                      router.push(`/game/${gameId}/pick`);
+                    }}
+                  />
+                </>
               )}
               <ConnectionIndicator />
             </div>
@@ -761,6 +772,10 @@ function DriverTablePage({
               handoutData,
               hasLabAccess,
               controlsLab,
+              observeUrl: typeof window !== "undefined"
+                ? `${window.location.origin}/game/${gameId}/table/${tableId}?observe=1`
+                : undefined,
+              joinCode: table.joinCode,
             }}
             submit={{
               game,
@@ -814,5 +829,73 @@ function DriverTablePage({
         )}
       </div>
     </InAppBrowserGate>
+  );
+}
+
+// ─── Driver seat menu ─────────────────────────────────────────────────────
+// Holds destructive-ish driver actions (hand off, leave) behind a kebab so
+// they aren't peer buttons in the header. Hand-off has a one-tap confirm
+// because it's irreversible — anyone in the picker can claim immediately.
+
+function DriverSeatMenu({ onHandOff }: { onHandOff: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+        setConfirming(false);
+      }
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="text-text-muted hover:text-text transition-colors p-1"
+        aria-label="Driver options"
+      >
+        <MoreVertical className="w-4 h-4" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-xl z-30 min-w-[200px] py-1">
+          {!confirming ? (
+            <button
+              onClick={() => setConfirming(true)}
+              className="w-full text-left px-3 py-2 text-xs text-text hover:bg-warm-gray transition-colors flex items-center gap-2"
+            >
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              Hand off this seat
+            </button>
+          ) : (
+            <div className="px-3 py-2">
+              <p className="text-[11px] text-text-muted mb-2 leading-snug">
+                Anyone at the table can claim immediately. You&rsquo;ll go back to the role picker.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setOpen(false); setConfirming(false); onHandOff(); }}
+                  className="flex-1 min-h-[32px] rounded text-xs font-bold bg-text text-white hover:bg-text/90"
+                >
+                  Hand off
+                </button>
+                <button
+                  onClick={() => setConfirming(false)}
+                  className="min-h-[32px] px-3 rounded text-xs text-text-muted hover:text-text"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

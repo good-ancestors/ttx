@@ -17,6 +17,8 @@ import {
   Monitor,
   MonitorOff,
   RotateCcw,
+  Eye,
+  Zap,
 } from "lucide-react";
 
 import { LobbyPhase } from "@/components/facilitator/lobby-phase";
@@ -90,6 +92,10 @@ export default function FacilitatorPage({
   };
   // Lobby uses full tables; playing uses enabled-only from merged query
   const tables = game?.status === "lobby" ? (allTablesForLobby ?? []) : enabledTables;
+
+  // Observer counts per role — feeds the Tables modal so the facilitator can
+  // see how many people are watching each table at a glance during play.
+  const observerCounts = useQuery(api.observers.countsByGame, isVisible ? { gameId } : "skip");
 
   // Lightweight rounds for sidebar chart + snapshot dropdown (excludes narrative, events, snapshots)
   const roundsLite = useQuery(api.rounds.getByGameLightweight, isVisible ? { gameId } : "skip");
@@ -329,22 +335,33 @@ export default function FacilitatorPage({
       <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} onToggleProjector={onToggleProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
 
       {/* QR codes overlay — accessible during any phase */}
-      {/* Fullscreen single QR code */}
+      {/* Fullscreen single QR code (per-table or game-level).
+          Per-table URLs append ?observe=1 mid-game so a late scan lands in
+          observer mode rather than silently claiming the seat. In lobby the
+          plain URL still routes through claimRole as before. */}
       {focusedQR && (() => {
-        const table = tables.find((t) => t._id === focusedQR);
+        const isGame = focusedQR === "__game__";
+        const table = isGame ? null : tables.find((t) => t._id === focusedQR);
         const role = table ? ROLE_MAP.get(table.roleId) : null;
+        // We're in the playing section here, so per-table scans should land
+        // in observer mode rather than silently claim the seat.
+        const url = isGame
+          ? `${typeof window !== "undefined" ? window.location.origin : ""}/game/join/${game.joinCode}`
+          : `${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table?._id}?observe=1`;
+        const code = isGame ? game.joinCode : table?.joinCode;
+        const title = isGame ? "Join the game" : table?.roleName;
         return (
           <div className="fixed inset-0 bg-black z-[60] flex flex-col items-center justify-center cursor-pointer" onClick={() => setFocusedQR(null)}>
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-4 h-4 rounded-full" style={{ backgroundColor: role?.color }} />
-              <span className="text-3xl font-bold text-white">{table?.roleName}</span>
+              {!isGame && <div className="w-4 h-4 rounded-full" style={{ backgroundColor: role?.color }} />}
+              <span className="text-3xl font-bold text-white">{title}</span>
             </div>
             <QRCode
-              value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table?._id}`}
+              value={url}
               size={Math.min(500, typeof window !== "undefined" ? window.innerHeight - 200 : 400)}
             />
             <span className="text-2xl font-mono text-text-light mt-4 tracking-[0.3em]">
-              {table?.joinCode}
+              {code}
             </span>
             <span className="text-sm text-navy-muted mt-4">Tap anywhere to close</span>
           </div>
@@ -359,19 +376,64 @@ export default function FacilitatorPage({
               <button onClick={() => setShowQROverlay(false)} className="text-text-light hover:text-white text-sm">Close</button>
             </div>
 
+            {/* Game-level join — for late arrivers who want to pick a role / observe.
+                Surfaced post-lobby because the lobby phase already shows it inline. */}
+            {game.joinCode && (
+              <div className="bg-navy rounded-lg border border-navy-light p-4 mb-4 flex items-center gap-4">
+                <button
+                  onClick={() => setFocusedQR("__game__")}
+                  className="bg-white rounded p-2 hover:opacity-90 transition-opacity"
+                  aria-label="Show game join QR fullscreen"
+                >
+                  <QRCode
+                    value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/join/${game.joinCode}`}
+                    size={96}
+                  />
+                </button>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-text-light mb-1">Late arrivers — game join code</p>
+                  <p className="text-2xl font-mono font-extrabold text-white tracking-[0.3em]">
+                    {game.joinCode}
+                  </p>
+                  <p className="text-[10px] text-navy-muted mt-1">
+                    Scanning lands them on the role picker so they can observe (or take a free seat).
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Table management grid — same card style as lobby */}
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-6">
               {tables.map((table) => {
                 const role = ROLE_MAP.get(table.roleId);
+                const obsCount = observerCounts?.[table.roleId] ?? 0;
                 return (
                   <div key={table._id} className="bg-navy rounded-lg border border-navy-light p-3">
-                    <div className="flex items-center gap-1.5 mb-2">
+                    <div className="flex items-center gap-1.5 mb-1">
                       <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: role?.color }} />
                       <span className="text-xs font-bold text-white truncate">{table.roleName}</span>
                       {table.connected && (
-                        <div className="ml-auto flex items-center gap-1 shrink-0">
-                          <span className="text-[9px] text-viz-safety font-mono">Connected</span>
-                        </div>
+                        <span className="ml-auto text-[9px] text-viz-safety font-mono shrink-0">Connected</span>
+                      )}
+                    </div>
+
+                    {/* Player + compute + observers row */}
+                    <div className="flex items-center gap-2 text-[10px] text-text-light mb-2 min-h-[14px]">
+                      {table.playerName && (
+                        <span className="truncate" title={table.playerName}>{table.playerName}</span>
+                      )}
+                      {table.computeStock != null && (
+                        <span className="font-mono flex items-center gap-0.5 shrink-0">
+                          <Zap className="w-2.5 h-2.5" />{table.computeStock}u
+                        </span>
+                      )}
+                      {obsCount > 0 && (
+                        <span
+                          className="font-mono flex items-center gap-0.5 shrink-0 ml-auto"
+                          title={`${obsCount} observer${obsCount === 1 ? "" : "s"}`}
+                        >
+                          <Eye className="w-2.5 h-2.5" />{obsCount}
+                        </span>
                       )}
                     </div>
 
@@ -403,11 +465,13 @@ export default function FacilitatorPage({
                       </div>
                     )}
 
-                    {/* QR code for human-mode tables */}
-                    {table.controlMode === "human" && (
+                    {/* QR code. In lobby: human-mode tables only, links to driver claim.
+                        Mid-game: shown for every table (so observers can scan any seat),
+                        and the URL appends ?observe=1 so the scan lands in observer mode. */}
+                    {(table.controlMode === "human" || game.status !== "lobby") && (
                       <div className="bg-navy-dark rounded p-2 flex flex-col items-center cursor-pointer hover:border-white/30 transition-colors" onClick={() => setFocusedQR(table._id)}>
                         <QRCode
-                          value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table._id}`}
+                          value={`${typeof window !== "undefined" ? window.location.origin : ""}/game/${gameId}/table/${table._id}${game.status === "lobby" ? "" : "?observe=1"}`}
                           size={80}
                         />
                         <span className="text-[10px] font-mono text-text-light mt-1 tracking-widest">
@@ -420,7 +484,7 @@ export default function FacilitatorPage({
               })}
             </div>
             <p className="text-[10px] text-navy-muted text-center">
-              Click a QR code to show fullscreen.
+              Click a QR code to show fullscreen. Mid-game scans land in observer mode.
             </p>
           </div>
         </div>

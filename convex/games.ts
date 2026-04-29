@@ -1316,6 +1316,7 @@ export const getFacilitatorState = query({
         controlMode: t.controlMode,
         computeStock: t.computeStock,
         aiDisposition: t.aiDisposition,
+        playerName: t.playerName,
       })),
       submissions: submissions.map((sub) => ({
         _id: sub._id,

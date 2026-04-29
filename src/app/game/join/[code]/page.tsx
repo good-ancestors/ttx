@@ -21,14 +21,21 @@ export default function JoinPage({
   const game = useQuery(api.games.getByJoinCode, { joinCode: normalizedCode });
   // Fall back to per-table code only if game code didn't match
   const table = useQuery(api.tables.getByJoinCode, game === null ? { joinCode: normalizedCode } : "skip");
+  // Mid-game per-table joins land in observer mode rather than silently
+  // taking over the seat. The role picker is the path for "I want to drive."
+  const tableGame = useQuery(api.games.get, table ? { gameId: table.gameId } : "skip");
 
   useEffect(() => {
     if (game) {
       router.replace(`/game/${game._id}/pick`);
-    } else if (game === null && table) {
-      router.replace(`/game/${table.gameId}/table/${table._id}`);
+      return;
     }
-  }, [game, table, router]);
+    if (game === null && table && tableGame !== undefined) {
+      const inLobby = tableGame?.status === "lobby";
+      const suffix = inLobby ? "" : "?observe=1";
+      router.replace(`/game/${table.gameId}/table/${table._id}${suffix}`);
+    }
+  }, [game, table, tableGame, router]);
 
   // Both queries resolved to null — code not found
   // (table query only runs after game resolves to null, so both being null means both checked)

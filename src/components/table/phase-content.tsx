@@ -38,6 +38,10 @@ interface CommonProps {
   handoutData: HandoutData | null;
   hasLabAccess: boolean;
   controlsLab: boolean;
+  // Driver-only: when set, BriefTab shows a "Share with my team" QR pointing
+  // at observer mode of this table. Observer view leaves these undefined.
+  observeUrl?: string;
+  joinCode?: string;
 }
 
 interface SubmitProps {
@@ -174,7 +178,7 @@ function DiscussContent({ common }: { common: CommonProps }) {
         <DispositionChooser tableId={common.tableId} onChosen={() => {}} />
       )}
       {common.activeTab === "brief" && (
-        <BriefTab role={common.role} handoutData={common.handoutData} aiDisposition={common.aiDisposition} gameStatus={common.gameStatus} />
+        <BriefTab role={common.role} handoutData={common.handoutData} aiDisposition={common.aiDisposition} gameStatus={common.gameStatus} observeUrl={common.observeUrl} joinCode={common.joinCode} />
       )}
       {common.activeTab === "actions" && (
         <TabPlaceholder icon={Zap} title="Actions" description="When the facilitator opens submissions, you'll draft and submit your actions here." />
@@ -205,7 +209,7 @@ function SubmitContent({ common, submit, lab, labs, observerView }: { common: Co
       )}
 
       {common.activeTab === "brief" && (
-        <BriefTab role={common.role} handoutData={common.handoutData} aiDisposition={common.aiDisposition} gameStatus={common.gameStatus} />
+        <BriefTab role={common.role} handoutData={common.handoutData} aiDisposition={common.aiDisposition} gameStatus={common.gameStatus} observeUrl={common.observeUrl} joinCode={common.joinCode} />
       )}
 
       {common.activeTab === "actions" && observerView && (
