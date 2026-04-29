@@ -353,14 +353,16 @@ export const setConnected = mutation({
         && table.activeSessionId !== args.sessionId && table.connected) {
       throw new Error("This seat is already occupied by another player");
     }
-    // Track which browser session owns this seat
+    // Track which browser session owns this seat. On disconnect, preserve
+    // activeSessionId so that the same browser tab refreshing/reconnecting
+    // can re-identify itself as the seat owner — the gate at the top of the
+    // table page reads it to distinguish "you're the driver returning" from
+    // "you're a fresh visitor". `connected: false` already signals "abandoned"
+    // to the picker / claimRole guards. activeSessionId is cleared only on
+    // explicit transitions: leaveRole, kickToAI, setControlMode-away-from-
+    // human, handOffSeat, promoteToDriver.
     if (args.connected && args.sessionId) {
       patch.activeSessionId = args.sessionId;
-    } else if (!args.connected) {
-      patch.activeSessionId = undefined;
-      // Don't clear playerName on disconnect — momentary disconnects (page reload,
-      // tab switch) shouldn't lose the name. Name is cleared when facilitator
-      // explicitly kicks to AI/NPC via kickToAI or when a new player claims the seat.
     }
     await ctx.db.patch(args.tableId, patch);
     if (args.connected && table) {

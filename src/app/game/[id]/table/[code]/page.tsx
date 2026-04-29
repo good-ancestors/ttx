@@ -119,28 +119,37 @@ function DriverOrObserverGate({
   // The gate samples table state ONCE — if the visiting session doesn't own
   // the seat mid-game, route to observer; otherwise stay as driver. The
   // decision must be sticky: DriverTablePage's mount-effect cleanup fires
-  // setConnected(false), so any flap that briefly unmounts it (e.g. a
-  // visibility-driven query reset) would wipe the seat. We commit to a
-  // decision once and never re-evaluate.
-  const game = useQuery(api.games.getForPlayer, { gameId });
-  const table = useQuery(api.tables.get, { tableId });
+  // setConnected(false), so any flap that briefly unmounts it would wipe
+  // `connected`. We commit to a decision once and never re-evaluate.
+  const isVisible = usePageVisibility();
+  const game = useQuery(api.games.getForPlayer, isVisible ? { gameId } : "skip");
+  const table = useQuery(api.tables.get, isVisible ? { tableId } : "skip");
   const router = useRouter();
 
   const [sessionId] = useState(() =>
     typeof window !== "undefined" ? getOrCreateId(sessionStorage, `ttx-session-${tableId}`) : ""
   );
 
-  const [decision, setDecision] = useState<"pending" | "driver" | "observer">("pending");
+  // Ref-based latch so strict-mode's double-invoke can't fire the redirect
+  // twice — useState as a latch survives re-runs but only after one render.
+  const decidedRef = useRef(false);
+  const [decision, setDecision] = useState<"pending" | "driver" | "observer" | "not-found">("pending");
   useEffect(() => {
-    if (decision !== "pending") return;
+    if (decidedRef.current) return;
+    if (game === null || table === null) {
+      decidedRef.current = true;
+      setDecision("not-found");
+      return;
+    }
     if (!game || !table) return;
+    decidedRef.current = true;
     if (game.status === "lobby" || table.activeSessionId === sessionId) {
       setDecision("driver");
       return;
     }
     setDecision("observer");
     router.replace(`/game/${gameId}/table/${tableId}?observe=1`);
-  }, [decision, game, table, sessionId, gameId, tableId, router]);
+  }, [game, table, sessionId, gameId, tableId, router]);
 
   if (decision === "pending") {
     return (
@@ -149,7 +158,9 @@ function DriverOrObserverGate({
       </div>
     );
   }
-  if (decision === "observer") {
+  if (decision === "not-found" || decision === "observer") {
+    // ObserverView renders its own "Table not found" screen on null queries,
+    // so we route both cases through it.
     return <ObserverView gameId={gameId} tableId={tableId} />;
   }
   return <DriverTablePage gameId={gameId} tableId={tableId} />;
