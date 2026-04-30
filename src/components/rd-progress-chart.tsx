@@ -35,8 +35,8 @@ const MILESTONES = [
   { multiplier: 1000, label: "Singularity", color: "#EF4444" },
 ];
 
-// Roles with a labId attribute own that lab; this lets us find the right
-// color when the series identity key is the labId rather than the role id.
+// Secondary index for when a series' identity key is the lab's labId
+// rather than its role id (ROLE_MAP is keyed by role id only).
 const ROLE_BY_LAB_ID = new Map<string, string>();
 for (const role of ROLE_MAP.values()) {
   if (role.labId) ROLE_BY_LAB_ID.set(role.labId, role.color);
@@ -228,8 +228,9 @@ function buildChartData(
     }
 
     // Use the latest name so renames (e.g. "DeepCent" → "DeepCent (Inspected)") display correctly.
-    // Color is derived from the lab's role/labId (not the identity key) so it stays
-    // in sync with the lab cards in "Where We Are Now".
+    // Color must come from the lab's role/labId, not labKey — otherwise it diverges
+    // from the lab cards in "Where We Are Now" (labKey can be a synthetic labId
+    // string that won't hit ROLE_MAP).
     series.push({
       name: currentLab?.name ?? lab.name,
       roleId: labKey,
