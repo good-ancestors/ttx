@@ -415,7 +415,7 @@ export function getCapabilityDescription(leadingMultiplier: number): CapabilityD
       level: "Superintelligence",
       agent: "Agent-5 / ASI",
       rdRange: "1,000×+",
-      timeCompression: "A decade of AI progress in ~4 days",
+      timeCompression: "~225 years of AI progress in 3 months",
       generalCapability: "Superhuman at everything. Beyond human comprehension in most domains.",
       specificCapabilities: [
         "Superhuman persuasion — can convince almost anyone of almost anything",
@@ -431,7 +431,7 @@ export function getCapabilityDescription(leadingMultiplier: number): CapabilityD
       level: "Superhuman Genius",
       agent: "Agent-4",
       rdRange: "100–500×",
-      timeCompression: "A year of progress in ~3 days",
+      timeCompression: "~30 years of progress in 3 months",
       generalCapability: "Superhuman researcher. Better than the best humans at almost all cognitive tasks.",
       specificCapabilities: [
         "Superhuman persuasion — more persuasive than the most persuasive humans",
@@ -447,7 +447,7 @@ export function getCapabilityDescription(leadingMultiplier: number): CapabilityD
       level: "Strong Autonomous Remote Worker",
       agent: "Agent-3",
       rdRange: "10–50×",
-      timeCompression: "A year of progress in ~5 weeks",
+      timeCompression: "~2.5 years of progress in 3 months",
       generalCapability: "Can complete tasks like the best remote worker. One-week autonomous expert.",
       specificCapabilities: [
         "High persuasion — as persuasive as the most persuasive humans",
@@ -463,7 +463,7 @@ export function getCapabilityDescription(leadingMultiplier: number): CapabilityD
       level: "Autonomous Remote Worker",
       agent: "Agent-2",
       rdRange: "3–8×",
-      timeCompression: "A year of progress in ~4 months",
+      timeCompression: "~9 months of progress in 3 months",
       generalCapability: "Can do most cognitive tasks a human can, but slower and less reliably. One-hour expert.",
       specificCapabilities: [
         "Autonomous cyber agent — can conduct independent cyber operations",
@@ -478,7 +478,7 @@ export function getCapabilityDescription(leadingMultiplier: number): CapabilityD
     level: "Pre-AGI",
     agent: "Pre-Agent-2",
     rdRange: "1–2×",
-    timeCompression: "Normal pace",
+    timeCompression: "3 months of progress in 3 months",
     generalCapability: "Helpful assistants with limited autonomy.",
     specificCapabilities: ["Early coding assistants", "Basic research help", "Limited autonomy"],
     implication: "AI is useful but not transformative yet.",
