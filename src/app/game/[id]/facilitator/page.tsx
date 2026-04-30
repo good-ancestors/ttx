@@ -227,45 +227,45 @@ export default function FacilitatorPage({
   // the payload object inline to keep deps pinned to the id rather than to a
   // freshly-allocated object each render.
   const aiDispositionId = enabledTables.find((t) => t.roleId === AI_SYSTEMS_ROLE_ID)?.aiDisposition;
+  const aiDisposition = useMemo(() => {
+    if (!aiDispositionId) return undefined;
+    const d = getDisposition(aiDispositionId);
+    return d ? { label: d.label, description: d.description } : undefined;
+  }, [aiDispositionId]);
 
   // Declared before the loading guard so useCallback is unconditional (Rules of Hooks).
   // game?.currentRound is safe — both handlers only run during the playing phase.
   const handleGradeRemaining = useCallback(
     async () => {
-      const d = aiDispositionId ? getDisposition(aiDispositionId) : undefined;
-      const aiDisposition = d ? { label: d.label, description: d.description } : undefined;
       await safeAction("Grading", () =>
         triggerGrading({ gameId, roundNumber: game?.currentRound ?? 1, aiDisposition }),
       )();
     },
-    [safeAction, triggerGrading, gameId, game?.currentRound, aiDispositionId],
+    [safeAction, triggerGrading, gameId, game?.currentRound, aiDisposition],
   );
   const handleRollDice = useCallback(
     async () => {
-      const d = aiDispositionId ? getDisposition(aiDispositionId) : undefined;
-      const aiDisposition = d ? { label: d.label, description: d.description } : undefined;
       await safeAction("Roll", () =>
         triggerRoll({ gameId, roundNumber: game?.currentRound ?? 1, aiDisposition }),
       )();
     },
-    [safeAction, triggerRoll, gameId, game?.currentRound, aiDispositionId],
+    [safeAction, triggerRoll, gameId, game?.currentRound, aiDisposition],
   );
   const handleReResolve = useCallback(
     async () => {
       setNarrativeStale(false);
       try {
         await clearResolution({ gameId, roundNumber: game?.currentRound ?? 1 });
-        const d = aiDispositionId ? getDisposition(aiDispositionId) : undefined;
         await triggerRoll({
           gameId,
           roundNumber: game?.currentRound ?? 1,
-          aiDisposition: d ? { label: d.label, description: d.description } : undefined,
+          aiDisposition,
         });
       } catch {
         setActionError("Re-resolve failed — try again or adjust manually");
       }
     },
-    [clearResolution, triggerRoll, gameId, game, aiDispositionId, setActionError, setNarrativeStale],
+    [clearResolution, triggerRoll, gameId, game, aiDisposition, setActionError, setNarrativeStale],
   );
 
   // Lobby needs game + tables; playing needs facilitatorState + rounds; finished needs roundsFull

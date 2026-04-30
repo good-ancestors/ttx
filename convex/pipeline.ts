@@ -400,9 +400,9 @@ export const gradeOnly = internalAction({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
-    // When true, chain into rollAndApplyEffects after grading completes — used
-    // by triggerRoll to auto-grade ungraded actions when the facilitator clicks
-    // Roll Dice without first clicking Grade Remaining.
+    // Chain into rollAndApplyEffects when grading completes, holding the
+    // resolving lock continuously across both phases so a separate trigger
+    // can't slip in between grade and roll.
     thenRoll: v.optional(v.boolean()),
     aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
   },
