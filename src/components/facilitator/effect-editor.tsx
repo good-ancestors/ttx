@@ -82,8 +82,9 @@ function formatEffectLabel(label: string, summary: string, type: StructuredEffec
   return type === "narrativeOnly" ? label : `${label}: ${summary}`;
 }
 
-/** Compact badge + click-to-edit popover. If the effect is absent, shows
- *  nothing — the grader always emits one. */
+/** Compact badge + click-to-edit popover. Caller passes a `narrativeOnly`
+ *  placeholder when the grader emitted no effect — needed so low-confidence
+ *  rows always have a badge to click for the P2 acknowledge gate. */
 export function EffectEditor(props: EffectEditorProps) {
   const { effect, isProjector, locked } = props;
   if (!effect) return null;

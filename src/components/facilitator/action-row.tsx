@@ -149,11 +149,13 @@ export function ActionRow({
       {/* Structured effect — grader's mechanical interpretation of this action.
        *  Hidden for ungraded actions (no effect yet emitted). Shown inline
        *  below the action text so the facilitator can scan the effect at the
-       *  same height as the probability chip above. */}
-      {action.structuredEffect && overrideStructuredEffect && (
+       *  same height as the probability chip above. Low-confidence rows
+       *  without an effect still render so the facilitator has somewhere to
+       *  acknowledge the gate; otherwise Roll Dice would deadlock. */}
+      {(action.structuredEffect || action.confidence === "low") && overrideStructuredEffect && (
         <div className="pl-4 mt-1">
           <EffectEditor
-            effect={action.structuredEffect}
+            effect={action.structuredEffect ?? { type: "narrativeOnly" }}
             confidence={action.confidence}
             submissionId={sub._id}
             actionIndex={i}
