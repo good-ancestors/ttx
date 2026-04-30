@@ -187,21 +187,26 @@ interface TableLobbyProps {
   gameId: Id<"games">;
   handoutData: HandoutData | null;
   playerName: string | undefined;
+  observeUrl?: string;
+  joinCode?: string;
 }
 
-export function TableLobby({ role, tableId, gameId, handoutData, playerName }: TableLobbyProps) {
+export function TableLobby({ role, tableId, gameId, handoutData, playerName, observeUrl, joinCode }: TableLobbyProps) {
   return (
     <div className="space-y-4">
       {/* Name prompt — shown when player joined via direct QR without the picker */}
       {!playerName && <NamePrompt tableId={tableId} gameId={gameId} roleId={role.id} />}
 
       {/* Reuse BriefTab with lobby status — shows role card + how to play (expanded),
-          handout placeholder instead of full brief, AI alignment placeholder */}
+          handout placeholder instead of full brief, AI alignment placeholder.
+          observeUrl/joinCode let players show the QR code to neighbours during the lobby. */}
       <BriefTab
         role={role}
         handoutData={handoutData}
         aiDisposition={undefined}
         gameStatus="lobby"
+        observeUrl={observeUrl}
+        joinCode={joinCode}
       />
 
       {/* AI Systems: alignment locked until game starts */}
