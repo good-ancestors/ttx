@@ -11,7 +11,7 @@ import {
   mergeLabsWithComputeInternal,
 } from "./labs";
 import { emitTransaction, emitPair } from "./computeLedger";
-import { validateComputeAllocation, stripGradingFields, escrowSendTargets, escrowFoundLab } from "./submissions";
+import { validateComputeAllocation, stripRollFields, escrowSendTargets, escrowFoundLab } from "./submissions";
 import { patchRuntime, readRuntime } from "./gameRuntime";
 
 
@@ -528,13 +528,19 @@ export const advanceRound = mutation({
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
-    if (!game || game.currentRound >= 4) return;
+    if (!game) throw new Error("Game not found");
+    if (game.currentRound >= 4) {
+      throw new Error("Already on the final round — nothing to advance to");
+    }
 
     // Phase + resolving guards — advanceRound is only valid from narrate phase with no
     // in-flight resolve. A double-click on the Advance button or a stray call from an
     // earlier phase (effect-review, rolling) would otherwise skip the narrative and
-    // clobber pending state. Advance from a non-narrate phase is a no-op.
-    if (game.phase !== "narrate") return;
+    // clobber pending state. Throw with a clear message so the safeAction wrapper
+    // surfaces it rather than failing silently.
+    if (game.phase !== "narrate") {
+      throw new Error(`Can't advance from ${game.phase} phase — finish resolving the current round first`);
+    }
     assertNotResolving(await readRuntime(ctx, args.gameId));
 
     // Materialise any deferred acquisition for the round we're leaving — this is the
@@ -633,6 +639,32 @@ export const restoreSnapshot = mutation({
       await resetSubmissionsForReroll(ctx, args.gameId, args.roundNumber);
     }
     await rebuildLedgerState(ctx, args.gameId, args.roundNumber, useBefore);
+
+    // Future rounds (number > target) belong to a timeline that's now undone.
+    // Wipe their resolve data + strip grade/roll artifacts off submitted actions
+    // so players keep their intent (text, priority, computeTargets, foundLab,
+    // mergeLab, etc.) and the facilitator walks the consequences again.
+    // rebuildLedgerState already dropped these rounds' compute transactions, so
+    // we re-emit submit-phase pending escrows here to match the cleaned state.
+    // The strict `>` is load-bearing: the target round itself is owned by the
+    // useBefore branch + rebuildLedgerState above; double-handling here would
+    // re-emit escrows on top of what they just produced.
+    const futureRounds = rounds.filter((r) => r.number > args.roundNumber);
+    for (const fr of futureRounds) {
+      await ctx.db.patch(fr._id, {
+        summary: undefined,
+        labsBefore: undefined,
+        labsAfter: undefined,
+        resolveNonce: undefined,
+        pendingAcquired: undefined,
+        pendingProductivityMods: undefined,
+        mechanicsLog: undefined,
+        appliedOps: undefined,
+        labTrajectories: undefined,
+      });
+      await resetSubmissionsForReroll(ctx, args.gameId, fr.number);
+      await reEmitPendingEscrowsForRound(ctx, args.gameId, fr.number);
+    }
 
     await logEvent(ctx, args.gameId, "snapshot_restored", undefined, {
       restoredFromRound: args.roundNumber,
@@ -757,8 +789,13 @@ async function rebuildLedgerState(
   const allTx = await ctx.db.query("computeTransactions")
     .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId))
     .collect();
+  // Preserve `starting` rows unconditionally — they're game-init compute, not
+  // round-derived, and live at roundNumber=1 (see init in this file). Without
+  // this exception, restoring "Before Q1" wipes all starting stock and every
+  // table ends at 0 compute.
   const shouldDelete = (tx: typeof allTx[number]) =>
-    tx.roundNumber > roundNumber || (useBefore && tx.roundNumber === roundNumber);
+    tx.type !== "starting" &&
+    (tx.roundNumber > roundNumber || (useBefore && tx.roundNumber === roundNumber));
   const stockByRole = new Map<string, number>();
   for (const tx of allTx) {
     if (shouldDelete(tx)) {
@@ -794,10 +831,15 @@ async function rebuildLedgerState(
  *  rollAllImpl on them. Without this, rollAllImpl short-circuits on
  *  status="resolved" and the player-pinned settlement helpers (foundLab, merge,
  *  computeTargets) never re-fire — the round's structural state ends up
- *  inconsistent with the action outcomes the submissions still claim. Keeps
- *  player intent fields (text, priority, secret, computeTargets, foundLab,
- *  mergeLab); drops every grading + rolling artifact so re-grade + re-roll
- *  produce a clean run. */
+ *  inconsistent with the action outcomes the submissions still claim.
+ *
+ *  Soft strip (stripRollFields): keeps player intent AND grade-pass work
+ *  (probability, structuredEffect, confidence, reasoning) — only the roll
+ *  outcome is undone. Facilitator/AI grading effort survives the rewind; if a
+ *  grade is now stale (e.g. it referenced a lab that the restore brought back
+ *  in a different state), the per-row Ungrade affordance lets the facilitator
+ *  refresh it. Status reverts to "graded" so rollAllImpl picks it up but
+ *  ungradedCount stays 0. */
 async function resetSubmissionsForReroll(
   ctx: MutationCtx,
   gameId: Id<"games">,
@@ -809,15 +851,15 @@ async function resetSubmissionsForReroll(
   for (const sub of submissions) {
     if (sub.status !== "graded" && sub.status !== "resolved") continue;
     // Only re-allocate `actions` when at least one submitted action carried
-    // roll/grade artifacts; submissions with only draft actions just need
-    // their status reverted.
+    // roll artifacts; submissions with only draft actions just need their
+    // status reverted.
     let dirty = false;
     const actions = sub.actions.map((a) => {
       if (a.actionStatus !== "submitted") return a;
       dirty = true;
-      return stripGradingFields(a, { resetRoll: true });
+      return stripRollFields(a);
     });
-    await ctx.db.patch(sub._id, dirty ? { actions, status: "submitted" } : { status: "submitted" });
+    await ctx.db.patch(sub._id, dirty ? { actions, status: "graded" } : { status: "graded" });
   }
 }
 
@@ -1206,9 +1248,6 @@ export const triggerRoll = mutation({
     const ungradedCount = subs.flatMap((s) =>
       s.actions.filter((a) => a.actionStatus === "submitted" && a.probability == null)
     ).length;
-    if (ungradedCount > 0) {
-      throw new Error(`${ungradedCount} submitted actions still ungraded — grade them first`);
-    }
 
     assertNotResolving(await readRuntime(ctx, args.gameId));
 
@@ -1216,14 +1255,28 @@ export const triggerRoll = mutation({
     await patchRuntime(ctx, args.gameId, {
       resolving: true,
       resolvingStartedAt: Date.now(),
-      pipelineStatus: { step: "rolling", detail: "Rolling dice...", startedAt: Date.now() },
+      pipelineStatus: ungradedCount > 0
+        ? { step: "grading", detail: `Grading ${ungradedCount} ungraded action${ungradedCount === 1 ? "" : "s"} before roll...`, startedAt: Date.now() }
+        : { step: "rolling", detail: "Rolling dice...", startedAt: Date.now() },
     });
 
-    await ctx.scheduler.runAfter(0, internal.pipeline.rollAndApplyEffects, {
-      gameId: args.gameId,
-      roundNumber: args.roundNumber,
-      aiDisposition: args.aiDisposition,
-    });
+    // Auto-grade ungraded actions before rolling — facilitator clicked Roll
+    // Dice, that's the intent; grading is a mechanical pre-step. gradeOnly
+    // chains into rollAndApplyEffects when thenRoll=true.
+    if (ungradedCount > 0) {
+      await ctx.scheduler.runAfter(0, internal.pipeline.gradeOnly, {
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        thenRoll: true,
+        aiDisposition: args.aiDisposition,
+      });
+    } else {
+      await ctx.scheduler.runAfter(0, internal.pipeline.rollAndApplyEffects, {
+        gameId: args.gameId,
+        roundNumber: args.roundNumber,
+        aiDisposition: args.aiDisposition,
+      });
+    }
   },
 });
 

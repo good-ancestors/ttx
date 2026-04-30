@@ -116,9 +116,9 @@ const persistedActionValidator = v.object({
  *  stripped (stale once the grade is overridden or discarded).
  *  `resetRoll: true` also drops every roll/grade artifact — `probability`,
  *  `rolled`, `success`, `aiInfluence`, `structuredEffect`, `confidence` — used
- *  by `ungradeAction` and the snapshot-restore re-roll path to fully reset to
- *  the pre-graded state while keeping player intent (text, priority, secret,
- *  computeTargets, foundLab, mergeLab) intact. */
+ *  by `ungradeAction` to fully reset to the pre-graded state while keeping
+ *  player intent (text, priority, secret, computeTargets, foundLab, mergeLab)
+ *  intact. Snapshot restore uses the softer `stripRollFields` instead. */
 type PersistedAction = Doc<"submissions">["actions"][number];
 export function stripGradingFields(action: PersistedAction, { resetRoll = false } = {}): PersistedAction {
   const { reasoning: _reasoning, probability, rolled, success, aiInfluence, ...rest } = action;
@@ -126,6 +126,21 @@ export function stripGradingFields(action: PersistedAction, { resetRoll = false 
     return { ...rest, structuredEffect: undefined, confidence: undefined };
   }
   return { ...rest, probability, rolled, success, aiInfluence };
+}
+
+/** Soft strip for snapshot restore: drop only roll-pass artifacts (rolled,
+ *  success, aiInfluence) and keep all grade-pass work (probability,
+ *  structuredEffect, confidence, reasoning). Facilitator/AI grading effort
+ *  isn't wasted when the dice need re-rolling — the next roll picks up the
+ *  existing grade and rolls fresh. Action intent (text, priority, secret,
+ *  computeTargets, foundLab, mergeLab) is preserved unchanged.
+ *
+ *  Reasoning is intentionally retained (unlike stripGradingFields, which
+ *  always drops it): the grade survives the restore, so the reasoning that
+ *  produced that grade is still accurate. */
+export function stripRollFields(action: PersistedAction): PersistedAction {
+  const { rolled: _rolled, success: _success, aiInfluence: _aiInfluence, ...rest } = action;
+  return rest;
 }
 
 // Full query — includes secret text and reasoning. Requires facilitator token.
