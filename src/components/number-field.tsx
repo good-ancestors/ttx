@@ -19,6 +19,10 @@ type Props = {
   placeholder?: string;
   disabled?: boolean;
   ariaLabel?: string;
+  autoFocus?: boolean;
+  title?: string;
+  onBlur?: () => void;
+  onEscape?: () => void;
 };
 
 function format(n: number, decimals?: number) {
@@ -38,6 +42,10 @@ export function NumberField({
   placeholder,
   disabled,
   ariaLabel,
+  autoFocus,
+  title,
+  onBlur,
+  onEscape,
 }: Props) {
   const [text, setText] = useState(() => format(value, decimals));
   const [lastSeenValue, setLastSeenValue] = useState(value);
@@ -80,17 +88,21 @@ export function NumberField({
       placeholder={placeholder}
       disabled={disabled}
       aria-label={ariaLabel}
+      title={title}
+      autoFocus={autoFocus}
       onFocus={(e) => {
         e.currentTarget.select();
       }}
       onChange={(e) => setText(e.target.value)}
       onBlur={(e) => {
         commit(e.currentTarget.value);
+        onBlur?.();
       }}
       onKeyDown={(e) => {
         if (e.key === "Enter") (e.currentTarget as HTMLInputElement).blur();
         if (e.key === "Escape") {
           setText(format(value, decimals));
+          onEscape?.();
           (e.currentTarget as HTMLInputElement).blur();
         }
       }}

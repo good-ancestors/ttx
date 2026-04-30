@@ -1,6 +1,7 @@
 "use client";
 
 import { COMPUTE_CATEGORIES } from "@/lib/game-data";
+import { balanceAllocation } from "@/lib/allocation";
 import { ComputeDotsViz } from "./lab-tracker";
 import { Check, Minus, Plus, Save, AlertCircle } from "lucide-react";
 
@@ -30,25 +31,7 @@ export function ComputeAllocation({
 
   const handleChange = (key: keyof Allocation, newVal: number) => {
     if (isSubmitted) return;
-    const clamped = Math.max(0, Math.min(100, newVal));
-    const others = COMPUTE_CATEGORIES.filter((c) => c.key !== key);
-    const otherTotal = others.reduce((s, c) => s + allocation[c.key], 0);
-    const next = { ...allocation, [key]: clamped } as Allocation;
-
-    if (otherTotal > 0) {
-      let remaining = 100 - clamped;
-      others.forEach((c, i) => {
-        if (i === others.length - 1) {
-          next[c.key] = Math.max(0, remaining);
-        } else {
-          const proportion = allocation[c.key] / otherTotal;
-          const val = Math.max(0, Math.round(proportion * remaining));
-          next[c.key] = val;
-          remaining -= val;
-        }
-      });
-    }
-    onChange(next);
+    onChange(balanceAllocation({ ...allocation, [key]: newVal }, key));
   };
 
   return (

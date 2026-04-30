@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, hasCompute } from "@/lib/game-data";
 import { QRCode } from "@/components/qr-codes";
+import { NumberField } from "@/components/number-field";
 import { Play, Lock, QrCode, Zap, X, Eye } from "lucide-react";
 import type { FacilitatorPhaseProps } from "./types";
 import type { Id } from "@convex/_generated/dataModel";
@@ -284,12 +285,11 @@ function QrOverlay({ table, origin, gameId, onClose }: { table: FacilitatorPhase
 /** Tiny inline number input for compute stock — click to edit, blur to save. */
 function InlineComputeInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(String(value));
 
   if (!editing) {
     return (
       <button
-        onClick={() => { setDraft(String(value)); setEditing(true); }}
+        onClick={() => setEditing(true)}
         className="font-mono text-xs text-white hover:text-viz-warning transition-colors tabular-nums"
         title="Click to edit"
       >
@@ -299,23 +299,15 @@ function InlineComputeInput({ value, onChange }: { value: number; onChange: (v: 
   }
 
   return (
-    <input
-      type="number"
+    <NumberField
+      value={value}
+      onChange={onChange}
       min={0}
-      value={draft}
-      onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => {
-        const parsed = parseInt(draft, 10);
-        if (!isNaN(parsed) && parsed >= 0 && parsed !== value) {
-          onChange(parsed);
-        }
-        setEditing(false);
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-        if (e.key === "Escape") setEditing(false);
-      }}
+      integer
       autoFocus
+      onBlur={() => setEditing(false)}
+      onEscape={() => setEditing(false)}
+      ariaLabel="Compute stock"
       className="w-14 text-right font-mono text-xs text-white bg-navy-dark border border-navy-light rounded px-1.5 py-0.5 outline-none focus:border-text-light tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
     />
   );
