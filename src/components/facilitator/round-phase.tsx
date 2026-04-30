@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { TOTAL_ROUNDS, isSubmittedAction, countUnacknowledgedLowConfidence, type Lab } from "@/lib/game-data";
 import { hasNarrativeContent } from "@/lib/narrative-sections";
 import { NarrativeEditor } from "@/components/manual-controls";
+import { NumberField } from "@/components/number-field";
 import { AttemptedPanel } from "./attempted-panel";
 import { HappenedSection } from "./resolve-sections/happened-section";
 import { StateSection } from "./resolve-sections/state-section";
@@ -156,12 +157,13 @@ export function RoundPhase({
               <label className="text-xs uppercase tracking-wider text-text-light/70">
                 Custom
               </label>
-              <input
-                type="number"
+              <NumberField
+                value={submitDuration}
+                onChange={setSubmitDuration}
                 min={1}
                 max={30}
-                value={submitDuration}
-                onChange={(event) => setSubmitDuration(Math.max(1, Math.min(30, Number(event.target.value) || 1)))}
+                integer
+                ariaLabel="Submit duration in minutes"
                 className="w-20 rounded border border-navy-light bg-navy-dark px-2 py-1.5 text-center text-sm text-white outline-none"
               />
               <span className="text-xs text-text-light/70">minutes</span>

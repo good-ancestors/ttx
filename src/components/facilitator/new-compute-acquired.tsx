@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useAuthMutation } from "@/lib/hooks";
+import { NumberField } from "@/components/number-field";
 import type { Id } from "@convex/_generated/dataModel";
 import { TrendingUp, Pencil, Save, X, Check } from "lucide-react";
 
@@ -188,10 +189,12 @@ function AcquiredEditor({
     <div className="space-y-3">
       <label className="flex items-center gap-2 text-[11px] text-text-light">
         <span className="w-24">Total (u)</span>
-        <input
-          type="number"
+        <NumberField
           value={totalTarget}
-          onChange={(e) => setTotalTarget(Math.max(0, parseInt(e.target.value) || 0))}
+          onChange={setTotalTarget}
+          min={0}
+          integer
+          ariaLabel="Total compute"
           className="flex-1 bg-navy-dark border border-navy-light rounded px-2 py-1 text-white font-mono"
         />
       </label>
@@ -202,14 +205,14 @@ function AcquiredEditor({
           return (
             <div key={e.roleId} className="flex items-center gap-2 text-[11px]">
               <span className="w-28 truncate text-text-light" title={e.name}>{e.name}</span>
-              <input
-                type="number"
-                step="0.1"
-                value={pct.toFixed(1)}
-                onChange={(ev) => {
-                  const v = Math.max(0, Math.min(100, parseFloat(ev.target.value) || 0));
-                  setSharePcts((prev) => ({ ...prev, [e.roleId]: v }));
-                }}
+              <NumberField
+                value={pct}
+                onChange={(v) => setSharePcts((prev) => ({ ...prev, [e.roleId]: v }))}
+                min={0}
+                max={100}
+                step={0.1}
+                decimals={1}
+                ariaLabel={`${e.name} share percentage`}
                 className="w-16 bg-navy-dark border border-navy-light rounded px-1.5 py-1 text-white font-mono text-right"
               />
               <span className="text-text-light/60">%</span>
@@ -220,7 +223,33 @@ function AcquiredEditor({
       </div>
       <div className={`flex items-center gap-1 text-[10px] ${pctOK ? "text-text-light/60" : "text-viz-danger"}`}>
         <span>Share total: {totalPct.toFixed(1)}%</span>
-        {pctOK ? <Check className="w-3 h-3" /> : <span>(must = 100)</span>}
+        {pctOK ? (
+          <Check className="w-3 h-3" />
+        ) : (
+          <>
+            <span>(must = 100)</span>
+            <button
+              type="button"
+              onClick={() => {
+                // Scale all shares to sum exactly to 100, preserving relative
+                // proportions. If everything is zero, split evenly.
+                const entries = Object.entries(sharePcts);
+                const sum = entries.reduce((s, [, v]) => s + v, 0);
+                const next: Record<string, number> = {};
+                if (sum <= 0) {
+                  const even = entries.length > 0 ? 100 / entries.length : 0;
+                  for (const [k] of entries) next[k] = Number(even.toFixed(1));
+                } else {
+                  for (const [k, v] of entries) next[k] = Number(((v / sum) * 100).toFixed(1));
+                }
+                setSharePcts(next);
+              }}
+              className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-navy-dark border border-navy-light text-text-light hover:bg-navy"
+            >
+              Auto-balance
+            </button>
+          </>
+        )}
       </div>
       {error && (
         <div className="text-[11px] text-viz-danger">{error}</div>

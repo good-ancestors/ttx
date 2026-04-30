@@ -5,6 +5,8 @@ import { Check, Merge, Pencil, Save, X } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { COMPUTE_CATEGORIES, ROLE_MAP, ROLES, isLabCeo } from "@/lib/game-data";
 import { ComputeDotsViz } from "@/components/lab-tracker";
+import { NumberField } from "@/components/number-field";
+import { balanceAllocation } from "@/lib/allocation";
 import { useAuthMutation } from "@/lib/hooks";
 import type { Lab } from "@/lib/game-data";
 import type { Id } from "@convex/_generated/dataModel";
@@ -344,55 +346,88 @@ function LabStateEditor({
     <div className="space-y-2">
       <label className="flex items-center gap-2 text-[11px] text-text-light">
         <span className="w-20">R&D ×</span>
-        <input
-          type="number"
-          step="0.1"
+        <NumberField
           value={multiplier}
-          onChange={(e) => setMultiplier(parseFloat(e.target.value) || 0)}
+          onChange={setMultiplier}
+          min={0}
+          step={0.1}
+          ariaLabel="R&D multiplier"
           className="flex-1 bg-navy-dark border border-navy-light rounded px-2 py-1 text-white font-mono"
         />
       </label>
       <label className="flex items-center gap-2 text-[11px] text-text-light">
         <span className="w-20">Stock (u)</span>
-        <input
-          type="number"
+        <NumberField
           value={stock}
-          onChange={(e) => setStock(parseInt(e.target.value) || 0)}
+          onChange={setStock}
+          min={0}
+          integer
+          ariaLabel="Compute stock"
           className="flex-1 bg-navy-dark border border-navy-light rounded px-2 py-1 text-white font-mono"
         />
       </label>
       <div className="grid grid-cols-3 gap-1.5 text-[11px] text-text-light">
         <label className="flex flex-col gap-1">
           <span>Deploy %</span>
-          <input
-            type="number"
+          <NumberField
             value={deployment}
-            onChange={(e) => setDeployment(parseInt(e.target.value) || 0)}
+            onChange={setDeployment}
+            min={0}
+            max={100}
+            integer
+            ariaLabel="Deployment percentage"
             className="bg-navy-dark border border-navy-light rounded px-1.5 py-1 text-white font-mono"
           />
         </label>
         <label className="flex flex-col gap-1">
           <span>Research %</span>
-          <input
-            type="number"
+          <NumberField
             value={research}
-            onChange={(e) => setResearch(parseInt(e.target.value) || 0)}
+            onChange={setResearch}
+            min={0}
+            max={100}
+            integer
+            ariaLabel="Research percentage"
             className="bg-navy-dark border border-navy-light rounded px-1.5 py-1 text-white font-mono"
           />
         </label>
         <label className="flex flex-col gap-1">
           <span>Safety %</span>
-          <input
-            type="number"
+          <NumberField
             value={safety}
-            onChange={(e) => setSafety(parseInt(e.target.value) || 0)}
+            onChange={setSafety}
+            min={0}
+            max={100}
+            integer
+            ariaLabel="Safety percentage"
             className="bg-navy-dark border border-navy-light rounded px-1.5 py-1 text-white font-mono"
           />
         </label>
       </div>
       <div className={`flex items-center gap-1 text-[10px] ${allocOK ? "text-text-light/60" : "text-viz-danger"}`}>
         <span>Total: {totalAlloc}%</span>
-        {allocOK ? <Check className="w-3 h-3" /> : <span>(must = 100)</span>}
+        {allocOK ? (
+          <Check className="w-3 h-3" />
+        ) : (
+          <>
+            <span>(must = 100)</span>
+            <button
+              type="button"
+              onClick={() => {
+                const next = balanceAllocation(
+                  { deployment, research, safety },
+                  "deployment",
+                );
+                setDeployment(next.deployment);
+                setResearch(next.research);
+                setSafety(next.safety);
+              }}
+              className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-navy-dark border border-navy-light text-text-light hover:bg-navy"
+            >
+              Auto-balance
+            </button>
+          </>
+        )}
       </div>
       <label className="flex items-center gap-2 text-[11px] text-text-light">
         <span className="w-20">Owner</span>
