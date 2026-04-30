@@ -133,7 +133,11 @@ export function stripGradingFields(action: PersistedAction, { resetRoll = false 
  *  structuredEffect, confidence, reasoning). Facilitator/AI grading effort
  *  isn't wasted when the dice need re-rolling — the next roll picks up the
  *  existing grade and rolls fresh. Action intent (text, priority, secret,
- *  computeTargets, foundLab, mergeLab) is preserved unchanged. */
+ *  computeTargets, foundLab, mergeLab) is preserved unchanged.
+ *
+ *  Reasoning is intentionally retained (unlike stripGradingFields, which
+ *  always drops it): the grade survives the restore, so the reasoning that
+ *  produced that grade is still accurate. */
 export function stripRollFields(action: PersistedAction): PersistedAction {
   const { rolled: _rolled, success: _success, aiInfluence: _aiInfluence, ...rest } = action;
   return rest;

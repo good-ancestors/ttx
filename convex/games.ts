@@ -646,6 +646,9 @@ export const restoreSnapshot = mutation({
     // mergeLab, etc.) and the facilitator walks the consequences again.
     // rebuildLedgerState already dropped these rounds' compute transactions, so
     // we re-emit submit-phase pending escrows here to match the cleaned state.
+    // The strict `>` is load-bearing: the target round itself is owned by the
+    // useBefore branch + rebuildLedgerState above; double-handling here would
+    // re-emit escrows on top of what they just produced.
     const futureRounds = rounds.filter((r) => r.number > args.roundNumber);
     for (const fr of futureRounds) {
       await ctx.db.patch(fr._id, {

@@ -478,7 +478,8 @@ export const gradeOnly = internalAction({
       if (args.thenRoll) {
         // Chain into the roll pipeline without releasing the lock — the
         // facilitator's intent was Roll Dice, grading was just an automatic
-        // pre-step.
+        // pre-step. Lock release is deferred to rollAndApplyEffects (it owns
+        // setResolvingInternal(false) on both success and failure paths).
         await ctx.scheduler.runAfter(0, internal.pipeline.rollAndApplyEffects, {
           gameId, roundNumber, aiDisposition: args.aiDisposition,
         });
