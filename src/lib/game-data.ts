@@ -548,19 +548,21 @@ export function isSubmittedAction(action: { actionStatus: string }): boolean {
  *  facilitators must click-through (accept or edit) each before Roll Dice
  *  unlocks. Once acknowledged via `overrideStructuredEffect({ acknowledge: true })`
  *  confidence is upgraded to "high", so this count is simply the remaining
- *  unacknowledged low-confidence rows. Only counts *graded* actions
- *  (probability != null); ungraded rows are gated separately.
+ *  unacknowledged low-confidence rows. Only counts *graded*, *submitted*
+ *  actions: ungraded rows are gated separately, and draft/deleted rows are
+ *  not displayed in the AttemptedPanel — counting them would deadlock the
+ *  Roll Dice gate with no badge to click.
  *
  *  Generic over action shape so callers (facilitator Submission type,
  *  raw Convex docs, or the round-phase reduced form) all work without
  *  converting. */
 export function countUnacknowledgedLowConfidence(
-  submissions: { actions: { probability?: number; confidence?: string }[] }[],
+  submissions: { actions: { probability?: number; confidence?: string; actionStatus: string }[] }[],
 ): number {
   let count = 0;
   for (const s of submissions) {
     for (const a of s.actions) {
-      if (a.probability != null && a.confidence === "low") count++;
+      if (a.probability != null && a.confidence === "low" && isSubmittedAction(a)) count++;
     }
   }
   return count;
