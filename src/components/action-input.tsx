@@ -260,26 +260,23 @@ function ActionCard({
         </p>
       )}
 
-      {/* Controls row — only show when there's text */}
-      {(action.text.trim() || isSubmitted) && (
-        <ActionControlsRow
-          action={action}
-          isSubmitted={isSubmitted}
-          canRemove={canRemove}
-          onUpdate={onUpdate}
-          onRemove={onRemove}
-          onSubmit={onSubmit}
-          showEndorse={showEndorse}
-          setShowEndorse={setShowEndorse}
-          showComputeRequest={showComputeRequest}
-          setShowComputeRequest={setShowComputeRequest}
-          computeRoles={computeRoles}
-          ownComputeStock={ownComputeStock}
-          ownedLab={ownedLab}
-          otherLabs={otherLabs}
-          idleNudge={idleNudge}
-        />
-      )}
+      <ActionControlsRow
+        action={action}
+        isSubmitted={isSubmitted}
+        canRemove={canRemove}
+        onUpdate={onUpdate}
+        onRemove={onRemove}
+        onSubmit={onSubmit}
+        showEndorse={showEndorse}
+        setShowEndorse={setShowEndorse}
+        showComputeRequest={showComputeRequest}
+        setShowComputeRequest={setShowComputeRequest}
+        computeRoles={computeRoles}
+        ownComputeStock={ownComputeStock}
+        ownedLab={ownedLab}
+        otherLabs={otherLabs}
+        idleNudge={idleNudge}
+      />
 
       {showEndorse && !isSubmitted && (
         <EndorsementPicker
