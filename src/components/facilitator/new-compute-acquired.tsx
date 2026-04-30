@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useAuthMutation } from "@/lib/hooks";
@@ -120,7 +120,24 @@ function AcquiredEditor({
   acquired: AcquiredEntry[];
   onClose: () => void;
 }) {
-  const currentTotal = acquired.reduce((s, e) => s + e.amount, 0);
+  const enabledRoles = useQuery(api.tables.getEnabledRoleNames, { gameId });
+  // Merge: include every active player so the facilitator can grant compute to
+  // someone the model didn't allocate any to. Players already acquiring compute
+  // keep their current amount; everyone else starts at 0.
+  const entries = useMemo<AcquiredEntry[]>(() => {
+    const amountByRole = new Map(acquired.map((a) => [a.roleId, a.amount]));
+    const nameByRole = new Map(acquired.map((a) => [a.roleId, a.name]));
+    if (!enabledRoles) return acquired;
+    return enabledRoles
+      .map((r) => ({
+        roleId: r.roleId,
+        name: nameByRole.get(r.roleId) ?? r.roleName,
+        amount: amountByRole.get(r.roleId) ?? 0,
+      }))
+      .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
+  }, [enabledRoles, acquired]);
+
+  const currentTotal = entries.reduce((s, e) => s + e.amount, 0);
   const [totalTarget, setTotalTarget] = useState(currentTotal);
   const [sharePcts, setSharePcts] = useState<Record<string, number>>(() => {
     const pcts: Record<string, number> = {};
@@ -136,7 +153,7 @@ function AcquiredEditor({
   const totalPct = Object.values(sharePcts).reduce((s, p) => s + p, 0);
   const pctOK = Math.abs(totalPct - 100) < 0.5;
 
-  const previewAmounts = acquired.map((e) => ({
+  const previewAmounts = entries.map((e) => ({
     ...e,
     newAmount: Math.round((sharePcts[e.roleId] ?? 0) / 100 * totalTarget),
   }));
@@ -170,7 +187,7 @@ function AcquiredEditor({
         />
       </label>
       <div className="space-y-1.5">
-        {acquired.map((e) => {
+        {entries.map((e) => {
           const pct = sharePcts[e.roleId] ?? 0;
           const amount = Math.round(pct / 100 * totalTarget);
           return (
