@@ -226,6 +226,7 @@ export const getForPlayer = query({
         allocation: l.allocation,
         spec: l.spec,
         colour: l.colour,
+        jurisdiction: l.jurisdiction,
       })),
       locked: game.locked,
     };
@@ -325,6 +326,7 @@ type LabPatch = {
   rdMultiplier?: number;
   allocation?: { deployment: number; research: number; safety: number };
   ownerRoleId?: string | null;
+  jurisdiction?: string | null;
 };
 
 function buildLabFieldPatch(p: LabPatch): Partial<Doc<"labs">> {
@@ -334,6 +336,7 @@ function buildLabFieldPatch(p: LabPatch): Partial<Doc<"labs">> {
   if (p.rdMultiplier !== undefined) patch.rdMultiplier = p.rdMultiplier;
   if (p.allocation !== undefined) patch.allocation = p.allocation;
   if (p.ownerRoleId !== undefined) patch.ownerRoleId = p.ownerRoleId ?? undefined;
+  if (p.jurisdiction !== undefined) patch.jurisdiction = p.jurisdiction ?? undefined;
   return patch;
 }
 
@@ -367,6 +370,7 @@ export const updateLabs = mutation({
         deployment: v.number(), research: v.number(), safety: v.number(),
       })),
       ownerRoleId: v.optional(v.union(v.string(), v.null())),
+      jurisdiction: v.optional(v.union(v.string(), v.null())),
     })),
     reason: v.optional(v.string()),
     facilitatorToken: v.optional(v.string()),
@@ -741,6 +745,7 @@ async function restoreLabsFromSnapshot(
       status: snap.status,
       mergedIntoLabId: remappedMerged,
       createdRound: snap.createdRound,
+      jurisdiction: snap.jurisdiction,
     });
   }
 }
@@ -962,6 +967,11 @@ export const addLab = mutation({
     name: v.string(),
     roleId: v.string(),
     rdMultiplier: v.number(),
+    spec: v.optional(v.string()),
+    allocation: v.optional(v.object({
+      deployment: v.number(), research: v.number(), safety: v.number(),
+    })),
+    jurisdiction: v.optional(v.string()),
     facilitatorToken: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
@@ -973,6 +983,8 @@ export const addLab = mutation({
     if (activeLabs.some((l) => l.ownerRoleId === args.roleId)) {
       throw new Error(`Role ${args.roleId} already controls a lab`);
     }
+    const allocation = args.allocation ?? { deployment: 34, research: 33, safety: 33 };
+    validateComputeAllocation(allocation);
 
     // Enable compute tracking if the role's table didn't have it
     const table = await ctx.db.query("tables")
@@ -985,10 +997,12 @@ export const addLab = mutation({
     await createLabInternal(ctx, {
       gameId: args.gameId,
       name: args.name,
+      spec: args.spec,
       rdMultiplier: args.rdMultiplier,
-      allocation: { deployment: 34, research: 33, safety: 33 },
+      allocation,
       ownerRoleId: args.roleId,
       createdRound: game.currentRound,
+      jurisdiction: args.jurisdiction,
     });
 
     await logEvent(ctx, args.gameId, "lab_added", args.roleId, {

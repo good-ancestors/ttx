@@ -711,7 +711,15 @@ function AddLabModal({
 }: {
   gameId: Id<"games">;
   tables: { roleId: string; roleName: string; enabled?: boolean; computeStock?: number }[];
-  addLab: (args: { gameId: Id<"games">; name: string; roleId: string; rdMultiplier: number }) => Promise<unknown>;
+  addLab: (args: {
+    gameId: Id<"games">;
+    name: string;
+    roleId: string;
+    rdMultiplier: number;
+    spec?: string;
+    allocation?: { deployment: number; research: number; safety: number };
+    jurisdiction?: string;
+  }) => Promise<unknown>;
   onClose: () => void;
 }) {
   return (
