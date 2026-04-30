@@ -219,7 +219,6 @@ export function RoundPhase({
       {phase !== "discuss" && (
         <AttemptedPanel
           phase={phase}
-          currentRound={currentRound}
           submissions={submissions}
           proposals={proposals}
           isProjector={isProjector}
@@ -248,10 +247,10 @@ export function RoundPhase({
         <div className="space-y-3">
           {submittedActionCount > 0 && (
             <div className="flex gap-3">
-              {(ungradedCount > 0 || resolving) && (
+              {ungradedCount > 0 && (
                 <button
                   onClick={handleGradeRemaining}
-                  disabled={resolving || ungradedCount === 0}
+                  disabled={resolving}
                   className="flex-1 py-3 rounded-lg font-bold text-base transition-colors flex items-center justify-center gap-2 bg-[#3D2F00] text-[#FCD34D] hover:bg-[#4D3D00] disabled:opacity-50"
                 >
                   {resolving ? (
@@ -262,26 +261,29 @@ export function RoundPhase({
                 </button>
               )}
 
-              {ungradedCount === 0 && (
-                <button
-                  onClick={handleRollDice}
-                  disabled={resolving || lowConfidenceCount > 0}
-                  aria-disabled={resolving || lowConfidenceCount > 0}
-                  aria-describedby={lowConfidenceCount > 0 ? "roll-dice-gate-hint" : undefined}
-                  className={`flex-1 py-3 rounded-lg font-extrabold text-base transition-colors flex items-center justify-center gap-2 ${
-                    resolving || lowConfidenceCount > 0
-                      ? "bg-navy-light text-navy-muted opacity-50 cursor-not-allowed"
-                      : "bg-white text-navy hover:bg-off-white shadow-lg ring-1 ring-white/20"
-                  }`}
-                >
-                  <Dices className="w-5 h-5" /> Roll Dice
-                </button>
-              )}
+              <button
+                onClick={handleRollDice}
+                disabled={resolving}
+                aria-describedby={lowConfidenceCount > 0 ? "roll-dice-gate-hint" : undefined}
+                className={`flex-1 py-3 rounded-lg font-extrabold text-base transition-colors flex items-center justify-center gap-2 ${
+                  resolving
+                    ? "bg-navy-light text-navy-muted opacity-50 cursor-not-allowed"
+                    : "bg-white text-navy hover:bg-off-white shadow-lg ring-1 ring-white/20"
+                }`}
+              >
+                {resolving ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /> {resolveStep}</>
+                ) : ungradedCount > 0 ? (
+                  <><Dices className="w-5 h-5" /> Grade &amp; Roll Dice</>
+                ) : (
+                  <><Dices className="w-5 h-5" /> Roll Dice</>
+                )}
+              </button>
             </div>
           )}
-          {submittedActionCount > 0 && ungradedCount === 0 && lowConfidenceCount > 0 && (
+          {submittedActionCount > 0 && lowConfidenceCount > 0 && (
             <p id="roll-dice-gate-hint" className="text-xs text-viz-warning text-center">
-              {lowConfidenceCount} low-confidence effect{lowConfidenceCount === 1 ? "" : "s"} need{lowConfidenceCount === 1 ? "s" : ""} review — click each yellow badge above to accept or edit before rolling.
+              {lowConfidenceCount} low-confidence effect{lowConfidenceCount === 1 ? "" : "s"} flagged for review — click each yellow badge above to accept or edit, or roll anyway.
             </p>
           )}
         </div>

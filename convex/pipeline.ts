@@ -400,6 +400,11 @@ export const gradeOnly = internalAction({
   args: {
     gameId: v.id("games"),
     roundNumber: v.number(),
+    // When true, chain into rollAndApplyEffects after grading completes — used
+    // by triggerRoll to auto-grade ungraded actions when the facilitator clicks
+    // Roll Dice without first clicking Grade Remaining.
+    thenRoll: v.optional(v.boolean()),
+    aiDisposition: v.optional(v.object({ label: v.string(), description: v.string() })),
   },
   handler: async (ctx, args) => {
     const { gameId, roundNumber } = args;
@@ -437,6 +442,14 @@ export const gradeOnly = internalAction({
       );
       if (!hasUngraded) {
         // Nothing to grade — done. Skip fetching game, rounds, requests.
+        if (args.thenRoll) {
+          // Caller wanted grade-then-roll but everything's already graded —
+          // jump straight to roll without releasing the lock.
+          await ctx.scheduler.runAfter(0, internal.pipeline.rollAndApplyEffects, {
+            gameId, roundNumber, aiDisposition: args.aiDisposition,
+          });
+          return;
+        }
         await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });
         await ctx.runMutation(internal.games.updatePipelineStatus, {
           gameId,
@@ -461,6 +474,16 @@ export const gradeOnly = internalAction({
         gameId, roundNumber, labs, submissions, rounds, requests: requests ?? [],
         enabledRoleNames, onlyUngraded: true,
       });
+
+      if (args.thenRoll) {
+        // Chain into the roll pipeline without releasing the lock — the
+        // facilitator's intent was Roll Dice, grading was just an automatic
+        // pre-step.
+        await ctx.scheduler.runAfter(0, internal.pipeline.rollAndApplyEffects, {
+          gameId, roundNumber, aiDisposition: args.aiDisposition,
+        });
+        return;
+      }
 
       // Done grading — release lock, don't proceed to roll
       await ctx.runMutation(internal.games.setResolvingInternal, { gameId, resolving: false });

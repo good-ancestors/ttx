@@ -38,7 +38,6 @@ export function ActionRow({
   labs,
   roles,
   allowPregrade,
-  needsReview,
 }: {
   action: Submission["actions"][number];
   actionIndex: number;
@@ -67,7 +66,6 @@ export function ActionRow({
   /** Active roles — for effect editor dropdowns. */
   roles?: { roleId: string; name: string }[];
   allowPregrade: boolean;
-  needsReview?: boolean;
 }) {
   const [reasoningOpen, setReasoningOpen] = useState(false);
   const secretKey = `${sub.roleId}-${i}`;
@@ -93,14 +91,6 @@ export function ActionRow({
           >
             <Lock className="w-3 h-3 text-viz-warning mt-0.5" />
           </button>
-        )}
-        {needsReview && (
-          <span
-            className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-viz-warning/20 text-viz-warning shrink-0"
-            title="This action produced structural effects that need review"
-          >
-            review
-          </span>
         )}
         {endorsements.length > 0 && (
           <div className="flex flex-wrap gap-1 ml-1">

@@ -12,22 +12,10 @@ import {
   Clock,
   ChevronDown,
 } from "lucide-react";
-import type { Submission, Proposal, CurrentRound, Table } from "./types";
+import type { Submission, Proposal, Table } from "./types";
 import type { StructuredEffect } from "@/lib/ai-prompts";
 import type { Id } from "@convex/_generated/dataModel";
 import { ActionRow, InlineRollStatus } from "./action-row";
-
-const REVIEWABLE_OP_TYPES = new Set([
-  "merge",
-  "decommission",
-  "transferOwnership",
-  "breakthrough",
-  "modelRollback",
-  "computeDestroyed",
-  "researchDisruption",
-  "researchBoost",
-  "foundLab",
-]);
 
 /**
  * "What was attempted" panel — shows actions as they are submitted, graded, and rolled.
@@ -35,8 +23,7 @@ const REVIEWABLE_OP_TYPES = new Set([
  * Renders in three modes depending on phase:
  *   - discuss: hidden (component returns null in parent).
  *   - submit / rolling: flat list, staggered reveal animation.
- *   - effect-review / narrate: two-column succeeded/failed split. Successful rows whose
- *     round produced reviewable structural ops carry a "review" badge.
+ *   - effect-review / narrate: two-column succeeded/failed split.
  *
  * The "Continue to Narrative" button lives in the HappenedSection, not here —
  * it reads the applied effects to trigger narrative generation for them.
@@ -60,7 +47,6 @@ export function AttemptedPanel({
   hasNarrative,
   narrativeStale,
   onDiceChanged,
-  currentRound,
   isTimerExpired,
   labs,
   tables,
@@ -88,7 +74,6 @@ export function AttemptedPanel({
   hasNarrative: boolean;
   narrativeStale: boolean;
   onDiceChanged: () => void;
-  currentRound: CurrentRound | undefined;
   isTimerExpired: boolean;
   labs: Lab[];
   tables: Table[];
@@ -193,17 +178,6 @@ export function AttemptedPanel({
     return endorsementsByOwner.get(`${roleId}::${aText}`) ?? [];
   }, [endorsementsByOwner]);
 
-  // Round-level "needs review" flag: we don't link ops to actions today, so any successful
-  // action gets the badge when the round produced at least one applied structural op.
-  // Only active during the P7 pause — during narrate the facilitator has already decided,
-  // so the badge is just noise.
-  const reviewableApplied = useMemo(() =>
-    (currentRound?.appliedOps ?? []).filter((op) =>
-      op.status === "applied" && REVIEWABLE_OP_TYPES.has(op.type)
-    ),
-  [currentRound?.appliedOps]);
-  const showReviewBadges = phase === "effect-review" && reviewableApplied.length > 0;
-
   // Derive the lab/role option lists used by the effect editor dropdowns.
   // Labs are filtered to active-only — the editor forbids operating on
   // decommissioned labs. Roles are from enabled tables. Memoised above the
@@ -262,7 +236,6 @@ export function AttemptedPanel({
               succeeded={succeeded}
               failed={failed}
               rowProps={rowProps}
-              showReviewBadges={showReviewBadges}
             />
           ) : (
             <div className="space-y-1.5">
@@ -427,7 +400,6 @@ function SucceededFailedSplit({
   succeeded,
   failed,
   rowProps,
-  showReviewBadges,
 }: {
   succeeded: SplitEntry[];
   failed: SplitEntry[];
@@ -451,7 +423,6 @@ function SucceededFailedSplit({
     roles: { roleId: string; name: string }[];
     allowPregrade: boolean;
   };
-  showReviewBadges: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -475,7 +446,6 @@ function SucceededFailedSplit({
                 role={role}
                 idx={idx}
                 {...rowProps}
-                needsReview={showReviewBadges}
               />
             ))}
           </div>
