@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_ROUND_LABEL, DEFAULT_LABS, getObserveUrl } from "@/lib/game-data";
+import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DEFAULT_LABS, getObserveUrl } from "@/lib/game-data";
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, useSessionId } from "@/lib/hooks";
 import { ObserverView } from "@/components/table/observer-view";
 import { TableLoader } from "@/components/table/table-loader";
@@ -24,8 +24,6 @@ import {
   Info,
   Zap,
   LogOut,
-  MoreVertical,
-  ArrowRightLeft,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -755,29 +753,17 @@ function DriverTablePage({
                   <Clock className={`w-3.5 h-3.5 ${isUrgent ? "animate-pulse" : ""}`} aria-hidden="true" /> {timerDisplay}
                 </span>
               )}
-              {game.status === "lobby" ? (
-                <button
-                  onClick={() => {
+              <LeaveSeatButton
+                inLobby={game.status === "lobby"}
+                onLeave={() => {
+                  if (game.status === "lobby") {
                     void leaveRole({ tableId, sessionId });
-                    router.push(`/game/${gameId}/pick`);
-                  }}
-                  className="text-[11px] text-text-muted hover:text-viz-danger transition-colors flex items-center gap-1"
-                >
-                  <LogOut className="w-3 h-3" /> Leave
-                </button>
-              ) : (
-                <>
-                  <span className="text-[11px] text-text-muted font-mono">
-                    {round?.label ?? DEFAULT_ROUND_LABEL} — Turn {round?.number ?? 1}/4
-                  </span>
-                  <DriverSeatMenu
-                    onHandOff={() => {
-                      void handOffSeat({ tableId, sessionId });
-                      router.push(`/game/${gameId}/pick`);
-                    }}
-                  />
-                </>
-              )}
+                  } else {
+                    void handOffSeat({ tableId, sessionId });
+                  }
+                  router.push(`/game/${gameId}/pick`);
+                }}
+              />
               <ConnectionIndicator />
             </div>
           </div>
@@ -885,68 +871,55 @@ function DriverTablePage({
   );
 }
 
-// ─── Driver seat menu ─────────────────────────────────────────────────────
-// Holds destructive-ish driver actions (hand off, leave) behind a kebab so
-// they aren't peer buttons in the header. Hand-off has a one-tap confirm
-// because it's irreversible — anyone in the picker can claim immediately.
-
-function DriverSeatMenu({ onHandOff }: { onHandOff: () => void }) {
-  const [open, setOpen] = useState(false);
+// In lobby, leaving is reversible (rejoin from picker), so a single tap is fine.
+// Mid-game, leaving hands the seat off — anyone in the picker can claim
+// immediately — so we require a confirmation tap.
+function LeaveSeatButton({ inLobby, onLeave }: { inLobby: boolean; onLeave: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!open) return;
-    const onClick = (e: MouseEvent) => {
+    if (!confirming) return;
+    const onPointerDown = (e: PointerEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
         setConfirming(false);
       }
     };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, [open]);
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [confirming]);
 
   return (
     <div className="relative" ref={ref}>
       <button
-        onClick={() => setOpen(!open)}
-        className="text-text-muted hover:text-text transition-colors p-1"
-        aria-label="Driver options"
+        onClick={() => {
+          if (inLobby) onLeave();
+          else setConfirming(true);
+        }}
+        className="text-[11px] text-text-muted hover:text-viz-danger transition-colors flex items-center gap-1 min-h-[32px] px-1"
+        aria-label="Leave seat"
       >
-        <MoreVertical className="w-4 h-4" />
+        <LogOut className="w-3 h-3" /> Leave
       </button>
-      {open && (
-        <div className="absolute right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-xl z-30 min-w-[200px] py-1">
-          {!confirming ? (
+      {confirming && (
+        <div className="absolute right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-xl z-30 w-[220px] p-3">
+          <p className="text-[11px] text-text-muted mb-2 leading-snug">
+            Anyone at the table can claim your seat immediately. You&rsquo;ll go back to the role picker.
+          </p>
+          <div className="flex gap-2">
             <button
-              onClick={() => setConfirming(true)}
-              className="w-full text-left px-3 py-2 text-xs text-text hover:bg-warm-gray transition-colors flex items-center gap-2"
+              onClick={() => { setConfirming(false); onLeave(); }}
+              className="flex-1 min-h-[32px] rounded text-xs font-bold bg-text text-white hover:bg-text/90"
             >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-              Hand off this seat
+              Leave
             </button>
-          ) : (
-            <div className="px-3 py-2">
-              <p className="text-[11px] text-text-muted mb-2 leading-snug">
-                Anyone at the table can claim immediately. You&rsquo;ll go back to the role picker.
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { setOpen(false); setConfirming(false); onHandOff(); }}
-                  className="flex-1 min-h-[32px] rounded text-xs font-bold bg-text text-white hover:bg-text/90"
-                >
-                  Hand off
-                </button>
-                <button
-                  onClick={() => setConfirming(false)}
-                  className="min-h-[32px] px-3 rounded text-xs text-text-muted hover:text-text"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          )}
+            <button
+              onClick={() => setConfirming(false)}
+              className="min-h-[32px] px-3 rounded text-xs text-text-muted hover:text-text"
+            >
+              Cancel
+            </button>
+          </div>
         </div>
       )}
     </div>
