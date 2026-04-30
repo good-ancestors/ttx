@@ -754,7 +754,7 @@ function DriverTablePage({
                 </span>
               )}
               <LeaveSeatButton
-                inLobby={game.status === "lobby"}
+                requireConfirm={game.status !== "lobby"}
                 onLeave={() => {
                   if (game.status === "lobby") {
                     void leaveRole({ tableId, sessionId });
@@ -871,10 +871,7 @@ function DriverTablePage({
   );
 }
 
-// In lobby, leaving is reversible (rejoin from picker), so a single tap is fine.
-// Mid-game, leaving hands the seat off — anyone in the picker can claim
-// immediately — so we require a confirmation tap.
-function LeaveSeatButton({ inLobby, onLeave }: { inLobby: boolean; onLeave: () => void }) {
+function LeaveSeatButton({ requireConfirm, onLeave }: { requireConfirm: boolean; onLeave: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -893,13 +890,12 @@ function LeaveSeatButton({ inLobby, onLeave }: { inLobby: boolean; onLeave: () =
     <div className="relative" ref={ref}>
       <button
         onClick={() => {
-          if (inLobby) onLeave();
-          else setConfirming(true);
+          if (requireConfirm) setConfirming(true);
+          else onLeave();
         }}
         className="text-[11px] text-text-muted hover:text-viz-danger transition-colors flex items-center gap-1 min-h-[32px] px-1"
-        aria-label="Leave seat"
       >
-        <LogOut className="w-3 h-3" /> Leave
+        <LogOut className="w-3 h-3" aria-hidden="true" /> Leave
       </button>
       {confirming && (
         <div className="absolute right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-xl z-30 w-[220px] p-3">
