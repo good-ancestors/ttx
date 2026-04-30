@@ -158,8 +158,7 @@ export default defineSchema({
     observerName: v.string(),
     joinedAt: v.number(),
   })
-    .index("by_role", ["gameId", "roleId"])
-    .index("by_game", ["gameId"]),
+    .index("by_role", ["gameId", "roleId"]),
 
   submissions: defineTable({
     tableId: v.id("tables"),

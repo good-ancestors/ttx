@@ -159,12 +159,14 @@ export const listByRole = query({
 });
 
 // Per-game observer counts grouped by roleId — for the facilitator dashboard.
+// Uses the by_role index with only the gameId prefix; a standalone by_game
+// index would just shadow this one.
 export const countsByGame = query({
   args: { gameId: v.id("games") },
   handler: async (ctx, args) => {
     const rows = await ctx.db
       .query("tableObservers")
-      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .withIndex("by_role", (q) => q.eq("gameId", args.gameId))
       .collect();
     const counts: Record<string, number> = {};
     for (const r of rows) {
