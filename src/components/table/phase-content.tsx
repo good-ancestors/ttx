@@ -154,6 +154,8 @@ function LobbyContent({ common, playerName }: { common: CommonProps; playerName:
           gameId={common.gameId}
           handoutData={common.handoutData}
           playerName={playerName}
+          observeUrl={common.observeUrl}
+          joinCode={common.joinCode}
         />
       )}
       {common.activeTab === "actions" && (
