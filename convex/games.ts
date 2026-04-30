@@ -528,13 +528,19 @@ export const advanceRound = mutation({
   handler: async (ctx, args) => {
     assertFacilitator(args.facilitatorToken);
     const game = await ctx.db.get(args.gameId);
-    if (!game || game.currentRound >= 4) return;
+    if (!game) throw new Error("Game not found");
+    if (game.currentRound >= 4) {
+      throw new Error("Already on the final round — nothing to advance to");
+    }
 
     // Phase + resolving guards — advanceRound is only valid from narrate phase with no
     // in-flight resolve. A double-click on the Advance button or a stray call from an
     // earlier phase (effect-review, rolling) would otherwise skip the narrative and
-    // clobber pending state. Advance from a non-narrate phase is a no-op.
-    if (game.phase !== "narrate") return;
+    // clobber pending state. Throw with a clear message so the safeAction wrapper
+    // surfaces it rather than failing silently.
+    if (game.phase !== "narrate") {
+      throw new Error(`Can't advance from ${game.phase} phase — finish resolving the current round first`);
+    }
     assertNotResolving(await readRuntime(ctx, args.gameId));
 
     // Materialise any deferred acquisition for the round we're leaving — this is the
