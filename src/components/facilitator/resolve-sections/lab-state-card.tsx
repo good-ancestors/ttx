@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Check, Merge, Pencil, Save, X } from "lucide-react";
 import { api } from "@convex/_generated/api";
-import { COMPUTE_CATEGORIES, ROLE_MAP } from "@/lib/game-data";
+import { COMPUTE_CATEGORIES, ROLE_MAP, ROLES, isLabCeo } from "@/lib/game-data";
 import { ComputeDotsViz } from "@/components/lab-tracker";
 import { useAuthMutation } from "@/lib/hooks";
 import type { Lab } from "@/lib/game-data";
@@ -147,6 +147,12 @@ function LabCardBody({
         ))}
       </div>
 
+      {lab.jurisdiction && (
+        <div className="text-[10px] text-text-light/70 mt-1.5 uppercase tracking-wider">
+          Jurisdiction: <span className="text-text-light">{lab.jurisdiction}</span>
+        </div>
+      )}
+
       {lab.spec && (
         <div className="text-[10px] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
           Spec: {lab.spec}
@@ -157,10 +163,10 @@ function LabCardBody({
 }
 
 /** Combined lab state + allocations card. Shows per-lab name, R&D multiplier, compute
- *  stock, share of new compute, spec, and the coloured allocation blocks + legend from
- *  the old LabTracker. When `editable`, a pencil icon opens an inline editor for R&D
- *  multiplier, allocation %, and compute stock — lab names and spec are edited via
- *  other UIs (merge dialog / player-facing spec editor). */
+ *  stock, share of new compute, spec, jurisdiction, and the coloured allocation blocks
+ *  + legend from the old LabTracker. When `editable`, a pencil icon opens an inline
+ *  editor for R&D multiplier, compute stock, allocation %, spec, owner role, and
+ *  jurisdiction. Renames remain in the merge dialog. */
 export function LabStateCard({
   lab,
   holder,
@@ -272,6 +278,9 @@ function LabStateEditor({
   const [deployment, setDeployment] = useState(lab.allocation.deployment);
   const [research, setResearch] = useState(lab.allocation.research);
   const [safety, setSafety] = useState(lab.allocation.safety);
+  const [spec, setSpec] = useState(lab.spec ?? "");
+  const [ownerRoleId, setOwnerRoleId] = useState(lab.roleId ?? "");
+  const [jurisdiction, setJurisdiction] = useState(lab.jurisdiction ?? "");
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -290,18 +299,29 @@ function LabStateEditor({
     setSaving(true);
     setError(null);
     try {
-      const patches: Array<{
+      const trimmedSpec = spec.trim();
+      const trimmedJurisdiction = jurisdiction.trim();
+      const specChanged = trimmedSpec !== (lab.spec ?? "");
+      const jurisdictionChanged = trimmedJurisdiction !== (lab.jurisdiction ?? "");
+      const ownerChanged = ownerRoleId !== (lab.roleId ?? "");
+      const patch: {
         labId: Id<"labs">;
         rdMultiplier?: number;
         allocation?: { deployment: number; research: number; safety: number };
-      }> = [{
+        spec?: string;
+        ownerRoleId?: string | null;
+        jurisdiction?: string | null;
+      } = {
         labId: lab.labId as Id<"labs">,
         rdMultiplier: multiplier,
         allocation: { deployment, research, safety },
-      }];
+      };
+      if (specChanged) patch.spec = trimmedSpec;
+      if (ownerChanged) patch.ownerRoleId = ownerRoleId === "" ? null : ownerRoleId;
+      if (jurisdictionChanged) patch.jurisdiction = trimmedJurisdiction === "" ? null : trimmedJurisdiction;
       await updateLabs({
         gameId,
-        patches,
+        patches: [patch],
         reason: multiplierChanged && reason.trim() ? reason.trim() : undefined,
       });
       if (stock !== currentStock && lab.roleId && roundNumber != null) {
@@ -374,6 +394,40 @@ function LabStateEditor({
         <span>Total: {totalAlloc}%</span>
         {allocOK ? <Check className="w-3 h-3" /> : <span>(must = 100)</span>}
       </div>
+      <label className="flex items-center gap-2 text-[11px] text-text-light">
+        <span className="w-20">Owner</span>
+        <select
+          value={ownerRoleId}
+          onChange={(e) => setOwnerRoleId(e.target.value)}
+          className="flex-1 bg-navy-dark border border-navy-light rounded px-2 py-1 text-white"
+        >
+          <option value="">(unowned)</option>
+          {ROLES.filter(isLabCeo).map((r) => (
+            <option key={r.id} value={r.id}>{r.name}</option>
+          ))}
+        </select>
+      </label>
+      <label className="flex items-center gap-2 text-[11px] text-text-light">
+        <span className="w-20">Jurisdiction</span>
+        <input
+          type="text"
+          value={jurisdiction}
+          placeholder="e.g. United States"
+          onChange={(e) => setJurisdiction(e.target.value)}
+          className="flex-1 bg-navy-dark border border-navy-light rounded px-2 py-1 text-white"
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-[11px] text-text-light">
+        <span>Spec</span>
+        <textarea
+          value={spec}
+          placeholder="Lab AI directive / mission (optional)"
+          rows={3}
+          maxLength={2000}
+          onChange={(e) => setSpec(e.target.value)}
+          className="bg-navy-dark border border-navy-light rounded px-2 py-1 text-white resize-none"
+        />
+      </label>
       {multiplierChanged && (
         <label className="flex items-center gap-2 text-[11px] text-text-light">
           <span className="w-20">Reason</span>

@@ -9,6 +9,7 @@ import { v } from "convex/values";
 import { query, internalQuery, internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { emitPair } from "./computeLedger";
+import { validateComputeAllocation } from "./validators";
 
 export type Lab = Doc<"labs">;
 
@@ -89,7 +90,10 @@ export async function getLabsWithCompute(
 // ─── Write helpers ────────────────────────────────────────────────────────────
 
 /** Create a new lab. Enforces unique active name. Does NOT emit ledger rows —
- *  callers handle compute seeding separately (e.g. found-a-lab action escrows from founder). */
+ *  callers handle compute seeding separately (e.g. found-a-lab action escrows from founder).
+ *  Server-side allocation revalidation is the last line of defence: facilitator-edited and
+ *  scenario-imported foundLab intents reach this entry point without passing through the
+ *  client-side sum-to-100 check. */
 export async function createLabInternal(
   ctx: MutationCtx,
   args: {
@@ -104,6 +108,7 @@ export async function createLabInternal(
     jurisdiction?: string;
   },
 ): Promise<Id<"labs">> {
+  validateComputeAllocation(args.allocation);
   const active = await getActiveLabsForGame(ctx, args.gameId);
   const clash = active.find((l) => l.name === args.name);
   if (clash) throw new Error(`Active lab named "${args.name}" already exists`);

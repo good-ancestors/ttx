@@ -15,21 +15,12 @@ import {
   emitPair,
 } from "./computeLedger";
 import { createLabInternal, mergeLabsWithComputeInternal } from "./labs";
+import { validateComputeAllocation } from "./validators";
 
 const PRIORITY_HARD_CAP = 12;
 
 export function generateActionId(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
-}
-
-export function validateComputeAllocation(allocation: { deployment: number; research: number; safety: number }) {
-  if (allocation.deployment < 0 || allocation.research < 0 || allocation.safety < 0) {
-    throw new Error("Compute allocation values must be >= 0");
-  }
-  const sum = allocation.deployment + allocation.research + allocation.safety;
-  if (sum !== 100) {
-    throw new Error(`Compute allocation must sum to 100, got ${sum}`);
-  }
 }
 
 /** Find existing submission for a table+round, ignoring stale docs from prior game sessions. */

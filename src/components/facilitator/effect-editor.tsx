@@ -323,10 +323,10 @@ function EffectForm({
   );
 }
 
-/** Serialise effect fields to string form for <input>/<select>. Only the
- *  string + number scalar fields on the effect union are relevant — nested
- *  objects (e.g. foundLab.allocation) aren't surfaced in the editor form,
- *  so we skip them here. */
+/** Serialise effect fields to string form for <input>/<select>. Scalars map
+ *  directly; foundLab.allocation is fanned out to allocDeployment/Research/Safety
+ *  string entries so the form can edit each leg, then re-assembled in the
+ *  builder. Other nested shapes are dropped — none currently exist on the union. */
 function stringifyFields(e: StructuredEffect): Record<string, string> {
   const f: Record<string, string> = {};
   for (const [k, v] of Object.entries(e)) {
@@ -336,10 +336,12 @@ function stringifyFields(e: StructuredEffect): Record<string, string> {
       f[k] = v;
     } else if (typeof v === "number") {
       f[k] = String(v);
+    } else if (k === "allocation" && typeof v === "object") {
+      const a = v as { deployment?: number; research?: number; safety?: number };
+      if (typeof a.deployment === "number") f.allocDeployment = String(a.deployment);
+      if (typeof a.research === "number") f.allocResearch = String(a.research);
+      if (typeof a.safety === "number") f.allocSafety = String(a.safety);
     }
-    // Objects (allocation) and other shapes are intentionally dropped — the
-    // facilitator can't edit them inline and the grader's pinned shape still
-    // stands if the effect type isn't changed.
   }
   return f;
 }
@@ -395,7 +397,16 @@ const COMPLEX_BUILDERS: Partial<Record<EffectType, EffectBuilder>> = {
     const name = get("name");
     const seedCompute = getNum("seedCompute");
     if (!name || seedCompute == null) return "Found lab requires name and seed compute";
-    return { type: "foundLab", name, seedCompute, spec: get("spec") };
+    const d = getNum("allocDeployment");
+    const r = getNum("allocResearch");
+    const s = getNum("allocSafety");
+    let allocation: { deployment: number; research: number; safety: number } | undefined;
+    if (d != null || r != null || s != null) {
+      if (d == null || r == null || s == null) return "Allocation requires all three of deployment/research/safety";
+      if (d + r + s !== 100) return `Allocation must sum to 100 (currently ${d + r + s})`;
+      allocation = { deployment: d, research: r, safety: s };
+    }
+    return { type: "foundLab", name, seedCompute, spec: get("spec"), allocation };
   },
   narrativeOnly: () => ({ type: "narrativeOnly" }),
 };
@@ -473,6 +484,13 @@ function FieldsForType({
             Rename survivor (optional)
             <input type="text" value={fields.newName ?? ""} onChange={(e) => set("newName", e.target.value)}
               className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white" />
+          </label>
+          <label className="block text-[10px] text-text-light">
+            New spec for survivor (optional)
+            <textarea value={fields.newSpec ?? ""} onChange={(e) => set("newSpec", e.target.value)}
+              rows={2} maxLength={2000}
+              placeholder="Leave blank to keep survivor's existing spec"
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white resize-none" />
           </label>
         </div>
       );
@@ -568,6 +586,32 @@ function FieldsForType({
             <input type="number" value={fields.seedCompute ?? ""} onChange={(e) => set("seedCompute", e.target.value)}
               className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono" />
           </label>
+          <label className="block text-[10px] text-text-light">
+            Spec (optional)
+            <textarea value={fields.spec ?? ""} onChange={(e) => set("spec", e.target.value)}
+              rows={2} maxLength={2000}
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white resize-none" />
+          </label>
+          <fieldset className="border border-navy-light rounded px-2 py-1.5">
+            <legend className="text-[10px] text-text-light px-1">Allocation % (optional — defaults to 34/33/33)</legend>
+            <div className="grid grid-cols-3 gap-1.5">
+              <label className="flex flex-col gap-0.5 text-[10px] text-text-light">
+                Deploy
+                <input type="number" value={fields.allocDeployment ?? ""} onChange={(e) => set("allocDeployment", e.target.value)}
+                  className="bg-navy border border-navy-light rounded px-1.5 py-1 text-xs text-white font-mono" />
+              </label>
+              <label className="flex flex-col gap-0.5 text-[10px] text-text-light">
+                Research
+                <input type="number" value={fields.allocResearch ?? ""} onChange={(e) => set("allocResearch", e.target.value)}
+                  className="bg-navy border border-navy-light rounded px-1.5 py-1 text-xs text-white font-mono" />
+              </label>
+              <label className="flex flex-col gap-0.5 text-[10px] text-text-light">
+                Safety
+                <input type="number" value={fields.allocSafety ?? ""} onChange={(e) => set("allocSafety", e.target.value)}
+                  className="bg-navy border border-navy-light rounded px-1.5 py-1 text-xs text-white font-mono" />
+              </label>
+            </div>
+          </fieldset>
         </div>
       );
     case "narrativeOnly":
