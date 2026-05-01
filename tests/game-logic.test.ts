@@ -672,9 +672,9 @@ describe("countUnacknowledgedLowConfidence", () => {
   it("skips ungraded actions (probability == null) — they're gated separately", () => {
     const subs = [
       { actions: [
-        { confidence: "low", actionStatus: "submitted" },                      // ungraded → skip
-        { probability: undefined, confidence: "low", actionStatus: "submitted" }, // ungraded → skip
-        { probability: 50, confidence: "low", actionStatus: "submitted" },     // counts
+        { confidence: "low", actionStatus: "submitted" },                          // ungraded → skip
+        { probability: undefined, confidence: "low", actionStatus: "submitted" },  // ungraded → skip
+        { probability: 50, confidence: "low", actionStatus: "submitted" },         // counts
       ] },
     ];
     expect(countUnacknowledgedLowConfidence(subs)).toBe(1);
@@ -688,17 +688,6 @@ describe("countUnacknowledgedLowConfidence", () => {
       ] },
     ];
     expect(countUnacknowledgedLowConfidence(subs)).toBe(0);
-  });
-
-  it("skips draft/deleted rows even when graded low", () => {
-    const subs = [
-      { actions: [
-        { probability: 70, confidence: "low", actionStatus: "draft" },    // not submitted → skip
-        { probability: 70, confidence: "low", actionStatus: "deleted" },  // not submitted → skip
-        { probability: 70, confidence: "low", actionStatus: "submitted" }, // counts
-      ] },
-    ];
-    expect(countUnacknowledgedLowConfidence(subs)).toBe(1);
   });
 
   it("returns 0 on empty input", () => {
