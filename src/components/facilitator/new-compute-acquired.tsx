@@ -122,19 +122,28 @@ function AcquiredEditor({
 }) {
   const enabledRoles = useQuery(api.tables.getEnabledRoleNames, { gameId });
   // Merge: include every active player so the facilitator can grant compute to
-  // someone the model didn't allocate any to. Players already acquiring compute
-  // keep their current amount; everyone else starts at 0.
+  // someone the model didn't allocate any to, AND include any role already in
+  // `acquired` even if it's no longer enabled — otherwise an existing pending
+  // allocation would be silently dropped on save.
   const entries = useMemo<AcquiredEntry[]>(() => {
     const amountByRole = new Map(acquired.map((a) => [a.roleId, a.amount]));
     const nameByRole = new Map(acquired.map((a) => [a.roleId, a.name]));
-    if (!enabledRoles) return acquired;
-    return enabledRoles
-      .map((r) => ({
-        roleId: r.roleId,
-        name: nameByRole.get(r.roleId) ?? r.roleName,
-        amount: amountByRole.get(r.roleId) ?? 0,
-      }))
-      .sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
+    const merged: AcquiredEntry[] = [];
+    const seen = new Set<string>();
+    if (enabledRoles) {
+      for (const r of enabledRoles) {
+        merged.push({
+          roleId: r.roleId,
+          name: nameByRole.get(r.roleId) ?? r.roleName,
+          amount: amountByRole.get(r.roleId) ?? 0,
+        });
+        seen.add(r.roleId);
+      }
+    }
+    for (const a of acquired) {
+      if (!seen.has(a.roleId)) merged.push(a);
+    }
+    return merged.sort((a, b) => b.amount - a.amount || a.name.localeCompare(b.name));
   }, [enabledRoles, acquired]);
 
   const currentTotal = entries.reduce((s, e) => s + e.amount, 0);
@@ -150,7 +159,7 @@ function AcquiredEditor({
   const [error, setError] = useState<string | null>(null);
   const updatePending = useAuthMutation(api.rounds.updatePendingAcquired);
 
-  const totalPct = Object.values(sharePcts).reduce((s, p) => s + p, 0);
+  const totalPct = entries.reduce((s, e) => s + (sharePcts[e.roleId] ?? 0), 0);
   const pctOK = Math.abs(totalPct - 100) < 0.5;
 
   const previewAmounts = entries.map((e) => ({
