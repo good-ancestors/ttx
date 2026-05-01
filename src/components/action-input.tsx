@@ -260,7 +260,7 @@ function ActionCard({
         </p>
       )}
 
-      {/* Controls row — only show when there's text */}
+      {/* Controls row — only show when there's text (or already submitted), so staged config can't be silently dropped by normaliseActions on submit */}
       {(action.text.trim() || isSubmitted) && (
         <ActionControlsRow
           action={action}
