@@ -24,6 +24,7 @@ import {
   Info,
   Zap,
   LogOut,
+  Flag,
 } from "lucide-react";
 
 // ─── Draft persistence helpers ────────────────────────────────────────────────
@@ -744,6 +745,16 @@ function DriverTablePage({
                   <Zap className="w-3.5 h-3.5" aria-hidden="true" /> {table.computeStock ?? 0}u
                 </span>
               )}
+              {game.status === "playing" && round && (
+                <span
+                  className="text-xs font-mono text-text-muted flex items-center gap-1"
+                  aria-label={`${round.label}, turn ${round.number} of 4`}
+                >
+                  <Flag className="w-3.5 h-3.5" aria-hidden="true" /> {round.label}
+                  <span aria-hidden="true">·</span>
+                  <span className="tabular-nums">{round.number}/4</span>
+                </span>
+              )}
               {game.phaseEndsAt && !isExpired && (
                 <span
                   className={`text-xs font-mono tabular-nums flex items-center gap-1 ${isUrgent ? "text-viz-danger font-bold" : "text-text-muted"}`}
@@ -874,6 +885,7 @@ function DriverTablePage({
 function LeaveSeatButton({ requireConfirm, onLeave }: { requireConfirm: boolean; onLeave: () => void }) {
   const [confirming, setConfirming] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!confirming) return;
@@ -882,8 +894,21 @@ function LeaveSeatButton({ requireConfirm, onLeave }: { requireConfirm: boolean;
         setConfirming(false);
       }
     };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setConfirming(false);
+      }
+    };
     document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    // Default focus on the non-destructive Cancel button so an accidental
+    // Enter/Space doesn't leave the seat.
+    cancelRef.current?.focus();
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
   }, [confirming]);
 
   return (
@@ -893,12 +918,18 @@ function LeaveSeatButton({ requireConfirm, onLeave }: { requireConfirm: boolean;
           if (requireConfirm) setConfirming(true);
           else onLeave();
         }}
+        aria-haspopup="dialog"
+        aria-expanded={confirming}
         className="text-[11px] text-text-muted hover:text-viz-danger transition-colors flex items-center gap-1 min-h-[32px] px-1"
       >
         <LogOut className="w-3 h-3" aria-hidden="true" /> Leave
       </button>
       {confirming && (
-        <div className="absolute right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-xl z-30 w-[220px] p-3">
+        <div
+          role="dialog"
+          aria-label="Confirm leaving the seat"
+          className="absolute right-0 top-full mt-1 bg-white border border-border rounded-lg shadow-xl z-30 w-[220px] p-3"
+        >
           <p className="text-[11px] text-text-muted mb-2 leading-snug">
             Anyone at the table can claim your seat immediately. You&rsquo;ll go back to the role picker.
           </p>
@@ -910,6 +941,7 @@ function LeaveSeatButton({ requireConfirm, onLeave }: { requireConfirm: boolean;
               Leave
             </button>
             <button
+              ref={cancelRef}
               onClick={() => setConfirming(false)}
               className="min-h-[32px] px-3 rounded text-xs text-text-muted hover:text-text"
             >
