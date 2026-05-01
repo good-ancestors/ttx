@@ -17,10 +17,8 @@ type Props = {
   decimals?: number;
   className?: string;
   placeholder?: string;
-  disabled?: boolean;
   ariaLabel?: string;
   autoFocus?: boolean;
-  title?: string;
   onBlur?: () => void;
   onEscape?: () => void;
 };
@@ -40,10 +38,8 @@ export function NumberField({
   decimals,
   className,
   placeholder,
-  disabled,
   ariaLabel,
   autoFocus,
-  title,
   onBlur,
   onEscape,
 }: Props) {
@@ -86,9 +82,7 @@ export function NumberField({
       step={step ?? (integer ? 1 : "any")}
       value={text}
       placeholder={placeholder}
-      disabled={disabled}
       aria-label={ariaLabel}
-      title={title}
       autoFocus={autoFocus}
       onFocus={(e) => {
         e.currentTarget.select();

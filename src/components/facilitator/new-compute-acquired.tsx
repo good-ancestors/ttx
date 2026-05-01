@@ -5,6 +5,7 @@ import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useAuthMutation } from "@/lib/hooks";
 import { NumberField } from "@/components/number-field";
+import { scaleAllocation } from "@/lib/allocation";
 import type { Id } from "@convex/_generated/dataModel";
 import { TrendingUp, Pencil, Save, X, Check } from "lucide-react";
 
@@ -231,16 +232,12 @@ function AcquiredEditor({
             <button
               type="button"
               onClick={() => {
-                // Scale all shares to sum exactly to 100, preserving relative
-                // proportions. If everything is zero, split evenly.
-                const entries = Object.entries(sharePcts);
-                const sum = entries.reduce((s, [, v]) => s + v, 0);
+                // Scale all shares to sum to 100, preserving relative proportions.
+                // Round to 1 decimal place to match the displayed precision.
+                const scaled = scaleAllocation(sharePcts, 100);
                 const next: Record<string, number> = {};
-                if (sum <= 0) {
-                  const even = entries.length > 0 ? 100 / entries.length : 0;
-                  for (const [k] of entries) next[k] = Number(even.toFixed(1));
-                } else {
-                  for (const [k, v] of entries) next[k] = Number(((v / sum) * 100).toFixed(1));
+                for (const [k, v] of Object.entries(scaled)) {
+                  next[k] = Number(v.toFixed(1));
                 }
                 setSharePcts(next);
               }}

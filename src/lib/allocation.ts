@@ -1,6 +1,16 @@
-// Helpers for keeping a set of integer percentages summed to 100. Used by
-// every "split this pie three ways" UI (compute allocation, found-a-lab,
-// facilitator lab edit). Hand math is annoying — these do it for the user.
+// Helpers for keeping a set of percentages summed to a target total. Used by
+// every "split this pie N ways" UI (compute allocation, found-a-lab,
+// facilitator lab edit, new-compute-acquired share editor). Hand math is
+// annoying — these do it for the user.
+//
+// Two helpers exist because there are two distinct UX patterns:
+//   - `balanceAllocation` — user just edited one row and the others should
+//     absorb the change. Pins the edited key, redistributes the rest. Integer
+//     output via largest-remainder.
+//   - `scaleAllocation` — every row is "out of sync" (e.g. user edited several
+//     rows in a row and now the total is 137%). No single pinned row makes
+//     sense; scale all values proportionally. Float output (caller rounds to
+//     match its display precision).
 
 /**
  * Adjust the other keys proportionally so the whole map sums to `total`
@@ -51,5 +61,33 @@ export function balanceAllocation<T extends Record<string, number>>(
     leftover -= 1;
   }
   for (const r of floored) next[r.key] = r.floor;
+  return next as T;
+}
+
+/**
+ * Proportionally scale every value so the map sums to `total` (default 100).
+ * Preserves relative proportions (no key pinned). When all values are zero or
+ * negative, splits `total` evenly across the keys.
+ *
+ * Returns floats — callers should round/format to their own precision (e.g.
+ * `Number(v.toFixed(1))`). Use `balanceAllocation` instead when you need
+ * integer output that sums exactly to `total`.
+ */
+export function scaleAllocation<T extends Record<string, number>>(
+  alloc: T,
+  total = 100,
+): T {
+  const keys = Object.keys(alloc) as Array<keyof T>;
+  const next: Record<keyof T, number> = { ...alloc };
+  if (keys.length === 0) return next as T;
+
+  const sum = keys.reduce((s, k) => s + Math.max(0, alloc[k]), 0);
+  if (sum <= 0) {
+    const even = total / keys.length;
+    for (const k of keys) next[k] = even;
+    return next as T;
+  }
+  const factor = total / sum;
+  for (const k of keys) next[k] = Math.max(0, alloc[k]) * factor;
   return next as T;
 }

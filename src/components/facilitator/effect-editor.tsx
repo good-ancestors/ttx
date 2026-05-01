@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
 import type { StructuredEffect, Confidence } from "@/lib/ai-prompts";
+import { NumberField } from "@/components/number-field";
 
 /** Label + icon + tone + one-line summary per effect. One switch over the
  *  discriminant. Icons: Lucide only (no emoji). */
@@ -452,6 +453,15 @@ function FieldsForType({
 }) {
   const set = (k: string, v: string) => setFields({ ...fields, [k]: v });
 
+  // Effect fields are stored as strings on disk; NumberField speaks numbers.
+  // Parse-on-read, stringify-on-commit. Empty / non-numeric falls back to `fallback`
+  // for the visible value but is not written until the user actually commits.
+  const numField = (k: string, fallback: number) => {
+    const raw = fields[k]?.trim();
+    const parsed = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
   const labSelect = (key: string, placeholder = "Select lab") => (
     <select
       value={fields[key] ?? ""}
@@ -524,8 +534,14 @@ function FieldsForType({
           <label className="block text-[10px] text-text-light">Lab{labSelect("labName")}</label>
           <label className="block text-[10px] text-text-light">
             Amount destroyed (positive units)
-            <input type="number" min={1} value={fields.amount ?? ""} onChange={(e) => set("amount", e.target.value)}
-              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono" />
+            <NumberField
+              value={numField("amount", 1)}
+              onChange={(n) => set("amount", String(n))}
+              min={1}
+              integer
+              ariaLabel="Amount destroyed"
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono"
+            />
           </label>
           <p className="text-[10px] text-text-light/70 italic">
             Positive quantity only — compute is conserved. Clamped to ≤50u and to the
@@ -568,8 +584,14 @@ function FieldsForType({
           <label className="block text-[10px] text-text-light">To role{roleSelect("toRoleId")}</label>
           <label className="block text-[10px] text-text-light">
             Amount (u)
-            <input type="number" value={fields.amount ?? ""} onChange={(e) => set("amount", e.target.value)}
-              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono" />
+            <NumberField
+              value={numField("amount", 0)}
+              onChange={(n) => set("amount", String(n))}
+              min={1}
+              integer
+              ariaLabel="Compute transfer amount"
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono"
+            />
           </label>
         </div>
       );
@@ -583,8 +605,14 @@ function FieldsForType({
           </label>
           <label className="block text-[10px] text-text-light">
             Seed compute (u)
-            <input type="number" value={fields.seedCompute ?? ""} onChange={(e) => set("seedCompute", e.target.value)}
-              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono" />
+            <NumberField
+              value={numField("seedCompute", 0)}
+              onChange={(n) => set("seedCompute", String(n))}
+              min={0}
+              integer
+              ariaLabel="Seed compute"
+              className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white font-mono"
+            />
           </label>
           <label className="block text-[10px] text-text-light">
             Spec (optional)
