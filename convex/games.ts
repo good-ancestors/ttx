@@ -11,7 +11,8 @@ import {
   mergeLabsWithComputeInternal,
 } from "./labs";
 import { emitTransaction, emitPair } from "./computeLedger";
-import { validateComputeAllocation, stripRollFields, escrowSendTargets, escrowFoundLab } from "./submissions";
+import { stripRollFields, escrowSendTargets, escrowFoundLab } from "./submissions";
+import { validateComputeAllocation } from "./validators";
 import { patchRuntime, readRuntime } from "./gameRuntime";
 
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Check } from "lucide-react";
+import { ROLE_MAP, isLabCeo } from "@/lib/game-data";
 import type { Id } from "@convex/_generated/dataModel";
 
 interface AddLabArgs {
@@ -39,7 +40,13 @@ export function AddLabForm({
   const [research, setResearch] = useState(33);
   const [safety, setSafety] = useState(33);
   const [error, setError] = useState<string | null>(null);
-  const enabledTables = tables.filter((t) => t.enabled !== false);
+  // Only lab-CEO-tagged roles can own a lab; other roles (governments, civil
+  // society, AIs, narrative) appear in `tables` but must be filtered out here.
+  const enabledTables = tables.filter((t) => {
+    if (t.enabled === false) return false;
+    const role = ROLE_MAP.get(t.roleId);
+    return role ? isLabCeo(role) : false;
+  });
   const selectedTable = enabledTables.find((t) => t.roleId === roleId);
   const totalAlloc = deployment + research + safety;
   const allocOK = totalAlloc === 100;

@@ -22,3 +22,17 @@ export const structuredEffectValidator = v.union(
 
 /** Grader's confidence per graded action. `low` forces the P2 click-through gate. */
 export const confidenceValidator = v.union(v.literal("high"), v.literal("medium"), v.literal("low"));
+
+/** Sum-to-100 check for a lab's compute allocation. Server-side gate shared by
+ *  the player submission path (validateFoundLabIntent) and the structural lab
+ *  insert path (createLabInternal) — covers facilitator-edited and
+ *  scenario-imported allocations that bypass the client-side check. */
+export function validateComputeAllocation(allocation: { deployment: number; research: number; safety: number }) {
+  if (allocation.deployment < 0 || allocation.research < 0 || allocation.safety < 0) {
+    throw new Error("Compute allocation values must be >= 0");
+  }
+  const sum = allocation.deployment + allocation.research + allocation.safety;
+  if (sum !== 100) {
+    throw new Error(`Compute allocation must sum to 100, got ${sum}`);
+  }
+}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Check, Merge, Pencil, Save, X } from "lucide-react";
 import { api } from "@convex/_generated/api";
-import { COMPUTE_CATEGORIES, ROLE_MAP, ROLES } from "@/lib/game-data";
+import { COMPUTE_CATEGORIES, ROLE_MAP, ROLES, isLabCeo } from "@/lib/game-data";
 import { ComputeDotsViz } from "@/components/lab-tracker";
 import { useAuthMutation } from "@/lib/hooks";
 import type { Lab } from "@/lib/game-data";
@@ -402,7 +402,7 @@ function LabStateEditor({
           className="flex-1 bg-navy-dark border border-navy-light rounded px-2 py-1 text-white"
         >
           <option value="">(unowned)</option>
-          {ROLES.map((r) => (
+          {ROLES.filter(isLabCeo).map((r) => (
             <option key={r.id} value={r.id}>{r.name}</option>
           ))}
         </select>

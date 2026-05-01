@@ -489,6 +489,7 @@ function FieldsForType({
             New spec for survivor (optional)
             <textarea value={fields.newSpec ?? ""} onChange={(e) => set("newSpec", e.target.value)}
               rows={2} maxLength={2000}
+              placeholder="Leave blank to keep survivor's existing spec"
               className="mt-0.5 w-full bg-navy border border-navy-light rounded px-2 py-1 text-xs text-white resize-none" />
           </label>
         </div>
