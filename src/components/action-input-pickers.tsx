@@ -10,6 +10,8 @@ import { Check, FlaskConical, GitMerge, X, Zap } from "lucide-react";
 import { DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
 import type { Id } from "@convex/_generated/dataModel";
 import type { ActionDraft, LabRef } from "./action-input";
+import { NumberField } from "./number-field";
+import { balanceAllocation } from "@/lib/allocation";
 
 export function EndorsementPicker({
   action,
@@ -171,12 +173,13 @@ export function ComputeRequestPicker({
               <option key={r.id} value={r.id}>{r.name}{r.computeStock != null ? ` (${r.computeStock}u)` : ""}</option>
             ))}
         </select>
-        <input
-          type="number"
+        <NumberField
+          value={amount}
+          onChange={setAmount}
           min={1}
           max={maxAmount}
-          value={amount}
-          onChange={(e) => setAmount(Math.max(1, Math.min(maxAmount, parseInt(e.target.value) || 1)))}
+          integer
+          ariaLabel="Compute amount"
           className="w-16 min-h-[44px] rounded-lg border border-border bg-warm-gray px-2 text-xs text-text font-mono text-center"
           placeholder="u"
         />
@@ -257,9 +260,20 @@ export function FoundLabForm({
       />
       <div className="flex items-center justify-between mb-1">
         <span className="text-[11px] text-text-muted">Initial allocation</span>
-        <span className={`text-[10px] font-mono ${total === 100 ? "text-text-muted" : "text-viz-danger"}`}>
-          {total}% {total !== 100 ? "(must total 100)" : ""}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`text-[10px] font-mono ${total === 100 ? "text-text-muted" : "text-viz-danger"}`}>
+            {total}% {total !== 100 ? "(must total 100)" : ""}
+          </span>
+          {total !== 100 && (
+            <button
+              type="button"
+              onClick={() => onUpdate({ ...foundLab, allocation: balanceAllocation(alloc, "deployment") })}
+              className="text-[10px] px-1.5 py-0.5 rounded bg-warm-gray hover:bg-border text-text-muted"
+            >
+              Auto-balance
+            </button>
+          )}
+        </div>
       </div>
       <div className="space-y-1.5">
         {(["deployment", "research", "safety"] as const).map((k) => (
@@ -273,7 +287,16 @@ export function FoundLabForm({
               onChange={(e) => setAlloc({ [k]: parseInt(e.target.value) || 0 })}
               className="flex-1"
             />
-            <span className="text-[11px] font-mono w-10 text-right">{alloc[k]}%</span>
+            <NumberField
+              value={alloc[k]}
+              onChange={(v) => setAlloc({ [k]: v })}
+              min={0}
+              max={100}
+              integer
+              ariaLabel={`${k} percentage`}
+              className="w-12 text-[11px] font-mono text-right rounded border border-border bg-warm-gray px-1 py-0.5 text-text"
+            />
+            <span className="text-[11px] font-mono w-3 text-text-muted">%</span>
           </div>
         ))}
       </div>

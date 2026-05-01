@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 import { ROLE_MAP, isLabCeo } from "@/lib/game-data";
+import { NumberField } from "@/components/number-field";
 import type { Id } from "@convex/_generated/dataModel";
 
 interface AddLabArgs {
@@ -94,7 +95,7 @@ export function AddLabForm({
         </div>
         <div>
           <label className="text-[10px] text-text-light uppercase tracking-wider block mb-1">R&D ×</label>
-          <input type="number" value={multiplier} onChange={(e) => setMultiplier(Number(e.target.value))} step={0.1} className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light" />
+          <NumberField value={multiplier} onChange={setMultiplier} min={0} step={0.1} ariaLabel="R&D multiplier" className="w-20 text-sm bg-navy-dark border border-navy-light rounded px-2.5 py-1.5 text-white focus:outline-none focus:border-text-light" />
         </div>
       </div>
 
