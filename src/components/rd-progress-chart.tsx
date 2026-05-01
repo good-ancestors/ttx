@@ -35,11 +35,25 @@ const MILESTONES = [
   { multiplier: 1000, label: "Singularity", color: "#EF4444" },
 ];
 
-function labColor(roleId: string): string {
-  const known = ROLE_MAP.get(roleId)?.color;
-  if (known) return known;
+// Secondary index for when a series' identity key is the lab's labId
+// rather than its role id (ROLE_MAP is keyed by role id only).
+const ROLE_BY_LAB_ID = new Map<string, string>();
+for (const role of ROLE_MAP.values()) {
+  if (role.labId) ROLE_BY_LAB_ID.set(role.labId, role.color);
+}
+
+function labColor(lab: { roleId?: string; labId?: string; name: string }): string {
+  if (lab.roleId) {
+    const byRole = ROLE_MAP.get(lab.roleId)?.color;
+    if (byRole) return byRole;
+  }
+  if (lab.labId) {
+    const byLabId = ROLE_BY_LAB_ID.get(lab.labId);
+    if (byLabId) return byLabId;
+  }
+  const key = lab.labId ?? lab.roleId ?? lab.name;
   let hash = 0;
-  for (const char of roleId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  for (const char of key) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   const colors = ["#14B8A6", "#F97316", "#E11D48", "#0EA5E9", "#84CC16", "#F59E0B"];
   return colors[hash % colors.length];
 }
@@ -65,6 +79,7 @@ interface ChartPoint { x: number; y: number; value: number; overridden?: boolean
 interface LabSeries {
   name: string;
   roleId: string;
+  color: string;
   points: ChartPoint[];
   isBackground: boolean;
   isInactive: boolean;
@@ -212,8 +227,18 @@ function buildChartData(
       points.push(point);
     }
 
-    // Use the latest name so renames (e.g. "DeepCent" → "DeepCent (Inspected)") display correctly
-    series.push({ name: currentLab?.name ?? lab.name, roleId: labKey, points, isBackground, isInactive });
+    // Use the latest name so renames (e.g. "DeepCent" → "DeepCent (Inspected)") display correctly.
+    // Color must come from the lab's role/labId, not labKey — otherwise it diverges
+    // from the lab cards in "Where We Are Now" (labKey can be a synthetic labId
+    // string that won't hit ROLE_MAP).
+    series.push({
+      name: currentLab?.name ?? lab.name,
+      roleId: labKey,
+      color: labColor(currentLab ?? lab),
+      points,
+      isBackground,
+      isInactive,
+    });
   }
 
   // Scale
@@ -311,7 +336,7 @@ export function RdProgressChart({
         {/* Main lab lines — diagonal */}
         {series.filter((s) => !s.isBackground).map((s) => {
           const linePoints = s.points.map(p => `${p.x},${p.y}`).join(" ");
-          const color = labColor(s.roleId);
+          const color = s.color;
           const last = s.points[s.points.length - 1];
           return (
           <g key={s.roleId}>
@@ -359,7 +384,7 @@ export function RdProgressChart({
       <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
         {series.filter((s) => !s.isBackground).map((s) => (
           <span key={s.roleId} className={`flex items-center gap-1.5 text-xs ${s.isInactive ? "text-text-light/80" : "text-text-light"}`}>
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: labColor(s.roleId) }} />
+            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
             {s.name}{s.isInactive ? " (inactive)" : ""}
           </span>
         ))}
