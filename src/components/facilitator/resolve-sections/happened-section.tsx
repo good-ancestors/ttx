@@ -123,13 +123,11 @@ export function HappenedSection({
       {/* Applied effects first — these are the mechanical changes the narrate LLM
        *  consumes to produce the prose. Showing them before the narrative matches
        *  the causal order: apply → narrate. */}
-      {appliedOps.length > 0 && (
-        <AppliedOpsPanel
-          applied={applied}
-          rejected={rejected}
-          mechanicsLog={currentRound?.mechanicsLog}
-        />
-      )}
+      <AppliedOpsPanel
+        applied={applied}
+        rejected={rejected}
+        mechanicsLog={currentRound?.mechanicsLog}
+      />
 
       {/* Continue to Narrative bar — placed here (under Applied Effects, above
        *  the empty narrative slot) because clicking it triggers narrative
@@ -246,8 +244,9 @@ function AppliedOpsPanel({
   rejected: AppliedOp[];
   mechanicsLog?: MechanicsLogEntry[];
 }) {
-  if (applied.length === 0 && rejected.length === 0) return null;
   const log = mechanicsLog ?? [];
+  if (applied.length === 0 && rejected.length === 0 && log.length === 0) return null;
+  const opsEmpty = applied.length === 0 && rejected.length === 0;
 
   return (
     <div className="bg-navy-dark/50 rounded-xl border border-navy-light p-5">
@@ -256,6 +255,12 @@ function AppliedOpsPanel({
           Applied Effects
         </span>
       </div>
+
+      {opsEmpty && (
+        <p className="text-[12px] text-navy-muted italic mb-3">
+          No applied ops this round — only natural growth and compute acquisition ran.
+        </p>
+      )}
 
       {applied.length > 0 && (
         <div className={rejected.length > 0 ? "mb-4" : undefined}>
