@@ -30,24 +30,27 @@ effectiveRd = computeStock × (research% / 100) × currentMultiplier × producti
 
 ## Growth Formula (Universal)
 
-Every lab grows against the same canonical baseline:
+Every lab grows against the same canonical baseline. The formula has two compute-monotonic levers (compute, research%, current capability) and one diffusion floor (knowledge spillover):
 
 ```
 canonicalEffectiveRd  = canonicalStock × CANONICAL_RESEARCH_PCT × canonicalMultiplier
-performanceRatio      = lab.effectiveRd / canonicalEffectiveRd
-growthModifier        = clamp( performanceRatio ^ PERFORMANCE_SENSITIVITY, MIN, MAX )
-universalGrowthFactor = canonicalNextMultiplier / canonicalMultiplier   // e.g. 10 in R4
-factor                = 1 + (universalGrowthFactor - 1) × growthModifier
-newMultiplier         = lab.rdMultiplier × factor
+rawRatio              = lab.effectiveRd / canonicalEffectiveRd
+diffusionFloor        = SPILLOVER_RATE × (lab.research% / CANONICAL_RESEARCH_PCT)
+performanceRatio      = max( diffusionFloor, rawRatio )
+growthModifier        = performanceRatio ^ PERFORMANCE_SENSITIVITY      // no upper clamp
+universalGrowthFactor = canonicalNextMultiplier / canonicalMultiplier   // e.g. 10 in R3-R4
+factor                = max( 1, 1 + (universalGrowthFactor - 1) × growthModifier )
+newMultiplier         = min( maxMultiplier(round), lab.rdMultiplier × factor )
 ```
 
 **Constants** (`LAB_PROGRESSION` in `src/lib/game-data.ts`):
-- `PERFORMANCE_SENSITIVITY = 1.2` — slightly super-linear: out-investing pays off dramatically. Calibrated against `/scenarios/...Timelines.csv` (Race) — at 1.2 the formula tracks OpenBrain's CSV trajectory exactly at default allocations and lands ~26% MAPE on trailing labs.
-- `MIN_GROWTH_FACTOR = 0` — a lab on 0% research truly stalls (no phantom industry-spillover growth). It still cannot regress: `rdMultiplier × 1.0 = no change`. Only `modelRollback` decreases the multiplier.
-- `MAX_GROWTH_FACTOR = 4.0` — caps drama at 4× canonical pace per round.
-- `maxMultiplier(round)` — per-round multiplier ceiling: 200 / 200 / 2000 / 15000.
+- `PERFORMANCE_SENSITIVITY = 1.2` — slightly super-linear: out-investing canonical pays off. Calibrated against `/scenarios/...Timelines.csv` (Race) — at 1.2 the formula tracks OpenBrain's authored 3→10→100→1000→10000× trajectory exactly at default allocations.
+- `SPILLOVER_RATE = 0.15` — knowledge diffusion floor on the ratio. Models real-world spillover (papers, OS models, defections, weight leaks). Trailing labs catch up to ~15% of canonical pace at 50% research, scaled linearly with their research% (research-gated). At 0% research → floor=0 → no absorption → clean stall. Empirically grounded in observed gaps between frontier and trailing labs (e.g. Llama vs GPT-4).
+- `maxMultiplier(round) = 200 / 200 / 2000 / 15000` — the **narrative ASI ceiling**, not a tuning knob. Represents the physical bound on capability achievable by round R given total world compute and the AI-2027 takeoff timeline. Two labs both reaching this ceiling = both achieved ASI, a semantically meaningful tie. Within the operating range, growth is monotonic in compute / research% / productivity / current multiplier.
 
-See `scripts/calibrate-rd.ts` for the calibration harness — re-run after any LAB_PROGRESSION change to confirm the formula still tracks the source CSVs.
+The formula has **no upper clamp on `growthModifier`** — the previous `MAX_GROWTH_FACTOR=4` caused two aggressive labs to tie at saturation regardless of compute. Removing it preserves compute monotonicity through the operating range; only the output ceiling produces ties (and those are semantically meaningful).
+
+See `scripts/calibrate-rd.ts` for the calibration harness — re-run after any LAB_PROGRESSION change to confirm the formula still tracks the source CSVs and respects the bug-fix invariants.
 
 **Reference profile** (the canonical pace):
 - Compute trajectory: OpenBrain's CSV starting stock + per-round CSV shares (`CANONICAL_REFERENCE_LAB`).

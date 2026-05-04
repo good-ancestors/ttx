@@ -708,19 +708,26 @@ export const COMPUTE_ACQUISITION = {
 // Lab progression tuning constants
 export const LAB_PROGRESSION = {
   /** Converts effective R&D advantage into faster/slower growth around the canonical curve.
-   *  Calibrated against the AI-2027 Race CSV (`/scenarios/...Timelines.csv`) — at 1.2 the
-   *  formula tracks OpenBrain's authored 3→10→100→1000→10000× trajectory exactly at default
-   *  allocations and delivers ~26% MAPE on the trailing labs. Higher values overshoot.
+   *  Calibrated against the AI-2027 Race CSV — at 1.2 the formula tracks OpenBrain's authored
+   *  3→10→100→1000→10000× trajectory exactly at default allocations.
    *  See `scripts/calibrate-rd.ts` for the calibration harness. */
   PERFORMANCE_SENSITIVITY: 1.2,
-  /** Floor for growth modifier — kept at 0 so a lab on 0% research truly stalls (no phantom
-   *  industry-spillover growth). The lab still cannot regress: rdMultiplier × 1.0 = no change. */
-  MIN_GROWTH_FACTOR: 0,
-  /** Cap growth so the curve still feels dramatic but not fully hard-coded. */
-  MAX_GROWTH_FACTOR: 4.0,
+  /** Knowledge diffusion floor on the performance ratio — models real-world spillover
+   *  (papers, OS models, defections, reverse engineering, weight leaks). A trailing lab with
+   *  research effort gets at least this fraction of canonical pace, even when its raw
+   *  effectiveRd has fallen far behind the leader's. Research-gated: scaled by the lab's
+   *  research% / CANONICAL_RESEARCH_PCT, so a lab pivoting fully to safety (research=0)
+   *  absorbs nothing and stalls cleanly. The 0.15 anchor reflects an empirical "trailing labs
+   *  track ~5–15% of frontier through diffusion" range (cf. Llama / Qwen / DeepSeek vs the
+   *  frontier today), gated by effort. */
+  SPILLOVER_RATE: 0.15,
   /** Min multiplier floor after event modifiers. */
   MIN_MULTIPLIER: 0.1,
-  /** Max multiplier caps per round range. */
+  /** Per-round capability ceiling — the narrative ASI ceiling, not a tuning knob. Represents
+   *  the physical bound on capability achievable by round R given total world compute and the
+   *  AI-2027 takeoff timeline. Two labs both reaching this ceiling = both achieved ASI, a
+   *  semantically meaningful tie. Within the operating range, growth is monotonic in
+   *  compute / research% / productivity / current multiplier. */
   maxMultiplier: (round: number) => round <= 2 ? 200 : round === 3 ? 2000 : 15000,
   /** Productivity modifier clamps for researchDisruption / researchBoost.
    *  Symmetric with the multiplier clamps (ceil maxMultiplier, floor 1) so
@@ -825,16 +832,21 @@ export function computeLabGrowth<T extends {
     // boost from compute that hasn't landed yet.
     const effectiveRd =
       lab.computeStock * (allocation.research / 100) * lab.rdMultiplier * productivity;
-    const performanceRatio = effectiveRd / Math.max(1, canonicalEffectiveRd);
-    const growthModifier = Math.min(
-      P.MAX_GROWTH_FACTOR,
-      Math.max(P.MIN_GROWTH_FACTOR, Math.pow(performanceRatio, P.PERFORMANCE_SENSITIVITY)),
-    );
+    const rawRatio = effectiveRd / Math.max(1, canonicalEffectiveRd);
+    // Knowledge diffusion floor on the ratio — models real-world spillover from the
+    // frontier (papers, OS models, defections). Research-gated: a lab on 0% research
+    // doesn't absorb anything (cleanly stalls); a lab racing absorbs proportionally more.
+    const diffusionFloor = P.SPILLOVER_RATE * (allocation.research / CANONICAL_RESEARCH_PCT);
+    const performanceRatio = Math.max(diffusionFloor, rawRatio);
+    // Power-law modifier — no upper clamp here. Compute monotonicity holds across the
+    // operating range; ties only happen at the maxMultiplier output ceiling (which is
+    // semantically the "ASI achieved" tier and meaningful as a tie).
+    const growthModifier = Math.pow(performanceRatio, P.PERFORMANCE_SENSITIVITY);
     // Apply growthModifier to growth portion only: at modifier=0 → no growth,
-    // modifier=1 → canonical growth. Floor at MIN_GROWTH_FACTOR so a lab
-    // running far behind never regresses — it just grows slowly.
+    // modifier=1 → canonical growth. Factor is floored at 1 so allocation choices that
+    // slow growth never make the multiplier regress — only `modelRollback` decreases it.
     const rawFactor = 1 + (universalGrowthFactor - 1) * growthModifier;
-    const effectiveFactor = Math.max(P.MIN_GROWTH_FACTOR, rawFactor);
+    const effectiveFactor = Math.max(1, rawFactor);
     const newMultiplier = Math.round(
       Math.max(P.MIN_MULTIPLIER, lab.rdMultiplier * effectiveFactor) * 10,
     ) / 10;

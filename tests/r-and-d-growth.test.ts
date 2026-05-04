@@ -138,6 +138,78 @@ describe("computeLabGrowth — name-blind growth (the redesign's core invariant)
     expect(result[0].rdMultiplier).toBeGreaterThan(CANONICAL_RD_TRAJECTORY[3] * 5);
   });
 
+  it("compute monotonicity holds at high multipliers — more compute always grows more (regression: MAX_GROWTH_FACTOR clamp tied at saturation)", () => {
+    // The previous formula clamped growthModifier at MAX_GROWTH_FACTOR=4. When two
+    // aggressive labs both saturated, they got identical growth despite different
+    // compute. Removing the clamp lets compute differentiate everywhere except at
+    // the maxMultiplier output ceiling. Test: same starting mult, same allocation,
+    // double the compute → strictly more growth.
+    const small = {
+      name: "Small",
+      computeStock: 28,
+      rdMultiplier: 100,
+      allocation: { deployment: 0, research: 100, safety: 0 },
+    };
+    const large = { ...small, name: "Large", computeStock: 56 }; // 2× compute
+    const allocs = new Map([
+      [small.name, small.allocation],
+      [large.name, large.allocation],
+    ]);
+    const result = computeLabGrowth([small, large], allocs, 3, LAB_PROGRESSION.maxMultiplier(3));
+    const r0 = result[0].rdMultiplier;
+    const r1 = result[1].rdMultiplier;
+    // Below the maxMultiplier ceiling: more compute strictly grows more.
+    if (r1 < LAB_PROGRESSION.maxMultiplier(3)) {
+      expect(r1).toBeGreaterThan(r0);
+    } else {
+      // If both reached the cap, the tie is semantically "both at ASI ceiling" —
+      // also acceptable. Just assert not less than.
+      expect(r1).toBeGreaterThanOrEqual(r0);
+    }
+  });
+
+  it("knowledge diffusion lifts a research-active trailing lab above raw-physics floor", () => {
+    // A trailing lab with research effort gets a baseline ratio from diffusion
+    // (papers, OS models, leaks). Without it, Cs's R3 ratio collapses to ~0.034
+    // and the lab barely grows. With diffusion at 15% × research/50, a 50%-research
+    // lab gets at least 0.15 ratio — meaningful growth even far behind canonical.
+    const trailing = {
+      name: "Trailing",
+      computeStock: 14, // Conscienta-tier
+      rdMultiplier: 7,  // far below canonical R3 entry of 100
+      allocation: { deployment: 50, research: 50, safety: 0 },
+    };
+    const result = computeLabGrowth(
+      [trailing],
+      new Map([[trailing.name, trailing.allocation]]),
+      3,
+      LAB_PROGRESSION.maxMultiplier(3),
+    );
+    // Without diffusion, mult would have grown to ~7.4 (almost stalled).
+    // With diffusion floor 0.15 at 50% research, growth modifier ≈ 0.15^1.2 ≈ 0.10,
+    // factor ≈ 1 + 9 × 0.10 ≈ 1.9, newMult ≈ 13.
+    expect(result[0].rdMultiplier).toBeGreaterThan(10);
+  });
+
+  it("a lab on 100% safety (0% research) absorbs no diffusion — stalls cleanly", () => {
+    // Diffusion is research-gated: at 0% research, the floor is 0, so the lab
+    // stalls completely (no phantom growth from spillover). Preserves the
+    // "lots to safety slows down but doesn't go backwards" property.
+    const safetyPivot = {
+      name: "SafetyPivot",
+      computeStock: 30,
+      rdMultiplier: 50,
+      allocation: { deployment: 0, research: 0, safety: 100 },
+    };
+    const result = computeLabGrowth(
+      [safetyPivot],
+      new Map([[safetyPivot.name, safetyPivot.allocation]]),
+      3,
+      LAB_PROGRESSION.maxMultiplier(3),
+    );
+    expect(result[0].rdMultiplier).toBe(50); // exactly steady, no growth, no regression
+  });
+
   it("round caps still bind — no lab exceeds maxMultiplier(round)", () => {
     const lab = {
       name: "RunawayLab",
