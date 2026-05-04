@@ -1,23 +1,25 @@
 /**
- * Calibration script — side-by-side comparison of pure-physics lab growth formulas
- * against AI-2027 CSV targets. Run before committing a formula choice to production.
+ * Calibration script — side-by-side comparison of three lab-growth-formula
+ * variants explored during the design of `computeLabGrowth`. Run before tuning
+ * LAB_PROGRESSION constants to see how each variant tracks the AI-2027 CSV.
  *
  *   npx tsx scripts/calibrate-lab-growth.ts
  *
- * Two variants are evaluated:
+ * Variants:
+ *   A — minimal physics: tanh saturation only, no drag
+ *   B — A + compute-share drag: share^SHARE_DRAG attenuates trailing labs
+ *   C — A + leader-ratio drag: (effRd/leaderEffRd)^LEADER_DRAG attenuates trailing labs
  *
- *   Formula A — minimal physics:
- *       growth = 1 + (MAX-1) * tanh(effectiveRd / SCALE)
- *       diffusion floor: leader-anchored, research-gated, decays with capability gap
+ * Formula C was selected for production; the version in game-data.ts is a
+ * refinement that splits "leader" into capabilityLeader (for diffusion gap)
+ * and effortLeaderEffRd (for drag) to handle the leader-sandbags-research edge
+ * case. The script's Formula C uses the simpler unified-leader form for clarity
+ * of the design comparison; numbers will agree with production except in
+ * pathological allocations. For tightly-pinned regression checks against
+ * production, use the test fixtures (src/lib/__fixtures__/lab-growth-canonical.ts).
  *
- *   Formula B — A + compute-share drag:
- *       growth = 1 + (MAX-1) * tanh(effectiveRd / SCALE) * share^SHARE_DRAG
- *       (share = self_effRd / total_effRd; sub-1 exponent so trailing labs aren't fully crushed)
- *
- * Effective R&D includes RSI feedback: effRd = compute * research * mult^RSI_EXP * productivity.
- *
- * No production code is modified. CSV targets (RACE_CSV / SLOWDOWN_CSV) are
- * inlined below for self-contained comparison printing.
+ * Effective R&D includes RSI feedback: effRd = compute × research × mult^RSI_EXP × productivity.
+ * CSV targets (RACE_CSV / SLOWDOWN_CSV) are inlined for self-contained printing.
  */
 
 import {
@@ -135,23 +137,25 @@ const formulaB: FormulaFn = (self, productivity, leader, totalEffRd, worldSafety
 // grow at a fraction of the leader's pace" without having to encode the
 // scenario's specific trajectory at runtime.
 const LEADER_DRAG = 0.3;
-const formulaC: FormulaFn = (self, productivity, leader, _totalEffRd, worldSafety, scale) => {
-  const research = self.allocation.research / 100;
-  const hasInputs = self.computeStock > 0 && research > 0;
+const makeFormulaC = (drag: number): FormulaFn =>
+  (self, productivity, leader, _totalEffRd, worldSafety, scale) => {
+    const research = self.allocation.research / 100;
+    const hasInputs = self.computeStock > 0 && research > 0;
 
-  const effRd = effectiveRd(self, productivity);
-  const leaderEffRd = effectiveRd(leader, 1);
-  const labRatio = leaderEffRd > 0 ? Math.min(1, effRd / leaderEffRd) : 1;
-  const dragFactor = Math.pow(Math.max(0.001, labRatio), LEADER_DRAG);
-  const selfGrowth = 1 + (MAX_GROWTH - 1) * Math.tanh(effRd / scale) * dragFactor;
+    const effRd = effectiveRd(self, productivity);
+    const leaderEffRd = effectiveRd(leader, 1);
+    const labRatio = leaderEffRd > 0 ? Math.min(1, effRd / leaderEffRd) : 1;
+    const dragFactor = Math.pow(Math.max(0.001, labRatio), drag);
+    const selfGrowth = 1 + (MAX_GROWTH - 1) * Math.tanh(effRd / scale) * dragFactor;
 
-  const gapRatio = leader.rdMultiplier > 0 ? Math.min(1, self.rdMultiplier / leader.rdMultiplier) : 1;
-  const diffusionGrowth = hasInputs
-    ? 1 + (MAX_GROWTH - 1) * effectiveDiffusion(worldSafety) * research * Math.sqrt(gapRatio)
-    : 1;
+    const gapRatio = leader.rdMultiplier > 0 ? Math.min(1, self.rdMultiplier / leader.rdMultiplier) : 1;
+    const diffusionGrowth = hasInputs
+      ? 1 + (MAX_GROWTH - 1) * effectiveDiffusion(worldSafety) * research * Math.sqrt(gapRatio)
+      : 1;
 
-  return self.rdMultiplier * Math.max(selfGrowth, diffusionGrowth);
-};
+    return self.rdMultiplier * Math.max(selfGrowth, diffusionGrowth);
+  };
+const formulaC: FormulaFn = makeFormulaC(LEADER_DRAG);
 
 // ── Acquisition (mirrors production logic in computeLabGrowth) ───────────────
 function acquisitionForRound(labs: LabState[], roundNumber: number): Map<string, number> {
@@ -355,22 +359,8 @@ printScenario(
 console.log("\n\n═══ LEADER_DRAG sweep — RACE scenario, R4 multipliers (Formula C) ═══");
 console.log("    LEADER_DRAG │ OB R4    │ DC R4    │ Cs R4    │ vs CSV (10000/100/50)");
 console.log("    ────────────┼──────────┼──────────┼──────────┼──────────────────────");
-const formulaCWithDrag = (drag: number): FormulaFn => (self, productivity, leader, _totalEffRd, worldSafety, scale) => {
-  const research = self.allocation.research / 100;
-  const hasInputs = self.computeStock > 0 && research > 0;
-  const effRd = effectiveRd(self, productivity);
-  const leaderEffRd = effectiveRd(leader, 1);
-  const labRatio = leaderEffRd > 0 ? Math.min(1, effRd / leaderEffRd) : 1;
-  const dragFactor = Math.pow(Math.max(0.001, labRatio), drag);
-  const selfGrowth = 1 + (MAX_GROWTH - 1) * Math.tanh(effRd / scale) * dragFactor;
-  const gapRatio = leader.rdMultiplier > 0 ? Math.min(1, self.rdMultiplier / leader.rdMultiplier) : 1;
-  const diffusionGrowth = hasInputs
-    ? 1 + (MAX_GROWTH - 1) * effectiveDiffusion(worldSafety) * research * Math.sqrt(gapRatio)
-    : 1;
-  return self.rdMultiplier * Math.max(selfGrowth, diffusionGrowth);
-};
 for (const drag of [0.2, 0.3, 0.4, 0.5, 0.6, 0.75, 1.0]) {
-  const traj = runScenario(formulaCWithDrag(drag), fresh(), SCALE);
+  const traj = runScenario(makeFormulaC(drag), fresh(), SCALE);
   const ob = traj.get("OpenBrain")![4];
   const dc = traj.get("DeepCent")![4];
   const cs = traj.get("Conscienta")![4];

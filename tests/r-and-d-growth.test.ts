@@ -13,8 +13,9 @@ import { SCENARIOS, runScenarioThroughFormula } from "@/lib/__fixtures__/lab-gro
  *   Position     rdMultiplier — breakthrough / modelRollback / merge only
  *   Stock        computeStock — computeDestroyed / computeTransfer / merge
  *   Velocity     derived each round from stock × research% × mult^RSI_EXP × productivity
- *                drag = (lab_effRd / leader_effRd)^LEADER_DRAG (live leader, no phantom)
- *                diffusion = research × √gap × DIFFUSION_RATE × (1 + COOPERATION_BOOST · worldSafety)
+ *                drag = (lab_effRd / effort_leader_effRd)^LEADER_DRAG  (live, no phantom)
+ *                diffusion = research × √(self.mult / capability_leader.mult) × DIFFUSION_RATE
+ *                            × (1 + COOPERATION_BOOST · worldSafety)
  *   Productivity one-round throughput modifier, defaults to 1.0
  *
  * No per-lab or per-scenario hardcoded targets at runtime. Calibration lives

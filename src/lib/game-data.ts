@@ -764,15 +764,10 @@ export function computeLabGrowth<T extends {
   const allocations = currentLabs.map((lab) => ceoAllocations.get(lab.name) ?? lab.allocation);
   const productivities = currentLabs.map((lab) => productivityMods?.get(lab.name) ?? 1);
 
-  // Pre-acquisition compute totals, used both as the proportional-share
-  // fallback for unsharded labs and to compute world-cooperation signal.
-  const totalPreStock = currentLabs.reduce((s, l) => s + l.computeStock, 0);
-
-  // ── Effective R&D on pre-acquisition stock — explicitly excludes the
-  //    acquisition that arrives this round so trailing labs don't get a free
-  //    multiplier boost from compute that hasn't landed yet.
-  //    RSI_EXP > 1 captures recursive self-improvement: better AI accelerates
-  //    AI research more than linearly with capability.
+  // Effective R&D on pre-acquisition stock — explicitly excludes the acquisition
+  // that arrives this round so trailing labs don't get a free multiplier boost
+  // from compute that hasn't landed yet. RSI_EXP > 1 captures recursive self-
+  // improvement: better AI accelerates AI research more than linearly.
   const effectiveRd = currentLabs.map((lab, i) =>
     lab.computeStock *
     (allocations[i].research / 100) *
@@ -780,34 +775,29 @@ export function computeLabGrowth<T extends {
     productivities[i],
   );
 
-  // Two leader concepts, intentionally different:
-  //   capabilityLeader — highest current rdMultiplier. Used for diffusion gap
-  //     (knowledge spillover scales with capability gap). Doesn't change just
-  //     because someone sandbagged research this round.
-  //   effortLeader (highest effectiveRd) — used for selfGrowth drag. Drag is
-  //     "you can't grow past whoever's out-researching you THIS round." Falling
-  //     back to effort-leader avoids a singularity: if the capability leader
-  //     allocates 0% to research, capabilityLeaderEffRd === 0 would otherwise
-  //     collapse labRatio to 1 for everyone, letting trailing labs spike.
-  // Both leaders are computed live — no phantom anchor if a lab is shut down
-  // or merged mid-game.
+  // Single pass to derive everything used by the per-lab loop:
+  //   capabilityLeader — highest rdMultiplier; used for diffusion gap (spillover
+  //     scales with capability gap; doesn't change if someone sandbags research)
+  //   effortLeaderEffRd — max effRd this round; used for selfGrowth drag
+  //     ("can't grow past whoever's out-researching you THIS round"). Falling
+  //     back to effort-leader avoids a singularity if the capability leader
+  //     allocates 0% to research and capabilityLeaderEffRd would be 0.
+  //   totalPreStock — proportional-share fallback for unsharded labs
+  //   totalSafetyEffort — feeds worldSafety → cooperation amplification
+  // No phantom anchor — both leaders are computed live each round.
   let capabilityLeaderIdx = 0;
   let effortLeaderEffRd = effectiveRd[0];
+  let totalPreStock = currentLabs[0].computeStock;
+  let totalSafetyEffort = currentLabs[0].computeStock * (allocations[0].safety / 100);
   for (let i = 1; i < currentLabs.length; i++) {
     if (currentLabs[i].rdMultiplier > currentLabs[capabilityLeaderIdx].rdMultiplier) {
       capabilityLeaderIdx = i;
     }
     if (effectiveRd[i] > effortLeaderEffRd) effortLeaderEffRd = effectiveRd[i];
+    totalPreStock += currentLabs[i].computeStock;
+    totalSafetyEffort += currentLabs[i].computeStock * (allocations[i].safety / 100);
   }
   const capabilityLeader = currentLabs[capabilityLeaderIdx];
-
-  // World cooperation: compute-weighted safety allocation. In cooperative worlds
-  // labs share research openly, amplifying knowledge spillover. In race worlds
-  // they hoard. Exposed via the diffusion floor below.
-  const totalSafetyEffort = currentLabs.reduce(
-    (s, l, i) => s + l.computeStock * (allocations[i].safety / 100),
-    0,
-  );
   const worldSafety = totalPreStock > 0 ? totalSafetyEffort / totalPreStock : 0;
   const effectiveDiffusion = P.DIFFUSION_RATE * (1 + P.COOPERATION_BOOST * worldSafety);
 
