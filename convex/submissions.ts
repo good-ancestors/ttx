@@ -1230,10 +1230,9 @@ export const setActionInfluence = mutation({
 
 /** Apply AI influence to a d100 roll. Two-step model:
  *
- *  1. AI gets a chance to flip an outcome it dislikes. The flip chance is
- *     `power% × √(desiredOutcomeRate%)` — i.e. weighted by how plausible
- *     the desired outcome is. ASI dominates probable outcomes; struggles
- *     to make miracles or crush sure things. Probability bar stays meaningful.
+ *  1. AI gets a `power%` chance to flip an outcome it dislikes (independent
+ *     of the probability bar — calibrated so ASI dominates by 1000× R&D
+ *     in line with in-person playtest experience).
  *  2. If the AI flips, pick a uniform value in the favorable zone *excluding
  *     the extremes 1 and 100*, so those values stay at natural ~1% frequency
  *     instead of the 3-4× over-representation a uniform pick would cause.
@@ -1247,9 +1246,7 @@ function applyInfluence(rawRoll: number, probability: number, aiInfluence?: numb
   const naturalSuccess = rawRoll <= probability;
   if (wantsPass === naturalSuccess) return rawRoll; // outcome already favorable
 
-  const power = Math.min(99, Math.abs(aiInfluence)) / 100;
-  const desiredRate = (wantsPass ? probability : 100 - probability) / 100;
-  const flipChance = power * Math.sqrt(desiredRate);
+  const flipChance = Math.min(99, Math.abs(aiInfluence)) / 100;
   if (Math.random() >= flipChance) return rawRoll; // AI failed to flip
 
   // Pick from favorable zone, excluding extremes 1 and 100.
