@@ -49,7 +49,7 @@ export function ActionRow({
   revealedCount: number;
   revealedSecrets: Set<string>;
   toggleReveal: (key: string) => void;
-  getEndorsements: (roleId: string, actionText: string) => Proposal[];
+  getEndorsements: (roleId: string, actionId: string) => Proposal[];
   rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
   overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
   ungradeAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
@@ -71,7 +71,7 @@ export function ActionRow({
   const secretKey = `${sub.roleId}-${i}`;
   const isCovert = action.secret && !revealedSecrets.has(secretKey);
   const roleName = role?.name ?? sub.roleId;
-  const endorsements = getEndorsements(sub.roleId, action.text);
+  const endorsements = getEndorsements(sub.roleId, action.actionId);
   const isVisible = !isRollingOrNarrate || idx < revealedCount;
 
   return (
