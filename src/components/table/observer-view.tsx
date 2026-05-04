@@ -229,6 +229,7 @@ export function ObserverView({ gameId, tableId }: Props) {
             roleId={table.roleId}
             tableId={tableId}
             driverLastSeenAt={presence?.driverLastSeenAt}
+            driverLeftAt={presence?.driverLeftAt}
             controlMode={table.controlMode}
             observerSessionId={sessionId}
           />

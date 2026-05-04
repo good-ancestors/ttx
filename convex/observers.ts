@@ -6,6 +6,11 @@ import { logEvent } from "./events";
 // Observer takeover is gated on this threshold + controlMode === "human".
 export const TAKEOVER_STALE_MS = 90_000;
 
+// Public-facing label used when an observer has no stored player name. It's
+// intentionally generic so the observer-count badge can show "Observer" rather
+// than blank, but it's not a valid driver identity — see promoteToDriver.
+export const OBSERVER_FALLBACK_NAME = "Observer";
+
 export const joinAsObserver = mutation({
   args: {
     gameId: v.id("games"),
@@ -46,7 +51,7 @@ export const joinAsObserver = mutation({
       gameId: args.gameId,
       roleId: args.roleId,
       sessionId: args.sessionId,
-      observerName: args.observerName.trim() || "Observer",
+      observerName: args.observerName.trim() || OBSERVER_FALLBACK_NAME,
       joinedAt: Date.now(),
     });
     await logEvent(ctx, args.gameId, "observer_join", args.roleId, {
@@ -77,13 +82,21 @@ export const leaveObserver = mutation({
 
 // Observer self-promotes to driver when the seat is stale. Re-checks
 // preconditions inside the transaction; OCC retries serialise concurrent calls.
+//
+// playerName is supplied by the caller — we don't reuse observer.observerName
+// because that defaults to the literal "Observer" when no localStorage name
+// was set, and a new driver should pick a real name.
 export const promoteToDriver = mutation({
   args: {
     gameId: v.id("games"),
     roleId: v.string(),
     sessionId: v.string(),
+    playerName: v.string(),
   },
   handler: async (ctx, args) => {
+    const playerName = args.playerName.trim();
+    if (!playerName) throw new Error("Please enter a name before taking the seat");
+
     const table = await ctx.db
       .query("tables")
       .withIndex("by_game_and_role", (q) =>
@@ -116,11 +129,14 @@ export const promoteToDriver = mutation({
     const now = Date.now();
     await ctx.db.patch(table._id, {
       activeSessionId: args.sessionId,
-      playerName: observer.observerName,
+      playerName,
       connected: true,
     });
     if (presence) {
-      await ctx.db.patch(presence._id, { driverLastSeenAt: now });
+      await ctx.db.patch(presence._id, {
+        driverLastSeenAt: now,
+        driverLeftAt: undefined,
+      });
     } else {
       await ctx.db.insert("tablePresence", {
         gameId: args.gameId,
@@ -131,7 +147,7 @@ export const promoteToDriver = mutation({
     await ctx.db.delete(observer._id);
     await logEvent(ctx, args.gameId, "seat_taken_over", args.roleId, {
       fromName: previousName,
-      toName: observer.observerName,
+      toName: playerName,
       sessionId: args.sessionId,
       reason: "driver_stale",
       staleMs: Date.now() - lastSeen,
