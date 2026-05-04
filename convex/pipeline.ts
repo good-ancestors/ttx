@@ -165,7 +165,7 @@ async function gradeAllBatched(
     labs: LabWithCompute[];
     submissions: Submission[];
     rounds: Round[];
-    requests: { fromRoleId: string; toRoleId: string; actionText: string; fromRoleName: string; toRoleName: string; requestType: string; computeAmount?: number; status: string }[];
+    requests: { fromRoleId: string; toRoleId: string; actionId: string; actionText: string; fromRoleName: string; toRoleName: string; requestType: string; computeAmount?: number; status: string }[];
     enabledRoleNames: string[];
     onlyUngraded: boolean;
   },
@@ -225,7 +225,7 @@ async function gradeAllBatched(
       }
 
       const actionRequests: ActionRequest[] = roleRequests
-        .filter((r) => r.actionText === a.text)
+        .filter((r) => r.actionId === a.actionId)
         .map((r) => ({
           actionText: r.actionText, fromRoleName: r.fromRoleName, toRoleName: r.toRoleName,
           requestType: r.requestType, computeAmount: r.computeAmount, status: r.status,

@@ -157,6 +157,7 @@ export function AttemptedPanel({
     return result;
   }, [overrideProbability, hasNarrative, onDiceChanged]);
 
+  // Keyed by actionId not text so same-text duplicate submissions stay in distinct buckets.
   const endorsementsByOwner = useMemo(() => {
     const map = new Map<string, Proposal[]>();
     for (const proposal of proposals.filter((item) => (
@@ -165,7 +166,7 @@ export function AttemptedPanel({
       item.toRoleId !== item.fromRoleId &&
       item.toRoleId !== AI_SYSTEMS_ROLE_ID
     ))) {
-      const key = `${proposal.fromRoleId}::${proposal.actionText.toLowerCase().trim()}`;
+      const key = `${proposal.fromRoleId}::${proposal.actionId}`;
       const list = map.get(key) ?? [];
       list.push(proposal);
       map.set(key, list);
@@ -173,9 +174,8 @@ export function AttemptedPanel({
     return map;
   }, [proposals]);
 
-  const getEndorsements = useCallback((roleId: string, actionText: string): Proposal[] => {
-    const aText = actionText.toLowerCase().trim();
-    return endorsementsByOwner.get(`${roleId}::${aText}`) ?? [];
+  const getEndorsements = useCallback((roleId: string, actionId: string): Proposal[] => {
+    return endorsementsByOwner.get(`${roleId}::${actionId}`) ?? [];
   }, [endorsementsByOwner]);
 
   // Derive the lab/role option lists used by the effect editor dropdowns.
@@ -409,7 +409,7 @@ function SucceededFailedSplit({
     revealedCount: number;
     revealedSecrets: Set<string>;
     toggleReveal: (key: string) => void;
-    getEndorsements: (roleId: string, actionText: string) => Proposal[];
+    getEndorsements: (roleId: string, actionId: string) => Proposal[];
     rerollAction: (args: { submissionId: Id<"submissions">; actionIndex: number }) => Promise<unknown>;
     overrideProbability: (args: { submissionId: Id<"submissions">; actionIndex: number; probability: number }) => Promise<unknown>;
     overrideStructuredEffect: (args: {
