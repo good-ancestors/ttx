@@ -1,12 +1,23 @@
 # Lab R&D Progression Mechanics
 
-## Architecture: pure physics, scenarios as fixtures
+## Architecture: mechanics vs content
 
-The **R&D growth half** of `computeLabGrowth` is a pure function of each lab's own state plus live world signals (capability leader, effort leader, world cooperation). No per-lab or per-scenario hardcoded targets are read at runtime in the growth path. Calibration against AI-2027 trajectories happens in tests, via fixtures in `src/lib/__fixtures__/lab-growth-canonical.ts`.
+A useful distinction when reading this code:
 
-The **compute acquisition half** uses a CSV anchor + player modulation + structural events. Specifically: each lab's slice of `NEW_COMPUTE_PER_GAME_ROUND` is determined by a split-bucket model — 60% structural (CSV-anchored share, flows regardless: chip supply chains, govt contracts, investor capital) and 40% revenue (scales linearly with the lab's deployment% allocation, range 0.5–1.5). Net swing on baseline from player deployment choice is ±20%. Founder labs and other entities not in `DEFAULT_COMPUTE_SHARES` fall through to a stock-proportional share. Events (`computeDestroyed`, `computeTransfer`, `merge`, `decommission`) reroute compute through the structured-effects path before growth runs. So the CSV is the *anchor*, not the dictator — the same structural+revenue+events split would apply to any scenario, and only the round-by-round baseline shares are AI-2027-specific data. Revisit if a future scenario needs a different chip-supply story.
+- **Mechanics** are generic — they would carry across to any scenario unchanged. The R&D growth formula (tanh-saturating self-growth, leader-ratio drag, cooperation-amplified diffusion), the compute split-bucket model (60% structural + 40% revenue, with deployment% modulating the revenue bucket), the structured-effects pipeline (`modelRollback`, `breakthrough`, `researchDisruption`, `computeDestroyed`, etc.).
+- **Content** is AI-2027-specific data the mechanics consume. `DEFAULT_LABS` (starting compute, multiplier, allocation), `NEW_COMPUTE_PER_GAME_ROUND` (per-quarter chip pool size), `DEFAULT_COMPUTE_SHARES` (per-round baseline shares of that pool — reflects export controls, DPA consolidation, govt contracts), role briefings, AI dispositions.
 
-Per-scenario differences (race vs slowdown) are driven by events that act on multiplier and productivity — not by the formula. The formula keeps working sensibly when the world deviates from the AI-2027 script (leader is removed, labs merge, founder labs appear).
+The **R&D growth half** of `computeLabGrowth` reads only mechanics + per-lab state. It contains no scenario-specific tables. Per-scenario differences (race vs slowdown vs catchup) emerge from events acting on multiplier and productivity — not from the formula. Calibration against AI-2027 trajectories happens in tests via `src/lib/__fixtures__/lab-growth-canonical.ts` (snapshot pins, regenerate when intentionally tuning).
+
+The **compute acquisition half** consumes scenario content (`DEFAULT_COMPUTE_SHARES`) as the *baseline anchor*, then applies generic mechanics on top:
+- 60% structural bucket flows regardless (chip supply chains, govt contracts, investor capital)
+- 40% revenue bucket scales linearly with deployment% allocation (range 0.5–1.5 → ±20% swing on baseline from player choice)
+- Founder labs and other entities not in `DEFAULT_COMPUTE_SHARES` fall through to a stock-proportional share
+- Events (`computeDestroyed`, `computeTransfer`, `merge`, `decommission`) reroute compute through the structured-effects path before growth runs
+
+The reason the acquisition half retains scripted baseline shares while growth doesn't: real-world chip supply has political-economic dynamics (Taiwan capacity, US export controls, DPA, big-customer contracts) that don't emerge from any in-game state and aren't well-modelled by physics. Encoding them as authored content is honest. To swap scenarios, edit `DEFAULT_COMPUTE_SHARES` and `NEW_COMPUTE_PER_GAME_ROUND` — same as you'd edit `DEFAULT_LABS` or role briefings.
+
+The formula keeps working sensibly when the world deviates from the AI-2027 script (leader removed, labs merged, founder labs appearing) — both halves degrade gracefully via their respective fallbacks.
 
 ## Source material
 
