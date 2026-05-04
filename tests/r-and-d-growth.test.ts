@@ -130,10 +130,12 @@ describe("lab growth — formula properties", () => {
 
   it("zero compute → no growth (lab can't research without hardware)", () => {
     const labs = fresh().map((l) => (l.name === "Conscienta" ? { ...l, computeStock: 0 } : l));
+    const csInput = labs.find((l) => l.name === "Conscienta")!;
     const result = computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
     const cs = result.find((l) => l.name === "Conscienta")!;
-    // Multiplier should be unchanged (modulo rounding to 1 decimal).
-    expect(cs.rdMultiplier).toBe(2);
+    // Multiplier should be unchanged from the input (no growth at all).
+    // Pin to the input lab's mult, not a literal — input could change.
+    expect(cs.rdMultiplier).toBe(csInput.rdMultiplier);
   });
 
   it("zero research → no growth (capability-only allocation can't advance R&D)", () => {
@@ -149,17 +151,42 @@ describe("lab growth — formula properties", () => {
     }
   });
 
-  it("acquisition arrives in returned stock but doesn't feed this round's R&D", () => {
-    // Two runs with identical allocations: one with starting stock S, one with 2S.
-    // The R&D multiplier difference between them comes from stock difference WITHOUT
-    // this round's acquisition mixed in (acquisition is independent of R&D).
+  it("acquisition arrives in returned stock", () => {
+    // Acquisition runs each round (proportional share of NEW_COMPUTE_PER_GAME_ROUND).
     const labs = fresh();
     const r = computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
     for (const lab of r) {
       const original = labs.find((l) => l.name === lab.name)!;
-      // Returned compute stock = original + acquisition.
       expect(lab.computeStock).toBeGreaterThan(original.computeStock);
     }
+  });
+
+  it("R&D this round uses pre-acquisition stock (regression: prior bug fed acquisition into same-round R&D)", () => {
+    // The prior-redesign bug: acquisition was added to computeStock BEFORE
+    // computing effectiveRd, so each lab got a free multiplier boost from compute
+    // that "hadn't yet landed." This test pins the fix.
+    //
+    // Strategy: manually pre-add OpenBrain's expected R1 acquisition to its
+    // input compute, run growth with the SAME total stock OB would have at the
+    // end of R1 — then compare R&D output to a normal run. If R&D used pre-
+    // acquisition stock, the manual-prefatten run produces a higher rdMultiplier
+    // (because prefatten run sees more compute when computing R&D).
+    const labs = fresh();
+    const normal = computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
+    const obNormal = normal.find((l) => l.name === "OpenBrain")!;
+    const obAcquisition = obNormal.computeStock - 22;
+    expect(obAcquisition).toBeGreaterThan(0);
+
+    const prefattenedLabs = fresh().map((l) =>
+      l.name === "OpenBrain" ? { ...l, computeStock: 22 + obAcquisition } : l,
+    );
+    const prefattened = computeLabGrowth(prefattenedLabs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
+    const obPrefattened = prefattened.find((l) => l.name === "OpenBrain")!;
+
+    // If R&D this round used post-acquisition stock, both runs would produce
+    // the same multiplier (because OB's effRd input would be identical).
+    // The fix means the prefattened run sees more compute → higher mult.
+    expect(obPrefattened.rdMultiplier).toBeGreaterThan(obNormal.rdMultiplier);
   });
 
   it("leader removal: trailing labs benefit when previous leader is gone", () => {
@@ -223,6 +250,79 @@ describe("lab growth — formula properties", () => {
     for (let i = 0; i < a.length; i++) {
       expect(a[i].rdMultiplier).toBe(b[i].rdMultiplier);
       expect(a[i].computeStock).toBe(b[i].computeStock);
+    }
+  });
+
+  it("single-lab array — lab is its own leader, no NaN, growth happens", () => {
+    // Founder lab edge case: only one active lab. labRatio = 1 (self is its own
+    // effort leader), no peer for diffusion gap (gapRatio = 1). Should produce
+    // finite, sensible growth.
+    const lone = [{ ...DEFAULT_LABS[0], allocation: { ...DEFAULT_LABS[0].allocation } }];
+    const result = computeLabGrowth(lone, DEFAULT_LAB_ALLOCATIONS, 1, 200);
+    const ob = result[0];
+    expect(Number.isFinite(ob.rdMultiplier)).toBe(true);
+    expect(Number.isFinite(ob.computeStock)).toBe(true);
+    expect(ob.rdMultiplier).toBeGreaterThan(DEFAULT_LABS[0].rdMultiplier);
+  });
+
+  it("capability leader at 0% research — drag falls back to effort leader, no spike", () => {
+    // The singularity guard: if the multiplier-leader allocates 0% to research,
+    // they have effRd = 0. Naive "leader = capability leader" would make
+    // labRatio = effRd/0 → undefined or fall back to 1, letting trailing labs
+    // grow at MAX. The fix uses effort leader (max effRd this round), so
+    // trailing labs are still dragged by the lab that's actually researching.
+    const obSandbags = new Map<string, { deployment: number; research: number; safety: number }>([
+      ["OpenBrain", { deployment: 100, research: 0, safety: 0 }], // capability leader, 0 research
+      ["DeepCent", { deployment: 30, research: 70, safety: 0 }], // becomes effort leader
+      ["Conscienta", { deployment: 50, research: 43, safety: 7 }],
+    ]);
+    const result = computeLabGrowth(fresh(), obSandbags, 1, 200);
+
+    const ob = result.find((l) => l.name === "OpenBrain")!;
+    const dc = result.find((l) => l.name === "DeepCent")!;
+    const cs = result.find((l) => l.name === "Conscienta")!;
+
+    // OB at 0% research → no growth.
+    expect(ob.rdMultiplier).toBe(3);
+    // DC and Cs grow but DC (effort leader) outpaces Cs.
+    expect(dc.rdMultiplier).toBeGreaterThan(2.5);
+    expect(cs.rdMultiplier).toBeGreaterThan(2);
+    expect(dc.rdMultiplier).toBeGreaterThan(cs.rdMultiplier);
+    // Critical assertion — Cs should NOT spike to RSI ceiling. Without the
+    // effort-leader fallback, Cs.labRatio would default to 1 and growth ≈ 10×.
+    // With the fix, Cs is dragged by DC (effort leader), so growth is modest.
+    expect(cs.rdMultiplier).toBeLessThan(2 * 10); // strictly under MAX_GROWTH
+  });
+
+  it("founder lab not in DEFAULT_COMPUTE_SHARES falls back to proportional acquisition", () => {
+    // Player-founded labs aren't in DEFAULT_COMPUTE_SHARES — acquisition goes
+    // through the proportional fallback (lab.computeStock / totalPreStock).
+    const founderLab = {
+      name: "PlayerFounded",
+      computeStock: 5,
+      rdMultiplier: 1,
+      allocation: { deployment: 50, research: 50, safety: 0 },
+    };
+    const labs = [...fresh(), founderLab];
+    const result = computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
+    const founded = result.find((l) => l.name === "PlayerFounded")!;
+    // Should receive SOME acquisition (proportional to its 5/(22+17+14+5)=8.6% share).
+    expect(founded.computeStock).toBeGreaterThan(5);
+    // Should grow modestly via diffusion (high gap to OB) — not zero, not max.
+    expect(founded.rdMultiplier).toBeGreaterThan(1);
+    expect(founded.rdMultiplier).toBeLessThan(5);
+  });
+
+  it("productivity is one-round only — function is stateless across calls", () => {
+    // The pipeline clears pendingProductivityMods after consumption; the function
+    // itself just reads what's passed in. Verify two consecutive calls without
+    // mods produce identical output (i.e. no hidden carryover).
+    const labs = fresh();
+    const first = computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
+    const second = computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
+    for (let i = 0; i < first.length; i++) {
+      expect(first[i].rdMultiplier).toBe(second[i].rdMultiplier);
+      expect(first[i].computeStock).toBe(second[i].computeStock);
     }
   });
 

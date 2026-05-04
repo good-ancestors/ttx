@@ -780,14 +780,26 @@ export function computeLabGrowth<T extends {
     productivities[i],
   );
 
-  // Live leader for drag + diffusion gap (no phantom anchor — if the leader is
-  // shut down or merged mid-game, whoever's now in front becomes the reference).
-  let leaderIdx = 0;
+  // Two leader concepts, intentionally different:
+  //   capabilityLeader — highest current rdMultiplier. Used for diffusion gap
+  //     (knowledge spillover scales with capability gap). Doesn't change just
+  //     because someone sandbagged research this round.
+  //   effortLeader (highest effectiveRd) — used for selfGrowth drag. Drag is
+  //     "you can't grow past whoever's out-researching you THIS round." Falling
+  //     back to effort-leader avoids a singularity: if the capability leader
+  //     allocates 0% to research, capabilityLeaderEffRd === 0 would otherwise
+  //     collapse labRatio to 1 for everyone, letting trailing labs spike.
+  // Both leaders are computed live — no phantom anchor if a lab is shut down
+  // or merged mid-game.
+  let capabilityLeaderIdx = 0;
+  let effortLeaderEffRd = effectiveRd[0];
   for (let i = 1; i < currentLabs.length; i++) {
-    if (currentLabs[i].rdMultiplier > currentLabs[leaderIdx].rdMultiplier) leaderIdx = i;
+    if (currentLabs[i].rdMultiplier > currentLabs[capabilityLeaderIdx].rdMultiplier) {
+      capabilityLeaderIdx = i;
+    }
+    if (effectiveRd[i] > effortLeaderEffRd) effortLeaderEffRd = effectiveRd[i];
   }
-  const leader = currentLabs[leaderIdx];
-  const leaderEffRd = effectiveRd[leaderIdx];
+  const capabilityLeader = currentLabs[capabilityLeaderIdx];
 
   // World cooperation: compute-weighted safety allocation. In cooperative worlds
   // labs share research openly, amplifying knowledge spillover. In race worlds
@@ -815,18 +827,21 @@ export function computeLabGrowth<T extends {
     const hasInputs = lab.computeStock > 0 && research > 0;
 
     // Self-driven growth: own effective R&D drives saturating growth toward
-    // MAX_GROWTH; leader-ratio drag attenuates trailing labs (otherwise they'd
-    // hit RSI saturation and grow at the leader's rate forever).
+    // MAX_GROWTH; effort-leader drag attenuates trailing labs (otherwise they'd
+    // hit RSI saturation and grow at the leader's rate forever). When all labs
+    // have zero effRd (everyone at 0% research), labRatio collapses to 0 → no
+    // growth, which is correct — tanh(0) = 0 too.
     const labEffRd = effectiveRd[i];
-    const labRatio = leaderEffRd > 0 ? Math.min(1, labEffRd / leaderEffRd) : 1;
+    const labRatio = effortLeaderEffRd > 0 ? Math.min(1, labEffRd / effortLeaderEffRd) : 0;
     const dragFactor = Math.pow(Math.max(0.001, labRatio), P.LEADER_DRAG);
     const selfGrowth = 1 + (P.MAX_GROWTH - 1) * Math.tanh(labEffRd / P.SCALE) * dragFactor;
 
-    // Diffusion floor: spillover from leader, decays with capability gap.
-    // Gated by hasInputs so labs with zero compute or zero research don't
-    // drift forward via spillover alone.
-    const gapRatio = leader.rdMultiplier > 0
-      ? Math.min(1, lab.rdMultiplier / leader.rdMultiplier)
+    // Diffusion floor: spillover from capability leader, decays with capability
+    // gap. Uses multiplier (not effRd) because spillover scales with what the
+    // leader has built, not what they did THIS round. Gated by hasInputs so
+    // labs with zero compute or zero research don't drift forward via spillover.
+    const gapRatio = capabilityLeader.rdMultiplier > 0
+      ? Math.min(1, lab.rdMultiplier / capabilityLeader.rdMultiplier)
       : 1;
     const diffusionGrowth = hasInputs
       ? 1 + (P.MAX_GROWTH - 1) * effectiveDiffusion * research * Math.sqrt(gapRatio)

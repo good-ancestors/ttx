@@ -3,14 +3,16 @@
  *
  * Each scenario specifies starting state + per-round overrides. Tests run
  * computeLabGrowth through the scenario and compare against:
- *   - formulaExpected: tight regression pin (±5%) — fails if formula constants
- *     drift unexpectedly
- *   - csvTarget: optional loose sanity check (±100% mid / ±100% final) — confirms
- *     the formula's shape stays within the rough envelope of the AI-2027 trajectory
- *
- * The CSV envelope is intentionally loose because the formula is pure physics —
- * deceleration of trailing labs (DC plateau, Cs plateau) is event-driven in the
- * scenario story, not formula-driven. This is the cost of architectural cleanness.
+ *   - formulaExpected: tight regression pin (±5%) — fails if formula behaviour
+ *     drifts. NOTE: these are SNAPSHOT values, derived by running the formula
+ *     once. They are NOT independent ground truth. When you intentionally tune
+ *     LAB_PROGRESSION constants (SCALE, RSI_EXP, LEADER_DRAG, etc.), regenerate
+ *     these via `npx tsx scripts/calibrate-lab-growth.ts` and treat the test
+ *     failure as a baseline update, not a regression.
+ *   - csvTarget: optional informational AI-2027 trajectory. NOT asserted by
+ *     tests — the formula is pure physics, but the CSV trajectories are event-
+ *     driven (alignment backtrack, sanctions). Per-scenario calibration belongs
+ *     in events, not the formula.
  */
 
 import { DEFAULT_LABS, LAB_PROGRESSION, computeLabGrowth } from "../game-data";
@@ -66,9 +68,9 @@ const SLOWDOWN_SCENARIO: LabGrowthScenario = {
     4: { allocations: { OpenBrain: { deployment: 30, research: 20, safety: 50 } } },
   },
   formulaExpected: {
-    OpenBrain:  [3,   10.2, 66.5, 665,    6650],
-    DeepCent:   [2.5, 6.2,  41.7, 417,    4097.9],
-    Conscienta: [2,   3.2,  7.9,  33.4,   139.1],
+    OpenBrain:  [3,   10.2, 65.6, 650.6,  6506],
+    DeepCent:   [2.5, 6.2,  41.7, 417,    4127],
+    Conscienta: [2,   3.2,  7.8,  32.5,   135.1],
   },
   csvTarget: {
     OpenBrain:  [3,   10,  40, 55, 500],

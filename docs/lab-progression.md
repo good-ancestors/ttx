@@ -2,9 +2,11 @@
 
 ## Architecture: pure physics, scenarios as fixtures
 
-`computeLabGrowth` is a pure function of each lab's own state plus live world signals (leader, world cooperation). **No per-lab or per-scenario hardcoded targets are read at runtime.** Calibration against AI-2027 trajectories happens in tests, via fixtures in `src/lib/__fixtures__/lab-growth-canonical.ts`. Per-scenario differences (race vs slowdown) are driven by events that act on multiplier and productivity — not by the formula.
+The **R&D growth half** of `computeLabGrowth` is a pure function of each lab's own state plus live world signals (capability leader, effort leader, world cooperation). No per-lab or per-scenario hardcoded targets are read at runtime in the growth path. Calibration against AI-2027 trajectories happens in tests, via fixtures in `src/lib/__fixtures__/lab-growth-canonical.ts`.
 
-This separation matters: it means the formula keeps working sensibly when the world deviates from the AI-2027 script (leader is removed, labs merge, founder labs appear), and the AI-2027 trajectories are a measurable target to calibrate against rather than a hidden assumption baked into the math.
+The **compute acquisition half** is a known asymmetry: it still consumes scripted data — `NEW_COMPUTE_PER_GAME_ROUND` and `DEFAULT_COMPUTE_SHARES` (`convex/gameData.ts`) are AI-2027-derived per-round, per-lab-name tables. Founded labs and unsharded entities fall through to a proportional-stock fallback. This split is intentional for now: acquisition models real-world chip supply chains and policy decisions that are scenario-specific, while growth models the algorithmic side that should generalise. Worth revisiting if the acquisition path becomes a calibration bottleneck.
+
+Per-scenario differences (race vs slowdown) are driven by events that act on multiplier and productivity — not by the formula. The formula keeps working sensibly when the world deviates from the AI-2027 script (leader is removed, labs merge, founder labs appear).
 
 ## Source material
 
@@ -17,19 +19,30 @@ These are inlined into the calibration script and test fixtures, not imported by
 ## The formula
 
 ```
-effectiveRd = computeStock × research%/100 × multiplier^RSI_EXP × productivity
-labRatio    = effectiveRd / leader.effectiveRd       (live leader, no phantom anchor)
+effectiveRd        = computeStock × research%/100 × multiplier^RSI_EXP × productivity
+
+# Two leader concepts, intentionally different:
+effortLeaderEffRd  = max(effectiveRd across labs)          (who's out-researching this round)
+capabilityLeader   = lab with highest rdMultiplier         (who has the lead in race terms)
+
+# Drag uses effort-leader: trailing labs can't grow past whoever's out-researching them this round.
+# This avoids a singularity when the capability leader sandbags research (effRd=0): without effort-
+# leader fallback, labRatio would collapse to 1 for everyone and trailing labs would spike.
+labRatio    = effectiveRd / effortLeaderEffRd
 dragFactor  = labRatio^LEADER_DRAG
 selfGrowth  = 1 + (MAX_GROWTH - 1) × tanh(effectiveRd / SCALE) × dragFactor
 
-worldSafety       = compute-weighted average of safety allocations
+# Diffusion uses capability-leader: knowledge spillover scales with what the leader has BUILT
+# (multiplier), not what they're DOING this round (effRd). Spillover doesn't disappear if the
+# leader sandbags one round — accumulated capability is still there to leak.
+worldSafety        = compute-weighted average of safety allocations
 effectiveDiffusion = DIFFUSION_RATE × (1 + COOPERATION_BOOST × worldSafety)
-gapRatio          = self.multiplier / leader.multiplier         (clamped to 1)
-diffusionGrowth   = 1 + (MAX_GROWTH - 1) × effectiveDiffusion × research × √gapRatio
-                    (gated: lab needs computeStock > 0 AND research% > 0)
+gapRatio           = self.multiplier / capabilityLeader.multiplier   (clamped to 1)
+diffusionGrowth    = 1 + (MAX_GROWTH - 1) × effectiveDiffusion × research × √gapRatio
+                     (gated: lab needs computeStock > 0 AND research% > 0)
 
 growth     = max(selfGrowth, diffusionGrowth)
-multiplier ← multiplier × growth                       (clamped to MIN_MULTIPLIER, maxMultiplier(round))
+multiplier ← multiplier × growth               (clamped to MIN_MULTIPLIER, maxMultiplier(round))
 ```
 
 ### Why each piece
