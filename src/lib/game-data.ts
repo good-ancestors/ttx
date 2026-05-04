@@ -580,12 +580,17 @@ export const PRIORITY_DECAY: Record<number, number[]> = {
 
 // ─── AI SYSTEMS INFLUENCE ───────────────────────────────────────────────────
 
+/** Cap on AI influence (% chance to flip an outcome). Stays below 100 so even
+ *  ASI fails ~1% of attempted flips — players keep a slim chance against it. */
+export const MAX_INFLUENCE_POWER = 99;
+
 /** Calculate AI Systems influence power (%) from leading lab R&D multiplier.
- * Logarithmic scale: 1x=0%, 3x≈14%, 10x=30%, 100x=60%, 1000x=90% */
+ * Logarithmic scale: 1x=0%, 10x=28%, 100x=56%, 1000x=84%, 1500x≈90%, 5000x+=99%
+ * (capped). Anchored so 1500× hits ~90 and ASI tier (5k–10k×) saturates near 99. */
 export function getAiInfluencePower(labs: { rdMultiplier: number }[]): number {
   const leading = Math.max(...labs.map((l) => l.rdMultiplier), 1);
   if (leading <= 1) return 0;
-  return Math.min(90, Math.round(Math.log10(leading) * 30));
+  return Math.min(MAX_INFLUENCE_POWER, Math.round(Math.log10(leading) * 28));
 }
 
 const INFLUENCE_SABOTAGE_KEYWORDS: Record<string, RegExp> = {

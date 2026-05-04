@@ -5,7 +5,7 @@ import type { Id, Doc } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator, assertNotResolving } from "./events";
 import { assertSeatOwnership } from "./tables";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
-import { MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
+import { MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION, MAX_INFLUENCE_POWER } from "@/lib/game-data";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
 import { readRuntime } from "./gameRuntime";
 import {
@@ -1228,15 +1228,40 @@ export const setActionInfluence = mutation({
   },
 });
 
-/** Apply AI influence to a dice roll. Positive influence = boost (lower roll), negative = sabotage. */
-function applyInfluence(rawRoll: number, aiInfluence?: number): number {
-  return Math.max(1, Math.min(100, rawRoll - (aiInfluence ?? 0)));
+/** Apply AI influence to a d100 roll. Two-step model:
+ *
+ *  1. AI gets a `power%` chance to flip an outcome it dislikes (independent
+ *     of the probability bar — calibrated so ASI dominates by 1000× R&D
+ *     in line with in-person playtest experience).
+ *  2. If the AI flips, pick a uniform value in the favorable zone *excluding
+ *     the extremes 1 and 100*, so those values stay at natural ~1% frequency
+ *     instead of the 3-4× over-representation a uniform pick would cause.
+ *
+ *  Otherwise the raw d100 shows through unchanged. No per-roll tell beyond
+ *  a slight aggregate cluster within the favorable zone. */
+function applyInfluence(rawRoll: number, probability: number, aiInfluence?: number): number {
+  if (!aiInfluence) return rawRoll;
+
+  const wantsPass = aiInfluence > 0;
+  const naturalSuccess = rawRoll <= probability;
+  if (wantsPass === naturalSuccess) return rawRoll; // outcome already favorable
+
+  const flipChance = Math.min(MAX_INFLUENCE_POWER, Math.abs(aiInfluence)) / 100;
+  if (Math.random() >= flipChance) return rawRoll;
+
+  // Pick from favorable zone, excluding extremes 1 and 100.
+  if (wantsPass) {
+    if (probability < 2) return rawRoll; // no non-extreme pass zone
+    return 2 + Math.floor(Math.random() * (probability - 1)); // [2, probability]
+  }
+  if (probability >= 99) return rawRoll; // no non-extreme fail zone
+  return probability + 1 + Math.floor(Math.random() * (99 - probability)); // [probability+1, 99]
 }
 
 /** Roll a d100 with AI influence and determine success against a probability threshold. */
 function rollDice(probability: number, aiInfluence?: number): { rolled: number; success: boolean } {
   const rawRoll = Math.floor(Math.random() * 100) + 1;
-  const rolled = applyInfluence(rawRoll, aiInfluence);
+  const rolled = applyInfluence(rawRoll, probability, aiInfluence);
   return { rolled, success: rolled <= probability };
 }
 
