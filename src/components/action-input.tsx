@@ -70,6 +70,8 @@ function emptyAction(): ActionDraft {
   return { text: "", priority: "medium", secret: false, endorseTargets: [], computeTargets: [] };
 }
 
+const DISABLED_TOGGLE_CLASS = "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
+
 export interface LabRef { labId: Id<"labs">; name: string }
 
 interface Props {
@@ -260,26 +262,26 @@ function ActionCard({
         </p>
       )}
 
-      {/* Controls row — only show when there's text (or already submitted), so staged config can't be silently dropped by normaliseActions on submit */}
-      {(action.text.trim() || isSubmitted) && (
-        <ActionControlsRow
-          action={action}
-          isSubmitted={isSubmitted}
-          canRemove={canRemove}
-          onUpdate={onUpdate}
-          onRemove={onRemove}
-          onSubmit={onSubmit}
-          showEndorse={showEndorse}
-          setShowEndorse={setShowEndorse}
-          showComputeRequest={showComputeRequest}
-          setShowComputeRequest={setShowComputeRequest}
-          computeRoles={computeRoles}
-          ownComputeStock={ownComputeStock}
-          ownedLab={ownedLab}
-          otherLabs={otherLabs}
-          idleNudge={idleNudge}
-        />
-      )}
+      {/* Controls row — always rendered for discoverability. Disabled until text is
+          entered so staged config can't be silently dropped by normaliseActions on submit. */}
+      <ActionControlsRow
+        action={action}
+        isSubmitted={isSubmitted}
+        isFirstCard={index === 0}
+        canRemove={canRemove}
+        onUpdate={onUpdate}
+        onRemove={onRemove}
+        onSubmit={onSubmit}
+        showEndorse={showEndorse}
+        setShowEndorse={setShowEndorse}
+        showComputeRequest={showComputeRequest}
+        setShowComputeRequest={setShowComputeRequest}
+        computeRoles={computeRoles}
+        ownComputeStock={ownComputeStock}
+        ownedLab={ownedLab}
+        otherLabs={otherLabs}
+        idleNudge={idleNudge}
+      />
 
       {showEndorse && !isSubmitted && (
         <EndorsementPicker
@@ -336,6 +338,7 @@ function ActionCard({
 function ActionControlsRow({
   action,
   isSubmitted,
+  isFirstCard,
   canRemove,
   onUpdate,
   onRemove,
@@ -352,6 +355,7 @@ function ActionControlsRow({
 }: {
   action: ActionDraft;
   isSubmitted: boolean;
+  isFirstCard: boolean;
   canRemove: boolean;
   onUpdate: (patch: Partial<ActionDraft>) => void;
   onRemove: () => void;
@@ -366,130 +370,139 @@ function ActionControlsRow({
   otherLabs?: LabRef[];
   idleNudge: boolean;
 }) {
+  const isEmpty = !action.text.trim() && !isSubmitted;
+  const lockedOut = isSubmitted || isEmpty;
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      {/* Secret toggle */}
-      <button
-        onClick={() => onUpdate({ secret: !action.secret })}
-        disabled={isSubmitted}
-        aria-label={action.secret ? "Secret — hidden from others" : "Make secret"}
-        aria-pressed={action.secret}
-        className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-          action.secret
-            ? "bg-[#FFF7ED] text-viz-warning"
-            : "text-text-light hover:text-text-muted hover:bg-warm-gray"
-        }`}
-      >
-        {action.secret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-        <span className="text-xs font-medium">{action.secret ? "Secret" : "Visible"}</span>
-      </button>
-
-      {/* Endorsement toggle */}
-      <button
-        onClick={() => { setShowEndorse(!showEndorse); setShowComputeRequest(false); }}
-        disabled={isSubmitted}
-        aria-label="Request support from other players"
-        aria-expanded={showEndorse}
-        className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-          action.endorseTargets.length > 0
-            ? "bg-[#ECFDF5] text-[#059669]"
-            : "text-text-light hover:text-text-muted hover:bg-warm-gray"
-        }`}
-      >
-        <Handshake className="w-4 h-4" />
-        <span className="text-xs font-medium">
-          Support{action.endorseTargets.length > 0 ? ` (${action.endorseTargets.length})` : ""}
-        </span>
-      </button>
-
-      {/* Found-a-lab toggle — only for has-compute roles without an existing lab
-          and with enough compute to meet the 10u minimum seed. Founding consumes the
-          founder's entire current compute pool on success (refunded on failure). */}
-      {computeRoles && !ownedLab && (ownComputeStock ?? 0) >= 10 && (
+    <>
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Secret toggle */}
         <button
-          onClick={() => onUpdate({
-            foundLab: action.foundLab ? undefined : {
-              name: "",
-              seedCompute: ownComputeStock ?? 10,
-              allocation: { ...DEFAULT_LAB_ALLOCATION },
-            },
-          })}
-          disabled={isSubmitted}
-          aria-label="Found a new lab with this action"
-          aria-pressed={!!action.foundLab}
-          className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-            action.foundLab
-              ? "bg-[#EDE9FE] text-[#7C3AED]"
+          onClick={() => onUpdate({ secret: !action.secret })}
+          disabled={lockedOut}
+          aria-label={action.secret ? "Secret — hidden from others" : "Make secret"}
+          aria-pressed={action.secret}
+          className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${DISABLED_TOGGLE_CLASS} ${
+            action.secret
+              ? "bg-[#FFF7ED] text-viz-warning"
               : "text-text-light hover:text-text-muted hover:bg-warm-gray"
           }`}
         >
-          <FlaskConical className="w-4 h-4" />
-          <span className="text-xs font-medium">Found lab</span>
+          {action.secret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          <span className="text-xs font-medium">{action.secret ? "Secret" : "Visible"}</span>
         </button>
-      )}
 
-      {ownedLab && otherLabs && otherLabs.length > 0 && (
+        {/* Endorsement toggle */}
         <button
-          onClick={() => onUpdate({
-            mergeLab: action.mergeLab
-              ? undefined
-              : { absorbedLabId: otherLabs[0].labId, survivorLabId: ownedLab.labId },
-          })}
-          disabled={isSubmitted}
-          aria-label="Propose a merger with another lab"
-          aria-pressed={!!action.mergeLab}
-          className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-            action.mergeLab
-              ? "bg-[#E0F2FE] text-[#0369A1]"
+          onClick={() => { setShowEndorse(!showEndorse); setShowComputeRequest(false); }}
+          disabled={lockedOut}
+          aria-label="Request support from other players"
+          aria-expanded={showEndorse}
+          className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${DISABLED_TOGGLE_CLASS} ${
+            action.endorseTargets.length > 0
+              ? "bg-[#ECFDF5] text-[#059669]"
               : "text-text-light hover:text-text-muted hover:bg-warm-gray"
           }`}
         >
-          <GitMerge className="w-4 h-4" />
-          <span className="text-xs font-medium">Merge lab</span>
-        </button>
-      )}
-
-      {/* Compute request toggle — only for has-compute roles with targets */}
-      {computeRoles && computeRoles.length > 0 && (
-        <button
-          onClick={() => { setShowComputeRequest(!showComputeRequest); setShowEndorse(false); }}
-          disabled={isSubmitted}
-          aria-label="Request compute from other players"
-          aria-expanded={showComputeRequest}
-          className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-            action.computeTargets.length > 0
-              ? "bg-[#FFF7ED] text-[#D97706]"
-              : "text-text-light hover:text-text-muted hover:bg-warm-gray"
-          }`}
-        >
-          <Zap className="w-4 h-4" />
+          <Handshake className="w-4 h-4" />
           <span className="text-xs font-medium">
-            Compute{action.computeTargets.length > 0 ? ` (${action.computeTargets.length})` : ""}
+            Support{action.endorseTargets.length > 0 ? ` (${action.endorseTargets.length})` : ""}
           </span>
         </button>
-      )}
 
-      {/* Spacer + submit + remove */}
-      <div className="flex-1" />
-      {onSubmit && !isSubmitted && (
-        <button
-          onClick={onSubmit}
-          aria-label="Submit this action"
-          className={`min-h-[44px] px-3 rounded-lg text-xs font-bold text-white bg-navy hover:bg-navy-light transition-colors flex items-center gap-1.5 ${idleNudge ? "animate-submit-nudge" : ""}`}
-        >
-          <Send className="w-3.5 h-3.5" /> Submit
-        </button>
+        {/* Found-a-lab toggle — only for has-compute roles without an existing lab
+            and with enough compute to meet the 10u minimum seed. Founding consumes the
+            founder's entire current compute pool on success (refunded on failure). */}
+        {computeRoles && !ownedLab && (ownComputeStock ?? 0) >= 10 && (
+          <button
+            onClick={() => onUpdate({
+              foundLab: action.foundLab ? undefined : {
+                name: "",
+                seedCompute: ownComputeStock ?? 10,
+                allocation: { ...DEFAULT_LAB_ALLOCATION },
+              },
+            })}
+            disabled={lockedOut}
+            aria-label="Found a new lab with this action"
+            aria-pressed={!!action.foundLab}
+            className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${DISABLED_TOGGLE_CLASS} ${
+              action.foundLab
+                ? "bg-[#EDE9FE] text-[#7C3AED]"
+                : "text-text-light hover:text-text-muted hover:bg-warm-gray"
+            }`}
+          >
+            <FlaskConical className="w-4 h-4" />
+            <span className="text-xs font-medium">Found lab</span>
+          </button>
+        )}
+
+        {ownedLab && otherLabs && otherLabs.length > 0 && (
+          <button
+            onClick={() => onUpdate({
+              mergeLab: action.mergeLab
+                ? undefined
+                : { absorbedLabId: otherLabs[0].labId, survivorLabId: ownedLab.labId },
+            })}
+            disabled={lockedOut}
+            aria-label="Propose a merger with another lab"
+            aria-pressed={!!action.mergeLab}
+            className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${DISABLED_TOGGLE_CLASS} ${
+              action.mergeLab
+                ? "bg-[#E0F2FE] text-[#0369A1]"
+                : "text-text-light hover:text-text-muted hover:bg-warm-gray"
+            }`}
+          >
+            <GitMerge className="w-4 h-4" />
+            <span className="text-xs font-medium">Merge lab</span>
+          </button>
+        )}
+
+        {/* Compute request toggle — only for has-compute roles with targets */}
+        {computeRoles && computeRoles.length > 0 && (
+          <button
+            onClick={() => { setShowComputeRequest(!showComputeRequest); setShowEndorse(false); }}
+            disabled={lockedOut}
+            aria-label="Request compute from other players"
+            aria-expanded={showComputeRequest}
+            className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${DISABLED_TOGGLE_CLASS} ${
+              action.computeTargets.length > 0
+                ? "bg-[#FFF7ED] text-[#D97706]"
+                : "text-text-light hover:text-text-muted hover:bg-warm-gray"
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            <span className="text-xs font-medium">
+              Compute{action.computeTargets.length > 0 ? ` (${action.computeTargets.length})` : ""}
+            </span>
+          </button>
+        )}
+
+        {/* Spacer + submit + remove */}
+        <div className="flex-1" />
+        {onSubmit && !isSubmitted && (
+          <button
+            onClick={onSubmit}
+            aria-label="Submit this action"
+            className={`min-h-[44px] px-3 rounded-lg text-xs font-bold text-white bg-navy hover:bg-navy-light transition-colors flex items-center gap-1.5 ${idleNudge ? "animate-submit-nudge" : ""}`}
+          >
+            <Send className="w-3.5 h-3.5" /> Submit
+          </button>
+        )}
+        {canRemove && !isSubmitted && (
+          <button
+            onClick={onRemove}
+            aria-label="Remove action"
+            className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-text-light hover:text-viz-danger hover:bg-[#FEF2F2] transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+      {isFirstCard && isEmpty && (
+        <p className="text-[11px] text-text-muted mt-1.5">
+          Type your action to enable these options.
+        </p>
       )}
-      {canRemove && !isSubmitted && (
-        <button
-          onClick={onRemove}
-          aria-label="Remove action"
-          className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg text-text-light hover:text-viz-danger hover:bg-[#FEF2F2] transition-colors"
-        >
-          <Trash2 className="w-4 h-4" />
-        </button>
-      )}
-    </div>
+    </>
   );
 }
 
