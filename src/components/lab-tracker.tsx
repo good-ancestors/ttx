@@ -29,21 +29,19 @@ export function ComputeDotsViz({
   }
 
   return (
-    <div className="mb-2">
-      <div className="flex flex-wrap gap-[2px]" style={{ maxWidth: 10 * 12 + 9 * 2 }}>
-        {dots.map((dot) => (
-          <div
-            key={dot.idx}
-            className="rounded-[2px] compute-dot"
-            style={{
-              width: 10,
-              height: 10,
-              backgroundColor: dot.color,
-              opacity: 0.85,
-            }}
-          />
-        ))}
-      </div>
+    <div className="mb-2 flex flex-wrap gap-[2px]" style={{ maxWidth: 10 * 12 + 9 * 2 }}>
+      {dots.map((dot) => (
+        <div
+          key={dot.idx}
+          className="rounded-[2px] compute-dot"
+          style={{
+            width: 10,
+            height: 10,
+            backgroundColor: dot.color,
+            opacity: 0.85,
+          }}
+        />
+      ))}
     </div>
   );
 }
