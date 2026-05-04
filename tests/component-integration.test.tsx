@@ -28,7 +28,7 @@ const iconNames = [
   "Pencil", "Save", "Minus", "AlertTriangle", "Info", "Check",
   "Loader2", "Undo2", "Wand2", "Maximize2", "Play", "QrCode",
   "Wifi", "WifiOff", "ExternalLink", "Merge", "Bug", "Pause",
-  "FileText",
+  "FileText", "GitMerge",
 ] as const;
 
 const lucideMock: Record<string, unknown> = {};
@@ -714,6 +714,71 @@ describe("facilitator auth client state", () => {
 
     await waitFor(() => expect(result.current).toBe("test-token"));
     expect(storage.setItem).toHaveBeenCalledWith("ttx-facilitator-token", "test-token");
+  });
+});
+
+// =============================================================================
+// ActionInput — toggle row smoke test (ToggleButton refactor)
+// =============================================================================
+
+describe("ActionInput controls row", () => {
+  it("renders all 5 toggles for a has-compute role with an owned lab and merge candidates", async () => {
+    const { ActionInput } = await import("@/components/action-input");
+
+    render(
+      <ActionInput
+        actions={[{ text: "I do something", priority: "medium", secret: false, endorseTargets: [], computeTargets: [] }]}
+        onChange={() => {}}
+        roleId="openbrain-ceo"
+        roleName="OpenBrain CEO"
+        enabledRoles={[{ id: "us-president", name: "US President" }]}
+        computeRoles={[{ id: "deepcent-ceo", name: "DeepCent CEO", computeStock: 50 }]}
+        ownComputeStock={50}
+        ownedLab={{ labId: "lab-1" as never, name: "OpenBrain" }}
+        otherLabs={[{ labId: "lab-2" as never, name: "DeepCent" }]}
+        isSubmitted={false}
+      />,
+    );
+
+    expect(screen.getByLabelText("Make secret")).toBeInTheDocument();
+    expect(screen.getByLabelText("Request support from other players")).toBeInTheDocument();
+    expect(screen.getByLabelText("Propose a merger with another lab")).toBeInTheDocument();
+    expect(screen.getByLabelText("Request compute from other players")).toBeInTheDocument();
+    // Found-lab is hidden when ownedLab is set, so render a second instance without ownedLab
+    cleanup();
+    render(
+      <ActionInput
+        actions={[{ text: "I do something", priority: "medium", secret: false, endorseTargets: [], computeTargets: [] }]}
+        onChange={() => {}}
+        roleId="openbrain-ceo"
+        roleName="OpenBrain CEO"
+        computeRoles={[{ id: "deepcent-ceo", name: "DeepCent CEO", computeStock: 50 }]}
+        ownComputeStock={50}
+        isSubmitted={false}
+      />,
+    );
+    expect(screen.getByLabelText("Found a new lab with this action")).toBeInTheDocument();
+  });
+
+  it("toggling Secret flips aria-pressed and calls onChange", async () => {
+    const { ActionInput } = await import("@/components/action-input");
+    const onChange = vi.fn();
+    render(
+      <ActionInput
+        actions={[{ text: "x", priority: "medium", secret: false, endorseTargets: [], computeTargets: [] }]}
+        onChange={onChange}
+        roleId="openbrain-ceo"
+        roleName="OpenBrain CEO"
+        isSubmitted={false}
+      />,
+    );
+
+    const btn = screen.getByLabelText("Make secret");
+    expect(btn).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(btn);
+    expect(onChange).toHaveBeenCalledWith([
+      expect.objectContaining({ secret: true }),
+    ]);
   });
 });
 

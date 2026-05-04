@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ROLES, AI_SYSTEMS_ROLE_ID, PRIORITY_DECAY, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
 import { EyeOff, Eye, Handshake, Trash2, Plus, ChevronUp, ChevronDown, GripVertical, Send, Zap, FlaskConical, GitMerge } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
@@ -69,8 +69,6 @@ export function normaliseActions(actions: ActionDraft[]): { text: string; priori
 function emptyAction(): ActionDraft {
   return { text: "", priority: "medium", secret: false, endorseTargets: [], computeTargets: [] };
 }
-
-const DISABLED_TOGGLE_CLASS = "disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent";
 
 export interface LabRef { labId: Id<"labs">; name: string }
 
@@ -331,6 +329,47 @@ function ActionCard({
   );
 }
 
+/** Shared chip-style toggle used by every button in ActionControlsRow.
+ *  Centralises the disabled + min-touch-target styling so new toggles can't
+ *  forget either. */
+function ToggleButton({
+  icon,
+  label,
+  active,
+  activeClass,
+  disabled,
+  onClick,
+  ariaLabel,
+  ariaPressed,
+  ariaExpanded,
+}: {
+  icon: ReactNode;
+  label: ReactNode;
+  active: boolean;
+  activeClass: string;
+  disabled: boolean;
+  onClick: () => void;
+  ariaLabel: string;
+  ariaPressed?: boolean;
+  ariaExpanded?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      aria-pressed={ariaPressed}
+      aria-expanded={ariaExpanded}
+      className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent ${
+        active ? activeClass : "text-text-light hover:text-text-muted hover:bg-warm-gray"
+      }`}
+    >
+      {icon}
+      <span className="text-xs font-medium">{label}</span>
+    </button>
+  );
+}
+
 /** Toggle row beneath the textarea — secret, endorse, found lab, merge lab,
  *  compute request, submit, remove. Conditional buttons depend on role
  *  capabilities (compute holders, lab owners). Pulled out of ActionCard to
@@ -375,45 +414,38 @@ function ActionControlsRow({
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
-        {/* Secret toggle */}
-        <button
+        <ToggleButton
+          icon={action.secret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          label={action.secret ? "Secret" : "Visible"}
+          active={action.secret}
+          activeClass="bg-[#FFF7ED] text-viz-warning"
+          disabled={lockedOut}
           onClick={() => onUpdate({ secret: !action.secret })}
-          disabled={lockedOut}
-          aria-label={action.secret ? "Secret — hidden from others" : "Make secret"}
-          aria-pressed={action.secret}
-          className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${DISABLED_TOGGLE_CLASS} ${
-            action.secret
-              ? "bg-[#FFF7ED] text-viz-warning"
-              : "text-text-light hover:text-text-muted hover:bg-warm-gray"
-          }`}
-        >
-          {action.secret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          <span className="text-xs font-medium">{action.secret ? "Secret" : "Visible"}</span>
-        </button>
+          ariaLabel={action.secret ? "Secret — hidden from others" : "Make secret"}
+          ariaPressed={action.secret}
+        />
 
-        {/* Endorsement toggle */}
-        <button
-          onClick={() => { setShowEndorse(!showEndorse); setShowComputeRequest(false); }}
+        <ToggleButton
+          icon={<Handshake className="w-4 h-4" />}
+          label={`Support${action.endorseTargets.length > 0 ? ` (${action.endorseTargets.length})` : ""}`}
+          active={action.endorseTargets.length > 0}
+          activeClass="bg-[#ECFDF5] text-[#059669]"
           disabled={lockedOut}
-          aria-label="Request support from other players"
-          aria-expanded={showEndorse}
-          className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${DISABLED_TOGGLE_CLASS} ${
-            action.endorseTargets.length > 0
-              ? "bg-[#ECFDF5] text-[#059669]"
-              : "text-text-light hover:text-text-muted hover:bg-warm-gray"
-          }`}
-        >
-          <Handshake className="w-4 h-4" />
-          <span className="text-xs font-medium">
-            Support{action.endorseTargets.length > 0 ? ` (${action.endorseTargets.length})` : ""}
-          </span>
-        </button>
+          onClick={() => { setShowEndorse(!showEndorse); setShowComputeRequest(false); }}
+          ariaLabel="Request support from other players"
+          ariaExpanded={showEndorse}
+        />
 
         {/* Found-a-lab toggle — only for has-compute roles without an existing lab
             and with enough compute to meet the 10u minimum seed. Founding consumes the
             founder's entire current compute pool on success (refunded on failure). */}
         {computeRoles && !ownedLab && (ownComputeStock ?? 0) >= 10 && (
-          <button
+          <ToggleButton
+            icon={<FlaskConical className="w-4 h-4" />}
+            label="Found lab"
+            active={!!action.foundLab}
+            activeClass="bg-[#EDE9FE] text-[#7C3AED]"
+            disabled={lockedOut}
             onClick={() => onUpdate({
               foundLab: action.foundLab ? undefined : {
                 name: "",
@@ -421,59 +453,39 @@ function ActionControlsRow({
                 allocation: { ...DEFAULT_LAB_ALLOCATION },
               },
             })}
-            disabled={lockedOut}
-            aria-label="Found a new lab with this action"
-            aria-pressed={!!action.foundLab}
-            className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${DISABLED_TOGGLE_CLASS} ${
-              action.foundLab
-                ? "bg-[#EDE9FE] text-[#7C3AED]"
-                : "text-text-light hover:text-text-muted hover:bg-warm-gray"
-            }`}
-          >
-            <FlaskConical className="w-4 h-4" />
-            <span className="text-xs font-medium">Found lab</span>
-          </button>
+            ariaLabel="Found a new lab with this action"
+            ariaPressed={!!action.foundLab}
+          />
         )}
 
         {ownedLab && otherLabs && otherLabs.length > 0 && (
-          <button
+          <ToggleButton
+            icon={<GitMerge className="w-4 h-4" />}
+            label="Merge lab"
+            active={!!action.mergeLab}
+            activeClass="bg-[#E0F2FE] text-[#0369A1]"
+            disabled={lockedOut}
             onClick={() => onUpdate({
               mergeLab: action.mergeLab
                 ? undefined
                 : { absorbedLabId: otherLabs[0].labId, survivorLabId: ownedLab.labId },
             })}
-            disabled={lockedOut}
-            aria-label="Propose a merger with another lab"
-            aria-pressed={!!action.mergeLab}
-            className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${DISABLED_TOGGLE_CLASS} ${
-              action.mergeLab
-                ? "bg-[#E0F2FE] text-[#0369A1]"
-                : "text-text-light hover:text-text-muted hover:bg-warm-gray"
-            }`}
-          >
-            <GitMerge className="w-4 h-4" />
-            <span className="text-xs font-medium">Merge lab</span>
-          </button>
+            ariaLabel="Propose a merger with another lab"
+            ariaPressed={!!action.mergeLab}
+          />
         )}
 
-        {/* Compute request toggle — only for has-compute roles with targets */}
         {computeRoles && computeRoles.length > 0 && (
-          <button
-            onClick={() => { setShowComputeRequest(!showComputeRequest); setShowEndorse(false); }}
+          <ToggleButton
+            icon={<Zap className="w-4 h-4" />}
+            label={`Compute${action.computeTargets.length > 0 ? ` (${action.computeTargets.length})` : ""}`}
+            active={action.computeTargets.length > 0}
+            activeClass="bg-[#FFF7ED] text-[#D97706]"
             disabled={lockedOut}
-            aria-label="Request compute from other players"
-            aria-expanded={showComputeRequest}
-            className={`min-h-[44px] px-2.5 rounded-lg transition-colors flex items-center gap-1.5 ${DISABLED_TOGGLE_CLASS} ${
-              action.computeTargets.length > 0
-                ? "bg-[#FFF7ED] text-[#D97706]"
-                : "text-text-light hover:text-text-muted hover:bg-warm-gray"
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            <span className="text-xs font-medium">
-              Compute{action.computeTargets.length > 0 ? ` (${action.computeTargets.length})` : ""}
-            </span>
-          </button>
+            onClick={() => { setShowComputeRequest(!showComputeRequest); setShowEndorse(false); }}
+            ariaLabel="Request compute from other players"
+            ariaExpanded={showComputeRequest}
+          />
         )}
 
         {/* Spacer + submit + remove */}
