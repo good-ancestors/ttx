@@ -5,7 +5,7 @@ import type { Id, Doc } from "./_generated/dataModel";
 import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator, assertNotResolving } from "./events";
 import { assertSeatOwnership } from "./tables";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
-import { MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
+import { MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION, MAX_INFLUENCE_POWER } from "@/lib/game-data";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
 import { readRuntime } from "./gameRuntime";
 import {
@@ -1246,8 +1246,8 @@ function applyInfluence(rawRoll: number, probability: number, aiInfluence?: numb
   const naturalSuccess = rawRoll <= probability;
   if (wantsPass === naturalSuccess) return rawRoll; // outcome already favorable
 
-  const flipChance = Math.min(99, Math.abs(aiInfluence)) / 100;
-  if (Math.random() >= flipChance) return rawRoll; // AI failed to flip
+  const flipChance = Math.min(MAX_INFLUENCE_POWER, Math.abs(aiInfluence)) / 100;
+  if (Math.random() >= flipChance) return rawRoll;
 
   // Pick from favorable zone, excluding extremes 1 and 100.
   if (wantsPass) {
