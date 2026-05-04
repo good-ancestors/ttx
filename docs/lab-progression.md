@@ -96,7 +96,8 @@ OB and Cs naturally fit the CSV envelope. DC overshoots because its CSV plateau 
 - **Zero compute** → effRd = 0, diffusion gated off → no growth.
 - **Zero research%** → effRd = 0, diffusion gated off → no growth (capability-only allocation cannot advance R&D).
 - **Leader removed mid-game** → `leader` becomes the new live front-runner; no phantom anchor.
-- **All labs collapse** → `totalPreStock = 0` falls back gracefully (worldSafety = 0, no diffusion).
+- **Empty lab list** → early return, no work done (`length === 0` guard at top of function).
+- **All labs at zero compute** → `totalPreStock = 0` falls back gracefully (worldSafety = 0, no diffusion lift).
 - **Productivity events** (researchBoost / researchDisruption) fold into effRd for one round.
 
 ## Player agency

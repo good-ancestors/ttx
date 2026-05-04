@@ -741,11 +741,9 @@ export function clampProductivity(mod: number): number {
  *  effects. Absent entries default to 1.0. */
 export function computeLabGrowth<T extends {
   name: string;
-  roleId?: string;
   computeStock: number;
   rdMultiplier: number;
   allocation: { deployment: number; research: number; safety: number };
-  spec?: string;
 }>(
   currentLabs: T[],
   ceoAllocations: Map<string, { deployment: number; research: number; safety: number }>,

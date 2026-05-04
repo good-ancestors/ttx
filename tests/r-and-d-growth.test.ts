@@ -55,6 +55,20 @@ describe("lab growth — scenario fit (regression pins)", () => {
     });
 
   });
+
+  // Non-circular CSV sanity check. formulaExpected is a snapshot of the formula's
+  // own output; assertions against it would still pass if the formula drifted
+  // wholesale away from the AI-2027 trajectory. This pins the leader's R4 against
+  // independent ground truth (CSV) at a wide tolerance — catches regressions that
+  // re-pin formulaExpected mechanically without flagging that the dramatic arc
+  // has shifted.
+  it("race scenario: OB R4 within 0.5×–2× of CSV target (independent sanity check)", () => {
+    const traj = runScenarioThroughFormula(SCENARIOS[0]);
+    const obR4 = traj.get("OpenBrain")![4];
+    const csvR4 = SCENARIOS[0].csvTarget!.OpenBrain[4];
+    expect(obR4).toBeGreaterThan(csvR4 * 0.5);
+    expect(obR4).toBeLessThan(csvR4 * 2);
+  });
 });
 
 // Note on CSV targets in fixtures: csvTarget is informational, not asserted.
