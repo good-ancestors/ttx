@@ -67,7 +67,6 @@ describe("computeLabGrowth — name-blind growth (the redesign's core invariant)
   it("two labs with identical inputs grow identically regardless of name", () => {
     const labA = {
       name: "ZetaCorp",
-      roleId: undefined,
       computeStock: 22,
       rdMultiplier: 3,
       allocation: { deployment: 47, research: 50, safety: 3 },
@@ -96,7 +95,6 @@ describe("computeLabGrowth — name-blind growth (the redesign's core invariant)
     // For R1 (canonical g = 10/3), expected factor ≈ 1 + 2.33 × 0.05 = 1.117.
     const lab = {
       name: "ZeroLab",
-      roleId: undefined,
       computeStock: 22,
       rdMultiplier: 3,
       allocation: { deployment: 100, research: 0, safety: 0 },
@@ -111,7 +109,6 @@ describe("computeLabGrowth — name-blind growth (the redesign's core invariant)
     // instead of 50% → ratio = 2.0 → modifier ≈ 1.79 → factor > canonical g.
     const lab = {
       name: "AllInLab",
-      roleId: undefined,
       computeStock: 22,
       rdMultiplier: 3,
       allocation: { deployment: 0, research: 100, safety: 0 },
@@ -127,9 +124,8 @@ describe("computeLabGrowth — name-blind growth (the redesign's core invariant)
     //  capped around 100× regardless of effort. Universal curve fixes that.)
     const trailingButResourced = {
       name: "DeepCent",
-      roleId: "deepcent-ceo" as const,
-      computeStock: 64, // approx OpenBrain R4 pre-acq stock
-      rdMultiplier: 1000, // matches CANONICAL R3 endpoint
+      computeStock: getCanonicalStockBeforeRound(4),
+      rdMultiplier: CANONICAL_RD_TRAJECTORY[3], // canonical R3 endpoint
       allocation: { deployment: 0, research: 100, safety: 0 },
     };
     const result = computeLabGrowth(
@@ -139,13 +135,12 @@ describe("computeLabGrowth — name-blind growth (the redesign's core invariant)
       LAB_PROGRESSION.maxMultiplier(4),
     );
     // At canonical R4 g=10 and modifier ≈ 1.79, factor ≈ 17 → 17,000 → clamped at 15,000.
-    expect(result[0].rdMultiplier).toBeGreaterThan(5000);
+    expect(result[0].rdMultiplier).toBeGreaterThan(CANONICAL_RD_TRAJECTORY[3] * 5);
   });
 
   it("round caps still bind — no lab exceeds maxMultiplier(round)", () => {
     const lab = {
       name: "RunawayLab",
-      roleId: undefined,
       computeStock: 1000, // wildly above canonical
       rdMultiplier: 1000,
       allocation: { deployment: 0, research: 100, safety: 0 },

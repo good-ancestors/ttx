@@ -743,12 +743,6 @@ export function getCanonicalStockBeforeRound(roundNumber: number): number {
   return Math.max(0, total);
 }
 
-/** Canonical multiplier at the START of `roundNumber` — i.e. the trajectory
- *  value that `roundNumber` is meant to grow OUT of. */
-function getCanonicalMultiplierBeforeRound(roundNumber: number): number {
-  return CANONICAL_RD_TRAJECTORY[roundNumber - 1] ?? CANONICAL_RD_TRAJECTORY[0] ?? 1;
-}
-
 /** Compute lab R&D growth for a round based on allocations and PRE-ACQUISITION
  *  compute stock. The returned labs carry:
  *    - rdMultiplier: post-growth value (fed to applyGrowthAndAcquisitionInternal)
@@ -772,7 +766,6 @@ function getCanonicalMultiplierBeforeRound(roundNumber: number): number {
  *  productivity grow identically regardless of name. */
 export function computeLabGrowth<T extends {
   name: string;
-  roleId?: string;
   computeStock: number;
   rdMultiplier: number;
   allocation: { deployment: number; research: number; safety: number };
@@ -797,7 +790,8 @@ export function computeLabGrowth<T extends {
   // ── Universal canonical baseline (same for every lab) ──
   // What "racing flat out" looks like at this round, in effective-R&D units.
   const canonicalStock = getCanonicalStockBeforeRound(roundNumber);
-  const canonicalMultiplier = getCanonicalMultiplierBeforeRound(roundNumber);
+  const canonicalMultiplier =
+    CANONICAL_RD_TRAJECTORY[roundNumber - 1] ?? CANONICAL_RD_TRAJECTORY[0] ?? 1;
   const canonicalEffectiveRd =
     canonicalStock * (CANONICAL_RESEARCH_PCT / 100) * canonicalMultiplier;
   const canonicalNextMultiplier =
