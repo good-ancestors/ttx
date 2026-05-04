@@ -143,6 +143,12 @@ export default defineSchema({
     gameId: v.id("games"),
     tableId: v.id("tables"),
     driverLastSeenAt: v.number(),
+    // Set when the driver explicitly hands off the seat (Leave button), so
+    // observers can be told "driver left" rather than "driver appears idle"
+    // and skip the show-at-30s gate. Cleared when a new driver claims the
+    // seat. The takeover gate itself still keys off driverLastSeenAt (which
+    // handOffSeat backdates), so this flag is purely a presentation hint.
+    driverLeftAt: v.optional(v.number()),
   })
     .index("by_table", ["tableId"])
     .index("by_game", ["gameId"]),

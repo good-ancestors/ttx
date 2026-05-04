@@ -244,14 +244,19 @@ export const handOffSeat = mutation({
       .query("tablePresence")
       .withIndex("by_table", (q) => q.eq("tableId", args.tableId))
       .first();
-    const backdated = Date.now() - HANDOFF_BACKDATE_MS;
+    const now = Date.now();
+    const backdated = now - HANDOFF_BACKDATE_MS;
     if (presence) {
-      await ctx.db.patch(presence._id, { driverLastSeenAt: backdated });
+      await ctx.db.patch(presence._id, {
+        driverLastSeenAt: backdated,
+        driverLeftAt: now,
+      });
     } else {
       await ctx.db.insert("tablePresence", {
         gameId: table.gameId,
         tableId: args.tableId,
         driverLastSeenAt: backdated,
+        driverLeftAt: now,
       });
     }
     await logEvent(ctx, table.gameId, "seat_handed_off", table.roleId, {
@@ -287,8 +292,17 @@ async function upsertPresence(
     .withIndex("by_table", (q) => q.eq("tableId", table._id))
     .first();
   if (existing) {
-    if (now - existing.driverLastSeenAt < DRIVER_PING_DEBOUNCE_MS) return;
-    await ctx.db.patch(existing._id, { driverLastSeenAt: now });
+    // Always clear driverLeftAt on a live heartbeat — a new driver is sitting
+    // down. Skip the ping-debounce when the flag is set, otherwise an early
+    // ping could leave the "driver left" banner showing on observers.
+    if (existing.driverLeftAt == null
+        && now - existing.driverLastSeenAt < DRIVER_PING_DEBOUNCE_MS) {
+      return;
+    }
+    await ctx.db.patch(existing._id, {
+      driverLastSeenAt: now,
+      driverLeftAt: undefined,
+    });
     return;
   }
   await ctx.db.insert("tablePresence", {
