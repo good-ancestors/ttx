@@ -752,7 +752,7 @@ export function computeLabGrowth<T extends {
   productivityMods?: Map<string, number>,
 ): T[] {
   const P = LAB_PROGRESSION;
-  const newComputeTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 3;
+  const newComputeTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
   const shares = DEFAULT_COMPUTE_SHARES[roundNumber] ?? {};
   const { STRUCTURAL_RATIO, REVENUE_FLOOR } = COMPUTE_ACQUISITION;
 
@@ -816,22 +816,23 @@ export function computeLabGrowth<T extends {
 
     // Self-driven growth: own effective R&D drives saturating growth toward
     // MAX_GROWTH; effort-leader drag attenuates trailing labs (otherwise they'd
-    // hit RSI saturation and grow at the leader's rate forever). When all labs
-    // have zero effRd (everyone at 0% research), labRatio collapses to 0 → no
-    // growth, which is correct — tanh(0) = 0 too.
+    // hit RSI saturation and grow at the leader's rate forever). When effRd=0
+    // both tanh and labRatio are 0 → selfGrowth = 1 (no growth), correct.
     const labEffRd = effectiveRd[i];
     const labRatio = effortLeaderEffRd > 0 ? Math.min(1, labEffRd / effortLeaderEffRd) : 0;
-    const dragFactor = Math.pow(Math.max(0.001, labRatio), P.LEADER_DRAG);
+    const dragFactor = Math.pow(labRatio, P.LEADER_DRAG);
     const selfGrowth = 1 + (P.MAX_GROWTH - 1) * Math.tanh(labEffRd / P.SCALE) * dragFactor;
 
-    // Diffusion floor: spillover from capability leader, decays with capability
-    // gap. Uses multiplier (not effRd) because spillover scales with what the
-    // leader has built, not what they did THIS round. Gated by hasInputs so
-    // labs with zero compute or zero research don't drift forward via spillover.
+    // Diffusion floor: spillover from capability leader to trailing labs.
+    // gapRatio < 1 gates this to non-leaders only — the leader generates
+    // spillover, doesn't receive it. Uses multiplier (not effRd) because
+    // spillover scales with what the leader has built, not what they did
+    // THIS round. Also gated by hasInputs so labs with zero compute or zero
+    // research can't drift forward via spillover alone.
     const gapRatio = capabilityLeader.rdMultiplier > 0
-      ? Math.min(1, lab.rdMultiplier / capabilityLeader.rdMultiplier)
+      ? lab.rdMultiplier / capabilityLeader.rdMultiplier
       : 1;
-    const diffusionGrowth = hasInputs
+    const diffusionGrowth = hasInputs && gapRatio < 1
       ? 1 + (P.MAX_GROWTH - 1) * effectiveDiffusion * research * Math.sqrt(gapRatio)
       : 1;
 

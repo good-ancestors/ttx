@@ -7,12 +7,14 @@
  *     drifts. NOTE: these are SNAPSHOT values, derived by running the formula
  *     once. They are NOT independent ground truth. When you intentionally tune
  *     LAB_PROGRESSION constants (SCALE, RSI_EXP, LEADER_DRAG, etc.), regenerate
- *     these via `npx tsx scripts/calibrate-lab-growth.ts` and treat the test
- *     failure as a baseline update, not a regression.
- *   - csvTarget: optional informational AI-2027 trajectory. NOT asserted by
- *     tests — the formula is pure physics, but the CSV trajectories are event-
- *     driven (alignment backtrack, sanctions). Per-scenario calibration belongs
- *     in events, not the formula.
+ *     these by running the production formula directly via
+ *     `runScenarioThroughFormula(SCENARIOS[i])` from this file (NOT the
+ *     calibration script — its Formula C is a simpler comparison variant that
+ *     doesn't match production's split-leader implementation).
+ *   - csvTarget: optional informational AI-2027 trajectory. Asserted only as
+ *     a wide-tolerance sanity check on RACE OB R4 — the rest are informational
+ *     because CSV trajectories are event-driven (alignment backtrack, sanctions)
+ *     and per-scenario calibration belongs in events, not the formula.
  */
 
 import { DEFAULT_LABS, LAB_PROGRESSION, computeLabGrowth } from "../game-data";
@@ -59,9 +61,11 @@ const RACE_SCENARIO: LabGrowthScenario = {
 const SLOWDOWN_SCENARIO: LabGrowthScenario = {
   name: "slowdown",
   description:
-    "OpenBrain pivots to safety from R2 (allocation-driven). Note: the CSV slowdown branch " +
-    "is event-driven (alignment backtrack / model rollback), so this scenario exercises the " +
-    "formula's allocation response rather than reproducing the CSV trajectory.",
+    "OpenBrain pivots to safety from R2 (allocation-driven). The CSV slowdown branch " +
+    "(scenarios/...Slowdown.csv) is event-driven — alignment backtrack / model rollback " +
+    "events bring trailing labs back to canonical magnitudes — so this scenario tests " +
+    "the formula's allocation response only and intentionally has no csvTarget. The " +
+    "formulaExpected values are pure-formula trajectories, not the CSV slowdown story.",
   roundOverrides: {
     2: { allocations: { OpenBrain: { deployment: 30, research: 20, safety: 50 } } },
     3: { allocations: { OpenBrain: { deployment: 30, research: 20, safety: 50 } } },
@@ -71,11 +75,6 @@ const SLOWDOWN_SCENARIO: LabGrowthScenario = {
     OpenBrain:  [3,   10.2, 65.6, 650.6,  6506],
     DeepCent:   [2.5, 6.2,  41.7, 417,    4127],
     Conscienta: [2,   3.2,  7.8,  32.5,   135.1],
-  },
-  csvTarget: {
-    OpenBrain:  [3,   10,  40, 55, 500],
-    DeepCent:   [2.5, 5.7, 35, 80, 250],
-    Conscienta: [2,   5,   15, 40, 125],
   },
 };
 

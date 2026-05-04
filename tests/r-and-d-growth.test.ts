@@ -328,16 +328,17 @@ describe("lab growth — formula properties", () => {
     expect(founded.rdMultiplier).toBeLessThan(5);
   });
 
-  it("productivity is one-round only — function is stateless across calls", () => {
-    // The pipeline clears pendingProductivityMods after consumption; the function
-    // itself just reads what's passed in. Verify two consecutive calls without
-    // mods produce identical output (i.e. no hidden carryover).
+  it("productivity is one-round only — first call's mods don't carry into second", () => {
+    // The pipeline clears pendingProductivityMods between rounds; the function
+    // just reads what's passed in. Verify a no-mod call after a mod call
+    // matches the no-mod baseline (i.e. mods on call 1 don't pollute call 2).
     const labs = fresh();
-    const first = computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
-    const second = computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
-    for (let i = 0; i < first.length; i++) {
-      expect(first[i].rdMultiplier).toBe(second[i].rdMultiplier);
-      expect(first[i].computeStock).toBe(second[i].computeStock);
+    const baseline = computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
+    computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200, new Map([["OpenBrain", 0.5]]));
+    const afterModded = computeLabGrowth(labs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
+    for (let i = 0; i < baseline.length; i++) {
+      expect(afterModded[i].rdMultiplier).toBe(baseline[i].rdMultiplier);
+      expect(afterModded[i].computeStock).toBe(baseline[i].computeStock);
     }
   });
 

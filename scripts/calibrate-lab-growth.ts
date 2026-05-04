@@ -311,8 +311,8 @@ const CATCHUP_OVERRIDES = new Map<number, RoundOverride>([
 ]);
 
 // ── Main ─────────────────────────────────────────────────────────────────────
-console.log("Lab growth calibration — Formula A vs Formula B vs CSV");
-console.log("══════════════════════════════════════════════════════");
+console.log("Lab growth calibration — Formulas A / B / C vs CSV");
+console.log("════════════════════════════════════════════════════");
 console.log(
   `Constants: SCALE=${SCALE}  MAX_GROWTH=${MAX_GROWTH}  RSI_EXP=${RSI_EXP}  DIFFUSION_RATE=${DIFFUSION_RATE}  COOPERATION_BOOST=${COOPERATION_BOOST}  SHARE_DRAG=${SHARE_DRAG} (B only)`,
 );
