@@ -215,7 +215,7 @@ export function ObserverView({ gameId, tableId }: Props) {
               </button>
               {game.status !== "lobby" && (
                 <span className="text-[11px] text-text-muted font-mono">
-                  {round?.label ?? DEFAULT_ROUND_LABEL} — Turn {round?.number ?? 1}/4
+                  {round?.label ?? DEFAULT_ROUND_LABEL}/4
                 </span>
               )}
               <ConnectionIndicator />
