@@ -661,14 +661,27 @@ export const BACKGROUND_LABS = [
   { name: "Rest of World", computeStock: 16, rdMultiplier: 1.8, allocation: { deployment: 28, research: 69, safety: 3 } },
 ];
 
-// Race scenario baseline R&D multiplier targets from AI 2027 CSV.
-// These are the DEFAULT progression if no player actions change allocation.
+// Canonical race trajectory — what "racing flat out" looks like, derived from
+// the AI 2027 CSV's leading-lab row (OpenBrain). This is the SINGLE shared
+// reference curve all labs grow against; per-round growth depends on a lab's
+// own actions (compute × research% × current multiplier × productivity) vs.
+// this canonical pace, not on the lab's identity.
+//
+// CANONICAL_RD_TRAJECTORY[0] is the starting multiplier that hands off into
+// CANONICAL_RD_TRAJECTORY[1] after round 1's growth, and so on.
 // See docs/lab-progression.md for full explanation.
-export const BASELINE_RD_TARGETS: Record<string, Record<number, number>> = {
-  OpenBrain:  { 1: 10, 2: 100, 3: 1000, 4: 10000 },
-  DeepCent:   { 1: 5.7, 2: 22, 3: 80, 4: 100 },
-  Conscienta: { 1: 5, 2: 15, 3: 40, 4: 50 },
+export const CANONICAL_RD_TRAJECTORY: Record<number, number> = {
+  0: 3, 1: 10, 2: 100, 3: 1000, 4: 10000,
 };
+
+/** Reference research allocation for the canonical baseline (OpenBrain default).
+ *  A lab matching this allocation with the canonical compute stock and current
+ *  multiplier hits the canonical trajectory exactly. */
+const CANONICAL_RESEARCH_PCT = 50;
+/** Reference lab name used to derive the canonical compute trajectory from
+ *  existing constants (starting stock + per-round compute shares). The growth
+ *  formula itself never branches on lab identity — this is a one-way lookup. */
+const CANONICAL_REFERENCE_LAB = "OpenBrain";
 
 
 /** Compute acquisition tuning — how deployment% affects a lab's round-over-round
@@ -713,28 +726,27 @@ export function clampProductivity(mod: number): number {
   return Math.max(LAB_PROGRESSION.PRODUCTIVITY_MIN, Math.min(LAB_PROGRESSION.PRODUCTIVITY_MAX, mod));
 }
 
-/** Baseline compute stock at the START of `roundNumber` — i.e. starting stock
- *  plus acquisitions from rounds 1 .. (roundNumber - 1). Used for the baseline
- *  effectiveRd comparison in computeLabGrowth: R&D runs on pre-acquisition
- *  stock, so the baseline ratio must also be pre-acquisition to stay
- *  apples-to-apples. */
-export function getBaselineStockBeforeRound(labName: string, roundNumber: number): number {
-  const startingStock = DEFAULT_LABS.find((lab) => lab.name === labName)?.computeStock ?? 0;
+/** Canonical pre-acquisition compute stock at the START of `roundNumber` — the
+ *  reference lab's starting stock plus its CSV-share acquisitions from rounds
+ *  1 .. (roundNumber - 1). Used as the universal baseline for the performance
+ *  ratio in computeLabGrowth so all labs are compared against the same yardstick.
+ *  Must stay pre-acquisition to stay apples-to-apples with R&D, which also runs
+ *  on pre-acquisition stock. */
+export function getCanonicalStockBeforeRound(roundNumber: number): number {
+  const startingStock =
+    DEFAULT_LABS.find((lab) => lab.name === CANONICAL_REFERENCE_LAB)?.computeStock ?? 0;
   let total = startingStock;
   for (let round = 1; round < roundNumber; round++) {
-    const share = DEFAULT_COMPUTE_SHARES[round]?.[labName] ?? 0;
+    const share = DEFAULT_COMPUTE_SHARES[round]?.[CANONICAL_REFERENCE_LAB] ?? 0;
     total += Math.round((NEW_COMPUTE_PER_GAME_ROUND[round] ?? 0) * share / 100);
   }
   return Math.max(0, total);
 }
 
-function getBaselineMultiplierBeforeRound(labName: string, roundNumber: number): number {
-  if (roundNumber <= 1) {
-    return DEFAULT_LABS.find((lab) => lab.name === labName)?.rdMultiplier ?? 1;
-  }
-  return BASELINE_RD_TARGETS[labName]?.[roundNumber - 1]
-    ?? DEFAULT_LABS.find((lab) => lab.name === labName)?.rdMultiplier
-    ?? 1;
+/** Canonical multiplier at the START of `roundNumber` — i.e. the trajectory
+ *  value that `roundNumber` is meant to grow OUT of. */
+function getCanonicalMultiplierBeforeRound(roundNumber: number): number {
+  return CANONICAL_RD_TRAJECTORY[roundNumber - 1] ?? CANONICAL_RD_TRAJECTORY[0] ?? 1;
 }
 
 /** Compute lab R&D growth for a round based on allocations and PRE-ACQUISITION
@@ -755,9 +767,9 @@ function getBaselineMultiplierBeforeRound(labName: string, roundNumber: number):
  *  as a one-round throughput modifier from researchDisruption / researchBoost
  *  effects. Absent entries default to 1.0.
  *
- *  roleId is optional — used only for looking up default allocation via ROLES.
- *  Labs without a roleId (e.g. recently-founded labs with no default-compute
- *  match) fall back to 50% research. */
+ *  Growth is name-blind: every lab is compared against the same canonical
+ *  trajectory. Two labs with identical compute, allocation, multiplier, and
+ *  productivity grow identically regardless of name. */
 export function computeLabGrowth<T extends {
   name: string;
   roleId?: string;
@@ -782,19 +794,18 @@ export function computeLabGrowth<T extends {
   // once per round, not once per lab.
   const totalPreStock = currentLabs.reduce((s, l) => s + l.computeStock, 0);
 
-  // ── R&D calculation on PRE-acquisition stock ──
-  // effectiveRd drives the performance ratio vs. the authored baseline. It
-  // explicitly does NOT include the acquisition that arrives this round —
-  // trailing labs should not get a free multiplier boost from compute that
-  // hasn't landed yet.
-  const effectiveRd = currentLabs.map((lab) => {
-    const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
-    const productivity = productivityMods?.get(lab.name) ?? 1;
-    return lab.computeStock * (allocation.research / 100) * lab.rdMultiplier * productivity;
-  });
-  const totalEffectiveRd = effectiveRd.reduce((s, v) => s + v, 0);
+  // ── Universal canonical baseline (same for every lab) ──
+  // What "racing flat out" looks like at this round, in effective-R&D units.
+  const canonicalStock = getCanonicalStockBeforeRound(roundNumber);
+  const canonicalMultiplier = getCanonicalMultiplierBeforeRound(roundNumber);
+  const canonicalEffectiveRd =
+    canonicalStock * (CANONICAL_RESEARCH_PCT / 100) * canonicalMultiplier;
+  const canonicalNextMultiplier =
+    CANONICAL_RD_TRAJECTORY[roundNumber] ?? canonicalMultiplier;
+  const universalGrowthFactor =
+    canonicalNextMultiplier / Math.max(P.MIN_MULTIPLIER, canonicalMultiplier);
 
-  return currentLabs.map((lab, i) => {
+  return currentLabs.map((lab) => {
     const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
     const productivity = productivityMods?.get(lab.name) ?? 1;
 
@@ -806,37 +817,24 @@ export function computeLabGrowth<T extends {
     const revenueMult = REVENUE_FLOOR + 0.01 * allocation.deployment;
     const newCompute = Math.round(baseShare * (STRUCTURAL_RATIO + (1 - STRUCTURAL_RATIO) * revenueMult));
 
-    // ── R&D multiplier update ──
-    const rdShare = effectiveRd[i] / Math.max(1, totalEffectiveRd);
-    const baselineTarget = BASELINE_RD_TARGETS[lab.name]?.[roundNumber];
-    let newMultiplier: number;
-
-    if (baselineTarget) {
-      const baselineStock = getBaselineStockBeforeRound(lab.name, roundNumber);
-      const baselineMultiplier = getBaselineMultiplierBeforeRound(lab.name, roundNumber);
-      const defaultAlloc = lab.roleId ? ROLE_MAP.get(lab.roleId)?.defaultCompute : undefined;
-      const baselineResearchPct = defaultAlloc?.research ?? 50;
-      // Baseline effectiveRd — productivity baseline is 1.0 (no mods assumed).
-      const baselineEffectiveRd = baselineStock * (baselineResearchPct / 100) * baselineMultiplier;
-      const performanceRatio = effectiveRd[i] / Math.max(1, baselineEffectiveRd);
-      const growthModifier = Math.min(
-        P.MAX_GROWTH_FACTOR,
-        Math.max(P.MIN_GROWTH_FACTOR, Math.pow(performanceRatio, P.PERFORMANCE_SENSITIVITY)),
-      );
-      const baselineGrowthFactor = baselineTarget / Math.max(P.MIN_MULTIPLIER, baselineMultiplier);
-      // Apply growthModifier to growth portion only: at modifier=0 → no growth,
-      // modifier=1 → baseline growth. Floor at MIN_GROWTH_FACTOR so a lab running
-      // far ahead of its baseline never regresses — it just grows more slowly.
-      const rawFactor = 1 + (baselineGrowthFactor - 1) * growthModifier;
-      const effectiveFactor = Math.max(P.MIN_GROWTH_FACTOR, rawFactor);
-      newMultiplier = Math.round(
-        Math.max(P.MIN_MULTIPLIER, lab.rdMultiplier * effectiveFactor) * 10,
-      ) / 10;
-    } else {
-      const poolGrowth: Record<number, number> = { 1: 3, 2: 10, 3: 10, 4: 10 };
-      // Productivity folds directly into the no-baseline fallback too.
-      newMultiplier = Math.round(lab.rdMultiplier * (1 + rdShare * (poolGrowth[roundNumber] ?? 5) * productivity) * 10) / 10;
-    }
+    // ── R&D multiplier update — name-blind, action-driven ──
+    // effectiveRd uses PRE-acquisition stock so trailing labs don't get a free
+    // boost from compute that hasn't landed yet.
+    const effectiveRd =
+      lab.computeStock * (allocation.research / 100) * lab.rdMultiplier * productivity;
+    const performanceRatio = effectiveRd / Math.max(1, canonicalEffectiveRd);
+    const growthModifier = Math.min(
+      P.MAX_GROWTH_FACTOR,
+      Math.max(P.MIN_GROWTH_FACTOR, Math.pow(performanceRatio, P.PERFORMANCE_SENSITIVITY)),
+    );
+    // Apply growthModifier to growth portion only: at modifier=0 → no growth,
+    // modifier=1 → canonical growth. Floor at MIN_GROWTH_FACTOR so a lab
+    // running far behind never regresses — it just grows slowly.
+    const rawFactor = 1 + (universalGrowthFactor - 1) * growthModifier;
+    const effectiveFactor = Math.max(P.MIN_GROWTH_FACTOR, rawFactor);
+    const newMultiplier = Math.round(
+      Math.max(P.MIN_MULTIPLIER, lab.rdMultiplier * effectiveFactor) * 10,
+    ) / 10;
 
     return {
       ...lab,

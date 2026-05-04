@@ -1,23 +1,28 @@
 import { describe, it, expect } from "vitest";
 import {
   DEFAULT_LABS,
-  BASELINE_RD_TARGETS,
+  CANONICAL_RD_TRAJECTORY,
   LAB_PROGRESSION,
   clampProductivity,
   computeLabGrowth,
-  getBaselineStockBeforeRound,
+  getCanonicalStockBeforeRound,
 } from "@/lib/game-data";
 
 /**
- * Four-layer mechanic model (see NEXT-SESSION.md / docs/resolve-pipeline.md):
+ * Universal-curve model (see docs/lab-progression.md):
  *
  *   Position     rdMultiplier — breakthrough / modelRollback / merge only
  *   Stock        computeStock — computeDestroyed / computeTransfer / merge
  *   Velocity     derived each round from stock × research% × mult × productivity
  *   Productivity one-round throughput modifier, defaults to 1.0
  *
+ * Growth is name-blind: every lab is compared against ONE canonical trajectory
+ * (CANONICAL_RD_TRAJECTORY, derived from the AI 2027 leading-lab row). Two labs
+ * with identical compute, allocation, multiplier, and productivity grow
+ * identically regardless of name.
+ *
  * This file pins the behaviour of the PURE functions in game-data.ts:
- *   - getBaselineStockBeforeRound: baseline pre-acquisition stock at round start
+ *   - getCanonicalStockBeforeRound: reference pre-acquisition stock at round start
  *   - computeLabGrowth: R&D multiplier update + acquisition accounting
  *
  * Effects that require the Convex apply path (breakthrough / modelRollback /
@@ -29,66 +34,135 @@ import {
 
 const emptyAllocations = new Map<string, { deployment: number; research: number; safety: number }>();
 
-// Default lab allocations mirror the authored AI 2027 trajectory. When we run
-// computeLabGrowth with the default allocations, multipliers should land
-// within ±10% of the authored R1 targets (the "baseline pinning" check).
 const DEFAULT_LAB_ALLOCATIONS = new Map(
   DEFAULT_LABS.map((l) => [l.name, l.allocation] as const),
 );
 
-describe("getBaselineStockBeforeRound", () => {
-  it("returns starting stock for round 1 (no prior acquisitions)", () => {
-    expect(getBaselineStockBeforeRound("OpenBrain", 1)).toBe(22);
-    expect(getBaselineStockBeforeRound("DeepCent", 1)).toBe(17);
-    expect(getBaselineStockBeforeRound("Conscienta", 1)).toBe(14);
+describe("getCanonicalStockBeforeRound", () => {
+  it("returns OpenBrain's starting stock for round 1 (no prior acquisitions)", () => {
+    expect(getCanonicalStockBeforeRound(1)).toBe(22);
   });
 
   it("for round 2, adds only round-1 acquisition (not round-2)", () => {
-    // OpenBrain round 1: 31u total × 35.5% × round to nearest = 11u → start of R2 = 22 + 11 = 33.
-    // Using the formula with the same rounding as the helper so the pin stays honest.
+    // OpenBrain round 1: 31u total × 35.5% rounded = 11u → start of R2 = 22 + 11 = 33.
     const r1 = Math.round(31 * 35.5 / 100);
-    expect(getBaselineStockBeforeRound("OpenBrain", 2)).toBe(22 + r1);
+    expect(getCanonicalStockBeforeRound(2)).toBe(22 + r1);
   });
 
   it("for round 3, accumulates rounds 1 + 2 acquisitions (not round-3)", () => {
     const r1 = Math.round(31 * 35.5 / 100);
     const r2 = Math.round(35 * 45.7 / 100);
-    expect(getBaselineStockBeforeRound("OpenBrain", 3)).toBe(22 + r1 + r2);
+    expect(getCanonicalStockBeforeRound(3)).toBe(22 + r1 + r2);
   });
 
-  it("unknown lab → 0 (no authored starting stock)", () => {
-    expect(getBaselineStockBeforeRound("UnknownLab", 1)).toBe(0);
-    expect(getBaselineStockBeforeRound("UnknownLab", 3)).toBe(0);
+  it("does not depend on lab identity — single yardstick for all labs", () => {
+    // Helper takes only roundNumber. The fact it compiles without a labName
+    // param is the contract; this test guards against a future refactor
+    // reintroducing a per-lab branch.
+    expect(typeof getCanonicalStockBeforeRound(1)).toBe("number");
   });
 });
 
-describe("computeLabGrowth — R&D uses pre-acquisition stock (regression pin)", () => {
-  it("reproducing the pre-redesign bug would have made round-1 multipliers LOWER than observed — pin the fix", () => {
-    // Pre-redesign behaviour: newCompute was added BEFORE effectiveRd was
-    // calculated, so all labs got a share of round-1 acquisition (≈11u for
-    // OpenBrain) inflating their effectiveRd and dampening the relative
-    // performance ratio. With the fix, R&D uses pre-acquisition stock — the
-    // ratio is computed against baselines that also use pre-acquisition stock,
-    // making the comparison apples-to-apples. If this test fails with "too
-    // high" multipliers it's likely the old post-acquisition flow resurfaced.
+describe("computeLabGrowth — name-blind growth (the redesign's core invariant)", () => {
+  it("two labs with identical inputs grow identically regardless of name", () => {
+    const labA = {
+      name: "ZetaCorp",
+      roleId: undefined,
+      computeStock: 22,
+      rdMultiplier: 3,
+      allocation: { deployment: 47, research: 50, safety: 3 },
+    };
+    const labB = { ...labA, name: "OmegaLabs" };
+    const allocations = new Map([
+      [labA.name, labA.allocation],
+      [labB.name, labB.allocation],
+    ]);
+    const result = computeLabGrowth([labA, labB], allocations, 1, 200);
+    expect(result[0].rdMultiplier).toBe(result[1].rdMultiplier);
+  });
+
+  it("OpenBrain at default allocation matches the canonical R1 trajectory (10×)", () => {
+    // OpenBrain IS the reference profile: 22 stock, 50% research, mult 3 → ratio = 1.0
+    // → modifier = 1.0 → factor = canonical R1 growth factor → mult ≈ 10×.
     const baseLabs = DEFAULT_LABS.map((l) => ({ ...l }));
     const result = computeLabGrowth(baseLabs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
-    for (const lab of result) {
-      const baseline = BASELINE_RD_TARGETS[lab.name]?.[1];
-      if (baseline == null) continue;
-      // Within ±10% of authored baseline under default allocations — this is the
-      // main trajectory pin. Before the fix, compounded acquisition inflated the
-      // multiplier into the top of the band or past it.
-      expect(lab.rdMultiplier).toBeGreaterThanOrEqual(baseline * 0.9);
-      expect(lab.rdMultiplier).toBeLessThanOrEqual(baseline * 1.1);
-    }
+    const ob = result.find((l) => l.name === "OpenBrain")!;
+    expect(ob.rdMultiplier).toBeGreaterThanOrEqual(CANONICAL_RD_TRAJECTORY[1] * 0.95);
+    expect(ob.rdMultiplier).toBeLessThanOrEqual(CANONICAL_RD_TRAJECTORY[1] * 1.05);
+  });
+
+  it("a lab at 0% research stalls — modifier floors at MIN_GROWTH_FACTOR", () => {
+    // With research = 0, effectiveRd = 0 → ratio → 0 → modifier floors at 0.05.
+    // For R1 (canonical g = 10/3), expected factor ≈ 1 + 2.33 × 0.05 = 1.117.
+    const lab = {
+      name: "ZeroLab",
+      roleId: undefined,
+      computeStock: 22,
+      rdMultiplier: 3,
+      allocation: { deployment: 100, research: 0, safety: 0 },
+    };
+    const result = computeLabGrowth([lab], new Map([[lab.name, lab.allocation]]), 1, 200);
+    expect(result[0].rdMultiplier).toBeGreaterThan(3); // grew at least a little
+    expect(result[0].rdMultiplier).toBeLessThan(3 * 1.5); // but not much
+  });
+
+  it("a lab at 100% research with reference compute breaks out above the canonical curve", () => {
+    // Same compute as OpenBrain (22u start), same starting mult (3), but 100% research
+    // instead of 50% → ratio = 2.0 → modifier ≈ 1.79 → factor > canonical g.
+    const lab = {
+      name: "AllInLab",
+      roleId: undefined,
+      computeStock: 22,
+      rdMultiplier: 3,
+      allocation: { deployment: 0, research: 100, safety: 0 },
+    };
+    const result = computeLabGrowth([lab], new Map([[lab.name, lab.allocation]]), 1, 200);
+    expect(result[0].rdMultiplier).toBeGreaterThan(CANONICAL_RD_TRAJECTORY[1]);
+  });
+
+  it("a trailing lab can challenge the leader by R4 with reference compute + 100% research", () => {
+    // A lab whose stock + multiplier match the canonical R3 endpoint, going
+    // all-in on research in R4, should reach OpenBrain-tier numbers.
+    // (Reproduces the user's bug report: under the old per-lab pinning, DeepCent
+    //  capped around 100× regardless of effort. Universal curve fixes that.)
+    const trailingButResourced = {
+      name: "DeepCent",
+      roleId: "deepcent-ceo" as const,
+      computeStock: 64, // approx OpenBrain R4 pre-acq stock
+      rdMultiplier: 1000, // matches CANONICAL R3 endpoint
+      allocation: { deployment: 0, research: 100, safety: 0 },
+    };
+    const result = computeLabGrowth(
+      [trailingButResourced],
+      new Map([[trailingButResourced.name, trailingButResourced.allocation]]),
+      4,
+      LAB_PROGRESSION.maxMultiplier(4),
+    );
+    // At canonical R4 g=10 and modifier ≈ 1.79, factor ≈ 17 → 17,000 → clamped at 15,000.
+    expect(result[0].rdMultiplier).toBeGreaterThan(5000);
+  });
+
+  it("round caps still bind — no lab exceeds maxMultiplier(round)", () => {
+    const lab = {
+      name: "RunawayLab",
+      roleId: undefined,
+      computeStock: 1000, // wildly above canonical
+      rdMultiplier: 1000,
+      allocation: { deployment: 0, research: 100, safety: 0 },
+    };
+    const result = computeLabGrowth(
+      [lab],
+      new Map([[lab.name, lab.allocation]]),
+      4,
+      LAB_PROGRESSION.maxMultiplier(4),
+    );
+    expect(result[0].rdMultiplier).toBeLessThanOrEqual(LAB_PROGRESSION.maxMultiplier(4));
   });
 
   it("acquisition still lands in the returned computeStock (for caller diff)", () => {
-    // The caller (continueFromEffectReview) derives acquisition by diffing
-    // pre- and post-growth computeStock. Even though R&D uses pre-acquisition
-    // stock internally, the returned labs must carry the post-acquisition
-    // value or pendingAcquired won't be stashed correctly.
+    // Caller derives acquisition by diffing pre/post-growth computeStock.
+    // R&D uses pre-acquisition stock internally, but the returned labs must
+    // carry the post-acquisition value or pendingAcquired won't be stashed.
     const baseLabs = DEFAULT_LABS.map((l) => ({ ...l }));
     const result = computeLabGrowth(baseLabs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
     for (const lab of result) {
@@ -145,10 +219,7 @@ describe("computeLabGrowth — productivity modifier (researchDisruption / resea
     }
   });
 
-  it("productivity only affects R&D multiplier, not compute acquisition (acquisition is an independent output)", () => {
-    // The plan: "Acquisition is a separate output — feeds next round's
-    // starting stock, doesn't affect this round's R&D". Symmetrically,
-    // productivity affects R&D but not acquisition.
+  it("productivity only affects R&D multiplier, not compute acquisition", () => {
     const baseLabs = DEFAULT_LABS.map((l) => ({ ...l }));
     const a = computeLabGrowth(baseLabs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
     const b = computeLabGrowth(
@@ -163,13 +234,7 @@ describe("computeLabGrowth — productivity modifier (researchDisruption / resea
     expect(aO.computeStock).toBe(bO.computeStock);
   });
 
-  it("productivity is one-round only — the caller must clear it after consumption", () => {
-    // This test documents the contract rather than enforces it at the function
-    // boundary: computeLabGrowth reads whatever the caller passes. The
-    // one-round semantics live in continueFromEffectReview which clears
-    // round.pendingProductivityMods in applyGrowthAndAcquisitionInternal.
-    // The pin here is that two consecutive calls WITHOUT productivity mods
-    // produce identical growth — i.e. the function itself is stateless.
+  it("productivity is one-round only — function itself is stateless", () => {
     const baseLabs = DEFAULT_LABS.map((l) => ({ ...l }));
     const first = computeLabGrowth(baseLabs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
     const second = computeLabGrowth(baseLabs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
@@ -184,9 +249,8 @@ describe("clampProductivity — bounds composition of repeat researchDisruption/
   // Repeated grader emissions of productivity effects on the same lab compose
   // multiplicatively (see pipeline.ts:applyProductivityMod). Without clamping,
   // two disruption × 0.5 would floor at 0.25 and two boost × 1.5 would climb
-  // to 2.25 — not catastrophic, but three emissions could escalate further.
-  // The clamp matches symmetric bounds on rdMultiplier (breakthrough ceils at
-  // maxMult, modelRollback floors at 1).
+  // to 2.25. The clamp matches symmetric bounds on rdMultiplier (breakthrough
+  // ceils at maxMult, modelRollback floors at 1).
 
   it("exports the clamp range as LAB_PROGRESSION constants", () => {
     expect(LAB_PROGRESSION.PRODUCTIVITY_MIN).toBe(0.25);
@@ -214,48 +278,18 @@ describe("clampProductivity — bounds composition of repeat researchDisruption/
 
   it("NaN / Infinity clamp to MAX (defensive)", () => {
     // Math.max(min, Math.min(max, NaN)) = NaN, so actually NaN propagates.
-    // The apply path generates `before * f` where both inputs are finite
-    // numbers (f is from factor() which returns a rounded number in [min,max]).
-    // This test pins the current behaviour so a future "guard non-finite"
-    // change is a conscious break.
+    // The apply path generates `before * f` where both inputs are finite.
     expect(clampProductivity(Infinity)).toBe(2.5);
     expect(Number.isNaN(clampProductivity(NaN))).toBe(true);
   });
 });
 
-describe("computeLabGrowth — baseline trajectory pin (the reason the redesign exists)", () => {
-  it("R1 default allocations land OpenBrain within ±10% of 10×", () => {
-    const baseLabs = DEFAULT_LABS.map((l) => ({ ...l }));
-    const result = computeLabGrowth(baseLabs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
-    const ob = result.find((l) => l.name === "OpenBrain")!;
-    expect(ob.rdMultiplier).toBeGreaterThanOrEqual(10 * 0.9);
-    expect(ob.rdMultiplier).toBeLessThanOrEqual(10 * 1.1);
-  });
-
-  it("R1 default allocations land DeepCent within ±10% of 5.7×", () => {
-    const baseLabs = DEFAULT_LABS.map((l) => ({ ...l }));
-    const result = computeLabGrowth(baseLabs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
-    const dc = result.find((l) => l.name === "DeepCent")!;
-    expect(dc.rdMultiplier).toBeGreaterThanOrEqual(5.7 * 0.9);
-    expect(dc.rdMultiplier).toBeLessThanOrEqual(5.7 * 1.1);
-  });
-
-  it("R1 default allocations land Conscienta within ±10% of 5×", () => {
-    const baseLabs = DEFAULT_LABS.map((l) => ({ ...l }));
-    const result = computeLabGrowth(baseLabs, DEFAULT_LAB_ALLOCATIONS, 1, 200);
-    const co = result.find((l) => l.name === "Conscienta")!;
-    expect(co.rdMultiplier).toBeGreaterThanOrEqual(5 * 0.9);
-    expect(co.rdMultiplier).toBeLessThanOrEqual(5 * 1.1);
-  });
-
-  it("empty allocation map falls back to the lab's own allocation and still lands close to baseline", () => {
+describe("computeLabGrowth — empty allocation map falls back to lab.allocation", () => {
+  it("OpenBrain still tracks the canonical R1 curve when allocation map is empty", () => {
     const baseLabs = DEFAULT_LABS.map((l) => ({ ...l }));
     const result = computeLabGrowth(baseLabs, emptyAllocations, 1, 200);
-    for (const lab of result) {
-      const baseline = BASELINE_RD_TARGETS[lab.name]?.[1];
-      if (baseline == null) continue;
-      expect(lab.rdMultiplier).toBeGreaterThanOrEqual(baseline * 0.9);
-      expect(lab.rdMultiplier).toBeLessThanOrEqual(baseline * 1.1);
-    }
+    const ob = result.find((l) => l.name === "OpenBrain")!;
+    expect(ob.rdMultiplier).toBeGreaterThanOrEqual(CANONICAL_RD_TRAJECTORY[1] * 0.95);
+    expect(ob.rdMultiplier).toBeLessThanOrEqual(CANONICAL_RD_TRAJECTORY[1] * 1.05);
   });
 });
