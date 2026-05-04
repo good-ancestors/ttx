@@ -1228,11 +1228,18 @@ export const setActionInfluence = mutation({
   },
 });
 
-/** Apply AI influence to a d100 roll.
- *  Model: AI gets a `|influence|%` chance to flip an outcome it dislikes.
- *  If it flips, the displayed roll is uniform within the desired outcome zone.
- *  If it can't flip (or didn't need to), the raw roll shows through unchanged.
- *  No per-roll tell — manipulation only visible in aggregate pass/fail rates. */
+/** Apply AI influence to a d100 roll. Two-step model:
+ *
+ *  1. AI gets a chance to flip an outcome it dislikes. The flip chance is
+ *     `power% × √(desiredOutcomeRate%)` — i.e. weighted by how plausible
+ *     the desired outcome is. ASI dominates probable outcomes; struggles
+ *     to make miracles or crush sure things. Probability bar stays meaningful.
+ *  2. If the AI flips, pick a uniform value in the favorable zone *excluding
+ *     the extremes 1 and 100*, so those values stay at natural ~1% frequency
+ *     instead of the 3-4× over-representation a uniform pick would cause.
+ *
+ *  Otherwise the raw d100 shows through unchanged. No per-roll tell beyond
+ *  a slight aggregate cluster within the favorable zone. */
 function applyInfluence(rawRoll: number, probability: number, aiInfluence?: number): number {
   if (!aiInfluence) return rawRoll;
 
@@ -1240,16 +1247,18 @@ function applyInfluence(rawRoll: number, probability: number, aiInfluence?: numb
   const naturalSuccess = rawRoll <= probability;
   if (wantsPass === naturalSuccess) return rawRoll; // outcome already favorable
 
-  const flipChance = Math.min(99, Math.abs(aiInfluence)) / 100;
+  const power = Math.min(99, Math.abs(aiInfluence)) / 100;
+  const desiredRate = (wantsPass ? probability : 100 - probability) / 100;
+  const flipChance = power * Math.sqrt(desiredRate);
   if (Math.random() >= flipChance) return rawRoll; // AI failed to flip
 
-  // Flipped: pick uniform random value inside the desired outcome zone.
+  // Pick from favorable zone, excluding extremes 1 and 100.
   if (wantsPass) {
-    if (probability < 1) return rawRoll; // no pass zone exists
-    return 1 + Math.floor(Math.random() * probability);
+    if (probability < 2) return rawRoll; // no non-extreme pass zone
+    return 2 + Math.floor(Math.random() * (probability - 1)); // [2, probability]
   }
-  if (probability >= 100) return rawRoll; // no fail zone exists
-  return probability + 1 + Math.floor(Math.random() * (100 - probability));
+  if (probability >= 99) return rawRoll; // no non-extreme fail zone
+  return probability + 1 + Math.floor(Math.random() * (99 - probability)); // [probability+1, 99]
 }
 
 /** Roll a d100 with AI influence and determine success against a probability threshold. */
