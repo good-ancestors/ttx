@@ -90,9 +90,10 @@ describe("computeLabGrowth — name-blind growth (the redesign's core invariant)
     expect(ob.rdMultiplier).toBeLessThanOrEqual(CANONICAL_RD_TRAJECTORY[1] * 1.05);
   });
 
-  it("a lab at 0% research stalls — modifier floors at MIN_GROWTH_FACTOR", () => {
-    // With research = 0, effectiveRd = 0 → ratio → 0 → modifier floors at 0.05.
-    // For R1 (canonical g = 10/3), expected factor ≈ 1 + 2.33 × 0.05 = 1.117.
+  it("a lab at 0% research stalls — no growth, no regression", () => {
+    // With research = 0, effectiveRd = 0 → ratio → 0 → modifier = 0 (floor) →
+    // factor = 1 + (canonicalGrowth - 1) × 0 = 1.0. Multiplier holds steady.
+    // Crucially: never decreases (only modelRollback can do that).
     const lab = {
       name: "ZeroLab",
       computeStock: 22,
@@ -100,8 +101,7 @@ describe("computeLabGrowth — name-blind growth (the redesign's core invariant)
       allocation: { deployment: 100, research: 0, safety: 0 },
     };
     const result = computeLabGrowth([lab], new Map([[lab.name, lab.allocation]]), 1, 200);
-    expect(result[0].rdMultiplier).toBeGreaterThan(3); // grew at least a little
-    expect(result[0].rdMultiplier).toBeLessThan(3 * 1.5); // but not much
+    expect(result[0].rdMultiplier).toBe(3); // exactly steady — no growth, no regression
   });
 
   it("a lab at 100% research with reference compute breaks out above the canonical curve", () => {

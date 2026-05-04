@@ -42,10 +42,12 @@ newMultiplier         = lab.rdMultiplier × factor
 ```
 
 **Constants** (`LAB_PROGRESSION` in `src/lib/game-data.ts`):
-- `PERFORMANCE_SENSITIVITY = 0.85` — sub-linear: out-investing pays off but with diminishing returns.
-- `MIN_GROWTH_FACTOR = 0.05` — even at 0% research a lab grows minutely (industry spillover).
+- `PERFORMANCE_SENSITIVITY = 1.2` — slightly super-linear: out-investing pays off dramatically. Calibrated against `/scenarios/...Timelines.csv` (Race) — at 1.2 the formula tracks OpenBrain's CSV trajectory exactly at default allocations and lands ~26% MAPE on trailing labs.
+- `MIN_GROWTH_FACTOR = 0` — a lab on 0% research truly stalls (no phantom industry-spillover growth). It still cannot regress: `rdMultiplier × 1.0 = no change`. Only `modelRollback` decreases the multiplier.
 - `MAX_GROWTH_FACTOR = 4.0` — caps drama at 4× canonical pace per round.
 - `maxMultiplier(round)` — per-round multiplier ceiling: 200 / 200 / 2000 / 15000.
+
+See `scripts/calibrate-rd.ts` for the calibration harness — re-run after any LAB_PROGRESSION change to confirm the formula still tracks the source CSVs.
 
 **Reference profile** (the canonical pace):
 - Compute trajectory: OpenBrain's CSV starting stock + per-round CSV shares (`CANONICAL_REFERENCE_LAB`).
@@ -62,7 +64,7 @@ This was explicitly the redesign goal — see the bug report: with the prior per
 
 ## Player Agency Levers
 
-1. **CEO allocation**: Research% is the single biggest dial. 100% research with reference compute roughly doubles the canonical growth factor; 0% floors at MIN_GROWTH_FACTOR.
+1. **CEO allocation**: Research% is the single biggest dial. 100% research with reference compute roughly doubles the canonical growth factor; 0% research stalls the multiplier completely (no growth, no regression).
 2. **Compute acquisition**: DPA consolidation, trade deals, sanctions, weights theft change `computeStock` directly. More compute → higher `effectiveRd` → higher `performanceRatio` → faster growth.
 3. **Compounding**: A lab that pulls ahead in any round amplifies subsequent rounds (its `currentMultiplier` term in `effectiveRd` is itself elevated).
 4. **AI event modifiers**: `researchDisruption` / `researchBoost` enter as one-round multiplicative `productivityMods` (clamped to [0.25, 2.5] per `clampProductivity`). `breakthrough` / `modelRollback` adjust `rdMultiplier` directly. `computeDestroyed` / `computeTransfer` shift `computeStock`.

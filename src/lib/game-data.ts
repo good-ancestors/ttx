@@ -702,11 +702,15 @@ export const COMPUTE_ACQUISITION = {
 
 // Lab progression tuning constants
 export const LAB_PROGRESSION = {
-  /** Converts effective R&D advantage into faster/slower growth around the baseline curve.
-   *  Higher = going all-in on capability pays off more dramatically. */
-  PERFORMANCE_SENSITIVITY: 0.85,
-  /** Floor for growth modifier — near-zero R&D investment yields near-zero growth (small industry spillover). */
-  MIN_GROWTH_FACTOR: 0.05,
+  /** Converts effective R&D advantage into faster/slower growth around the canonical curve.
+   *  Calibrated against the AI-2027 Race CSV (`/scenarios/...Timelines.csv`) — at 1.2 the
+   *  formula tracks OpenBrain's authored 3→10→100→1000→10000× trajectory exactly at default
+   *  allocations and delivers ~26% MAPE on the trailing labs. Higher values overshoot.
+   *  See `scripts/calibrate-rd.ts` for the calibration harness. */
+  PERFORMANCE_SENSITIVITY: 1.2,
+  /** Floor for growth modifier — kept at 0 so a lab on 0% research truly stalls (no phantom
+   *  industry-spillover growth). The lab still cannot regress: rdMultiplier × 1.0 = no change. */
+  MIN_GROWTH_FACTOR: 0,
   /** Cap growth so the curve still feels dramatic but not fully hard-coded. */
   MAX_GROWTH_FACTOR: 4.0,
   /** Min multiplier floor after event modifiers. */
