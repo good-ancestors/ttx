@@ -661,16 +661,6 @@ export const BACKGROUND_LABS = [
   { name: "Rest of World", computeStock: 16, rdMultiplier: 1.8, allocation: { deployment: 28, research: 69, safety: 3 } },
 ];
 
-// Race scenario baseline R&D multiplier targets from AI 2027 CSV.
-// These are the DEFAULT progression if no player actions change allocation.
-// See docs/lab-progression.md for full explanation.
-export const BASELINE_RD_TARGETS: Record<string, Record<number, number>> = {
-  OpenBrain:  { 1: 10, 2: 100, 3: 1000, 4: 10000 },
-  DeepCent:   { 1: 5.7, 2: 22, 3: 80, 4: 100 },
-  Conscienta: { 1: 5, 2: 15, 3: 40, 4: 50 },
-};
-
-
 /** Compute acquisition tuning — how deployment% affects a lab's round-over-round
  *  pool-share. Split-bucket model: a structural fraction of the baseline share flows
  *  regardless (chip supply chains, govt allocations, investor capital), and a revenue
@@ -687,23 +677,38 @@ export const COMPUTE_ACQUISITION = {
   REVENUE_FLOOR: 0.5,
 };
 
-// Lab progression tuning constants
+// Lab progression tuning constants — pure-physics formula. No per-lab or
+// per-scenario hardcoded targets; calibration lives in tests/fixtures.
+// See app/scripts/calibrate-lab-growth.ts for the side-by-side fit report.
 export const LAB_PROGRESSION = {
-  /** Converts effective R&D advantage into faster/slower growth around the baseline curve.
-   *  Higher = going all-in on capability pays off more dramatically. */
-  PERFORMANCE_SENSITIVITY: 0.85,
-  /** Floor for growth modifier — near-zero R&D investment yields near-zero growth (small industry spillover). */
-  MIN_GROWTH_FACTOR: 0.05,
-  /** Cap growth so the curve still feels dramatic but not fully hard-coded. */
-  MAX_GROWTH_FACTOR: 4.0,
+  /** Saturation scale for self-driven growth. effRd at this level gives growth ≈ 1+(MAX-1)·0.76. */
+  SCALE: 150,
+  /** Per-round growth ceiling. Captures the RSI bottleneck — once self-improving research
+   *  hits its stride, the bottleneck becomes research time, not raw compute scale. */
+  MAX_GROWTH: 10,
+  /** Recursive self-improvement exponent on multiplier. >1 = super-linear: better AI
+   *  accelerates AI research more than linearly with capability. AI-2027 thesis. */
+  RSI_EXP: 1.2,
+  /** Leader-ratio drag exponent. (effRd_self / effRd_leader)^LEADER_DRAG attenuates
+   *  trailing labs' growth so the leader pulls away. <1 keeps the drag gentle.
+   *  Without it, trailing labs hit RSI saturation and grow at the leader's rate forever.
+   *  Leader is computed live from current multipliers — no phantom anchor if leader
+   *  is shut down or merged mid-game. */
+  LEADER_DRAG: 0.3,
+  /** Knowledge spillover floor — research-gated, decays with capability gap to leader.
+   *  Amplified by world cooperation (see COOPERATION_BOOST). */
+  DIFFUSION_RATE: 0.15,
+  /** World cooperation amplifies diffusion: in cooperative worlds (high compute-weighted
+   *  safety allocation), labs share progress openly; in race worlds they hoard.
+   *  effective_diffusion = DIFFUSION_RATE · (1 + COOPERATION_BOOST · worldSafety). */
+  COOPERATION_BOOST: 4,
   /** Min multiplier floor after event modifiers. */
   MIN_MULTIPLIER: 0.1,
-  /** Max multiplier caps per round range. */
+  /** Max multiplier caps per round range — narrative ASI ceiling. */
   maxMultiplier: (round: number) => round <= 2 ? 200 : round === 3 ? 2000 : 15000,
   /** Productivity modifier clamps for researchDisruption / researchBoost.
-   *  Symmetric with the multiplier clamps (ceil maxMultiplier, floor 1) so
-   *  repeated emissions of either effect can't nuke or rocket a lab beyond
-   *  these bounds. Consumed by the pipeline's applyProductivityMod helper. */
+   *  Symmetric with the multiplier clamps so repeated emissions of either effect
+   *  can't nuke or rocket a lab beyond these bounds. */
   PRODUCTIVITY_MIN: 0.25,
   PRODUCTIVITY_MAX: 2.5,
 };
@@ -713,51 +718,27 @@ export function clampProductivity(mod: number): number {
   return Math.max(LAB_PROGRESSION.PRODUCTIVITY_MIN, Math.min(LAB_PROGRESSION.PRODUCTIVITY_MAX, mod));
 }
 
-/** Baseline compute stock at the START of `roundNumber` — i.e. starting stock
- *  plus acquisitions from rounds 1 .. (roundNumber - 1). Used for the baseline
- *  effectiveRd comparison in computeLabGrowth: R&D runs on pre-acquisition
- *  stock, so the baseline ratio must also be pre-acquisition to stay
- *  apples-to-apples. */
-export function getBaselineStockBeforeRound(labName: string, roundNumber: number): number {
-  const startingStock = DEFAULT_LABS.find((lab) => lab.name === labName)?.computeStock ?? 0;
-  let total = startingStock;
-  for (let round = 1; round < roundNumber; round++) {
-    const share = DEFAULT_COMPUTE_SHARES[round]?.[labName] ?? 0;
-    total += Math.round((NEW_COMPUTE_PER_GAME_ROUND[round] ?? 0) * share / 100);
-  }
-  return Math.max(0, total);
-}
-
-function getBaselineMultiplierBeforeRound(labName: string, roundNumber: number): number {
-  if (roundNumber <= 1) {
-    return DEFAULT_LABS.find((lab) => lab.name === labName)?.rdMultiplier ?? 1;
-  }
-  return BASELINE_RD_TARGETS[labName]?.[roundNumber - 1]
-    ?? DEFAULT_LABS.find((lab) => lab.name === labName)?.rdMultiplier
-    ?? 1;
-}
-
 /** Compute lab R&D growth for a round based on allocations and PRE-ACQUISITION
- *  compute stock. The returned labs carry:
- *    - rdMultiplier: post-growth value (fed to applyGrowthAndAcquisitionInternal)
+ *  compute stock. Pure-physics formula: each lab's growth depends only on its own
+ *  state, the round's leader (live, computed from current multipliers), the global
+ *  effective-R&D pool, and world cooperation. No per-lab or per-scenario targets
+ *  are read at runtime — calibration against the AI-2027 CSV lives in tests.
+ *
+ *  Returned labs carry:
+ *    - rdMultiplier: post-growth value
  *    - computeStock: pre-acquisition stock + this round's new acquisition, so the
  *      caller can derive the acquisition amount by diffing with the input stock.
  *
  *  R&D growth and compute acquisition are calculated INDEPENDENTLY:
- *    effectiveRd uses pre-acquisition stock × research% × rdMultiplier × productivity
+ *    effectiveRd uses pre-acquisition stock × research% × multiplier^RSI_EXP × productivity
  *    acquisition is the per-lab share of NEW_COMPUTE_PER_GAME_ROUND
  *
- *  Fixes the pre-redesign bug where R&D was calculated after acquisition was
- *  folded in — trailing labs got a free multiplier boost from compute that
- *  hadn't actually arrived yet.
+ *  Trailing labs that pre-redesign got a free multiplier boost from compute
+ *  that hadn't yet landed are correctly held to pre-acquisition stock here.
  *
  *  `productivityMods` (labName → multiplicative factor) folds into effectiveRd
  *  as a one-round throughput modifier from researchDisruption / researchBoost
- *  effects. Absent entries default to 1.0.
- *
- *  roleId is optional — used only for looking up default allocation via ROLES.
- *  Labs without a roleId (e.g. recently-founded labs with no default-compute
- *  match) fall back to 50% research. */
+ *  effects. Absent entries default to 1.0. */
 export function computeLabGrowth<T extends {
   name: string;
   roleId?: string;
@@ -777,26 +758,49 @@ export function computeLabGrowth<T extends {
   const shares = DEFAULT_COMPUTE_SHARES[roundNumber] ?? {};
   const { STRUCTURAL_RATIO, REVENUE_FLOOR } = COMPUTE_ACQUISITION;
 
-  // Total pre-acquisition stock for the proportional-share fallback (labs
-  // outside DEFAULT_COMPUTE_SHARES, e.g. player-founded). Hoisted so we compute
-  // once per round, not once per lab.
+  if (currentLabs.length === 0) return currentLabs;
+
+  // Resolve allocations once so the same value flows through R&D + acquisition.
+  const allocations = currentLabs.map((lab) => ceoAllocations.get(lab.name) ?? lab.allocation);
+  const productivities = currentLabs.map((lab) => productivityMods?.get(lab.name) ?? 1);
+
+  // Pre-acquisition compute totals, used both as the proportional-share
+  // fallback for unsharded labs and to compute world-cooperation signal.
   const totalPreStock = currentLabs.reduce((s, l) => s + l.computeStock, 0);
 
-  // ── R&D calculation on PRE-acquisition stock ──
-  // effectiveRd drives the performance ratio vs. the authored baseline. It
-  // explicitly does NOT include the acquisition that arrives this round —
-  // trailing labs should not get a free multiplier boost from compute that
-  // hasn't landed yet.
-  const effectiveRd = currentLabs.map((lab) => {
-    const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
-    const productivity = productivityMods?.get(lab.name) ?? 1;
-    return lab.computeStock * (allocation.research / 100) * lab.rdMultiplier * productivity;
-  });
-  const totalEffectiveRd = effectiveRd.reduce((s, v) => s + v, 0);
+  // ── Effective R&D on pre-acquisition stock — explicitly excludes the
+  //    acquisition that arrives this round so trailing labs don't get a free
+  //    multiplier boost from compute that hasn't landed yet.
+  //    RSI_EXP > 1 captures recursive self-improvement: better AI accelerates
+  //    AI research more than linearly with capability.
+  const effectiveRd = currentLabs.map((lab, i) =>
+    lab.computeStock *
+    (allocations[i].research / 100) *
+    Math.pow(Math.max(0.01, lab.rdMultiplier), P.RSI_EXP) *
+    productivities[i],
+  );
+
+  // Live leader for drag + diffusion gap (no phantom anchor — if the leader is
+  // shut down or merged mid-game, whoever's now in front becomes the reference).
+  let leaderIdx = 0;
+  for (let i = 1; i < currentLabs.length; i++) {
+    if (currentLabs[i].rdMultiplier > currentLabs[leaderIdx].rdMultiplier) leaderIdx = i;
+  }
+  const leader = currentLabs[leaderIdx];
+  const leaderEffRd = effectiveRd[leaderIdx];
+
+  // World cooperation: compute-weighted safety allocation. In cooperative worlds
+  // labs share research openly, amplifying knowledge spillover. In race worlds
+  // they hoard. Exposed via the diffusion floor below.
+  const totalSafetyEffort = currentLabs.reduce(
+    (s, l, i) => s + l.computeStock * (allocations[i].safety / 100),
+    0,
+  );
+  const worldSafety = totalPreStock > 0 ? totalSafetyEffort / totalPreStock : 0;
+  const effectiveDiffusion = P.DIFFUSION_RATE * (1 + P.COOPERATION_BOOST * worldSafety);
 
   return currentLabs.map((lab, i) => {
-    const allocation = ceoAllocations.get(lab.name) ?? lab.allocation;
-    const productivity = productivityMods?.get(lab.name) ?? 1;
+    const allocation = allocations[i];
 
     // ── Acquisition (independent of R&D) ──
     const sharePct = shares[lab.name];
@@ -806,37 +810,31 @@ export function computeLabGrowth<T extends {
     const revenueMult = REVENUE_FLOOR + 0.01 * allocation.deployment;
     const newCompute = Math.round(baseShare * (STRUCTURAL_RATIO + (1 - STRUCTURAL_RATIO) * revenueMult));
 
-    // ── R&D multiplier update ──
-    const rdShare = effectiveRd[i] / Math.max(1, totalEffectiveRd);
-    const baselineTarget = BASELINE_RD_TARGETS[lab.name]?.[roundNumber];
-    let newMultiplier: number;
+    // ── R&D growth (pure physics) ──
+    const research = allocation.research / 100;
+    const hasInputs = lab.computeStock > 0 && research > 0;
 
-    if (baselineTarget) {
-      const baselineStock = getBaselineStockBeforeRound(lab.name, roundNumber);
-      const baselineMultiplier = getBaselineMultiplierBeforeRound(lab.name, roundNumber);
-      const defaultAlloc = lab.roleId ? ROLE_MAP.get(lab.roleId)?.defaultCompute : undefined;
-      const baselineResearchPct = defaultAlloc?.research ?? 50;
-      // Baseline effectiveRd — productivity baseline is 1.0 (no mods assumed).
-      const baselineEffectiveRd = baselineStock * (baselineResearchPct / 100) * baselineMultiplier;
-      const performanceRatio = effectiveRd[i] / Math.max(1, baselineEffectiveRd);
-      const growthModifier = Math.min(
-        P.MAX_GROWTH_FACTOR,
-        Math.max(P.MIN_GROWTH_FACTOR, Math.pow(performanceRatio, P.PERFORMANCE_SENSITIVITY)),
-      );
-      const baselineGrowthFactor = baselineTarget / Math.max(P.MIN_MULTIPLIER, baselineMultiplier);
-      // Apply growthModifier to growth portion only: at modifier=0 → no growth,
-      // modifier=1 → baseline growth. Floor at MIN_GROWTH_FACTOR so a lab running
-      // far ahead of its baseline never regresses — it just grows more slowly.
-      const rawFactor = 1 + (baselineGrowthFactor - 1) * growthModifier;
-      const effectiveFactor = Math.max(P.MIN_GROWTH_FACTOR, rawFactor);
-      newMultiplier = Math.round(
-        Math.max(P.MIN_MULTIPLIER, lab.rdMultiplier * effectiveFactor) * 10,
-      ) / 10;
-    } else {
-      const poolGrowth: Record<number, number> = { 1: 3, 2: 10, 3: 10, 4: 10 };
-      // Productivity folds directly into the no-baseline fallback too.
-      newMultiplier = Math.round(lab.rdMultiplier * (1 + rdShare * (poolGrowth[roundNumber] ?? 5) * productivity) * 10) / 10;
-    }
+    // Self-driven growth: own effective R&D drives saturating growth toward
+    // MAX_GROWTH; leader-ratio drag attenuates trailing labs (otherwise they'd
+    // hit RSI saturation and grow at the leader's rate forever).
+    const labEffRd = effectiveRd[i];
+    const labRatio = leaderEffRd > 0 ? Math.min(1, labEffRd / leaderEffRd) : 1;
+    const dragFactor = Math.pow(Math.max(0.001, labRatio), P.LEADER_DRAG);
+    const selfGrowth = 1 + (P.MAX_GROWTH - 1) * Math.tanh(labEffRd / P.SCALE) * dragFactor;
+
+    // Diffusion floor: spillover from leader, decays with capability gap.
+    // Gated by hasInputs so labs with zero compute or zero research don't
+    // drift forward via spillover alone.
+    const gapRatio = leader.rdMultiplier > 0
+      ? Math.min(1, lab.rdMultiplier / leader.rdMultiplier)
+      : 1;
+    const diffusionGrowth = hasInputs
+      ? 1 + (P.MAX_GROWTH - 1) * effectiveDiffusion * research * Math.sqrt(gapRatio)
+      : 1;
+
+    const growth = Math.max(selfGrowth, diffusionGrowth);
+    const newMultiplier =
+      Math.round(Math.max(P.MIN_MULTIPLIER, lab.rdMultiplier * growth) * 10) / 10;
 
     return {
       ...lab,
