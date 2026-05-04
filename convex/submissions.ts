@@ -1228,15 +1228,34 @@ export const setActionInfluence = mutation({
   },
 });
 
-/** Apply AI influence to a dice roll. Positive influence = boost (lower roll), negative = sabotage. */
-function applyInfluence(rawRoll: number, aiInfluence?: number): number {
-  return Math.max(1, Math.min(100, rawRoll - (aiInfluence ?? 0)));
+/** Apply AI influence to a d100 roll.
+ *  Model: AI gets a `|influence|%` chance to flip an outcome it dislikes.
+ *  If it flips, the displayed roll is uniform within the desired outcome zone.
+ *  If it can't flip (or didn't need to), the raw roll shows through unchanged.
+ *  No per-roll tell — manipulation only visible in aggregate pass/fail rates. */
+function applyInfluence(rawRoll: number, probability: number, aiInfluence?: number): number {
+  if (!aiInfluence) return rawRoll;
+
+  const wantsPass = aiInfluence > 0;
+  const naturalSuccess = rawRoll <= probability;
+  if (wantsPass === naturalSuccess) return rawRoll; // outcome already favorable
+
+  const flipChance = Math.min(99, Math.abs(aiInfluence)) / 100;
+  if (Math.random() >= flipChance) return rawRoll; // AI failed to flip
+
+  // Flipped: pick uniform random value inside the desired outcome zone.
+  if (wantsPass) {
+    if (probability < 1) return rawRoll; // no pass zone exists
+    return 1 + Math.floor(Math.random() * probability);
+  }
+  if (probability >= 100) return rawRoll; // no fail zone exists
+  return probability + 1 + Math.floor(Math.random() * (100 - probability));
 }
 
 /** Roll a d100 with AI influence and determine success against a probability threshold. */
 function rollDice(probability: number, aiInfluence?: number): { rolled: number; success: boolean } {
   const rawRoll = Math.floor(Math.random() * 100) + 1;
-  const rolled = applyInfluence(rawRoll, aiInfluence);
+  const rolled = applyInfluence(rawRoll, probability, aiInfluence);
   return { rolled, success: rolled <= probability };
 }
 
