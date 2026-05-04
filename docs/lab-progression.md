@@ -1,102 +1,124 @@
 # Lab R&D Progression Mechanics
 
-## Source Material
+## Architecture: mechanics vs content
 
-The progression is anchored to the AI 2027 leading-lab trajectory. Source CSVs:
+A useful distinction when reading this code:
+
+- **Mechanics** are generic — they would carry across to any scenario unchanged. The R&D growth formula (tanh-saturating self-growth, leader-ratio drag, cooperation-amplified diffusion), the compute split-bucket model (60% structural + 40% revenue, with deployment% modulating the revenue bucket), the structured-effects pipeline (`modelRollback`, `breakthrough`, `researchDisruption`, `computeDestroyed`, etc.).
+- **Content** is AI-2027-specific data the mechanics consume. `DEFAULT_LABS` (starting compute, multiplier, allocation), `NEW_COMPUTE_PER_GAME_ROUND` (per-quarter chip pool size), `DEFAULT_COMPUTE_SHARES` (per-round baseline shares of that pool — reflects export controls, DPA consolidation, govt contracts), role briefings, AI dispositions.
+
+The **R&D growth half** of `computeLabGrowth` reads only mechanics + per-lab state. It contains no scenario-specific tables. Per-scenario differences (race vs slowdown vs catchup) emerge from events acting on multiplier and productivity — not from the formula. Calibration against AI-2027 trajectories happens in tests via `src/lib/__fixtures__/lab-growth-canonical.ts` (snapshot pins, regenerate when intentionally tuning).
+
+The **compute acquisition half** consumes scenario content (`DEFAULT_COMPUTE_SHARES`) as the *baseline anchor*, then applies generic mechanics on top:
+- 60% structural bucket flows regardless (chip supply chains, govt contracts, investor capital)
+- 40% revenue bucket scales linearly with deployment% allocation (range 0.5–1.5 → ±20% swing on baseline from player choice)
+- Founder labs and other entities not in `DEFAULT_COMPUTE_SHARES` fall through to a stock-proportional share
+- Events (`computeDestroyed`, `computeTransfer`, `merge`, `decommission`) reroute compute through the structured-effects path before growth runs
+
+The reason the acquisition half retains scripted baseline shares while growth doesn't: real-world chip supply has political-economic dynamics (Taiwan capacity, US export controls, DPA, big-customer contracts) that don't emerge from any in-game state and aren't well-modelled by physics. Encoding them as authored content is honest. To swap scenarios, edit `DEFAULT_COMPUTE_SHARES` and `NEW_COMPUTE_PER_GAME_ROUND` — same as you'd edit `DEFAULT_LABS` or role briefings.
+
+The formula keeps working sensibly when the world deviates from the AI-2027 script (leader removed, labs merged, founder labs appearing) — both halves degrade gracefully via their respective fallbacks.
+
+## Source material
+
+The canonical trajectories live in:
 - `scenarios/Charts (Compute Breakdown and R&D Progress) for TTX - Timelines.csv` (race)
 - `scenarios/Charts (Compute Breakdown and R&D Progress) for TTX - Timelines - Slowdown.csv`
 
-## Canonical Race Trajectory
+These are inlined into the calibration script and test fixtures, not imported by production code.
 
-There is **one** reference curve, shared by every lab:
-
-| Round | Multiplier | Per-round growth (g) |
-|-------|-----------|----------------------|
-| 0 (start) | 3× | — |
-| 1 (Apr) | 10× | 3.33× |
-| 2 (Jul) | 100× | 10× |
-| 3 (Oct) | 1,000× | 10× |
-| 4 (Jan 29) | 10,000× | 10× |
-
-Defined in `src/lib/game-data.ts` as `CANONICAL_RD_TRAJECTORY`. Derived from OpenBrain's row in the source CSV — the "racing flat out" reference profile.
-
-## Core Mechanic: Recursive Self-Improvement
-
-The R&D multiplier represents how much AI accelerates its own R&D. Higher multiplier = faster growth = higher multiplier. This positive feedback loop is what makes the race exponential.
+## The formula
 
 ```
-effectiveRd = computeStock × (research% / 100) × currentMultiplier × productivity
+effectiveRd        = computeStock × research%/100 × multiplier^RSI_EXP × productivity
+
+# Two leader concepts, intentionally different:
+effortLeaderEffRd  = max(effectiveRd across labs)          (who's out-researching this round)
+capabilityLeader   = lab with highest rdMultiplier         (who has the lead in race terms)
+
+# Drag uses effort-leader: trailing labs can't grow past whoever's out-researching them this round.
+# This avoids a singularity when the capability leader sandbags research (effRd=0): without effort-
+# leader fallback, labRatio would collapse to 1 for everyone and trailing labs would spike.
+labRatio    = effectiveRd / effortLeaderEffRd
+dragFactor  = labRatio^LEADER_DRAG
+selfGrowth  = 1 + (MAX_GROWTH - 1) × tanh(effectiveRd / SCALE) × dragFactor
+
+# Diffusion uses capability-leader: knowledge spillover scales with what the leader has BUILT
+# (multiplier), not what they're DOING this round (effRd). Spillover doesn't disappear if the
+# leader sandbags one round — accumulated capability is still there to leak.
+worldSafety        = compute-weighted average of safety allocations
+effectiveDiffusion = DIFFUSION_RATE × (1 + COOPERATION_BOOST × worldSafety)
+gapRatio           = self.multiplier / capabilityLeader.multiplier   (clamped to 1)
+diffusionGrowth    = 1 + (MAX_GROWTH - 1) × effectiveDiffusion × research × √gapRatio
+                     (gated: lab needs computeStock > 0 AND research% > 0)
+
+growth     = max(selfGrowth, diffusionGrowth)
+multiplier ← multiplier × growth               (clamped to MIN_MULTIPLIER, maxMultiplier(round))
 ```
 
-## Growth Formula (Universal)
+### Why each piece
 
-Every lab grows against the same canonical baseline:
+| Term | Why it's there |
+|---|---|
+| `multiplier^RSI_EXP` (RSI_EXP=1.2) | Recursive self-improvement — better AI accelerates AI research more than linearly with capability. The AI-2027 thesis. |
+| `tanh(effRd / SCALE)` | Saturating growth — at high effective R&D, the bottleneck shifts from compute to research time (RSI ceiling, MAX_GROWTH = 10×/round). |
+| `dragFactor = labRatio^LEADER_DRAG` | Trailing labs decelerate as they fall further behind the leader. Without it, every lab with non-trivial effRd hits the RSI ceiling and grows at the leader's rate. Live leader → no phantom anchor. |
+| `worldSafety → effectiveDiffusion` | Cooperative worlds (high safety alloc) share research openly; race worlds hoard. Amplifies the diffusion floor. |
+| `diffusionGrowth` (research-gated, compute-gated) | Knowledge spillover lifts trailing labs that have *some* research effort. Capability-only labs don't drift forward via spillover alone. |
 
+## Tunable constants
+
+All in `LAB_PROGRESSION` (game-data.ts). Calibrated jointly via `scripts/calibrate-lab-growth.ts`.
+
+| Constant | Value | Effect |
+|---|---|---|
+| `SCALE` | 150 | Effective R&D level where tanh hits ~76% of MAX_GROWTH |
+| `MAX_GROWTH` | 10 | Per-round growth ceiling (RSI saturation) |
+| `RSI_EXP` | 1.2 | Recursive self-improvement exponent |
+| `LEADER_DRAG` | 0.3 | Drag on trailing labs vs leader's effective R&D |
+| `DIFFUSION_RATE` | 0.15 | Base knowledge spillover rate |
+| `COOPERATION_BOOST` | 4 | World-safety amplifier on diffusion |
+
+## Calibration fit
+
+Run `npx tsx scripts/calibrate-lab-growth.ts` for the live report. Current default play vs CSV:
+
+| | OB R4 | DC R4 | Cs R4 |
+|---|---|---|---|
+| **Formula (race)** | 9700 | 1225 | 49.4 |
+| **CSV target** | 10000 | 100 | 50 |
+| **Δ vs CSV** | -3% | +1125% | -1% |
+
+OB and Cs naturally fit the CSV envelope. DC overshoots because its CSV plateau (R3=80 → R4=100) is event-driven (alignment backtrack), not formula-driven. Sanctions, model rollback, and breakthroughs do the per-scenario calibration to specific story trajectories.
+
+## Edge cases
+
+- **Zero compute** → effRd = 0, diffusion gated off → no growth.
+- **Zero research%** → effRd = 0, diffusion gated off → no growth (capability-only allocation cannot advance R&D).
+- **Leader removed mid-game** → `leader` becomes the new live front-runner; no phantom anchor.
+- **Empty lab list** → early return, no work done (`length === 0` guard at top of function).
+- **All labs at zero compute** → `totalPreStock = 0` falls back gracefully (worldSafety = 0, no diffusion lift).
+- **Productivity events** (researchBoost / researchDisruption) fold into effRd for one round.
+
+## Player agency
+
+1. **CEO allocation**: research% drives effRd directly. Going from 43% → 100% lifts Cs from R4 ~50× to R4 ~1800× in default-world play (see CATCHUP fixture).
+2. **Compute acquisition**: structural pool shares + deployment%-weighted revenue bucket. Doubling compute roughly doubles effRd before saturation kicks in.
+3. **Allocation safety%**: counts toward world cooperation, lifting trailing-lab diffusion globally. Trade-off: more safety = less own research = lower selfGrowth.
+4. **AI event modifiers**: structured effects emitted by the grader (computeDestroyed / researchDisruption / breakthrough / modelRollback / transferOwnership) act on multiplier, stock, or productivity in the deterministic apply path, alongside the formula's growth update.
+
+## Verification
+
+```bash
+npm test                                    # Unit tests, including scenario fixtures
+npx tsx scripts/calibrate-lab-growth.ts     # Side-by-side comparison report
 ```
-canonicalEffectiveRd  = canonicalStock × CANONICAL_RESEARCH_PCT × canonicalMultiplier
-performanceRatio      = lab.effectiveRd / canonicalEffectiveRd
-growthModifier        = clamp( performanceRatio ^ PERFORMANCE_SENSITIVITY, MIN, MAX )
-universalGrowthFactor = canonicalNextMultiplier / canonicalMultiplier   // e.g. 10 in R4
-factor                = 1 + (universalGrowthFactor - 1) × growthModifier
-newMultiplier         = lab.rdMultiplier × factor
-```
 
-**Constants** (`LAB_PROGRESSION` in `src/lib/game-data.ts`):
-- `PERFORMANCE_SENSITIVITY = 1.2` — slightly super-linear: out-investing pays off dramatically. Calibrated against `/scenarios/...Timelines.csv` (Race) — at 1.2 the formula tracks OpenBrain's CSV trajectory exactly at default allocations and lands ~26% MAPE on trailing labs.
-- `MIN_GROWTH_FACTOR = 0` — a lab on 0% research truly stalls (no phantom industry-spillover growth). It still cannot regress: `rdMultiplier × 1.0 = no change`. Only `modelRollback` decreases the multiplier.
-- `MAX_GROWTH_FACTOR = 4.0` — caps drama at 4× canonical pace per round.
-- `maxMultiplier(round)` — per-round multiplier ceiling: 200 / 200 / 2000 / 15000.
-
-See `scripts/calibrate-rd.ts` for the calibration harness — re-run after any LAB_PROGRESSION change to confirm the formula still tracks the source CSVs.
-
-**Reference profile** (the canonical pace):
-- Compute trajectory: OpenBrain's CSV starting stock + per-round CSV shares (`CANONICAL_REFERENCE_LAB`).
-- Research allocation: 50% (`CANONICAL_RESEARCH_PCT`).
-- Multiplier: prior round's `CANONICAL_RD_TRAJECTORY` value.
-
-A lab matching all three exactly hits the canonical trajectory. Deviations in either direction shift growth via `performanceRatio`.
-
-## Why This is Name-Blind
-
-Two labs with identical `computeStock`, `allocation`, `rdMultiplier`, and `productivity` grow identically — regardless of name, role, or starting position. The CSV's per-lab numbers (DeepCent peaks at 100×, Conscienta at 50×) are *outcomes of one set of choices*, not destinies. A trailing lab that goes 100% research with comparable compute can break out and challenge the leader.
-
-This was explicitly the redesign goal — see the bug report: with the prior per-lab `BASELINE_RD_TARGETS`, DeepCent capped at ~2× growth per round in R4 because its baselineGrowthFactor was hard-coded at 100/80 = 1.25, while OpenBrain's was 10×. Lab name determined trajectory.
-
-## Player Agency Levers
-
-1. **CEO allocation**: Research% is the single biggest dial. 100% research with reference compute roughly doubles the canonical growth factor; 0% research stalls the multiplier completely (no growth, no regression).
-2. **Compute acquisition**: DPA consolidation, trade deals, sanctions, weights theft change `computeStock` directly. More compute → higher `effectiveRd` → higher `performanceRatio` → faster growth.
-3. **Compounding**: A lab that pulls ahead in any round amplifies subsequent rounds (its `currentMultiplier` term in `effectiveRd` is itself elevated).
-4. **AI event modifiers**: `researchDisruption` / `researchBoost` enter as one-round multiplicative `productivityMods` (clamped to [0.25, 2.5] per `clampProductivity`). `breakthrough` / `modelRollback` adjust `rdMultiplier` directly. `computeDestroyed` / `computeTransfer` shift `computeStock`.
-
-## Compute Acquisition (Independent Channel)
-
-R&D growth runs on PRE-acquisition stock — trailing labs don't get a free boost from compute that hasn't landed yet. Acquisition is a separate output:
-
-```
-baseShare    = newComputeTotal × DEFAULT_COMPUTE_SHARES[round][labName] / 100
-              (or proportional to current stock if no CSV share — e.g. player-founded labs)
-revenueMult  = REVENUE_FLOOR + 0.01 × deployment%             // 0.5 .. 1.5
-newCompute   = baseShare × ( STRUCTURAL_RATIO + (1 - STRUCTURAL_RATIO) × revenueMult )
-```
-
-`COMPUTE_ACQUISITION = { STRUCTURAL_RATIO: 0.60, REVENUE_FLOOR: 0.5 }`. At authored CEO defaults (deployment ≈ 42–50%) this yields ≈1.0× the CSV share, so the scenario's compute curve is preserved. Extremes: deployment=0 → 0.80×, deployment=100 → 1.20×.
-
-From the source material: "the stock of compute is vastly more important than the flow on a timescale of months." Round-by-round shares (declining from 31 to 15 game units): early rounds compete for production, late rounds depend on accumulated stock.
+Test scenarios live in `src/lib/__fixtures__/lab-growth-canonical.ts`. Each fixture has:
+- Per-round allocation/productivity overrides
+- `formulaExpected` (regression pin, ±5%)
+- Optional `csvTarget` (informational; not asserted because event-driven differences belong in scenario integration tests, not formula unit tests)
 
 ## Implementation
 
-- Pure logic: `src/lib/game-data.ts` — `computeLabGrowth`, `getCanonicalStockBeforeRound`, `clampProductivity`.
-- Apply path: `src/app/api/resolve/route.ts` (`applyResolution`) calls `computeLabGrowth` after CEO allocation changes are folded in. AI event modifiers run as a separate Haiku call and feed `productivityMods`.
-
-## Testing
-
-```bash
-npm test                                              # unit pins (tests/r-and-d-growth.test.ts)
-npx tsx scripts/test-lab-progression.ts race          # E2E scenario simulator
-npx tsx scripts/test-lab-progression.ts slowdown      # OpenBrain pivots to Safer
-npx tsx scripts/test-lab-progression.ts catchup       # DeepCent goes aggressive
-npx tsx scripts/test-lab-progression.ts all
-```
-
-The scenario simulator's CSV deltas (e.g. `+47% vs CSV`) are now diagnostic, not prescriptive — they show how far each lab strays from the original AI 2027 trajectory under the player's actions, which is the point.
+`src/lib/game-data.ts`:`computeLabGrowth`. The function is pure: same inputs always produce same outputs. Convex pipeline (`convex/pipeline.ts`) calls it in `applyGrowthAndAcquisitionInternal` with the round's CEO allocations and pending productivity mods.
