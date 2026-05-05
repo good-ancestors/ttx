@@ -620,3 +620,81 @@ describe("computeLedger — overrideOutcome oscillation (PR #54 net-amount recon
     await expectStocks("after success #4 (oscillation)", senderStart - TRANSFER, targetStart + TRANSFER);
   });
 });
+
+describe("computeLedger — editSubmitted then resubmit re-escrows cleanly (PR #54 issue #11)", () => {
+  let gameId: Id<"games">;
+  let senderTableId: Id<"tables">;
+  const sender = "us-president";
+  const target = "openbrain-ceo";
+
+  beforeAll(async () => {
+    gameId = await createRunningGame();
+    const tables = await convex.query(api.tables.getByGame, { gameId });
+    senderTableId = tables.find((t) => t.roleId === sender)!._id;
+  });
+
+  it("editSubmitted cancels the escrow, resubmit re-escrows with exactly one pending row", async () => {
+    const before = await convex.query(api.tables.get, { tableId: senderTableId });
+    const start = before!.computeStock ?? 0;
+    expect(start).toBeGreaterThanOrEqual(5);
+
+    // First submit: escrow 2u.
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: sender,
+      text: "Initial submit",
+      priority: 1,
+      computeTargets: [{ roleId: target, amount: 2, direction: "send" }],
+    });
+
+    const sub = await convex.query(api.submissions.getForTable, {
+      tableId: senderTableId,
+      roundNumber: 1,
+    });
+    const initialIdx = sub!.actions.findIndex(
+      (a) => a.text === "Initial submit",
+    );
+    expect(initialIdx).toBeGreaterThanOrEqual(0);
+
+    // editSubmitted should cancel the pending escrow and revert the action to draft.
+    await convex.mutation(api.submissions.editSubmitted, {
+      submissionId: sub!._id,
+      actionIndex: initialIdx,
+    });
+
+    // Cache unchanged (escrow never touched cache); availableStock should reflect
+    // full balance again. Probe: a new send of (start − 1) must succeed — if the
+    // 2u pending row had leaked, available would be start − 2 and start − 1 would
+    // overspend.
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: sender,
+      text: "Resubmit at higher amount",
+      priority: 1,
+      computeTargets: [{ roleId: target, amount: start - 1, direction: "send" }],
+    });
+
+    // After resubmit: cache still untouched (escrow is pending), invariant holds.
+    const after = await convex.query(api.tables.get, { tableId: senderTableId });
+    expect(after!.computeStock).toBe(start);
+    await assertCacheLedgerInvariant(gameId, 1);
+
+    // Final consistency probe: only one pending escrow can exist at a time.
+    // A further send of 2u must fail (available = start − (start − 1) = 1 < 2).
+    await expect(
+      convex.mutation(api.submissions.saveAndSubmit, {
+        tableId: senderTableId,
+        gameId,
+        roundNumber: 1,
+        roleId: sender,
+        text: "Should fail — no headroom left",
+        priority: 2,
+        computeTargets: [{ roleId: target, amount: 2, direction: "send" }],
+      }),
+    ).rejects.toThrow(/Insufficient compute/);
+  });
+});
