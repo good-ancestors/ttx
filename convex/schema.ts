@@ -324,14 +324,12 @@ export default defineSchema({
       labId: v.id("labs"),
       modifier: v.number(),
     }))),
-    // Chronological audit log of mechanical state mutations during this round's
-    // resolve — every write to lab.rdMultiplier, lab owner's computeStock, or
-    // productivity during phases 5, 9, and 10, plus post-resolve facilitator
-    // overrides (phase "override"). Rendered under Applied Effects in the P7
-    // UI so the facilitator can inspect the full chain before Advance.
-    // Populated atomically alongside each phase's apply mutation; cleared on
-    // re-resolve. Override entries persist across re-resolve clearing only when
-    // they were written outside the pipeline (i.e. via updateLabs).
+    // Chronological audit log of mechanical state mutations during this round —
+    // P0 (acquisition materialised at the prior round's Advance), P5 (grader
+    // effects), P9 (R&D growth), and post-resolve facilitator overrides (phase
+    // "override"). Phase 10 is legacy — pre-redesign rounds emitted acquisition
+    // entries on the round whose narrate computed them; new code emits P0 on the
+    // next round instead, but the literal stays for back-compat reads.
     mechanicsLog: v.optional(v.array(v.object({
       sequence: v.number(),
       phase: v.union(v.literal(0), v.literal(5), v.literal(9), v.literal(10), v.literal("override")),

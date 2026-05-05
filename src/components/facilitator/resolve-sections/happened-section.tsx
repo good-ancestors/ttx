@@ -340,6 +340,9 @@ function MechanicsLogPanel({ entries, defaultOpen = false }: { entries: Mechanic
     computeStock: "compute",
     productivity: "productivity",
   };
+  // Phase 10 is legacy — pre-redesign acquisition entries lived on the round whose
+  // narrate computed them. New code emits P0 on the next round. Both labels render
+  // for back-compat with rounds resolved before the change.
   const phaseLabel: Record<MechanicsLogEntry["phase"], string> = {
     0: "P0 acquisition",
     5: "P5 effect",

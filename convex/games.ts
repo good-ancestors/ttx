@@ -14,6 +14,8 @@ import { emitTransaction, emitPair } from "./computeLedger";
 import { stripRollFields, escrowSendTargets, escrowFoundLab } from "./submissions";
 import { validateComputeAllocation } from "./validators";
 import { patchRuntime, readRuntime } from "./gameRuntime";
+import { findRound } from "./rounds";
+import { MAX_MECHANICS_LOG_ENTRIES } from "./pipeline";
 
 
 /** Pre-generate AI/NPC actions so they're ready before submissions open. */
@@ -578,22 +580,24 @@ async function materializePendingAcquired(
   gameId: Id<"games">,
   roundNumber: number,
 ): Promise<void> {
-  const round = await ctx.db.query("rounds")
-    .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
-    .first();
+  // Fetch round + tables + nextRound in parallel — independent reads. Tables are
+  // snapshotted before emitting ledger rows so P0 entries get the true `before`
+  // value (emitTransaction patches table.computeStock as it writes).
+  const [round, tables, nextRound] = await Promise.all([
+    findRound(ctx, gameId, roundNumber),
+    ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", gameId)).collect(),
+    findRound(ctx, gameId, roundNumber + 1),
+  ]);
   if (!round || !round.pendingAcquired || round.pendingAcquired.length === 0) return;
 
-  // Snapshot stocks + role names before emitting ledger rows, so the P0 entries
-  // can record the true `before` value (emitTransaction patches table.computeStock).
-  const tables = await ctx.db.query("tables")
-    .withIndex("by_game", (q) => q.eq("gameId", gameId))
-    .collect();
   const stockByRole = new Map(tables.map((t) => [t.roleId, t.computeStock ?? 0] as const));
   const nameByRole = new Map(tables.map((t) => [t.roleId, t.roleName] as const));
 
-  for (const row of round.pendingAcquired) {
-    if (row.amount === 0) continue;
-    await emitTransaction(ctx, {
+  // pendingAcquired is invariant non-zero (see updatePendingAcquired in rounds.ts)
+  // so no filter needed. Each row targets a distinct roleId, so emits don't race
+  // on the same table doc and can run in parallel.
+  await Promise.all(round.pendingAcquired.map((row) =>
+    emitTransaction(ctx, {
       gameId,
       roundNumber,
       type: "acquired",
@@ -601,36 +605,29 @@ async function materializePendingAcquired(
       roleId: row.roleId,
       amount: row.amount,
       reason: "Round pool share (materialised at Advance)",
-    });
-  }
+    }),
+  ));
   await ctx.db.patch(round._id, { pendingAcquired: undefined });
 
-  // P0 entries on the next round's log. Sequence numbers start after any entries
-  // already on that round (defensive — the next round is normally empty at this
-  // point but a re-resolve could have written something).
-  const nextRound = await ctx.db.query("rounds")
-    .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber + 1))
-    .first();
   if (!nextRound) return;
-  const sortedRows = [...round.pendingAcquired].filter((r) => r.amount !== 0)
-    .sort((a, b) => b.amount - a.amount);
-  if (sortedRows.length === 0) return;
   const priorLog = nextRound.mechanicsLog ?? [];
   let nextSequence = priorLog.reduce((max, e) => Math.max(max, e.sequence), -1) + 1;
-  const p0Entries: NonNullable<Doc<"rounds">["mechanicsLog"]> = sortedRows.map((r) => {
-    const before = stockByRole.get(r.roleId) ?? 0;
-    return {
-      sequence: nextSequence++,
-      phase: 0 as const,
-      source: "acquisition" as const,
-      subject: nameByRole.get(r.roleId) ?? r.roleId,
-      field: "computeStock" as const,
-      before,
-      after: before + r.amount,
-      reason: `Round-start acquisition (from R${roundNumber} +${r.amount}u)`,
-    };
-  });
-  const roomLeft = Math.max(0, 200 - priorLog.length);
+  const p0Entries: NonNullable<Doc<"rounds">["mechanicsLog"]> = [...round.pendingAcquired]
+    .sort((a, b) => b.amount - a.amount)
+    .map((r) => {
+      const before = stockByRole.get(r.roleId) ?? 0;
+      return {
+        sequence: nextSequence++,
+        phase: 0 as const,
+        source: "acquisition" as const,
+        subject: nameByRole.get(r.roleId) ?? r.roleId,
+        field: "computeStock" as const,
+        before,
+        after: before + r.amount,
+        reason: `Round-start acquisition (from R${roundNumber} +${r.amount}u)`,
+      };
+    });
+  const roomLeft = Math.max(0, MAX_MECHANICS_LOG_ENTRIES - priorLog.length);
   const toAppend = p0Entries.slice(0, roomLeft);
   if (toAppend.length > 0) {
     await ctx.db.patch(nextRound._id, { mechanicsLog: [...priorLog, ...toAppend] });

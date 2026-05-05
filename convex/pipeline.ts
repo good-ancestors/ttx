@@ -38,7 +38,7 @@ import {
   getDisposition,
 } from "@/lib/game-data";
 
-const MAX_MECHANICS_LOG_ENTRIES = 200;
+export const MAX_MECHANICS_LOG_ENTRIES = 200;
 
 /** Build role description for the grading LLM from the structured handout.
  *  Only includes role + objective — resources are dynamic and already

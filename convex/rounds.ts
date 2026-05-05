@@ -6,7 +6,7 @@ import { labTrajectoryValidator } from "./schema";
 import { assertFacilitator } from "./events";
 
 /** Find a single round by game + number using compound index (1 doc read). */
-async function findRound(ctx: QueryCtx | MutationCtx, gameId: Id<"games">, roundNumber: number) {
+export async function findRound(ctx: QueryCtx | MutationCtx, gameId: Id<"games">, roundNumber: number) {
   return ctx.db.query("rounds")
     .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
     .first();
