@@ -93,14 +93,20 @@ export function ActionRow({
           </button>
         )}
         {endorsements.length > 0 && (
-          <div className="flex flex-wrap gap-1 ml-1">
+          <div className={`flex flex-wrap ml-1 ${isProjector ? "gap-1.5" : "gap-1"}`}>
             {endorsements.map((p) => (
               <span
                 key={p._id}
-                className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${
+                className={`rounded-full font-bold ${
+                  isProjector ? "text-sm px-2.5 py-1" : "text-[10px] px-1.5 py-0.5"
+                } ${
                   p.status === "accepted"
-                    ? "bg-viz-safety/20 text-viz-safety"
-                    : "bg-viz-danger/20 text-viz-danger"
+                    ? isProjector
+                      ? "bg-viz-safety text-navy-dark"
+                      : "bg-viz-safety/30 text-viz-safety"
+                    : isProjector
+                      ? "bg-viz-danger text-white"
+                      : "bg-viz-danger/30 text-viz-danger"
                 }`}
                 title={`${p.toRoleName} ${p.status} ${p.fromRoleName}'s request`}
               >
