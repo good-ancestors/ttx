@@ -106,6 +106,20 @@ function distributeByWeight(amount: number, weights: [string, number][]): Map<st
   const result = new Map<string, number>();
   if (weights.length === 0) return result;
   const totalWeight = weights.reduce((s, [, w]) => s + w, 0);
+  // Guard against divide-by-zero / NaN propagation if every weight is zero.
+  // Fall back to even split so the caller still gets a balanced allocation.
+  if (totalWeight <= 0) {
+    let distributed = 0;
+    for (let i = 0; i < weights.length; i++) {
+      const [roleId] = weights[i];
+      const share = i === weights.length - 1
+        ? amount - distributed
+        : Math.round(amount / weights.length);
+      result.set(roleId, (result.get(roleId) ?? 0) + share);
+      distributed += share;
+    }
+    return result;
+  }
   let distributed = 0;
   for (let i = 0; i < weights.length; i++) {
     const [roleId, weight] = weights[i];
