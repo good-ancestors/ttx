@@ -642,7 +642,7 @@ function FacilitatorNav({
           alt="Good Ancestors"
           width={28}
           height={28}
-          className={isProjector ? "w-14 h-14" : "w-7 h-7"}
+          className={isProjector ? "w-11 h-11" : "w-7 h-7"}
         />
         <span className={`font-bold text-white ${isProjector ? "text-[32px]" : "text-[15px]"}`}>The Race to AGI</span>
       </div>
