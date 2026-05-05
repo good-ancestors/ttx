@@ -5,7 +5,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import { ROLE_MAP, AI_SYSTEMS_ROLE_ID, isSubmittedAction } from "@/lib/game-data";
-import { ThumbsUp, ThumbsDown, EyeOff, Inbox, CheckCircle2, XCircle, MinusCircle, Zap } from "lucide-react";
+import { ThumbsUp, ThumbsDown, EyeOff, Inbox, CheckCircle2, XCircle, MinusCircle, Zap, AlertTriangle } from "lucide-react";
 
 // ─── Shared response card ───────────────────────────────────────────────────
 
@@ -118,17 +118,23 @@ function isGroupFullyAnswered(g: ActionRequestGroup): boolean {
 }
 
 function EndorsementRespondTab({
+  gameId,
+  roundNumber,
   allRequests,
   roleId,
   tableId,
   allowEdits,
 }: {
+  gameId: Id<"games">;
+  roundNumber: number;
   allRequests: Doc<"requests">[];
   roleId: string;
   tableId: Id<"tables">;
   allowEdits: boolean;
 }) {
   const respondToProposal = useMutation(api.requests.respond);
+  const stock = useQuery(api.computeLedger.getStockForRole, { gameId, roleId, roundNumber });
+  const available = stock?.available ?? 0;
 
   const groups = groupRequestsByAction(allRequests, roleId);
   // Unanswered first (closer to thumbs/decision), then fully-answered; compute-bearing first within each bucket for urgency.
@@ -162,6 +168,7 @@ function EndorsementRespondTab({
       respondToProposal={respondToProposal}
       callerTableId={tableId}
       allowEdits={allowEdits}
+      available={available}
     />
   );
 
@@ -203,11 +210,13 @@ function CombinedRequestCard({
   respondToProposal,
   callerTableId,
   allowEdits,
+  available,
 }: {
   group: ActionRequestGroup;
   respondToProposal: ReturnType<typeof useMutation<typeof api.requests.respond>>;
   callerTableId: Id<"tables">;
   allowEdits: boolean;
+  available: number;
 }) {
   const fromRole = ROLE_MAP.get(group.fromRoleId);
   const endorsement = group.endorsement;
@@ -224,6 +233,9 @@ function CombinedRequestCard({
       : compute?.status === "declined"
         ? "decline"
         : null;
+  const computeAmount = compute?.computeAmount ?? 0;
+  const insufficient =
+    !!compute && computeAmount > 0 && available < computeAmount && computeResponse !== "accept";
 
   return (
     <div className={`bg-white rounded-xl border p-4 ${compute ? "border-[#FED7AA]" : "border-border"}`}>
@@ -281,9 +293,14 @@ function CombinedRequestCard({
 
       {compute && (
         <div>
-          <p className="text-[11px] uppercase tracking-wider text-text-muted mb-1.5 flex items-center gap-1">
-            <Zap className="w-3 h-3 text-[#D97706]" /> Compute request ({compute.computeAmount ?? 0}u)
-          </p>
+          <div className="flex items-center justify-between mb-1.5 gap-2">
+            <p className="text-[11px] uppercase tracking-wider text-text-muted flex items-center gap-1">
+              <Zap className="w-3 h-3 text-[#D97706]" /> Compute request ({computeAmount}u)
+            </p>
+            <span className="text-[11px] font-mono text-text-muted">
+              {available}u available
+            </span>
+          </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => void respondToProposal({
@@ -291,14 +308,14 @@ function CombinedRequestCard({
                 proposalId: compute._id,
                 status: computeResponse === "accept" ? "pending" : "accepted",
               })}
-              disabled={!allowEdits}
+              disabled={!allowEdits || insufficient}
               className={`flex-1 min-h-[44px] rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-1.5 ${
                 computeResponse === "accept"
                   ? "bg-[#059669] text-white"
                   : "bg-[#ECFDF5] text-[#059669] hover:bg-[#D1FAE5]"
-              } disabled:opacity-50 disabled:cursor-default`}
+              } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              <ThumbsUp className="w-4 h-4" /> Accept
+              <Zap className="w-4 h-4" /> Accept
             </button>
             <button
               onClick={() => void respondToProposal({
@@ -316,6 +333,14 @@ function CombinedRequestCard({
               <ThumbsDown className="w-4 h-4" /> Decline
             </button>
           </div>
+          {insufficient && (
+            <div className="mt-2 bg-[#FEF2F2] border border-[#FECACA] rounded-md px-2 py-1.5 flex items-start gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-[#B91C1C] mt-0.5 shrink-0" />
+              <span className="text-xs text-[#991B1B]">
+                Need {computeAmount}u — only {available}u available. Cancel a prior compute send to free up stock.
+              </span>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -673,6 +698,8 @@ export function RespondTab({
 
   return (
     <EndorsementRespondTab
+      gameId={gameId}
+      roundNumber={roundNumber}
       allRequests={allRequests ?? []}
       roleId={roleId}
       tableId={tableId}

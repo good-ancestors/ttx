@@ -6,7 +6,7 @@
 // stays consistent. Never patch table.computeStock directly.
 
 import { v } from "convex/values";
-import { mutation, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { mutation, query, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { assertFacilitator, assertNotResolving } from "./events";
 import { readRuntime } from "./gameRuntime";
@@ -236,7 +236,9 @@ export async function getStock(
 }
 
 /** Sum of pending send-escrows (negative rows) for a role in a given round.
- *  This is the compute the player has committed but not yet spent. */
+ *  This is the compute the player has committed but not yet spent.
+ *  Indexed on (gameId, roleId) so reactive subscriptions only invalidate when
+ *  the player's own ledger rows change, not on cross-role compute activity. */
 export async function getPendingEscrow(
   ctx: QueryCtx | MutationCtx,
   gameId: Id<"games">,
@@ -245,15 +247,30 @@ export async function getPendingEscrow(
 ): Promise<number> {
   const rows = await ctx.db
     .query("computeTransactions")
-    .withIndex("by_game_and_round", (q) => q.eq("gameId", gameId).eq("roundNumber", roundNumber))
+    .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", roleId))
     .collect();
   let escrowed = 0;
   for (const r of rows) {
-    if (r.status === "pending" && r.roleId === roleId && r.amount < 0) {
+    if (r.roundNumber === roundNumber && r.status === "pending" && r.amount < 0) {
       escrowed += -r.amount;
     }
   }
   return escrowed;
+}
+
+async function readStock(
+  ctx: QueryCtx | MutationCtx,
+  gameId: Id<"games">,
+  roleId: string,
+  roundNumber: number,
+) {
+  const table = await ctx.db
+    .query("tables")
+    .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", roleId))
+    .first();
+  const settled = table?.computeStock ?? 0;
+  const escrowed = await getPendingEscrow(ctx, gameId, roleId, roundNumber);
+  return { settled, escrowed, available: Math.max(0, settled - escrowed) };
 }
 
 /** Available-to-spend balance — cached settled stock minus current-round pending sends. */
@@ -263,14 +280,13 @@ export async function getAvailableStock(
   roleId: string,
   roundNumber: number,
 ): Promise<number> {
-  const table = await ctx.db
-    .query("tables")
-    .withIndex("by_game_and_role", (q) => q.eq("gameId", gameId).eq("roleId", roleId))
-    .first();
-  const settled = table?.computeStock ?? 0;
-  const escrowed = await getPendingEscrow(ctx, gameId, roleId, roundNumber);
-  return Math.max(0, settled - escrowed);
+  return (await readStock(ctx, gameId, roleId, roundNumber)).available;
 }
+
+export const getStockForRole = query({
+  args: { gameId: v.id("games"), roleId: v.string(), roundNumber: v.number() },
+  handler: (ctx, args) => readStock(ctx, args.gameId, args.roleId, args.roundNumber),
+});
 
 // ─── Exposed internal query/mutation for scripts/tests ────────────────────────
 

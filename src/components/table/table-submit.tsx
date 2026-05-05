@@ -1,5 +1,8 @@
 "use client";
 
+import { useQuery } from "convex/react";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { type Role, hasCompute } from "@/lib/game-data";
 import { type ActionDraft, type LabRef } from "@/components/action-input";
 import { ActionInput } from "@/components/action-input";
@@ -11,12 +14,14 @@ import {
   ChevronUp,
   EyeOff,
   Lightbulb,
+  Lock,
   Zap,
 } from "lucide-react";
 
 // ─── Submit phase props ──────────────────────────────────────────────────────
 
 interface TableSubmitProps {
+  gameId: Id<"games">;
   game: {
     currentRound: number;
     phase: string;
@@ -56,6 +61,7 @@ interface TableSubmitProps {
 }
 
 export function TableSubmit({
+  gameId,
   game,
   role,
   submittedActions,
@@ -84,6 +90,18 @@ export function TableSubmit({
   const canEdit = !observerView && game.phase === "submit" && !isExpired;
   const totalActions =
     submittedList.length + actionDrafts.filter((a) => a.text.trim()).length;
+
+  // Live escrow-aware stock — the cached `computeStock` doesn't reflect
+  // mid-round pending compute requests this player has accepted to send.
+  const stock = useQuery(
+    api.computeLedger.getStockForRole,
+    hasCompute(role)
+      ? { gameId, roleId: role.id, roundNumber: game.currentRound }
+      : "skip",
+  );
+  const availableStock = stock?.available ?? computeStock ?? 0;
+  const escrowedStock = stock?.escrowed ?? 0;
+  const settledStock = stock?.settled ?? computeStock ?? 0;
 
   return (
     <>
@@ -135,6 +153,7 @@ export function TableSubmit({
             enabledRoles={enabledRoles}
             computeRoles={hasCompute(role) && computeRecipients ? computeRecipients : undefined}
             ownComputeStock={computeStock}
+            ownAvailableStock={availableStock}
             ownedLab={ownedLab}
             otherLabs={otherLabs}
             isSubmitted={false}
@@ -162,11 +181,20 @@ export function TableSubmit({
           <div className="flex items-center gap-2">
             <Zap className="w-4 h-4 text-[#D97706]" />
             <span className="text-sm font-bold text-text">
-              {computeStock}u available
+              {availableStock}u available
             </span>
+            {escrowedStock > 0 && (
+              <span className="text-xs text-text-muted font-mono ml-auto flex items-center gap-1">
+                <Lock className="w-3 h-3" aria-hidden="true" /> {escrowedStock}u locked
+                <span className="text-text-muted/60">·</span>
+                {settledStock}u total
+              </span>
+            )}
           </div>
           <p className="text-[11px] text-text-muted mt-1">
-            Use the compute button on your actions to send compute. Transfers happen when the action succeeds.
+            {escrowedStock > 0
+              ? `${escrowedStock}u is locked in pending compute requests you've accepted to send. The rest is free to spend or send.`
+              : "Use the compute button on your actions to send compute. Transfers happen when the action succeeds."}
           </p>
         </div>
       )}
