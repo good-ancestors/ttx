@@ -98,10 +98,12 @@ export function EffectEditor(props: EffectEditorProps) {
   if (isProjector || locked) {
     return (
       <span
-        className={`inline-flex items-center gap-1 text-[10px] font-medium ${tone}${locked ? " opacity-75" : ""}`}
+        className={`inline-flex items-center font-medium ${tone}${locked ? " opacity-75" : ""} ${
+          isProjector ? "gap-1.5 text-sm" : "gap-1 text-[10px]"
+        }`}
         aria-label={locked ? `${text} — locked, dice already rolled` : text}
       >
-        <Icon className="w-3 h-3" aria-hidden="true" />
+        <Icon className={isProjector ? "w-4 h-4" : "w-3 h-3"} aria-hidden="true" />
         <span className="truncate" aria-hidden="true">{text}</span>
       </span>
     );
