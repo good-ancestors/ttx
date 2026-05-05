@@ -29,14 +29,17 @@ export function ComputeDotsViz({
   }
 
   return (
-    <div className="mb-2 flex flex-wrap gap-[2px]" style={{ maxWidth: 10 * 12 + 9 * 2 }}>
+    <div
+      className="mb-2 flex flex-wrap gap-[0.125rem]"
+      style={{ maxWidth: "calc(0.625rem * 12 + 0.125rem * 9)" }}
+    >
       {dots.map((dot) => (
         <div
           key={dot.idx}
           className="rounded-[2px] compute-dot"
           style={{
-            width: 10,
-            height: 10,
+            width: "0.625rem",
+            height: "0.625rem",
             backgroundColor: dot.color,
             opacity: 0.85,
           }}

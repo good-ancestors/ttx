@@ -52,7 +52,7 @@ function LabCardHeader({
       {editable && gameId && !editing && !mergeSource && (
         <button
           onClick={(e) => { e.stopPropagation(); setEditing(true); }}
-          className="text-[10px] p-1 rounded bg-navy-light text-text-light hover:bg-navy-muted"
+          className="text-[0.625rem] p-1 rounded bg-navy-light text-text-light hover:bg-navy-muted"
           aria-label="Edit lab state"
           title="Edit lab state"
         >
@@ -62,7 +62,7 @@ function LabCardHeader({
       {onMergeStart && !mergeSource && !editing && (
         <button
           onClick={(e) => { e.stopPropagation(); onMergeStart(lab.name); }}
-          className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-text-light hover:bg-navy-muted flex items-center gap-1"
+          className="text-[0.625rem] px-1.5 py-0.5 rounded bg-navy-light text-text-light hover:bg-navy-muted flex items-center gap-1"
           aria-label={`Merge ${lab.name} into another lab`}
           title={`Merge ${lab.name} into another lab`}
         >
@@ -72,7 +72,7 @@ function LabCardHeader({
       {isMergeSource && onMergeCancel && (
         <button
           onClick={(e) => { e.stopPropagation(); onMergeCancel(); }}
-          className="text-[10px] px-1.5 py-0.5 rounded bg-navy-light text-viz-warning"
+          className="text-[0.625rem] px-1.5 py-0.5 rounded bg-navy-light text-viz-warning"
         >
           Cancel
         </button>
@@ -138,7 +138,7 @@ function LabCardBody({
         {COMPUTE_CATEGORIES.map((cat) => (
           <span
             key={cat.key}
-            className="text-[10px] text-text-light flex items-center gap-1"
+            className="text-[0.625rem] text-text-light flex items-center gap-1"
           >
             <span
               className="inline-block w-1.5 h-1.5 rounded-[1px]"
@@ -150,13 +150,13 @@ function LabCardBody({
       </div>
 
       {lab.jurisdiction && (
-        <div className="text-[10px] text-text-light/70 mt-1.5 uppercase tracking-wider">
+        <div className="text-[0.625rem] text-text-light/70 mt-1.5 uppercase tracking-wider">
           Jurisdiction: <span className="text-text-light">{lab.jurisdiction}</span>
         </div>
       )}
 
       {lab.spec && (
-        <div className="text-[10px] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
+        <div className="text-[0.625rem] text-text-light/70 mt-1.5 pt-1.5 border-t border-navy-light leading-relaxed line-clamp-3" title={lab.spec}>
           Spec: {lab.spec}
         </div>
       )}
@@ -242,7 +242,7 @@ export function LabStateCard({
         onMergeCancel={onMergeCancel}
       />
       {isMergeTarget && (
-        <div className="text-[10px] text-viz-warning mb-1">
+        <div className="text-[0.625rem] text-viz-warning mb-1">
           Click to absorb {mergeSource} into {lab.name}
         </div>
       )}
@@ -344,7 +344,7 @@ function LabStateEditor({
 
   return (
     <div className="space-y-2">
-      <label className="flex items-center gap-2 text-[11px] text-text-light">
+      <label className="flex items-center gap-2 text-[0.6875rem] text-text-light">
         <span className="w-20">R&D ×</span>
         <NumberField
           value={multiplier}
@@ -355,7 +355,7 @@ function LabStateEditor({
           className="flex-1 bg-navy-dark border border-navy-light rounded px-2 py-1 text-white font-mono"
         />
       </label>
-      <label className="flex items-center gap-2 text-[11px] text-text-light">
+      <label className="flex items-center gap-2 text-[0.6875rem] text-text-light">
         <span className="w-20">Stock (u)</span>
         <NumberField
           value={stock}
@@ -366,7 +366,7 @@ function LabStateEditor({
           className="flex-1 bg-navy-dark border border-navy-light rounded px-2 py-1 text-white font-mono"
         />
       </label>
-      <div className="grid grid-cols-3 gap-1.5 text-[11px] text-text-light">
+      <div className="grid grid-cols-3 gap-1.5 text-[0.6875rem] text-text-light">
         <label className="flex flex-col gap-1">
           <span>Deploy %</span>
           <NumberField
@@ -404,7 +404,7 @@ function LabStateEditor({
           />
         </label>
       </div>
-      <div className={`flex items-center gap-1 text-[10px] ${allocOK ? "text-text-light/60" : "text-viz-danger"}`}>
+      <div className={`flex items-center gap-1 text-[0.625rem] ${allocOK ? "text-text-light/60" : "text-viz-danger"}`}>
         <span>Total: {totalAlloc}%</span>
         {allocOK ? (
           <Check className="w-3 h-3" />
@@ -422,14 +422,14 @@ function LabStateEditor({
                 setResearch(next.research);
                 setSafety(next.safety);
               }}
-              className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-navy-dark border border-navy-light text-text-light hover:bg-navy"
+              className="ml-auto text-[0.625rem] px-1.5 py-0.5 rounded bg-navy-dark border border-navy-light text-text-light hover:bg-navy"
             >
               Auto-balance
             </button>
           </>
         )}
       </div>
-      <label className="flex items-center gap-2 text-[11px] text-text-light">
+      <label className="flex items-center gap-2 text-[0.6875rem] text-text-light">
         <span className="w-20">Owner</span>
         <select
           value={ownerRoleId}
@@ -442,7 +442,7 @@ function LabStateEditor({
           ))}
         </select>
       </label>
-      <label className="flex items-center gap-2 text-[11px] text-text-light">
+      <label className="flex items-center gap-2 text-[0.6875rem] text-text-light">
         <span className="w-20">Jurisdiction</span>
         <input
           type="text"
@@ -452,7 +452,7 @@ function LabStateEditor({
           className="flex-1 bg-navy-dark border border-navy-light rounded px-2 py-1 text-white"
         />
       </label>
-      <label className="flex flex-col gap-1 text-[11px] text-text-light">
+      <label className="flex flex-col gap-1 text-[0.6875rem] text-text-light">
         <span>Spec</span>
         <textarea
           value={spec}
@@ -464,7 +464,7 @@ function LabStateEditor({
         />
       </label>
       {multiplierChanged && (
-        <label className="flex items-center gap-2 text-[11px] text-text-light">
+        <label className="flex items-center gap-2 text-[0.6875rem] text-text-light">
           <span className="w-20">Reason</span>
           <input
             type="text"
@@ -476,19 +476,19 @@ function LabStateEditor({
         </label>
       )}
       {error && (
-        <div className="text-[11px] text-viz-danger">{error}</div>
+        <div className="text-[0.6875rem] text-viz-danger">{error}</div>
       )}
       <div className="flex gap-1.5 mt-1">
         <button
           onClick={() => void save()}
           disabled={saving || !allocOK}
-          className="flex-1 text-[11px] px-2 py-1 bg-white text-navy rounded font-bold hover:bg-off-white disabled:opacity-40 flex items-center justify-center gap-1"
+          className="flex-1 text-[0.6875rem] px-2 py-1 bg-white text-navy rounded font-bold hover:bg-off-white disabled:opacity-40 flex items-center justify-center gap-1"
         >
           <Save className="w-3 h-3" /> Save
         </button>
         <button
           onClick={onClose}
-          className="flex-1 text-[11px] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted flex items-center justify-center gap-1"
+          className="flex-1 text-[0.6875rem] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted flex items-center justify-center gap-1"
         >
           <X className="w-3 h-3" /> Cancel
         </button>

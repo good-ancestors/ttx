@@ -64,7 +64,7 @@ export function NewComputeAcquired({
         {!editing && canEdit && (
           <button
             onClick={() => setEditing(true)}
-            className="text-[10px] p-1 rounded bg-navy-light text-text-light hover:bg-navy-muted"
+            className="text-[0.625rem] p-1 rounded bg-navy-light text-text-light hover:bg-navy-muted"
             aria-label="Edit acquired amounts"
             title="Edit acquired amounts"
           >
@@ -72,7 +72,7 @@ export function NewComputeAcquired({
           </button>
         )}
       </div>
-      <div className="text-[11px] text-text-light/70 mb-3">
+      <div className="text-[0.6875rem] text-text-light/70 mb-3">
         {isPending
           ? "Applied at start of next round — players gain access when the facilitator advances."
           : "Already applied this round (legacy — pre-deferral)."}
@@ -100,7 +100,7 @@ export function NewComputeAcquired({
                 <div className="text-xl font-black font-mono text-viz-safety">
                   +{e.amount}u
                 </div>
-                <div className="text-[10px] text-text-light mt-0.5">
+                <div className="text-[0.625rem] text-text-light mt-0.5">
                   {sharePct}% of new
                 </div>
               </div>
@@ -195,7 +195,7 @@ function AcquiredEditor({
 
   return (
     <div className="space-y-3">
-      <label className="flex items-center gap-2 text-[11px] text-text-light">
+      <label className="flex items-center gap-2 text-[0.6875rem] text-text-light">
         <span className="w-24">Total (u)</span>
         <NumberField
           value={totalTarget}
@@ -211,7 +211,7 @@ function AcquiredEditor({
           const pct = sharePcts[e.roleId] ?? 0;
           const amount = Math.round(pct / 100 * totalTarget);
           return (
-            <div key={e.roleId} className="flex items-center gap-2 text-[11px]">
+            <div key={e.roleId} className="flex items-center gap-2 text-[0.6875rem]">
               <span className="w-28 truncate text-text-light" title={e.name}>{e.name}</span>
               <NumberField
                 value={pct}
@@ -229,7 +229,7 @@ function AcquiredEditor({
           );
         })}
       </div>
-      <div className={`flex items-center gap-1 text-[10px] ${pctOK ? "text-text-light/60" : "text-viz-danger"}`}>
+      <div className={`flex items-center gap-1 text-[0.625rem] ${pctOK ? "text-text-light/60" : "text-viz-danger"}`}>
         <span>Share total: {totalPct.toFixed(1)}%</span>
         {pctOK ? (
           <Check className="w-3 h-3" />
@@ -248,7 +248,7 @@ function AcquiredEditor({
                 }
                 setSharePcts(next);
               }}
-              className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-navy-dark border border-navy-light text-text-light hover:bg-navy"
+              className="ml-auto text-[0.625rem] px-1.5 py-0.5 rounded bg-navy-dark border border-navy-light text-text-light hover:bg-navy"
             >
               Auto-balance
             </button>
@@ -256,19 +256,19 @@ function AcquiredEditor({
         )}
       </div>
       {error && (
-        <div className="text-[11px] text-viz-danger">{error}</div>
+        <div className="text-[0.6875rem] text-viz-danger">{error}</div>
       )}
       <div className="flex gap-1.5">
         <button
           onClick={() => void save()}
           disabled={saving || !pctOK}
-          className="flex-1 text-[11px] px-2 py-1 bg-white text-navy rounded font-bold hover:bg-off-white disabled:opacity-40 flex items-center justify-center gap-1"
+          className="flex-1 text-[0.6875rem] px-2 py-1 bg-white text-navy rounded font-bold hover:bg-off-white disabled:opacity-40 flex items-center justify-center gap-1"
         >
           <Save className="w-3 h-3" /> Save
         </button>
         <button
           onClick={onClose}
-          className="flex-1 text-[11px] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted flex items-center justify-center gap-1"
+          className="flex-1 text-[0.6875rem] px-2 py-1 bg-navy-light text-text-light rounded hover:bg-navy-muted flex items-center justify-center gap-1"
         >
           <X className="w-3 h-3" /> Cancel
         </button>
