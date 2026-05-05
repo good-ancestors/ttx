@@ -363,7 +363,10 @@ export const getPendingAcquired = query({
 });
 
 /** Facilitator-edit path for pending acquisition: overwrite the full `pendingAcquired`
- *  array with new per-role amounts. Used by the editable "New Compute Acquired" panel. */
+ *  array with new per-role amounts. Used by the editable "New Compute Acquired" panel.
+ *  Also rebuilds the P10 acquisition entries in `mechanicsLog` so the audit log on the
+ *  Happened panel reflects the edited amounts — otherwise the log would keep showing
+ *  the originally-computed values from `continueFromEffectReview`. */
 export const updatePendingAcquired = mutation({
   args: {
     gameId: v.id("games"),
@@ -384,7 +387,37 @@ export const updatePendingAcquired = mutation({
       if (r.amount < 0) throw new Error(`updatePendingAcquired: amount for ${r.roleId} must be >= 0 (got ${r.amount})`);
     }
     const nonZero = args.amounts.filter((r) => r.amount !== 0);
-    await ctx.db.patch(round._id, { pendingAcquired: nonZero });
+
+    // Rebuild P10 acquisition mechanics log entries from the new amounts. The
+    // `before` value for each role is its current compute stock — acquisition is
+    // pending (lives in `pendingAcquired`, not the ledger), so the table stock
+    // hasn't moved since the original P10 entries were written.
+    const tables = await ctx.db.query("tables")
+      .withIndex("by_game", (q) => q.eq("gameId", args.gameId))
+      .collect();
+    const stockByRole = new Map(tables.map((t) => [t.roleId, t.computeStock ?? 0] as const));
+    const nameByRole = new Map(tables.map((t) => [t.roleId, t.roleName] as const));
+
+    const priorLog = round.mechanicsLog ?? [];
+    const keep = priorLog.filter((e) => !(e.phase === 10 && e.source === "acquisition"));
+    let nextSequence = keep.reduce((max, e) => Math.max(max, e.sequence), -1) + 1;
+    const sortedEntries = [...nonZero].sort((a, b) => b.amount - a.amount);
+    const newP10: NonNullable<Doc<"rounds">["mechanicsLog"]> = sortedEntries.map((r) => {
+      const before = stockByRole.get(r.roleId) ?? 0;
+      return {
+        sequence: nextSequence++,
+        phase: 10 as const,
+        source: "acquisition" as const,
+        subject: nameByRole.get(r.roleId) ?? r.roleId,
+        field: "computeStock" as const,
+        before,
+        after: before + r.amount,
+        reason: `R${args.roundNumber} acquisition +${r.amount}u`,
+      };
+    });
+    const mechanicsLog = [...keep, ...newP10].slice(0, 200);
+
+    await ctx.db.patch(round._id, { pendingAcquired: nonZero, mechanicsLog });
   },
 });
 
