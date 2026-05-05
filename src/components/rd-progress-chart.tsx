@@ -289,11 +289,13 @@ export function RdProgressChart({
   currentLabs,
   currentRound = 1,
   compact = false,
+  isProjector = false,
 }: {
   rounds: Round[];
   currentLabs: Lab[];
   currentRound?: number;
   compact?: boolean;
+  isProjector?: boolean;
 }) {
   const { series, xLabels, yTicks, visibleMilestones, scaleY, yPos, xPos, layout } = useMemo(
     () => buildChartData(rounds, currentLabs, currentRound, compact),
@@ -302,7 +304,7 @@ export function RdProgressChart({
   const { width, height, padLeft, padRight } = layout;
   const [fullScreen, setFullScreen] = useState(false);
 
-  const chartContent = (maxH?: number) => (
+  const chartContent = (maxH?: number | string) => (
     <>
       <svg
         viewBox={`0 0 ${width} ${height}`}
@@ -407,8 +409,16 @@ export function RdProgressChart({
   return (
     <>
     {fullScreen && (
-      <FullScreenOverlay title="R&D Progress" onClose={() => setFullScreen(false)} bodyClassName="flex-1 flex flex-col justify-center max-w-4xl mx-auto w-full">
-        {chartContent(600)}
+      <FullScreenOverlay
+        title="R&D Progress"
+        onClose={() => setFullScreen(false)}
+        bodyClassName={
+          isProjector
+            ? "flex-1 flex flex-col justify-center w-full"
+            : "flex-1 flex flex-col justify-center max-w-4xl mx-auto w-full"
+        }
+      >
+        {chartContent(isProjector ? "calc(100vh - 120px)" : 600)}
       </FullScreenOverlay>
     )}
 

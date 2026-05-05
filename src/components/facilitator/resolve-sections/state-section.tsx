@@ -141,7 +141,7 @@ function LabStateAndAllocations({
          *  Rendered flat (no inner card) — the outer ExpandableSection already
          *  carries the panel framing. */}
         <div className="mb-3">
-          <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={currentRoundNumber} />
+          <RdProgressChart rounds={rounds} currentLabs={labs} currentRound={currentRoundNumber} isProjector={isProjector} />
         </div>
 
         {cap && (
