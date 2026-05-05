@@ -288,6 +288,40 @@ export function normaliseStructuredEffect(e: unknown): StructuredEffect {
   return out as StructuredEffect;
 }
 
+/** Build the structuredEffect that mirrors a player-pinned action (computeTargets,
+ *  foundLab). Returns undefined when the action has no pin — caller falls back to
+ *  the grader's emitted effect. The apply path treats the pin as ground truth, so
+ *  the persisted structuredEffect should match it for display consistency.
+ *  computeTargets actions only reflect the first target in the badge (the schema
+ *  is single-pair); the full target list still drives settlement via
+ *  action.computeTargets. mergeLab uses labIds rather than lab names so it's
+ *  left to the grader's "merge" effect for display purposes. */
+export function derivePinnedStructuredEffect(
+  action: {
+    computeTargets?: { roleId: string; amount: number; direction?: "send" | "request" }[];
+    foundLab?: { name: string; spec?: string; seedCompute: number; allocation?: { deployment: number; research: number; safety: number } };
+  },
+  submitterRoleId: string,
+): StructuredEffect | undefined {
+  if (action.computeTargets && action.computeTargets.length > 0) {
+    const target = action.computeTargets[0];
+    const direction = target.direction ?? "send";
+    return direction === "request"
+      ? { type: "computeTransfer", fromRoleId: target.roleId, toRoleId: submitterRoleId, amount: target.amount }
+      : { type: "computeTransfer", fromRoleId: submitterRoleId, toRoleId: target.roleId, amount: target.amount };
+  }
+  if (action.foundLab) {
+    return {
+      type: "foundLab",
+      name: action.foundLab.name,
+      spec: action.foundLab.spec,
+      seedCompute: action.foundLab.seedCompute,
+      allocation: action.foundLab.allocation,
+    };
+  }
+  return undefined;
+}
+
 // ─── BATCHED GRADING PROMPT ──────────────────────────────────────────────────
 // Single LLM call across ALL roles' submissions per round. Replaces per-role
 // grading + the separate decide-LLM pass. Each action gets probability +

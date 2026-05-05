@@ -622,21 +622,31 @@ function DriverTablePage({
 
       await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex, sessionId });
 
-      // Restore endorsement/compute targets from existing requests
+      // Endorse targets aren't persisted on the action — reconstruct from request docs.
+      // Compute targets ARE persisted on the action (server-side editSubmitted preserves
+      // them); fall back to request reconstruction only for legacy data without the field.
       const actionRequests = sentRequestsByAction?.get(action.actionId ?? action.text) ?? [];
       const endorseTargets = actionRequests
         .filter((r) => r.requestType === "endorsement")
         .map((r) => {
-          // Find roleId from roleName via allTables
           const t = (allTables ?? []).find((t) => t.roleName === r.toRoleName);
           return t?.roleId;
         })
         .filter((id): id is string => !!id);
-      const computeTargets: ComputeTarget[] = [];
-      for (const r of actionRequests) {
-        if (r.requestType !== "compute") continue;
-        const t = (allTables ?? []).find((t) => t.roleName === r.toRoleName);
-        if (t) computeTargets.push({ roleId: t.roleId, amount: r.computeAmount ?? 1, direction: "request" });
+      let computeTargets: ComputeTarget[];
+      if (action.computeTargets && action.computeTargets.length > 0) {
+        computeTargets = action.computeTargets.map((t) => ({
+          roleId: t.roleId,
+          amount: t.amount,
+          direction: t.direction ?? "send",
+        }));
+      } else {
+        computeTargets = [];
+        for (const r of actionRequests) {
+          if (r.requestType !== "compute") continue;
+          const t = (allTables ?? []).find((t) => t.roleName === r.toRoleName);
+          if (t) computeTargets.push({ roleId: t.roleId, amount: r.computeAmount ?? 1, direction: "request" });
+        }
       }
 
       setActionDrafts((prev) => [

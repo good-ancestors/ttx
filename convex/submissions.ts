@@ -6,6 +6,7 @@ import { logEvent, assertPhase, assertSubmitWindowOpen, assertFacilitator, asser
 import { assertSeatOwnership } from "./tables";
 import { defaultProbability, AI_SYSTEMS_ROLE_ID } from "./gameData";
 import { MIN_SEED_COMPUTE, DEFAULT_LAB_ALLOCATION, MAX_INFLUENCE_POWER } from "@/lib/game-data";
+import { derivePinnedStructuredEffect } from "@/lib/ai-prompts";
 import { findOrUpsertRequest, triggerAutoResponse } from "./requests";
 import { readRuntime } from "./gameRuntime";
 import {
@@ -897,6 +898,9 @@ export const editSubmitted = mutation({
       priority: action.priority,
       secret: action.secret,
       actionStatus: "draft" as const,
+      computeTargets: action.computeTargets,
+      foundLab: action.foundLab,
+      mergeLab: action.mergeLab,
     };
     // Revert submission status if it was graded (action needs re-evaluation)
     const newStatus = sub.status === "graded" || sub.status === "resolved" ? "submitted" as const : sub.status;
@@ -1003,11 +1007,19 @@ export const applyGrading = mutation({
 
     await assertPhase(ctx, sub.gameId, ["submit", "rolling"], "apply grading");
 
-    const actions = sub.actions.map((a, i) => ({
-      ...a,
-      probability: args.gradedActions[i]?.probability ?? a.probability,
-      reasoning: args.gradedActions[i]?.reasoning ?? a.reasoning,
-    }));
+    const actions = sub.actions.map((a, i) => {
+      const grade = args.gradedActions[i];
+      if (!grade) return a;
+      return {
+        ...a,
+        probability: grade.probability,
+        reasoning: grade.reasoning,
+        // First-time grading on a player-pinned action: stamp the pinned effect
+        // so the badge reflects the mechanic instead of falling through to the
+        // narrativeOnly default.
+        structuredEffect: a.structuredEffect ?? derivePinnedStructuredEffect(a, sub.roleId),
+      };
+    });
 
     await ctx.db.patch(args.submissionId, {
       actions,
@@ -1043,6 +1055,7 @@ export const overrideProbability = mutation({
     assertFacilitator(args.facilitatorToken);
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
+    assertNotResolving(await readRuntime(ctx, sub.gameId));
 
     const actions = [...sub.actions];
     const action = actions[args.actionIndex];
@@ -1051,17 +1064,26 @@ export const overrideProbability = mutation({
     // stripGradingFields drops stale reasoning; if dice were already rolled we
     // auto-reroll at the new probability.
     const stripped = stripGradingFields(action);
-    // If the action is still ungraded (no structuredEffect), fall back to
-    // narrativeOnly so the UI doesn't show "probability set but no effect".
-    // Facilitator setting probability on an ungraded action = "skip grading,
-    // just roll this at X%" — narrativeOnly is the correct implicit effect.
-    const fallbackEffect = stripped.structuredEffect ?? ({ type: "narrativeOnly" } as const);
+    // If the action is still ungraded (no structuredEffect), fall back to the
+    // player-pinned effect (computeTargets / foundLab) when one exists, else
+    // narrativeOnly. Facilitator setting probability on an ungraded action =
+    // "skip grading, just roll this at X%"; we still want the badge to show
+    // the pinned mechanic.
+    const fallbackEffect = stripped.structuredEffect
+      ?? derivePinnedStructuredEffect(stripped, sub.roleId)
+      ?? ({ type: "narrativeOnly" } as const);
     const fallbackConfidence = stripped.confidence ?? "high";
-    actions[args.actionIndex] = action.rolled != null
+    const updated = action.rolled != null
       ? { ...stripped, probability: args.probability, structuredEffect: fallbackEffect, confidence: fallbackConfidence, ...rollDice(args.probability, action.aiInfluence) }
       : { ...stripped, probability: args.probability, structuredEffect: fallbackEffect, confidence: fallbackConfidence };
+    actions[args.actionIndex] = updated;
 
     await ctx.db.patch(args.submissionId, { actions });
+    // Auto-reroll path may have flipped success state; reconcile compute
+    // settlement so escrowed transfers don't end up stuck in the wrong state.
+    if (action.rolled != null) {
+      await settleComputeTargetsAction(ctx, sub.gameId, sub.roundNumber, sub, updated);
+    }
   },
 });
 
@@ -1088,7 +1110,11 @@ export const overrideStructuredEffect = mutation({
     const action = actions[args.actionIndex];
     if (!action) return;
 
-    const nextEffect = args.structuredEffect ?? { type: "narrativeOnly" as const };
+    // Caller passes the new effect; missing arg falls back to the pinned
+    // mechanic when one exists, otherwise narrativeOnly.
+    const nextEffect = args.structuredEffect
+      ?? derivePinnedStructuredEffect(action, sub.roleId)
+      ?? { type: "narrativeOnly" as const };
     actions[args.actionIndex] = {
       ...action,
       structuredEffect: nextEffect,
@@ -1133,13 +1159,15 @@ export const rerollAction = mutation({
     assertFacilitator(args.facilitatorToken);
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
+    assertNotResolving(await readRuntime(ctx, sub.gameId));
 
     const actions = [...sub.actions];
     const action = actions[args.actionIndex];
     if (action?.probability == null) return;
 
     const result = rollDice(action.probability ?? 50, action.aiInfluence);
-    actions[args.actionIndex] = { ...action, ...result };
+    const updated = { ...action, ...result };
+    actions[args.actionIndex] = updated;
 
     await ctx.db.patch(args.submissionId, { actions });
     await logEvent(ctx, sub.gameId, "reroll", sub.roleId, {
@@ -1148,6 +1176,7 @@ export const rerollAction = mutation({
       newRoll: result.rolled,
       probability: action.probability,
     });
+    await settleComputeTargetsAction(ctx, sub.gameId, sub.roundNumber, sub, updated);
   },
 });
 
@@ -1162,20 +1191,20 @@ export const overrideOutcome = mutation({
     assertFacilitator(args.facilitatorToken);
     const sub = await ctx.db.get(args.submissionId);
     if (!sub) return;
+    assertNotResolving(await readRuntime(ctx, sub.gameId));
 
     const actions = [...sub.actions];
-    if (actions[args.actionIndex]) {
-      actions[args.actionIndex] = {
-        ...actions[args.actionIndex],
-        success: args.success,
-      };
-    }
+    const target = actions[args.actionIndex];
+    if (!target) return;
+    const updated = { ...target, success: args.success };
+    actions[args.actionIndex] = updated;
 
     await ctx.db.patch(args.submissionId, { actions });
     await logEvent(ctx, sub.gameId, "override_outcome", sub.roleId, {
       actionIndex: args.actionIndex,
       success: args.success,
     });
+    await settleComputeTargetsAction(ctx, sub.gameId, sub.roundNumber, sub, updated);
   },
 });
 
@@ -1315,18 +1344,21 @@ export const getAllForRound = internalQuery({
   },
 });
 
-/** Settle a single foundLab action: on success → create the lab + settle the
- *  founding-cost escrow; on failure (rolled or name-collision) → cancel escrow. */
+/** Settle a foundLab action. Returns effectiveSuccess=false when the action was
+ *  declared success but createLabInternal threw (e.g. name collision) — the
+ *  caller flips action.success to false so the pipeline replay doesn't log
+ *  compute movement against a phantom lab. */
 async function settleFoundLabAction(
   ctx: MutationCtx,
   gameId: Id<"games">,
   roundNumber: number,
   sub: Doc<"submissions">,
   action: PersistedAction,
-) {
-  if (!action.foundLab || !action.actionId) return;
-  const success = !!action.success;
-  if (success) {
+): Promise<{ effectiveSuccess: boolean }> {
+  if (!action.foundLab || !action.actionId) return { effectiveSuccess: !!action.success };
+  const declaredSuccess = !!action.success;
+  let effectiveSuccess = declaredSuccess;
+  if (declaredSuccess) {
     try {
       await createLabInternal(ctx, {
         gameId,
@@ -1339,17 +1371,19 @@ async function settleFoundLabAction(
       });
       await settlePendingForAction(ctx, gameId, action.actionId);
     } catch (err) {
-      // Name collision or other failure → treat as failed founding, refund escrow
+      // Name collision or other failure → treat as failed founding, refund escrow.
       console.warn(`[rollAll] Lab founding failed for "${action.foundLab.name}":`, err);
       await cancelPendingForAction(ctx, gameId, action.actionId);
+      effectiveSuccess = false;
     }
   } else {
     await cancelPendingForAction(ctx, gameId, action.actionId);
   }
-  await logEvent(ctx, gameId, success ? "lab_founded" : "lab_founding_failed", sub.roleId, {
+  await logEvent(ctx, gameId, effectiveSuccess ? "lab_founded" : "lab_founding_failed", sub.roleId, {
     labName: action.foundLab.name,
     seedCompute: action.foundLab.seedCompute,
   });
+  return { effectiveSuccess };
 }
 
 /** Settle a single mergeLab action. Auto-fails if either lab was decommissioned
@@ -1402,9 +1436,50 @@ async function settleMergeLabAction(
   }
 }
 
-/** Settle a single action's computeTargets. Success settles all pending rows
- *  (sends + accepted requests); failure cancels them. Unaccepted request targets
- *  on success do a "soft-take" clamped to the target's available balance. */
+/** Canonical key for an unordered role pair. The first element of `positiveDirection`
+ *  is the role that lost compute when net signed amount is positive. Lets the
+ *  reconciler treat "A→B = +X" and "B→A = -X" as the same movement state. */
+function pairKey(roleA: string, roleB: string): { key: string; positiveDirection: [string, string] } {
+  const ordered: [string, string] = roleA < roleB ? [roleA, roleB] : [roleB, roleA];
+  return { key: `${ordered[0]}|${ordered[1]}`, positiveDirection: ordered };
+}
+
+/** Net signed compute movement per pair, derived from settled "transferred"
+ *  ledger rows. Sender-side rows only — the matched receiver row carries the
+ *  same amount with opposite sign and would double-count. Sign is +ve when
+ *  compute flowed in the canonical direction (alphabetically-first role lost
+ *  to the second), -ve in the reverse. Reversal pairs naturally cancel out. */
+function netMovementFromRows(rows: Doc<"computeTransactions">[]): Map<string, number> {
+  const net = new Map<string, number>();
+  for (const row of rows) {
+    if (row.type !== "transferred" || row.status !== "settled") continue;
+    if (row.amount >= 0) continue;
+    if (!row.counterpartyRoleId) continue;
+    const { key, positiveDirection } = pairKey(row.roleId, row.counterpartyRoleId);
+    const sign = row.roleId === positiveDirection[0] ? 1 : -1;
+    net.set(key, (net.get(key) ?? 0) + sign * Math.abs(row.amount));
+  }
+  return net;
+}
+
+/** Settle a single action's computeTargets. Idempotent across rerolls and
+ *  outcome overrides — uses net-movement reconciliation rather than presence
+ *  checks, so success→fail→success oscillations and double-fail clicks don't
+ *  double-credit or silently no-op.
+ *
+ *  Algorithm:
+ *  1. Promote pending → settled (success) or cancel pending (failure). Submit-
+ *     time send escrows and request-acceptance escrows are accounted for here.
+ *  2. Compute the intended net movement per role pair from action.computeTargets
+ *     (success: declared amounts; failure: zero across the board).
+ *  3. Compute the current net movement per pair from settled rows tagged with
+ *     this actionId. Reversal rows count with the opposite sign so a fully-
+ *     reversed transfer reads as net = 0, not net = X — the bug that double-
+ *     fail clicks used to trigger.
+ *  4. Emit pairs covering each non-zero diff. Always clamp to the sender's
+ *     available stock — for reversals, the original receiver may have spent
+ *     compute since, so we claw back what's available rather than driving
+ *     them negative. */
 async function settleComputeTargetsAction(
   ctx: MutationCtx,
   gameId: Id<"games">,
@@ -1415,43 +1490,61 @@ async function settleComputeTargetsAction(
   if (!action.computeTargets || action.computeTargets.length === 0) return;
   if (!action.actionId) return;
 
+  const actionId = action.actionId;
   const success = !!action.success;
-  if (!success) {
-    await cancelPendingForAction(ctx, gameId, action.actionId);
+
+  if (success) {
+    await settlePendingForAction(ctx, gameId, actionId);
   } else {
-    await settlePendingForAction(ctx, gameId, action.actionId);
-    // Accepted request targets are already represented as pending rows from requests.respond.
-    // If a request target was NOT accepted, the ledger has no pending pair — the submitter
-    // takes compute from the target clamped to availability, per the "soft request" rule.
-    const requestTargets = action.computeTargets.filter((t) => t.direction === "request");
-    if (requestTargets.length > 0) {
-      const requestsForRole = await ctx.db
-        .query("requests")
-        .withIndex("by_from_role", (q) =>
-          q.eq("gameId", gameId).eq("roundNumber", roundNumber).eq("fromRoleId", sub.roleId))
-        .collect();
-      for (const target of requestTargets) {
-        const match = requestsForRole.find((r) =>
-          r.toRoleId === target.roleId && r.requestType === "compute" && r.actionId === action.actionId,
-        );
-        if (match?.status === "accepted") continue; // already settled above
-        const targetAvail = await getAvailableStock(ctx, gameId, target.roleId, roundNumber);
-        const take = Math.min(target.amount, targetAvail);
-        if (take > 0) {
-          await emitPair(ctx, {
-            gameId,
-            roundNumber,
-            type: "transferred",
-            status: "settled",
-            fromRoleId: target.roleId,
-            toRoleId: sub.roleId,
-            amount: take,
-            reason: `Soft-take on unaccepted request: ${action.text.slice(0, 80)}`,
-            actionId: action.actionId,
-          });
-        }
-      }
+    await cancelPendingForAction(ctx, gameId, actionId);
+  }
+
+  const settledRows = await ctx.db
+    .query("computeTransactions")
+    .withIndex("by_action", (q) => q.eq("gameId", gameId).eq("actionId", actionId))
+    .collect();
+  const currentNet = netMovementFromRows(settledRows);
+
+  const intendedNet = new Map<string, number>();
+  if (success) {
+    for (const target of action.computeTargets) {
+      const direction = target.direction ?? "send";
+      const fromRole = direction === "send" ? sub.roleId : target.roleId;
+      const toRole = direction === "send" ? target.roleId : sub.roleId;
+      if (fromRole === toRole) continue;
+      const { key, positiveDirection } = pairKey(fromRole, toRole);
+      const sign = fromRole === positiveDirection[0] ? 1 : -1;
+      intendedNet.set(key, (intendedNet.get(key) ?? 0) + sign * target.amount);
     }
+  }
+
+  const allKeys = new Set([...currentNet.keys(), ...intendedNet.keys()]);
+  for (const key of allKeys) {
+    const intended = intendedNet.get(key) ?? 0;
+    const current = currentNet.get(key) ?? 0;
+    const diff = intended - current;
+    if (diff === 0) continue;
+
+    const [roleA, roleB] = key.split("|");
+    const fromRole = diff > 0 ? roleA : roleB;
+    const toRole = diff > 0 ? roleB : roleA;
+    const senderAvail = await getAvailableStock(ctx, gameId, fromRole, roundNumber);
+    const amount = Math.min(Math.abs(diff), senderAvail);
+    if (amount <= 0) continue;
+
+    await emitPair(ctx, {
+      gameId,
+      roundNumber,
+      type: "transferred",
+      status: "settled",
+      fromRoleId: fromRole,
+      toRoleId: toRole,
+      amount,
+      reason: diff > 0
+        ? `Action settle: ${action.text.slice(0, 80)}`
+        : `Reversal (action outcome changed): ${action.text.slice(0, 80)}`,
+      actionId,
+    });
   }
 
   await logEvent(ctx, gameId, success ? "compute_transfer_success" : "compute_transfer_refund", sub.roleId, {
@@ -1496,11 +1589,24 @@ async function rollAllImpl(
       successes: rolled.filter((a) => a.success).length,
     });
 
-    for (const action of actions) {
+    let actionsMutated = false;
+    for (let i = 0; i < actions.length; i++) {
+      const action = actions[i];
       if (action.rolled == null || action.actionStatus !== "submitted") continue;
-      await settleFoundLabAction(ctx, gameId, roundNumber, sub, action);
-      await settleMergeLabAction(ctx, gameId, roundNumber, sub, action);
-      await settleComputeTargetsAction(ctx, gameId, roundNumber, sub, action);
+      const found = await settleFoundLabAction(ctx, gameId, roundNumber, sub, action);
+      // If foundLab createLabInternal threw (name collision), demote the action's
+      // success flag so subsequent settle steps + the pipeline replay treat it as
+      // failed. Without this, the action would still be marked success=true with
+      // no lab to back it — the pipeline would log phantom seedCompute movement.
+      if (action.foundLab && action.success && !found.effectiveSuccess) {
+        actions[i] = { ...action, success: false };
+        actionsMutated = true;
+      }
+      await settleMergeLabAction(ctx, gameId, roundNumber, sub, actions[i]);
+      await settleComputeTargetsAction(ctx, gameId, roundNumber, sub, actions[i]);
+    }
+    if (actionsMutated) {
+      await ctx.db.patch(sub._id, { actions });
     }
   }
 }
