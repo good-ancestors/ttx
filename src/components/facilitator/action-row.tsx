@@ -148,7 +148,7 @@ export function ActionRow({
        *  same height as the probability chip above. Low-confidence rows
        *  without an effect still render so the facilitator has somewhere to
        *  acknowledge the gate; otherwise Roll Dice would deadlock. */}
-      {(action.structuredEffect || action.confidence === "low") && overrideStructuredEffect && (
+      {!isProjector && (action.structuredEffect || action.confidence === "low") && overrideStructuredEffect && (
         <div className="pl-4 mt-1">
           <EffectEditor
             effect={action.structuredEffect ?? { type: "narrativeOnly" }}
