@@ -16,10 +16,12 @@ import { emitTransaction, emitPair, clearRegenerableRows } from "./computeLedger
 import { readRuntime } from "./gameRuntime";
 
 /** One entry on round.mechanicsLog. Shared by both apply mutations so the schema
- *  stays in sync — phase-5 writes fresh (overwrite), phase-9/10 appends to existing. */
+ *  stays in sync. Phase-5 apply preserves any pre-existing phase-0 entries (R1
+ *  starting state from game create + acquisition materialised at the previous
+ *  round's Advance) and replaces phase-5+ entries; phase-9/10 appends. */
 const mechanicsLogEntryValidator = v.object({
   sequence: v.number(),
-  phase: v.union(v.literal(5), v.literal(9), v.literal(10), v.literal("override")),
+  phase: v.union(v.literal(0), v.literal(5), v.literal(9), v.literal(10), v.literal("override")),
   source: v.union(
     v.literal("player-pinned"),
     v.literal("grader-effect"),
@@ -203,13 +205,23 @@ export const applyDecidedEffectsInternal = internalMutation({
     await Promise.all(args.multiplierUpdates.map((u) => updateLabRdMultiplierInternal(ctx, u.labId, u.rdMultiplier)));
 
     // Stash productivity mods + write initial mechanicsLog slice on the round doc.
+    // Preserve any phase-0 entries (R1 starting state seeded by game.create, or
+    // acquisition entries materialised at the previous round's Advance) — those
+    // describe pre-resolve state and must survive a re-resolve. Replace phase-5+
+    // entries with the freshly-decided slice from this resolve run.
     const round = await ctx.db.query("rounds")
       .withIndex("by_game_and_number", (q) => q.eq("gameId", args.gameId).eq("number", args.roundNumber))
       .first();
     if (round) {
+      const phaseZero = (round.mechanicsLog ?? []).filter((e) => e.phase === 0);
+      // Phase-0 and phase-5 sequence numbers are each generated independently
+      // starting at 0, so renumber after the merge to keep sequences unique
+      // within the round (phase-9 in applyGrowthAndAcquisitionInternal continues
+      // from round.mechanicsLog.length, which assumes a contiguous run).
+      const merged = [...phaseZero, ...args.mechanicsLog].map((e, i) => ({ ...e, sequence: i }));
       await ctx.db.patch(round._id, {
         pendingProductivityMods: args.productivityMods.length > 0 ? args.productivityMods : undefined,
-        mechanicsLog: args.mechanicsLog,
+        mechanicsLog: merged,
       });
     }
   },

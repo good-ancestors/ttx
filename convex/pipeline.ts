@@ -535,9 +535,14 @@ export const rollAndApplyEffects = internalAction({
       // mergers (decommissions absorbed, updates survivor) and pinned
       // foundLabs (creates new lab), so capturing here gives us the only
       // record of the pre-action state.
+      // includeInactive on labs so re-resolves can still resolve the names of
+      // labs that the prior run decommissioned (absorbed mergers). The lab's
+      // computeStock field on re-resolve reflects post-pinned state, so the
+      // apply-phase replay reads transferred amounts from the ledger rather
+      // than the snapshot.
       const [tablesBeforeResolve, labsBeforeResolve]: [Table[], LabWithCompute[]] = await Promise.all([
         ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
-        ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
+        ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId, includeInactive: true }),
       ]);
 
       await resolveAiInfluencePass(ctx, { gameId, roundNumber, tablesBeforeResolve });
@@ -747,74 +752,110 @@ export const rollAndApplyEffects = internalAction({
       // Player-pinned compute transfers (action.computeTargets) settled inside
       // rollAllImpl before this apply phase, so they aren't in effectsToApply.
       // The facilitator's mechanicsLog still needs to show them — otherwise a
-      // 14u send disappears from the audit trail. Replay each pinned transfer
-      // against a scratch running map seeded from the pre-pinned state so the
-      // log lines carry meaningful before/after values. tableComputeByRole is
-      // not mutated here — grader effects below iterate from the post-pinned
-      // state already reflected in the cache.
-      const pinnedTransferLog: { fromRoleId: string; toRoleId: string; amount: number }[] = [];
-      const pinnedNetDeltaByRole = new Map<string, number>();
+      // 14u send disappears from the audit trail. Read amounts straight from the
+      // ledger (settleComputeTargetsAction may have clamped declared amounts to
+      // sender availability, and on re-resolve the ledger reflects any reversal
+      // history) — `target.amount` is just the declared intent and can lie.
+      // tableComputeByRole is not mutated here — grader effects below iterate
+      // from the post-pinned state already reflected in the cache.
+      const settledRowsThisRound = await ctx.runQuery(
+        internal.computeLedger.getSettledRowsForRoundInternal,
+        { gameId, roundNumber },
+      );
+      const actionIds = new Set<string>();
       for (const sub of submissions) {
         for (const action of sub.actions) {
-          if (!action.success) continue;
-          if (!action.computeTargets || action.computeTargets.length === 0) continue;
-          for (const target of action.computeTargets) {
-            const direction = target.direction ?? "send";
-            const fromRoleId = direction === "send" ? sub.roleId : target.roleId;
-            const toRoleId = direction === "send" ? target.roleId : sub.roleId;
-            if (fromRoleId === toRoleId) continue;
-            pinnedTransferLog.push({ fromRoleId, toRoleId, amount: target.amount });
-            pinnedNetDeltaByRole.set(fromRoleId, (pinnedNetDeltaByRole.get(fromRoleId) ?? 0) - target.amount);
-            pinnedNetDeltaByRole.set(toRoleId, (pinnedNetDeltaByRole.get(toRoleId) ?? 0) + target.amount);
+          if (action.success && action.actionId && action.computeTargets?.length) {
+            actionIds.add(action.actionId);
           }
         }
       }
-      if (pinnedTransferLog.length > 0) {
+      // Aggregate pinned transfer amounts per (actionId, fromRole, toRole) from
+      // the ledger. Sender-side rows only (negative amount) — the matched
+      // receiver row carries the same amount with opposite sign and would
+      // double-count.
+      type PairKey = string;
+      const pinnedPairAmount = new Map<PairKey, { fromRole: string; toRole: string; amount: number }>();
+      const pinnedNetDeltaByRole = new Map<string, number>();
+      for (const row of settledRowsThisRound) {
+        if (row.type !== "transferred") continue;
+        if (!row.actionId || !actionIds.has(row.actionId)) continue;
+        if (!row.counterpartyRoleId) continue;
+        if (row.amount >= 0) continue;
+        const amount = Math.abs(row.amount);
+        const key = `${row.roleId}→${row.counterpartyRoleId}`;
+        const existing = pinnedPairAmount.get(key);
+        pinnedPairAmount.set(key, {
+          fromRole: row.roleId,
+          toRole: row.counterpartyRoleId,
+          amount: (existing?.amount ?? 0) + amount,
+        });
+        pinnedNetDeltaByRole.set(row.roleId, (pinnedNetDeltaByRole.get(row.roleId) ?? 0) - amount);
+        pinnedNetDeltaByRole.set(row.counterpartyRoleId, (pinnedNetDeltaByRole.get(row.counterpartyRoleId) ?? 0) + amount);
+      }
+      if (pinnedPairAmount.size > 0) {
         const pinnedRunning = new Map<string, number>();
         for (const [roleId, current] of tableComputeByRole) {
           pinnedRunning.set(roleId, current - (pinnedNetDeltaByRole.get(roleId) ?? 0));
         }
         const subjectFor = (roleId: string) =>
           workingLabs.find((l) => l.roleId === roleId)?.name ?? roleNameMap.get(roleId) ?? roleId;
-        for (const t of pinnedTransferLog) {
-          const fromBefore = pinnedRunning.get(t.fromRoleId) ?? 0;
-          const toBefore = pinnedRunning.get(t.toRoleId) ?? 0;
-          logEntryAs({ source: "player-pinned", subject: subjectFor(t.fromRoleId), field: "computeStock", before: fromBefore, after: fromBefore - t.amount, reason: `computeTransfer → ${t.toRoleId} (-${t.amount}u)` });
-          logEntryAs({ source: "player-pinned", subject: subjectFor(t.toRoleId), field: "computeStock", before: toBefore, after: toBefore + t.amount, reason: `computeTransfer ← ${t.fromRoleId} (+${t.amount}u)` });
-          pinnedRunning.set(t.fromRoleId, fromBefore - t.amount);
-          pinnedRunning.set(t.toRoleId, toBefore + t.amount);
+        for (const t of pinnedPairAmount.values()) {
+          if (t.amount <= 0) continue;
+          const fromBefore = pinnedRunning.get(t.fromRole) ?? 0;
+          const toBefore = pinnedRunning.get(t.toRole) ?? 0;
+          logEntryAs({ source: "player-pinned", subject: subjectFor(t.fromRole), field: "computeStock", before: fromBefore, after: fromBefore - t.amount, reason: `computeTransfer → ${t.toRole} (-${t.amount}u)` });
+          logEntryAs({ source: "player-pinned", subject: subjectFor(t.toRole), field: "computeStock", before: toBefore, after: toBefore + t.amount, reason: `computeTransfer ← ${t.fromRole} (+${t.amount}u)` });
+          pinnedRunning.set(t.fromRole, fromBefore - t.amount);
+          pinnedRunning.set(t.toRole, toBefore + t.amount);
         }
       }
 
       // Player-pinned mergers (action.mergeLab) and foundLabs (action.foundLab)
-      // also settle inside rollAllImpl. Reconstruct their effects from the
-      // pre-resolve lab snapshot (`labsBeforeResolve`) so their compute and
-      // rdMultiplier transitions appear in the audit log alongside grader-derived
-      // mergers/foundings.
+      // also settle inside rollAllImpl. Reconstruct their effects for the audit
+      // log. On re-resolve the lab snapshot's computeStock reflects post-pinned
+      // state, so authoritative amounts come from the ledger (merged rows for
+      // mergers; action.foundLab.seedCompute is constant for foundings). The
+      // current cached stock + that amount gives consistent before/after across
+      // first and re-resolve. rdMultiplier inheritance can only be detected on
+      // first resolve (post-merger survivor.rdMultiplier already absorbed the
+      // higher value); on re-resolve the entry is silently skipped. This is
+      // the same trade-off the grader-effect path makes for re-resolves.
       const labsBeforeById = new Map(labsBeforeResolve.map((l) => [String(l.labId), l] as const));
+      const transferAmountForAction = (actionId: string): number => {
+        for (const row of settledRowsThisRound) {
+          if (row.actionId !== actionId) continue;
+          if (row.type !== "merged" && row.type !== "transferred") continue;
+          if (row.amount >= 0) continue;
+          return Math.abs(row.amount);
+        }
+        return 0;
+      };
       for (const sub of submissions) {
         for (const action of sub.actions) {
-          if (!action.success) continue;
+          if (!action.success || !action.actionId) continue;
           if (action.mergeLab) {
             const absorbed = labsBeforeById.get(String(action.mergeLab.absorbedLabId));
             const survivor = labsBeforeById.get(String(action.mergeLab.survivorLabId));
             if (!absorbed || !survivor) continue;
             const survivorName = action.mergeLab.newName?.trim() || survivor.name;
-            const absorbedStock = absorbed.computeStock;
+            const absorbedStock = transferAmountForAction(action.actionId);
             if (absorbedStock > 0) {
+              const survivorAfter = (tableComputeByRole.get(survivor.roleId ?? "") ?? survivor.computeStock);
               logEntryAs({ source: "player-pinned", subject: absorbed.name, field: "computeStock", before: absorbedStock, after: 0, reason: `merger → ${survivorName} (compute follows the lab, -${absorbedStock}u)` });
-              logEntryAs({ source: "player-pinned", subject: survivorName, field: "computeStock", before: survivor.computeStock, after: survivor.computeStock + absorbedStock, reason: `merger absorbed ${absorbed.name} (+${absorbedStock}u)` });
+              logEntryAs({ source: "player-pinned", subject: survivorName, field: "computeStock", before: survivorAfter - absorbedStock, after: survivorAfter, reason: `merger absorbed ${absorbed.name} (+${absorbedStock}u)` });
             }
             const inheritedMult = Math.max(survivor.rdMultiplier, absorbed.rdMultiplier);
             if (inheritedMult > survivor.rdMultiplier) {
               logEntryAs({ source: "player-pinned", subject: survivorName, field: "rdMultiplier", before: survivor.rdMultiplier, after: inheritedMult, reason: `merger absorbed ${absorbed.name} (inherited higher multiplier)` });
             }
           } else if (action.foundLab) {
-            const founderStockBefore = tablesBeforeResolve.find((t) => t.roleId === sub.roleId)?.computeStock ?? 0;
+            const seed = action.foundLab.seedCompute;
+            const founderCurrent = tableComputeByRole.get(sub.roleId) ?? 0;
             const founderName = labsBeforeResolve.find((l) => l.roleId === sub.roleId)?.name
               ?? roleNameMap.get(sub.roleId)
               ?? sub.roleId;
-            logEntryAs({ source: "player-pinned", subject: founderName, field: "computeStock", before: founderStockBefore, after: founderStockBefore - action.foundLab.seedCompute, reason: `foundLab "${action.foundLab.name}" — seeded with ${action.foundLab.seedCompute}u` });
+            logEntryAs({ source: "player-pinned", subject: founderName, field: "computeStock", before: founderCurrent + seed, after: founderCurrent, reason: `foundLab "${action.foundLab.name}" — seeded with ${seed}u` });
           }
         }
       }

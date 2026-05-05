@@ -511,3 +511,112 @@ describe("Authorization — requests.respond / requests.cancel / setActionInflue
     ).rejects.toThrow(/Only the AI Systems player/);
   });
 });
+
+describe("computeLedger — overrideOutcome oscillation (PR #54 net-amount reconciliation)", () => {
+  let gameId: Id<"games">;
+  let senderTableId: Id<"tables">;
+  const sender = "us-president";
+  const target = "openbrain-ceo";
+  const TRANSFER = 3;
+
+  beforeAll(async () => {
+    gameId = await createRunningGame();
+    const tables = await convex.query(api.tables.getByGame, { gameId });
+    senderTableId = tables.find((t) => t.roleId === sender)!._id;
+  });
+
+  it("fail → success → fail → success oscillation settles cleanly via net-amount reconciliation", async () => {
+    const tablesBefore = await convex.query(api.tables.getByGame, { gameId });
+    const senderStart = tablesBefore.find((t) => t.roleId === sender)!.computeStock ?? 0;
+    const targetStart = tablesBefore.find((t) => t.roleId === target)!.computeStock ?? 0;
+    expect(senderStart).toBeGreaterThanOrEqual(TRANSFER);
+
+    // Submit a player-pinned send (escrows TRANSFER from sender).
+    await convex.mutation(api.submissions.saveAndSubmit, {
+      tableId: senderTableId,
+      gameId,
+      roundNumber: 1,
+      roleId: sender,
+      text: "Send compute (oscillation harness)",
+      priority: 1,
+      computeTargets: [{ roleId: target, amount: TRANSFER, direction: "send" }],
+    });
+
+    const sub = await convex.query(api.submissions.getForTable, {
+      tableId: senderTableId,
+      roundNumber: 1,
+    });
+    expect(sub).toBeTruthy();
+    const actionIndex = sub!.actions.findIndex(
+      (a) => a.computeTargets && a.computeTargets.length > 0,
+    );
+    expect(actionIndex).toBeGreaterThanOrEqual(0);
+
+    // Grade at p=100 then roll — guarantees success without LLM cost. rollAllFacilitator
+    // calls rollAllImpl which settles the pending escrow (sender −TRANSFER, target +TRANSFER).
+    await convex.mutation(api.submissions.applyGrading, {
+      submissionId: sub!._id,
+      gradedActions: sub!.actions.map((a) => ({
+        text: a.text,
+        priority: a.priority,
+        probability: 100,
+        reasoning: "test: forced success",
+      })),
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+    await convex.mutation(api.submissions.rollAllFacilitator, {
+      gameId,
+      roundNumber: 1,
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+
+    const expectStocks = async (label: string, senderExpected: number, targetExpected: number) => {
+      const t = await convex.query(api.tables.getByGame, { gameId });
+      const senderStock = t.find((x) => x.roleId === sender)!.computeStock ?? 0;
+      const targetStock = t.find((x) => x.roleId === target)!.computeStock ?? 0;
+      expect(senderStock, `${label}: sender stock`).toBe(senderExpected);
+      expect(targetStock, `${label}: target stock`).toBe(targetExpected);
+      await assertCacheLedgerInvariant(gameId, 1);
+    };
+
+    await expectStocks("after roll (success)", senderStart - TRANSFER, targetStart + TRANSFER);
+
+    // 1st flip: success → fail. settleComputeTargetsAction must reverse the transfer.
+    await convex.mutation(api.submissions.overrideOutcome, {
+      submissionId: sub!._id,
+      actionIndex,
+      success: false,
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+    await expectStocks("after fail #1", senderStart, targetStart);
+
+    // 2nd flip: fail → success. Re-transfer.
+    await convex.mutation(api.submissions.overrideOutcome, {
+      submissionId: sub!._id,
+      actionIndex,
+      success: true,
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+    await expectStocks("after success #2", senderStart - TRANSFER, targetStart + TRANSFER);
+
+    // 3rd flip: success → fail again. Reverse once more — this is the case that the
+    // pre-PR-#54 "presence check" got wrong (it would skip the second reversal because
+    // a reversal row already existed for the action, leaving the recipient over-credited).
+    await convex.mutation(api.submissions.overrideOutcome, {
+      submissionId: sub!._id,
+      actionIndex,
+      success: false,
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+    await expectStocks("after fail #3 (oscillation)", senderStart, targetStart);
+
+    // 4th flip: fail → success again. Re-transfer.
+    await convex.mutation(api.submissions.overrideOutcome, {
+      submissionId: sub!._id,
+      actionIndex,
+      success: true,
+      facilitatorToken: FACILITATOR_TOKEN,
+    });
+    await expectStocks("after success #4 (oscillation)", senderStart - TRANSFER, targetStart + TRANSFER);
+  });
+});

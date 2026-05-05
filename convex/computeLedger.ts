@@ -300,6 +300,21 @@ export const getDirectTransfersInternal = internalQuery({
   },
 });
 
+/** All settled rows for a round. Used by the merger replay path to recover
+ *  authoritative transferred amounts from the ledger when re-resolving (the
+ *  cached labs.computeStock already reflects post-pinned state, so the ledger
+ *  is the only consistent source for the absorbed quantity). */
+export const getSettledRowsForRoundInternal = internalQuery({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("computeTransactions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
+      .collect();
+    return rows.filter((r) => r.status === "settled");
+  },
+});
+
 /** Facilitator-triggered wrapper — used by the test harness to pin the regenerate
  *  preserves-pending-escrow invariant without running the LLM pipeline. Also usable
  *  by a facilitator to manually reset a round's narrative-driven compute moves. */
