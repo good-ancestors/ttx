@@ -612,26 +612,13 @@ function DriverTablePage({
     return map;
   }, [allRequests, role]);
 
-  const handleEditAction = useCallback(async (submittedIndex: number) => {
+  const performEditAction = useCallback(async (submittedIndex: number) => {
     if (!submission) return;
     setSubmitError("");
     try {
       const actualIndex = nthSubmittedIndex(submission.actions, submittedIndex);
       if (actualIndex === -1) return;
       const action = submission.actions[actualIndex];
-
-      // Warn if editing will cancel accepted compute requests
-      const existingRequests = sentRequestsByAction?.get(action.actionId ?? action.text) ?? [];
-      const hasAcceptedCompute = existingRequests.some(
-        (r) => r.requestType === "compute" && r.status === "accepted"
-      );
-      const hasComputeTargets = action.computeTargets && action.computeTargets.length > 0;
-      if (hasAcceptedCompute || hasComputeTargets) {
-        const confirmed = window.confirm(
-          "Editing this action will cancel any accepted compute requests and refund escrowed compute. Continue?"
-        );
-        if (!confirmed) return;
-      }
 
       await editSubmittedMut({ submissionId: submission._id, actionIndex: actualIndex, sessionId });
 
@@ -660,6 +647,26 @@ function DriverTablePage({
       setSubmitError(`Failed to edit: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
   }, [submission, editSubmittedMut, sentRequestsByAction, allTables, sessionId]);
+
+  const [editConfirmIndex, setEditConfirmIndex] = useState<number | null>(null);
+
+  const handleEditAction = useCallback(async (submittedIndex: number) => {
+    if (!submission) return;
+    const actualIndex = nthSubmittedIndex(submission.actions, submittedIndex);
+    if (actualIndex === -1) return;
+    const action = submission.actions[actualIndex];
+
+    const existingRequests = sentRequestsByAction?.get(action.actionId ?? action.text) ?? [];
+    const hasAcceptedCompute = existingRequests.some(
+      (r) => r.requestType === "compute" && r.status === "accepted"
+    );
+    const hasComputeTargets = action.computeTargets && action.computeTargets.length > 0;
+    if (hasAcceptedCompute || hasComputeTargets) {
+      setEditConfirmIndex(submittedIndex);
+      return;
+    }
+    await performEditAction(submittedIndex);
+  }, [submission, sentRequestsByAction, performEditAction]);
 
   const handleDeleteAction = useCallback(async (submittedIndex: number) => {
     if (!submission) return;
@@ -878,7 +885,82 @@ function DriverTablePage({
           />
         )}
       </div>
+      {editConfirmIndex !== null && (
+        <ConfirmDialog
+          title="Cancel compute requests?"
+          message="Editing this action will cancel any accepted compute requests and refund escrowed compute. Continue?"
+          confirmLabel="Continue"
+          onConfirm={() => {
+            setEditConfirmIndex(null);
+            void performEditAction(editConfirmIndex);
+          }}
+          onCancel={() => setEditConfirmIndex(null)}
+        />
+      )}
     </InAppBrowserGate>
+  );
+}
+
+function ConfirmDialog({
+  title,
+  message,
+  confirmLabel,
+  onConfirm,
+  onCancel,
+}: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCancel();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    confirmRef.current?.focus();
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onCancel]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 px-4"
+      onClick={onCancel}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="confirm-dialog-title"
+        className="bg-white rounded-lg shadow-xl max-w-sm w-full p-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="confirm-dialog-title" className="text-sm font-bold text-text mb-2">
+          {title}
+        </h2>
+        <p className="text-xs text-text-muted leading-snug mb-4">{message}</p>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            className="min-h-[44px] px-4 rounded text-sm text-text-muted hover:text-text"
+          >
+            Cancel
+          </button>
+          <button
+            ref={confirmRef}
+            onClick={onConfirm}
+            className="min-h-[44px] px-4 rounded text-sm font-bold bg-text text-white hover:bg-text/90"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
