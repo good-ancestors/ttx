@@ -135,7 +135,7 @@ function roundChartPoint({
   return { x, y: 0, value, overridden };
 }
 
-function buildChartData(
+export function buildChartData(
   rounds: Round[],
   currentLabs: Lab[],
   currentRound: number,
@@ -155,8 +155,15 @@ function buildChartData(
   // ownership transfers don't split one lab into two series. The identity
   // key below prefers labId over roleId — otherwise transferOwnership
   // changes a lab's roleId (owner) and creates a phantom "inactive" series.
+  // Pull from snapshotLabs too: a merged-out lab is absent from currentLabs,
+  // so without snapshot fallback its DEFAULT_LABS entry would key on roleId
+  // while pre-merge active snapshots key on labId — duplicate "inactive"
+  // series. Map constructor lets later entries win, so currentLabs comes
+  // last to ensure a renamed survivor still maps to the live labId.
   const labIdByName = new Map(
-    currentLabs.filter((l) => l.labId).map((l) => [l.name, l.labId] as const),
+    [...snapshotLabs, ...currentLabs]
+      .filter((l) => l.labId)
+      .map((l) => [l.name, l.labId] as const),
   );
   const defaultLabsEnriched = DEFAULT_LABS.map((l) => ({
     ...l,
@@ -214,7 +221,12 @@ function buildChartData(
 
     for (let i = 0; i < completedRounds.length; i++) {
       const round = completedRounds[i];
-      const roundLab = round.labsAfter?.find((l) => identityKey(l) === labKey);
+      // Skip decommissioned snapshot rows: they carry the lab's frozen
+      // pre-merge rdMultiplier and would otherwise pin the inactive line
+      // at that value across every subsequent round.
+      const roundLab = round.labsAfter?.find(
+        (l) => identityKey(l) === labKey && l.status !== "decommissioned",
+      );
       if (!roundLab && isInactive) break;
       const fallbackValue = points[points.length - 1]?.value ?? lab.rdMultiplier;
       const point = roundChartPoint({
