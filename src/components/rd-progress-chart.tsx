@@ -310,8 +310,8 @@ export function RdProgressChart({
         viewBox={`0 0 ${width} ${height}`}
         className="w-full"
         style={{
-          maxHeight: maxH ?? (compact ? 170 : isProjector ? 189 : 210),
-          ...(isProjector && maxH === undefined ? { width: "90%" } : {}),
+          maxHeight: maxH ?? (compact ? 170 : isProjector ? 140 : 210),
+          ...(isProjector && maxH === undefined ? { width: "70%" } : {}),
         }}
       >
         {/* Y-axis grid lines and labels */}
