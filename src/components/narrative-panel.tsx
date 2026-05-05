@@ -132,7 +132,7 @@ export function NarrativePanel({
                 const isBulletList = lines.length > 1 && lines.every((l) => /^[-•*]\s/.test(l));
                 return (
                   <div key={key}>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
+                    <div className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
                       {label}
                     </div>
                     {isBulletList ? (
@@ -155,7 +155,7 @@ export function NarrativePanel({
                 if (!lines?.length) return null;
                 return (
                   <div key={key}>
-                    <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
+                    <div className="text-xs font-semibold uppercase tracking-[0.08em] text-text-muted mb-1.5">
                       {label}
                     </div>
                     <ul className="space-y-1.5">
