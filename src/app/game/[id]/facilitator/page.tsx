@@ -326,7 +326,7 @@ export default function FacilitatorPage({
     return (
       <div className="min-h-screen bg-navy-dark text-white">
         <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} onToggleProjector={onToggleProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
-        <div className="p-6 max-w-[1400px] mx-auto">
+        <div className="px-6 pt-6 pb-64 max-w-[1400px] mx-auto">
           <div className="text-center mb-8">
             <Dices className="w-12 h-12 text-text-light mx-auto mb-4" />
             <h2 className="text-2xl font-extrabold mb-2">Scenario Complete</h2>
@@ -511,8 +511,10 @@ export default function FacilitatorPage({
         </div>
       )}
 
-      {/* Full-width sequential layout — designed for 1920×1080 projection */}
-      <div className="px-6 py-6 space-y-4">
+      {/* Full-width sequential layout — designed for 1920×1080 projection.
+          pb-64 gives native <select> dropdowns near page bottom room to open
+          downward without being clipped by the viewport. */}
+      <div className="px-6 pt-6 pb-64 space-y-4">
         {/* Add Lab modal */}
         {addLabOpen && !isProjector && (
           <AddLabModal
