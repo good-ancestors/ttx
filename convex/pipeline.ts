@@ -8,7 +8,7 @@ import type { Id, Doc } from "./_generated/dataModel";
 import type { RuntimeView } from "./gameRuntime";
 import { callAnthropic } from "./llm";
 import { GRADING_MODELS, RESOLVE_MODELS } from "./aiModels";
-import { AI_SYSTEMS_ROLE_ID } from "./gameData";
+import { AI_SYSTEMS_ROLE_ID, ROUND_CONFIGS } from "./gameData";
 import {
   buildBatchedGradingPrompt,
   buildResolveNarrativePrompt,
@@ -38,7 +38,7 @@ import {
   getDisposition,
 } from "@/lib/game-data";
 
-const MAX_MECHANICS_LOG_ENTRIES = 200;
+export const MAX_MECHANICS_LOG_ENTRIES = 200;
 
 /** Build role description for the grading LLM from the structured handout.
  *  Only includes role + objective — resources are dynamic and already
@@ -1223,9 +1223,12 @@ export const continueFromEffectReview = internalAction({
         );
 
         // ═══ PHASE 9 — R&D GROWTH ═══
-        // Start mechanicsLog for phases 9 + 10 at the phase-5 offset.
+        // Start mechanicsLog for phase 9 at the phase-5 offset. Phase-10 acquisition
+        // does not write to mechanicsLog here — those entries are emitted as P0 on
+        // the *next* round's log when materialisePendingAcquired fires at Advance,
+        // because that's where acquisition actually mutates state.
         const phase5LogLen = currentRound.mechanicsLog?.length ?? 0;
-        type MechLog = { sequence: number; phase: 5 | 9 | 10; source: "player-pinned" | "grader-effect" | "natural-growth" | "acquisition" | "facilitator-edit"; subject: string; field: "rdMultiplier" | "computeStock" | "productivity"; before: number; after: number; reason: string };
+        type MechLog = { sequence: number; phase: 5 | 9; source: "player-pinned" | "grader-effect" | "natural-growth" | "facilitator-edit"; subject: string; field: "rdMultiplier" | "computeStock" | "productivity"; before: number; after: number; reason: string };
         const mechLog: MechLog[] = [];
         const pushLog = (entry: Omit<MechLog, "sequence">) => {
           mechLog.push({ sequence: phase5LogLen + mechLog.length, ...entry });
@@ -1266,38 +1269,34 @@ export const continueFromEffectReview = internalAction({
         }
 
         // ═══ PHASE 10 — NEW COMPUTE ACQUIRED ═══
+        // Skipped on the final round — there is no next round for compute to flow into,
+        // so acquisition is moot. The "New Compute Acquired" panel hides itself when
+        // pendingAcquired is empty.
         const acquiredEntries: { roleId: string; amount: number }[] = [];
-        for (const lab of grownLabs) {
-          if (!lab.roleId) continue;
-          const pre = labsByLabId.get(lab.labId);
-          if (!pre) continue;
-          const preStock = pre.roleId ? tableComputeByRole.get(pre.roleId) ?? 0 : 0;
-          const acquired = lab.computeStock - preStock;
-          if (acquired > 0) acquiredEntries.push({ roleId: lab.roleId, amount: acquired });
-        }
-        const activeOwnerRoleIds = new Set(grownLabs.map((l) => l.roleId).filter((r): r is string => !!r));
-        const enabledRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
-        const { calculatePoolNewCompute, NEW_COMPUTE_PER_GAME_ROUND } = await import("./gameData");
-        for (const t of tables) {
-          if (!t.enabled || activeOwnerRoleIds.has(t.roleId)) continue;
-          const overridePct = game.computeShareOverrides?.[t.roleId];
-          let produced: number;
-          if (overridePct != null) {
-            const baseTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
-            produced = Math.round(baseTotal * overridePct / 100);
-          } else {
-            produced = calculatePoolNewCompute(t.roleId, roundNumber, enabledRoleIds);
+        if (roundNumber < ROUND_CONFIGS.length) {
+          for (const lab of grownLabs) {
+            if (!lab.roleId) continue;
+            const pre = labsByLabId.get(lab.labId);
+            if (!pre) continue;
+            const preStock = pre.roleId ? tableComputeByRole.get(pre.roleId) ?? 0 : 0;
+            const acquired = lab.computeStock - preStock;
+            if (acquired > 0) acquiredEntries.push({ roleId: lab.roleId, amount: acquired });
           }
-          if (produced !== 0) acquiredEntries.push({ roleId: t.roleId, amount: produced });
-        }
-
-        // Phase 10 mechanicsLog — acquisition deltas per role. The before/after value
-        // is the role's stock pre- and post-acquisition (for a lab owner, the lab's
-        // growth stock IS the acquisition; for non-lab roles, it's pool share).
-        const roleToName = new Map(labsNow.map((l) => [l.roleId, l.name] as const));
-        for (const entry of acquiredEntries) {
-          const pre = tableComputeByRole.get(entry.roleId) ?? 0;
-          pushLog({ phase: 10, source: "acquisition", subject: roleToName.get(entry.roleId) ?? entry.roleId, field: "computeStock", before: pre, after: pre + entry.amount, reason: `R${roundNumber} acquisition +${entry.amount}u` });
+          const activeOwnerRoleIds = new Set(grownLabs.map((l) => l.roleId).filter((r): r is string => !!r));
+          const enabledRoleIds = new Set(tables.filter((t) => t.enabled).map((t) => t.roleId));
+          const { calculatePoolNewCompute, NEW_COMPUTE_PER_GAME_ROUND } = await import("./gameData");
+          for (const t of tables) {
+            if (!t.enabled || activeOwnerRoleIds.has(t.roleId)) continue;
+            const overridePct = game.computeShareOverrides?.[t.roleId];
+            let produced: number;
+            if (overridePct != null) {
+              const baseTotal = NEW_COMPUTE_PER_GAME_ROUND[roundNumber] ?? 0;
+              produced = Math.round(baseTotal * overridePct / 100);
+            } else {
+              produced = calculatePoolNewCompute(t.roleId, roundNumber, enabledRoleIds);
+            }
+            if (produced !== 0) acquiredEntries.push({ roleId: t.roleId, amount: produced });
+          }
         }
 
         const priorLogLen = currentRound.mechanicsLog?.length ?? 0;

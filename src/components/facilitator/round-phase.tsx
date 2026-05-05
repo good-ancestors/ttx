@@ -332,7 +332,7 @@ export function RoundPhase({
               onClick={() => setPendingConfirm("advance")}
               className="w-full py-4 bg-white text-navy rounded-lg font-extrabold text-lg hover:bg-off-white transition-colors flex items-center justify-center gap-2"
             >
-              Advance to Next Round <ChevronRight className="w-5 h-5" />
+              Distribute compute &amp; advance round <ChevronRight className="w-5 h-5" />
             </button>
           )
         ) : (

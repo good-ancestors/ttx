@@ -6,7 +6,7 @@ import { labTrajectoryValidator } from "./schema";
 import { assertFacilitator } from "./events";
 
 /** Find a single round by game + number using compound index (1 doc read). */
-async function findRound(ctx: QueryCtx | MutationCtx, gameId: Id<"games">, roundNumber: number) {
+export async function findRound(ctx: QueryCtx | MutationCtx, gameId: Id<"games">, roundNumber: number) {
   return ctx.db.query("rounds")
     .withIndex("by_game_and_number", (q) => q.eq("gameId", gameId).eq("number", roundNumber))
     .first();
@@ -363,7 +363,9 @@ export const getPendingAcquired = query({
 });
 
 /** Facilitator-edit path for pending acquisition: overwrite the full `pendingAcquired`
- *  array with new per-role amounts. Used by the editable "New Compute Acquired" panel. */
+ *  array with new per-role amounts. Used by the editable "New Compute Acquired" panel.
+ *  No mechanicsLog write — acquisition entries are emitted as P0 on the *next* round
+ *  when materialisePendingAcquired fires at Advance, not during this round's resolve. */
 export const updatePendingAcquired = mutation({
   args: {
     gameId: v.id("games"),
