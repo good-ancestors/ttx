@@ -104,7 +104,6 @@ export function ComputeRequestPicker({
       : 0;
   const maxAmount = Math.max(1, sourceStock);
   const sendBlocked = direction === "send" && ownSendable <= 0;
-  const requestBlocked = direction === "request" && selectedRole !== "" && sourceStock <= 0;
 
   // Clamp the in-progress amount when the cap shrinks (e.g. switching source
   // to one with less compute, or flipping direction).
@@ -114,8 +113,8 @@ export function ComputeRequestPicker({
 
   const addTarget = () => {
     if (!selectedRole || amount <= 0) return;
-    if (sourceStock <= 0) return;
-    const capped = Math.min(amount, sourceStock);
+    if (direction === "send" && amount > ownSendable) return;
+    const capped = Math.min(amount, maxAmount);
     const existing = action.computeTargets.filter((t) => t.roleId !== selectedRole);
     onUpdate({ computeTargets: [...existing, { roleId: selectedRole, amount: capped, direction }] });
     setSelectedRole("");
@@ -231,7 +230,7 @@ export function ComputeRequestPicker({
         />
         <button
           onClick={addTarget}
-          disabled={!selectedRole || sendBlocked || requestBlocked}
+          disabled={!selectedRole || sendBlocked}
           className={`min-h-[44px] px-3 rounded-lg text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-default ${
             direction === "send"
               ? "bg-[#D97706] hover:bg-[#B45309]"
