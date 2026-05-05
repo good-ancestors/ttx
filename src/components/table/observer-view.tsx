@@ -183,7 +183,7 @@ export function ObserverView({ gameId, tableId }: Props) {
         style={{ paddingBottom: showTabs ? "max(64px, calc(64px + env(safe-area-inset-bottom)))" : "max(env(safe-area-inset-bottom), 20px)" }}
       >
         <div className="fixed top-0 left-0 right-0 z-10 bg-off-white/95 backdrop-blur-sm border-b border-border px-4 py-3 pt-[max(12px,env(safe-area-inset-top))]">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
               <span className="text-[15px] font-bold text-text truncate">{role.name}</span>
@@ -191,7 +191,7 @@ export function ObserverView({ gameId, tableId }: Props) {
                 <Eye className="w-3 h-3" /> Observer
               </span>
             </div>
-            <div className="flex items-center gap-3 overflow-hidden">
+            <div className="flex items-center flex-wrap gap-x-3 gap-y-1">
               {hasCompute(role) && table.computeStock != null && (
                 <span className="text-xs font-mono text-text-muted flex items-center gap-1">
                   <Zap className="w-3.5 h-3.5" aria-hidden="true" /> {table.computeStock ?? 0}u
@@ -223,7 +223,7 @@ export function ObserverView({ gameId, tableId }: Props) {
           </div>
         </div>
 
-        <div className="px-4 pt-16">
+        <div className="px-4 pt-24 sm:pt-16">
           <TakeoverBanner
             gameId={gameId}
             roleId={table.roleId}
