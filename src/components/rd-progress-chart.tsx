@@ -401,13 +401,13 @@ export function RdProgressChart({
        *  up under the 32px root font and push the chart container offscreen. */}
       <div
         className="flex flex-wrap gap-x-3 gap-y-1 mt-1"
-        style={isProjector ? { fontSize: 20 } : undefined}
+        style={isProjector ? { fontSize: 40 } : undefined}
       >
         {series.filter((s) => !s.isBackground).map((s) => (
           <span key={s.roleId} className={`flex items-center gap-1.5 ${isProjector ? "" : "text-xs"} ${s.isInactive ? "text-text-light/80" : "text-text-light"}`}>
             <span
               className="rounded-full"
-              style={isProjector ? { width: 14, height: 14, backgroundColor: s.color } : { width: 10, height: 10, backgroundColor: s.color }}
+              style={isProjector ? { width: 28, height: 28, backgroundColor: s.color } : { width: 10, height: 10, backgroundColor: s.color }}
             />
             {s.name}{s.isInactive ? " (inactive)" : ""}
           </span>
