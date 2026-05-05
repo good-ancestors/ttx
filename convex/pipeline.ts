@@ -13,6 +13,7 @@ import {
   buildBatchedGradingPrompt,
   buildResolveNarrativePrompt,
   normaliseStructuredEffect,
+  derivePinnedStructuredEffect,
   SCENARIO_CONTEXT,
   type ActionRequest,
   type BatchedGradingRole,
@@ -371,12 +372,17 @@ async function gradeAllBatched(
       const nextActions = sub.actions.map((a, i) => {
         const g = updates.get(i);
         if (!g) return a;
+        // Player-pinned data (computeTargets / mergeLab / foundLab) is the
+        // ground truth for the apply path — graders sometimes drop the pin
+        // and emit narrativeOnly. Override structuredEffect to match the pin
+        // so the facilitator's "What was attempted" badge stays consistent.
+        const pinnedEffect = derivePinnedStructuredEffect(a, sub.roleId);
         return {
           ...a,
           probability: g.probability,
           reasoning: g.reasoning,
           confidence: g.confidence,
-          structuredEffect: normaliseStructuredEffect(g.structuredEffect),
+          structuredEffect: pinnedEffect ?? normaliseStructuredEffect(g.structuredEffect),
         };
       });
       return ctx.runMutation(internal.submissions.applyGradingInternal, {
@@ -522,8 +528,17 @@ export const rollAndApplyEffects = internalAction({
     const { gameId, roundNumber } = args;
 
     try {
-      // Fetch tables once for use in AI influence resolution and snapshotting
-      const tablesBeforeResolve: Table[] = await ctx.runQuery(internal.tables.getByGameInternal, { gameId });
+      // Fetch tables once for use in AI influence resolution and snapshotting.
+      // Also snapshot labs at this point so the apply phase can compute the
+      // pre-pinned values for player-pinned merger / foundLab mechanicsLog
+      // entries. rollAllImpl below mutates lab structural state for pinned
+      // mergers (decommissions absorbed, updates survivor) and pinned
+      // foundLabs (creates new lab), so capturing here gives us the only
+      // record of the pre-action state.
+      const [tablesBeforeResolve, labsBeforeResolve]: [Table[], LabWithCompute[]] = await Promise.all([
+        ctx.runQuery(internal.tables.getByGameInternal, { gameId }),
+        ctx.runQuery(internal.labs.getLabsWithComputeInternal, { gameId }),
+      ]);
 
       await resolveAiInfluencePass(ctx, { gameId, roundNumber, tablesBeforeResolve });
 
@@ -652,11 +667,18 @@ export const rollAndApplyEffects = internalAction({
       // productivity appends an entry — the facilitator reads these at P7 to trace
       // why a number moved the way it did. Phase 9/10 entries are appended later in
       // continueFromEffectReview.
-      type Phase5LogEntry = { sequence: number; phase: 5; source: "grader-effect"; subject: string; field: "rdMultiplier" | "computeStock" | "productivity"; before: number; after: number; reason: string };
+      type Phase5Source = "grader-effect" | "player-pinned" | "facilitator-edit";
+      type Phase5LogEntry = { sequence: number; phase: 5; source: Phase5Source; subject: string; field: "rdMultiplier" | "computeStock" | "productivity"; before: number; after: number; reason: string };
       const mechanicsLogPhase5: Phase5LogEntry[] = [];
+      // Default helper for grader-derived effects (the dominant case). Use
+      // logEntryAs({ source, ... }) for player-pinned / facilitator-edit sources.
       const logEntry = (subject: string, field: Phase5LogEntry["field"], before: number, after: number, reason: string) => {
         if (mechanicsLogPhase5.length >= MAX_MECHANICS_LOG_ENTRIES) return;
         mechanicsLogPhase5.push({ sequence: mechanicsLogPhase5.length, phase: 5, source: "grader-effect", subject, field, before, after, reason });
+      };
+      const logEntryAs = (e: { source: Phase5Source; subject: string; field: Phase5LogEntry["field"]; before: number; after: number; reason: string }) => {
+        if (mechanicsLogPhase5.length >= MAX_MECHANICS_LOG_ENTRIES) return;
+        mechanicsLogPhase5.push({ sequence: mechanicsLogPhase5.length, phase: 5, ...e });
       };
       // Structured rejection tracking: each rejection carries a category so the P7
       // panel can group + style by severity. Categories:
@@ -691,6 +713,109 @@ export const rollAndApplyEffects = internalAction({
           const e = action.structuredEffect;
           if (!e || e.type === "narrativeOnly") continue;
           effectsToApply.push({ actorRoleId: sub.roleId, actorRoleName, actionText: action.text, effect: e });
+        }
+      }
+
+      // Direct facilitator + AI-initiated transfers (requests.directTransfer /
+      // directTransferInternal) emit settled "transferred" rows during submit
+      // phase with no actionId. Surface them first so the round's mechanicsLog
+      // is ordered chronologically: directs (submit phase) → player-pinned
+      // settlements (rollAllImpl) → grader-derived effects (this apply phase).
+      const directTransfers = await ctx.runQuery(internal.computeLedger.getDirectTransfersInternal, { gameId, roundNumber });
+      if (directTransfers.length > 0) {
+        const senderRows = directTransfers
+          .filter((r) => r.amount < 0)
+          .sort((a, b) => a.createdAt - b.createdAt);
+        const directRunning = new Map<string, number>();
+        for (const t of tablesBeforeResolve) {
+          directRunning.set(t.roleId, t.computeStock ?? 0);
+        }
+        const subjectFor = (roleId: string) =>
+          labsBeforeResolve.find((l) => l.roleId === roleId)?.name ?? roleNameMap.get(roleId) ?? roleId;
+        for (const r of senderRows) {
+          if (!r.counterpartyRoleId) continue;
+          const amount = Math.abs(r.amount);
+          const fromBefore = directRunning.get(r.roleId) ?? 0;
+          const toBefore = directRunning.get(r.counterpartyRoleId) ?? 0;
+          logEntryAs({ source: "facilitator-edit", subject: subjectFor(r.roleId), field: "computeStock", before: fromBefore, after: fromBefore - amount, reason: `direct transfer → ${r.counterpartyRoleId} (-${amount}u)` });
+          logEntryAs({ source: "facilitator-edit", subject: subjectFor(r.counterpartyRoleId), field: "computeStock", before: toBefore, after: toBefore + amount, reason: `direct transfer ← ${r.roleId} (+${amount}u)` });
+          directRunning.set(r.roleId, fromBefore - amount);
+          directRunning.set(r.counterpartyRoleId, toBefore + amount);
+        }
+      }
+
+      // Player-pinned compute transfers (action.computeTargets) settled inside
+      // rollAllImpl before this apply phase, so they aren't in effectsToApply.
+      // The facilitator's mechanicsLog still needs to show them — otherwise a
+      // 14u send disappears from the audit trail. Replay each pinned transfer
+      // against a scratch running map seeded from the pre-pinned state so the
+      // log lines carry meaningful before/after values. tableComputeByRole is
+      // not mutated here — grader effects below iterate from the post-pinned
+      // state already reflected in the cache.
+      const pinnedTransferLog: { fromRoleId: string; toRoleId: string; amount: number }[] = [];
+      const pinnedNetDeltaByRole = new Map<string, number>();
+      for (const sub of submissions) {
+        for (const action of sub.actions) {
+          if (!action.success) continue;
+          if (!action.computeTargets || action.computeTargets.length === 0) continue;
+          for (const target of action.computeTargets) {
+            const direction = target.direction ?? "send";
+            const fromRoleId = direction === "send" ? sub.roleId : target.roleId;
+            const toRoleId = direction === "send" ? target.roleId : sub.roleId;
+            if (fromRoleId === toRoleId) continue;
+            pinnedTransferLog.push({ fromRoleId, toRoleId, amount: target.amount });
+            pinnedNetDeltaByRole.set(fromRoleId, (pinnedNetDeltaByRole.get(fromRoleId) ?? 0) - target.amount);
+            pinnedNetDeltaByRole.set(toRoleId, (pinnedNetDeltaByRole.get(toRoleId) ?? 0) + target.amount);
+          }
+        }
+      }
+      if (pinnedTransferLog.length > 0) {
+        const pinnedRunning = new Map<string, number>();
+        for (const [roleId, current] of tableComputeByRole) {
+          pinnedRunning.set(roleId, current - (pinnedNetDeltaByRole.get(roleId) ?? 0));
+        }
+        const subjectFor = (roleId: string) =>
+          workingLabs.find((l) => l.roleId === roleId)?.name ?? roleNameMap.get(roleId) ?? roleId;
+        for (const t of pinnedTransferLog) {
+          const fromBefore = pinnedRunning.get(t.fromRoleId) ?? 0;
+          const toBefore = pinnedRunning.get(t.toRoleId) ?? 0;
+          logEntryAs({ source: "player-pinned", subject: subjectFor(t.fromRoleId), field: "computeStock", before: fromBefore, after: fromBefore - t.amount, reason: `computeTransfer → ${t.toRoleId} (-${t.amount}u)` });
+          logEntryAs({ source: "player-pinned", subject: subjectFor(t.toRoleId), field: "computeStock", before: toBefore, after: toBefore + t.amount, reason: `computeTransfer ← ${t.fromRoleId} (+${t.amount}u)` });
+          pinnedRunning.set(t.fromRoleId, fromBefore - t.amount);
+          pinnedRunning.set(t.toRoleId, toBefore + t.amount);
+        }
+      }
+
+      // Player-pinned mergers (action.mergeLab) and foundLabs (action.foundLab)
+      // also settle inside rollAllImpl. Reconstruct their effects from the
+      // pre-resolve lab snapshot (`labsBeforeResolve`) so their compute and
+      // rdMultiplier transitions appear in the audit log alongside grader-derived
+      // mergers/foundings.
+      const labsBeforeById = new Map(labsBeforeResolve.map((l) => [String(l.labId), l] as const));
+      for (const sub of submissions) {
+        for (const action of sub.actions) {
+          if (!action.success) continue;
+          if (action.mergeLab) {
+            const absorbed = labsBeforeById.get(String(action.mergeLab.absorbedLabId));
+            const survivor = labsBeforeById.get(String(action.mergeLab.survivorLabId));
+            if (!absorbed || !survivor) continue;
+            const survivorName = action.mergeLab.newName?.trim() || survivor.name;
+            const absorbedStock = absorbed.computeStock;
+            if (absorbedStock > 0) {
+              logEntryAs({ source: "player-pinned", subject: absorbed.name, field: "computeStock", before: absorbedStock, after: 0, reason: `merger → ${survivorName} (compute follows the lab, -${absorbedStock}u)` });
+              logEntryAs({ source: "player-pinned", subject: survivorName, field: "computeStock", before: survivor.computeStock, after: survivor.computeStock + absorbedStock, reason: `merger absorbed ${absorbed.name} (+${absorbedStock}u)` });
+            }
+            const inheritedMult = Math.max(survivor.rdMultiplier, absorbed.rdMultiplier);
+            if (inheritedMult > survivor.rdMultiplier) {
+              logEntryAs({ source: "player-pinned", subject: survivorName, field: "rdMultiplier", before: survivor.rdMultiplier, after: inheritedMult, reason: `merger absorbed ${absorbed.name} (inherited higher multiplier)` });
+            }
+          } else if (action.foundLab) {
+            const founderStockBefore = tablesBeforeResolve.find((t) => t.roleId === sub.roleId)?.computeStock ?? 0;
+            const founderName = labsBeforeResolve.find((l) => l.roleId === sub.roleId)?.name
+              ?? roleNameMap.get(sub.roleId)
+              ?? sub.roleId;
+            logEntryAs({ source: "player-pinned", subject: founderName, field: "computeStock", before: founderStockBefore, after: founderStockBefore - action.foundLab.seedCompute, reason: `foundLab "${action.foundLab.name}" — seeded with ${action.foundLab.seedCompute}u` });
+          }
         }
       }
 

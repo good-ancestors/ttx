@@ -70,6 +70,50 @@ function generateJoinCode(): string {
   return code;
 }
 
+/** Build the round-1 starting-state mechanicsLog. One computeStock entry per
+ *  enabled role with positive starting stock, one rdMultiplier entry per
+ *  enabled lab. Mirrors the P0 acquisition entries on rounds 2+, so every
+ *  round's audit log begins with a complete snapshot. */
+function buildR1StartingMechanics(
+  enabledRoleIds: Set<string>,
+  labComputeByRole: Map<string, number>,
+  poolAllocations: Map<string, number>,
+): NonNullable<Doc<"rounds">["mechanicsLog"]> {
+  const entries: NonNullable<Doc<"rounds">["mechanicsLog"]> = [];
+  for (const role of ROLES) {
+    if (!enabledRoleIds.has(role.id)) continue;
+    const labStock = labComputeByRole.get(role.id);
+    const poolStock = poolAllocations.get(role.id);
+    const initialStock = labStock ?? (poolStock && poolStock > 0 ? poolStock : 0);
+    if (initialStock <= 0) continue;
+    const subject = DEFAULT_LABS.find((l) => l.roleId === role.id)?.name ?? role.name;
+    entries.push({
+      sequence: entries.length,
+      phase: 0,
+      source: "acquisition",
+      subject,
+      field: "computeStock",
+      before: 0,
+      after: initialStock,
+      reason: "Starting stock",
+    });
+  }
+  for (const lab of DEFAULT_LABS) {
+    if (!enabledRoleIds.has(lab.roleId)) continue;
+    entries.push({
+      sequence: entries.length,
+      phase: 0,
+      source: "natural-growth",
+      subject: lab.name,
+      field: "rdMultiplier",
+      before: 1,
+      after: lab.rdMultiplier,
+      reason: "Starting R&D multiplier",
+    });
+  }
+  return entries;
+}
+
 export const create = mutation({
   args: {
     tableCount: v.optional(v.number()),
@@ -165,12 +209,18 @@ export const create = mutation({
       }
     }
 
-    // Create all 3 rounds
+    // Round 1 gets a phase-0 mechanicsLog seeded with each role's starting
+    // compute and each lab's starting rdMultiplier — matches the P0 acquisition
+    // entries that subsequent rounds receive at advance time, so every round's
+    // audit trail begins with a complete starting-state snapshot.
+    const r1Mechanics = buildR1StartingMechanics(enabledRoleIds, labComputeByRole, poolAllocations);
+
     for (const config of ROUND_CONFIGS) {
       await ctx.db.insert("rounds", {
         gameId,
         number: config.number,
         label: config.label,
+        mechanicsLog: config.number === 1 && r1Mechanics.length > 0 ? r1Mechanics : undefined,
       });
     }
 

@@ -6,7 +6,7 @@
 // stays consistent. Never patch table.computeStock directly.
 
 import { v } from "convex/values";
-import { mutation, internalMutation, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { mutation, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { assertFacilitator, assertNotResolving } from "./events";
 import { readRuntime } from "./gameRuntime";
@@ -280,6 +280,23 @@ export const clearRegenerableRowsInternal = internalMutation({
   args: { gameId: v.id("games"), roundNumber: v.number() },
   handler: async (ctx, args) => {
     return await clearRegenerableRows(ctx, args.gameId, args.roundNumber);
+  },
+});
+
+/** Settled "transferred" rows for a round with no actionId — i.e. facilitator
+ *  direct transfers and AI-initiated direct transfers, which happen outside the
+ *  player-action escrow flow. Used by the apply phase to surface those compute
+ *  movements in the round's mechanicsLog. */
+export const getDirectTransfersInternal = internalQuery({
+  args: { gameId: v.id("games"), roundNumber: v.number() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("computeTransactions")
+      .withIndex("by_game_and_round", (q) => q.eq("gameId", args.gameId).eq("roundNumber", args.roundNumber))
+      .collect();
+    return rows.filter((r) =>
+      r.type === "transferred" && r.status === "settled" && !r.actionId,
+    );
   },
 });
 
