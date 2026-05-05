@@ -98,7 +98,7 @@ export function ActionRow({
               <span
                 key={p._id}
                 className={`rounded-full font-bold ${
-                  isProjector ? "text-sm px-2.5 py-1" : "text-[10px] px-1.5 py-0.5"
+                  isProjector ? "text-xs px-2 py-0.5" : "text-[10px] px-1.5 py-0.5"
                 } ${
                   p.status === "accepted"
                     ? isProjector

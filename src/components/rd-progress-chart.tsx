@@ -394,11 +394,18 @@ export function RdProgressChart({
         })}
       </svg>
 
-      {/* Legend */}
-      <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+      {/* Legend — uses fixed px sizing in projector mode so it doesn't blow
+       *  up under the 32px root font and push the chart container offscreen. */}
+      <div
+        className="flex flex-wrap gap-x-3 gap-y-1 mt-1"
+        style={isProjector ? { fontSize: 12 } : undefined}
+      >
         {series.filter((s) => !s.isBackground).map((s) => (
-          <span key={s.roleId} className={`flex items-center gap-1.5 text-xs ${s.isInactive ? "text-text-light/80" : "text-text-light"}`}>
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: s.color }} />
+          <span key={s.roleId} className={`flex items-center gap-1.5 ${isProjector ? "" : "text-xs"} ${s.isInactive ? "text-text-light/80" : "text-text-light"}`}>
+            <span
+              className="rounded-full"
+              style={isProjector ? { width: 8, height: 8, backgroundColor: s.color } : { width: 10, height: 10, backgroundColor: s.color }}
+            />
             {s.name}{s.isInactive ? " (inactive)" : ""}
           </span>
         ))}
@@ -422,9 +429,18 @@ export function RdProgressChart({
       </FullScreenOverlay>
     )}
 
-    <div className="bg-navy-dark rounded-xl border border-navy-light p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
+    <div
+      className={isProjector ? "bg-navy-dark rounded-xl border border-navy-light" : "bg-navy-dark rounded-xl border border-navy-light p-4"}
+      style={isProjector ? { padding: 12 } : undefined}
+    >
+      <div
+        className={isProjector ? "flex items-center justify-between" : "flex items-center justify-between mb-2"}
+        style={isProjector ? { marginBottom: 6 } : undefined}
+      >
+        <span
+          className={isProjector ? "font-semibold uppercase tracking-wider text-text-light" : "text-sm font-semibold uppercase tracking-wider text-text-light"}
+          style={isProjector ? { fontSize: 13 } : undefined}
+        >
           R&D Progress
         </span>
         <button onClick={() => setFullScreen(true)} className="text-text-light hover:text-white p-0.5 transition-colors" title="Full screen">

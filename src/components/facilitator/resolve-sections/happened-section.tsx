@@ -122,12 +122,15 @@ export function HappenedSection({
 
       {/* Applied effects first — these are the mechanical changes the narrate LLM
        *  consumes to produce the prose. Showing them before the narrative matches
-       *  the causal order: apply → narrate. */}
-      <AppliedOpsPanel
-        applied={applied}
-        rejected={rejected}
-        mechanicsLog={currentRound?.mechanicsLog}
-      />
+       *  the causal order: apply → narrate. Hidden in projector mode — the room
+       *  reads the narrative, not the mechanical ops. */}
+      {!isProjector && (
+        <AppliedOpsPanel
+          applied={applied}
+          rejected={rejected}
+          mechanicsLog={currentRound?.mechanicsLog}
+        />
+      )}
 
       {/* Continue to Narrative bar — placed here (under Applied Effects, above
        *  the empty narrative slot) because clicking it triggers narrative
