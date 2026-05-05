@@ -1,15 +1,9 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { logEvent } from "./events";
+import { OBSERVER_FALLBACK_NAME, TAKEOVER_STALE_MS } from "./observerConstants";
 
-// Driver is considered offline once their last heartbeat is older than this.
-// Observer takeover is gated on this threshold + controlMode === "human".
-export const TAKEOVER_STALE_MS = 90_000;
-
-// Public-facing label used when an observer has no stored player name. It's
-// intentionally generic so the observer-count badge can show "Observer" rather
-// than blank, but it's not a valid driver identity — see promoteToDriver.
-export const OBSERVER_FALLBACK_NAME = "Observer";
+export { OBSERVER_FALLBACK_NAME, TAKEOVER_STALE_MS };
 
 export const joinAsObserver = mutation({
   args: {

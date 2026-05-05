@@ -7,13 +7,11 @@ import type { Id } from "@convex/_generated/dataModel";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Loader2, LogOut } from "lucide-react";
 
-import { OBSERVER_FALLBACK_NAME } from "@convex/observers";
+import { OBSERVER_FALLBACK_NAME, TAKEOVER_STALE_MS } from "@convex/observerConstants";
 import { getStoredPlayerName, setStoredPlayerName } from "@/lib/hooks";
 
-// Banner appears at SHOW_AT_MS, button enables at STALE_MS (mirrors
-// TAKEOVER_STALE_MS in convex/observers.ts; constant duplication is a small
-// price for not coupling client to server-only modules).
-const STALE_MS = 90_000;
+// Banner appears at SHOW_AT_MS, button enables at TAKEOVER_STALE_MS.
+const STALE_MS = TAKEOVER_STALE_MS;
 const SHOW_AT_MS = 30_000;
 
 interface Props {
