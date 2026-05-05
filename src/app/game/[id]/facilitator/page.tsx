@@ -37,6 +37,11 @@ export default function FacilitatorPage({
   const searchParamsHook = useSearchParams();
   const isProjector = searchParamsHook.get("projector") === "true";
   const gameId = id as Id<"games">;
+  useEffect(() => {
+    if (!isProjector) return;
+    document.documentElement.classList.add("projector-mode");
+    return () => document.documentElement.classList.remove("projector-mode");
+  }, [isProjector]);
   const onToggleProjector = () => {
     const next = new URLSearchParams(searchParamsHook.toString());
     if (isProjector) next.delete("projector");

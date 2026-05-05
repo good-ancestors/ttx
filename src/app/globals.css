@@ -51,6 +51,14 @@ html {
   height: 100dvh;
 }
 
+/* Projector mode: enforce 18pt (24px) as the absolute minimum text size.
+ * Tailwind's text-xs is 0.75rem, so setting the root font-size to 32px makes
+ * text-xs == 24px == 18pt. All larger rem-based text and rem-based spacing
+ * scales proportionally from there. */
+html.projector-mode {
+  font-size: 32px;
+}
+
 body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
