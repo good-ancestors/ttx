@@ -442,7 +442,7 @@ export function RdProgressChart({
       >
         <span
           className={isProjector ? "font-semibold uppercase tracking-wider text-text-light" : "text-sm font-semibold uppercase tracking-wider text-text-light"}
-          style={isProjector ? { fontSize: 13 } : undefined}
+          style={isProjector ? { fontSize: 28 } : undefined}
         >
           R&D Progress
         </span>
