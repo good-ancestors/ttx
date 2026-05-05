@@ -334,7 +334,7 @@ export default defineSchema({
     // they were written outside the pipeline (i.e. via updateLabs).
     mechanicsLog: v.optional(v.array(v.object({
       sequence: v.number(),
-      phase: v.union(v.literal(5), v.literal(9), v.literal(10), v.literal("override")),
+      phase: v.union(v.literal(0), v.literal(5), v.literal(9), v.literal(10), v.literal("override")),
       source: v.union(
         v.literal("player-pinned"),
         v.literal("grader-effect"),

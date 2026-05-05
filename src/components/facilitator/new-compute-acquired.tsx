@@ -6,6 +6,7 @@ import { api } from "@convex/_generated/api";
 import { useAuthMutation } from "@/lib/hooks";
 import { NumberField } from "@/components/number-field";
 import { scaleAllocation } from "@/lib/allocation";
+import { TOTAL_ROUNDS } from "@/lib/game-data";
 import type { Id } from "@convex/_generated/dataModel";
 import { TrendingUp, Pencil, Save, X, Check } from "lucide-react";
 
@@ -32,8 +33,14 @@ export function NewComputeAcquired({
   isProjector?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
-  const rows = useQuery(api.rounds.getPendingAcquired, { gameId, roundNumber });
+  const isFinalRound = roundNumber >= TOTAL_ROUNDS;
+  // No next round to flow into on the final round — acquisition is moot, panel hides.
+  const rows = useQuery(
+    api.rounds.getPendingAcquired,
+    isFinalRound ? "skip" : { gameId, roundNumber },
+  );
 
+  if (isFinalRound) return null;
   if (!rows) return null;
   const acquired = rows
     .filter((r) => r.amount > 0)

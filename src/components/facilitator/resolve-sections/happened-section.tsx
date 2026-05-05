@@ -341,6 +341,7 @@ function MechanicsLogPanel({ entries, defaultOpen = false }: { entries: Mechanic
     productivity: "productivity",
   };
   const phaseLabel: Record<MechanicsLogEntry["phase"], string> = {
+    0: "P0 acquisition",
     5: "P5 effect",
     9: "P9 growth",
     10: "P10 acquisition",
@@ -384,8 +385,9 @@ function MechanicsLogPanel({ entries, defaultOpen = false }: { entries: Mechanic
           </ul>
           <p className="text-[11px] text-navy-muted mt-2">
             Chronological log of every write to R&amp;D multiplier, compute stock, and
-            productivity during this resolve. Phase 5 = grader effects applied; phase 9 =
-            R&amp;D growth; phase 10 = compute acquisition for next round.
+            productivity. Phase 0 = round-start acquisition (materialised at the prior
+            round&apos;s Advance); phase 5 = grader effects applied; phase 9 = R&amp;D
+            growth.
           </p>
         </>
       )}
