@@ -1,7 +1,7 @@
 "use client";
 
-import { use, useCallback, useMemo, useState, useEffect, useRef } from "react";
 import Image from "next/image";
+import { use, useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -635,9 +635,13 @@ function FacilitatorNav({
   return (
     <div className="bg-navy border-b border-navy-light px-6 py-3 flex items-center justify-between">
       <div className="flex items-center gap-2">
-        <div className="w-7 h-7 bg-white rounded-md flex items-center justify-center">
-          <Image src="/favicon.svg" alt="Good Ancestors" width={20} height={20} className="w-5 h-5" />
-        </div>
+        <Image
+          src="/good-ancestors-glyph.svg"
+          alt="Good Ancestors"
+          width={28}
+          height={28}
+          className="w-7 h-7"
+        />
         <span className="text-[15px] font-bold text-white">The Race to AGI</span>
       </div>
       <div className="flex items-center gap-3">
