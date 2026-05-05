@@ -19,7 +19,7 @@ export function ProbabilityBadge({
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <span
-        className={`text-[11px] font-bold py-0.5 px-2.5 rounded-full ${onClick ? "cursor-pointer hover:opacity-80" : ""}`}
+        className={`text-xs font-bold py-0.5 px-2 rounded-full ${onClick ? "cursor-pointer hover:opacity-80" : ""}`}
         style={{ backgroundColor: prob.bgColor, color: prob.color }}
         onClick={onClick}
       >
