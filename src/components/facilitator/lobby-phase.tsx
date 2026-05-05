@@ -47,7 +47,7 @@ export function LobbyPhase({
   const computeTotal = enabledTables.reduce((sum, t) => sum + getCompute(t), 0);
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <div className="px-4 pt-4 pb-64 md:px-6 md:pt-6 max-w-5xl mx-auto">
       {/* ─── Game Join Code ─── */}
       {gameJoinUrl && (
         <div className="flex flex-col items-center mb-6">
