@@ -70,23 +70,24 @@ function generateJoinCode(): string {
   return code;
 }
 
-/** Build the round-1 starting-state mechanicsLog. One computeStock entry per
- *  enabled role with positive starting stock, one rdMultiplier entry per
- *  enabled lab. Mirrors the P0 acquisition entries on rounds 2+, so every
- *  round's audit log begins with a complete snapshot. */
+/** Build the round-1 starting-state mechanicsLog from live lobby state. One
+ *  computeStock entry per enabled role with positive starting stock, one
+ *  rdMultiplier entry per active lab whose multiplier differs from the
+ *  default. Mirrors the P0 acquisition entries on rounds 2+, so every round's
+ *  audit log begins with a complete snapshot. Called at startGame so any
+ *  lobby-time table toggles or lab edits are already baked in. */
 function buildR1StartingMechanics(
-  enabledRoleIds: Set<string>,
-  labComputeByRole: Map<string, number>,
-  poolAllocations: Map<string, number>,
+  tables: Doc<"tables">[],
+  labs: Doc<"labs">[],
 ): NonNullable<Doc<"rounds">["mechanicsLog"]> {
   const entries: NonNullable<Doc<"rounds">["mechanicsLog"]> = [];
+  const labByOwner = new Map(labs.filter((l) => l.status === "active" && l.ownerRoleId).map((l) => [l.ownerRoleId!, l] as const));
   for (const role of ROLES) {
-    if (!enabledRoleIds.has(role.id)) continue;
-    const labStock = labComputeByRole.get(role.id);
-    const poolStock = poolAllocations.get(role.id);
-    const initialStock = labStock ?? (poolStock && poolStock > 0 ? poolStock : 0);
-    if (initialStock <= 0) continue;
-    const subject = DEFAULT_LABS.find((l) => l.roleId === role.id)?.name ?? role.name;
+    const table = tables.find((t) => t.roleId === role.id);
+    if (!table || !table.enabled) continue;
+    const stock = table.computeStock ?? 0;
+    if (stock <= 0) continue;
+    const subject = labByOwner.get(role.id)?.name ?? role.name;
     entries.push({
       sequence: entries.length,
       phase: 0,
@@ -94,12 +95,16 @@ function buildR1StartingMechanics(
       subject,
       field: "computeStock",
       before: 0,
-      after: initialStock,
+      after: stock,
       reason: "Starting stock",
     });
   }
-  for (const lab of DEFAULT_LABS) {
-    if (!enabledRoleIds.has(lab.roleId)) continue;
+  for (const lab of labs) {
+    if (lab.status !== "active") continue;
+    if (!lab.ownerRoleId) continue;
+    const ownerTable = tables.find((t) => t.roleId === lab.ownerRoleId);
+    if (!ownerTable?.enabled) continue;
+    if (lab.rdMultiplier === 1) continue;
     entries.push({
       sequence: entries.length,
       phase: 0,
@@ -209,18 +214,15 @@ export const create = mutation({
       }
     }
 
-    // Round 1 gets a phase-0 mechanicsLog seeded with each role's starting
-    // compute and each lab's starting rdMultiplier — matches the P0 acquisition
-    // entries that subsequent rounds receive at advance time, so every round's
-    // audit trail begins with a complete starting-state snapshot.
-    const r1Mechanics = buildR1StartingMechanics(enabledRoleIds, labComputeByRole, poolAllocations);
-
+    // Round 1's phase-0 mechanicsLog is seeded at startGame, not here — the
+    // facilitator may still toggle tables, edit lab specs, or otherwise change
+    // the lobby roster before starting, and the audit log should reflect the
+    // state at game start, not game create.
     for (const config of ROUND_CONFIGS) {
       await ctx.db.insert("rounds", {
         gameId,
         number: config.number,
         label: config.label,
-        mechanicsLog: config.number === 1 && r1Mechanics.length > 0 ? r1Mechanics : undefined,
       });
     }
 
@@ -565,6 +567,17 @@ export const startGame = mutation({
     const game = await ctx.db.get(args.gameId);
     if (!game) throw new Error("Game not found");
     if (game.status !== "lobby") throw new Error("Game must be in lobby to start");
+
+    const tables = await ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const labs = await ctx.db.query("labs").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
+    const r1Mechanics = buildR1StartingMechanics(tables, labs);
+    if (r1Mechanics.length > 0) {
+      const r1 = await ctx.db.query("rounds")
+        .withIndex("by_game_and_number", (q) => q.eq("gameId", args.gameId).eq("number", 1))
+        .first();
+      if (r1) await ctx.db.patch(r1._id, { mechanicsLog: r1Mechanics });
+    }
+
     await ctx.db.patch(args.gameId, {
       status: "playing",
       phase: "discuss",

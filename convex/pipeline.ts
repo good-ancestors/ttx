@@ -730,7 +730,7 @@ export const rollAndApplyEffects = internalAction({
       if (directTransfers.length > 0) {
         const senderRows = directTransfers
           .filter((r) => r.amount < 0)
-          .sort((a, b) => a.createdAt - b.createdAt);
+          .sort((a, b) => a.createdAt - b.createdAt || (a._id < b._id ? -1 : a._id > b._id ? 1 : 0));
         const directRunning = new Map<string, number>();
         for (const t of tablesBeforeResolve) {
           directRunning.set(t.roleId, t.computeStock ?? 0);

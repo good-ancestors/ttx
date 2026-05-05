@@ -1542,7 +1542,9 @@ async function settleComputeTargetsAction(
       amount,
       reason: diff > 0
         ? `Action settle: ${action.text.slice(0, 80)}`
-        : `Reversal (action outcome changed): ${action.text.slice(0, 80)}`,
+        : success
+          ? `Adjustment (action edited): ${action.text.slice(0, 80)}`
+          : `Refund (action graded as failed): ${action.text.slice(0, 80)}`,
       actionId,
     });
   }
