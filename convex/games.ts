@@ -78,12 +78,13 @@ function generateJoinCode(): string {
  *  lobby-time table toggles or lab edits are already baked in. */
 function buildR1StartingMechanics(
   tables: Doc<"tables">[],
-  labs: Doc<"labs">[],
+  activeLabs: Doc<"labs">[],
 ): NonNullable<Doc<"rounds">["mechanicsLog"]> {
   const entries: NonNullable<Doc<"rounds">["mechanicsLog"]> = [];
-  const labByOwner = new Map(labs.filter((l) => l.status === "active" && l.ownerRoleId).map((l) => [l.ownerRoleId!, l] as const));
+  const tableByRole = new Map(tables.map((t) => [t.roleId, t] as const));
+  const labByOwner = new Map(activeLabs.filter((l) => l.ownerRoleId).map((l) => [l.ownerRoleId!, l] as const));
   for (const role of ROLES) {
-    const table = tables.find((t) => t.roleId === role.id);
+    const table = tableByRole.get(role.id);
     if (!table || !table.enabled) continue;
     const stock = table.computeStock ?? 0;
     if (stock <= 0) continue;
@@ -99,11 +100,9 @@ function buildR1StartingMechanics(
       reason: "Starting stock",
     });
   }
-  for (const lab of labs) {
-    if (lab.status !== "active") continue;
+  for (const lab of activeLabs) {
     if (!lab.ownerRoleId) continue;
-    const ownerTable = tables.find((t) => t.roleId === lab.ownerRoleId);
-    if (!ownerTable?.enabled) continue;
+    if (!tableByRole.get(lab.ownerRoleId)?.enabled) continue;
     if (lab.rdMultiplier === 1) continue;
     entries.push({
       sequence: entries.length,
@@ -568,9 +567,11 @@ export const startGame = mutation({
     if (!game) throw new Error("Game not found");
     if (game.status !== "lobby") throw new Error("Game must be in lobby to start");
 
-    const tables = await ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const labs = await ctx.db.query("labs").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect();
-    const r1Mechanics = buildR1StartingMechanics(tables, labs);
+    const [tables, activeLabs] = await Promise.all([
+      ctx.db.query("tables").withIndex("by_game", (q) => q.eq("gameId", args.gameId)).collect(),
+      getActiveLabsForGame(ctx, args.gameId),
+    ]);
+    const r1Mechanics = buildR1StartingMechanics(tables, activeLabs);
     if (r1Mechanics.length > 0) {
       const r1 = await ctx.db.query("rounds")
         .withIndex("by_game_and_number", (q) => q.eq("gameId", args.gameId).eq("number", 1))
