@@ -428,8 +428,8 @@ function SucceededFailedSplit({
     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div role="group" aria-labelledby="succeeded-heading">
         <div className="flex items-center gap-2 mb-2">
-          <CheckCircle className="w-3.5 h-3.5 text-viz-safety" aria-hidden="true" />
-          <h3 id="succeeded-heading" className="text-[11px] font-semibold uppercase tracking-wider text-viz-safety">
+          <CheckCircle className={`${rowProps.isProjector ? "w-5 h-5" : "w-3.5 h-3.5"} text-viz-safety`} aria-hidden="true" />
+          <h3 id="succeeded-heading" className={`font-semibold uppercase tracking-wider text-viz-safety ${rowProps.isProjector ? "text-lg" : "text-[11px]"}`}>
             Succeeded ({succeeded.length})
           </h3>
         </div>
@@ -453,8 +453,8 @@ function SucceededFailedSplit({
       </div>
       <div role="group" aria-labelledby="failed-heading">
         <div className="flex items-center gap-2 mb-2">
-          <XCircle className="w-3.5 h-3.5 text-viz-danger" aria-hidden="true" />
-          <h3 id="failed-heading" className="text-[11px] font-semibold uppercase tracking-wider text-viz-danger">
+          <XCircle className={`${rowProps.isProjector ? "w-5 h-5" : "w-3.5 h-3.5"} text-viz-danger`} aria-hidden="true" />
+          <h3 id="failed-heading" className={`font-semibold uppercase tracking-wider text-viz-danger ${rowProps.isProjector ? "text-lg" : "text-[11px]"}`}>
             Failed ({failed.length})
           </h3>
         </div>
