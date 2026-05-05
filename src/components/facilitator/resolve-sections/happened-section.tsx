@@ -245,7 +245,8 @@ function AppliedOpsPanel({
   mechanicsLog?: MechanicsLogEntry[];
 }) {
   const log = mechanicsLog ?? [];
-  if (applied.length === 0 && rejected.length === 0 && log.length === 0) return null;
+  const opsEmpty = applied.length === 0 && rejected.length === 0;
+  if (opsEmpty && log.length === 0) return null;
 
   return (
     <div className="bg-navy-dark/50 rounded-xl border border-navy-light p-5">
@@ -255,7 +256,7 @@ function AppliedOpsPanel({
         </span>
       </div>
 
-      {applied.length === 0 && rejected.length === 0 && (
+      {opsEmpty && (
         <p className="text-[11px] text-navy-muted mb-3">
           No applied ops this round — see mechanics log below for details.
         </p>
@@ -314,10 +315,7 @@ function AppliedOpsPanel({
       )}
 
       {log.length > 0 && (
-        <MechanicsLogPanel
-          entries={log}
-          defaultOpen={applied.length === 0 && rejected.length === 0}
-        />
+        <MechanicsLogPanel entries={log} defaultOpen={opsEmpty} />
       )}
     </div>
   );
