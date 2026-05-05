@@ -636,19 +636,15 @@ function FacilitatorNav({
 
   return (
     <div className={`${isProjector ? "bg-transparent border-b-0" : "bg-navy border-b border-navy-light"} px-6 py-3 flex items-center justify-between`}>
-      <div className="flex items-center gap-2">
-        {!isProjector && (
-          <>
-            <Image
-              src="/good-ancestors-glyph.svg"
-              alt="Good Ancestors"
-              width={28}
-              height={28}
-              className="w-7 h-7"
-            />
-            <span className="text-[15px] font-bold text-white">The Race to AGI</span>
-          </>
-        )}
+      <div className={`flex items-center ${isProjector ? "gap-4" : "gap-2"}`}>
+        <Image
+          src="/good-ancestors-glyph.svg"
+          alt="Good Ancestors"
+          width={28}
+          height={28}
+          className={isProjector ? "w-14 h-14" : "w-7 h-7"}
+        />
+        <span className={`font-bold text-white ${isProjector ? "text-[32px]" : "text-[15px]"}`}>The Race to AGI</span>
       </div>
       <div className="flex items-center gap-3">
         {round && (
