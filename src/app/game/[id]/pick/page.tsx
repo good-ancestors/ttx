@@ -51,6 +51,7 @@ export default function RolePickerPage({
   const [error, setError] = useState("");
 
   const [sessionId] = useState(() => getOrCreateSessionId(id));
+  const hasName = playerName.trim().length > 0;
 
   const handleClaim = useCallback(async (roleId: string) => {
     const name = playerName.trim();
@@ -125,7 +126,11 @@ export default function RolePickerPage({
 
           {/* Name input */}
           <div className="max-w-sm mx-auto mb-6">
+            <label htmlFor="player-name" className="block text-xs font-bold uppercase tracking-wide text-text-light mb-2 text-center">
+              Step 1 — Enter your name
+            </label>
             <input
+              id="player-name"
               type="text"
               value={playerName}
               onChange={(e) => { setPlayerName(e.target.value); setError(""); }}
@@ -137,15 +142,25 @@ export default function RolePickerPage({
               data-1p-ignore
               data-lpignore="true"
               data-form-type="other"
-              className="w-full py-3 px-4 bg-navy-light text-white text-center text-base
-                         rounded-lg border border-navy-light focus:border-text-light
-                         outline-none placeholder:text-navy-muted"
+              className="w-full py-3 px-4 bg-white text-navy text-center text-lg font-semibold
+                         rounded-lg border-2 border-text-light focus:border-white
+                         outline-none placeholder:text-navy-muted/60 shadow-lg"
             />
             {error && <p className="text-xs text-viz-danger mt-2 text-center">{error}</p>}
           </div>
 
+          {/* Step 2 hint */}
+          <p className="text-center text-xs font-bold uppercase tracking-wide text-text-light mb-3">
+            Step 2 — {hasName ? "Choose your role" : "Choose your role (enter name first)"}
+          </p>
+
           {/* Role grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div
+            aria-disabled={!hasName}
+            className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 transition-opacity ${
+              hasName ? "opacity-100" : "opacity-40 pointer-events-none"
+            }`}
+          >
             {availableRoles.map((table) => {
               const role = ROLE_MAP.get(table.roleId);
               if (!role) return null;
@@ -218,14 +233,16 @@ export default function RolePickerPage({
                       <>
                         <button
                           onClick={() => void handleClaim(table.roleId)}
-                          disabled={isClaiming}
+                          disabled={isClaiming || !hasName}
+                          title={!hasName ? "Enter your name first" : undefined}
                           className="flex-1 min-h-[36px] rounded-lg text-xs font-bold bg-text-light text-navy hover:bg-white disabled:opacity-30 disabled:cursor-default"
                         >
                           {claimLabel}
                         </button>
                         <button
                           onClick={() => handleObserve(table._id)}
-                          className="min-h-[36px] rounded-lg text-xs font-bold border border-navy-light text-text-light hover:bg-navy-light hover:text-white px-3 inline-flex items-center gap-1"
+                          disabled={!hasName}
+                          className="min-h-[36px] rounded-lg text-xs font-bold border border-navy-light text-text-light hover:bg-navy-light hover:text-white px-3 inline-flex items-center gap-1 disabled:opacity-30 disabled:cursor-default"
                           title="Watch read-only without claiming the seat"
                         >
                           <Eye className="w-3.5 h-3.5" />
@@ -234,7 +251,9 @@ export default function RolePickerPage({
                     ) : (
                       <button
                         onClick={() => handleObserve(table._id)}
-                        className="flex-1 min-h-[36px] rounded-lg text-xs font-bold border border-navy-light text-text-light hover:bg-navy-light hover:text-white inline-flex items-center justify-center gap-1.5"
+                        disabled={!hasName}
+                        title={!hasName ? "Enter your name first" : undefined}
+                        className="flex-1 min-h-[36px] rounded-lg text-xs font-bold border border-navy-light text-text-light hover:bg-navy-light hover:text-white inline-flex items-center justify-center gap-1.5 disabled:opacity-30 disabled:cursor-default"
                       >
                         <Eye className="w-3.5 h-3.5" /> Watch
                       </button>
