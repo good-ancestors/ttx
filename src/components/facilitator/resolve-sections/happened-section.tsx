@@ -246,7 +246,6 @@ function AppliedOpsPanel({
 }) {
   const log = mechanicsLog ?? [];
   if (applied.length === 0 && rejected.length === 0 && log.length === 0) return null;
-  const opsEmpty = applied.length === 0 && rejected.length === 0;
 
   return (
     <div className="bg-navy-dark/50 rounded-xl border border-navy-light p-5">
@@ -256,14 +255,14 @@ function AppliedOpsPanel({
         </span>
       </div>
 
-      {opsEmpty && (
-        <p className="text-[12px] text-navy-muted italic mb-3">
-          No applied ops this round — only natural growth and compute acquisition ran.
+      {applied.length === 0 && rejected.length === 0 && (
+        <p className="text-[11px] text-navy-muted mb-3">
+          No applied ops this round — see mechanics log below for details.
         </p>
       )}
 
       {applied.length > 0 && (
-        <div className={rejected.length > 0 ? "mb-4" : undefined}>
+        <div className={rejected.length > 0 || log.length > 0 ? "mb-4" : undefined}>
           <div className="text-[11px] font-semibold uppercase tracking-wider text-text-light block mb-2 flex items-center gap-1">
             Applied ({applied.length})
           </div>
