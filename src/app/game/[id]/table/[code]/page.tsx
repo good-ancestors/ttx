@@ -656,7 +656,6 @@ function DriverTablePage({
     if (actualIndex === -1) return;
     const action = submission.actions[actualIndex];
 
-    // Warn if editing will cancel accepted compute requests
     const existingRequests = sentRequestsByAction?.get(action.actionId ?? action.text) ?? [];
     const hasAcceptedCompute = existingRequests.some(
       (r) => r.requestType === "compute" && r.status === "accepted"
@@ -892,9 +891,8 @@ function DriverTablePage({
           message="Editing this action will cancel any accepted compute requests and refund escrowed compute. Continue?"
           confirmLabel="Continue"
           onConfirm={() => {
-            const idx = editConfirmIndex;
             setEditConfirmIndex(null);
-            void performEditAction(idx);
+            void performEditAction(editConfirmIndex);
           }}
           onCancel={() => setEditConfirmIndex(null)}
         />
