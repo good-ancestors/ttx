@@ -418,7 +418,7 @@ export function RdProgressChart({
             : "flex-1 flex flex-col justify-center max-w-4xl mx-auto w-full"
         }
       >
-        {chartContent(isProjector ? "calc(100vh - 120px)" : 600)}
+        {chartContent(isProjector ? "calc(100vh - 200px)" : 600)}
       </FullScreenOverlay>
     )}
 
