@@ -123,13 +123,11 @@ export function HappenedSection({
       {/* Applied effects first — these are the mechanical changes the narrate LLM
        *  consumes to produce the prose. Showing them before the narrative matches
        *  the causal order: apply → narrate. */}
-      {appliedOps.length > 0 && (
-        <AppliedOpsPanel
-          applied={applied}
-          rejected={rejected}
-          mechanicsLog={currentRound?.mechanicsLog}
-        />
-      )}
+      <AppliedOpsPanel
+        applied={applied}
+        rejected={rejected}
+        mechanicsLog={currentRound?.mechanicsLog}
+      />
 
       {/* Continue to Narrative bar — placed here (under Applied Effects, above
        *  the empty narrative slot) because clicking it triggers narrative
@@ -246,8 +244,9 @@ function AppliedOpsPanel({
   rejected: AppliedOp[];
   mechanicsLog?: MechanicsLogEntry[];
 }) {
-  if (applied.length === 0 && rejected.length === 0) return null;
   const log = mechanicsLog ?? [];
+  const opsEmpty = applied.length === 0 && rejected.length === 0;
+  if (opsEmpty && log.length === 0) return null;
 
   return (
     <div className="bg-navy-dark/50 rounded-xl border border-navy-light p-5">
@@ -257,8 +256,14 @@ function AppliedOpsPanel({
         </span>
       </div>
 
+      {opsEmpty && (
+        <p className="text-[11px] text-navy-muted mb-3">
+          No applied ops this round — see mechanics log below for details.
+        </p>
+      )}
+
       {applied.length > 0 && (
-        <div className={rejected.length > 0 ? "mb-4" : undefined}>
+        <div className={rejected.length > 0 || log.length > 0 ? "mb-4" : undefined}>
           <div className="text-[11px] font-semibold uppercase tracking-wider text-text-light block mb-2 flex items-center gap-1">
             Applied ({applied.length})
           </div>
@@ -309,7 +314,9 @@ function AppliedOpsPanel({
         </div>
       )}
 
-      {log.length > 0 && <MechanicsLogPanel entries={log} />}
+      {log.length > 0 && (
+        <MechanicsLogPanel entries={log} defaultOpen={opsEmpty} />
+      )}
     </div>
   );
 }
@@ -319,8 +326,8 @@ function AppliedOpsPanel({
  *  debuggability gap that surfaced in the DeepCent trajectory bug: when a
  *  multiplier moves unexpectedly, the facilitator can trace the exact chain
  *  of events that produced the final number before clicking Finalise. */
-function MechanicsLogPanel({ entries }: { entries: MechanicsLogEntry[] }) {
-  const [open, setOpen] = useState(false);
+function MechanicsLogPanel({ entries, defaultOpen = false }: { entries: MechanicsLogEntry[]; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const sorted = [...entries].sort((a, b) => a.sequence - b.sequence);
 
   const fmt = (v: number): string => {
