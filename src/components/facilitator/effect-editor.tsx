@@ -89,6 +89,7 @@ function formatEffectLabel(label: string, summary: string, type: StructuredEffec
 export function EffectEditor(props: EffectEditorProps) {
   const { effect, isProjector, locked } = props;
   if (!effect) return null;
+  if (isProjector && effect.type === "narrativeOnly") return null;
 
   const { label, Icon, tone, summary } = describeEffect(effect);
   const text = formatEffectLabel(label, summary, effect.type);
