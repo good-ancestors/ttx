@@ -680,7 +680,7 @@ function FacilitatorNav({
           onClick={onToggleProjector}
           className={`text-xs px-2 py-1 rounded transition-colors flex items-center gap-1 ${
             isProjector
-              ? "bg-white/15 text-white hover:bg-white/25"
+              ? "bg-viz-capability text-white hover:opacity-90"
               : "bg-navy-light text-text-light hover:bg-navy-muted"
           }`}
           title={isProjector ? "Exit projector mode" : "Enter projector mode"}
