@@ -417,7 +417,7 @@ function AiRespondTab({
       <div className="flex items-center justify-between">
         <p className="text-xs text-text-muted italic">
           {allowEdits
-            ? "Your responses secretly affect the dice rolls. Change anytime until dice are rolled. Your own actions auto-boost by default — tap Support again to clear."
+            ? "Put your “thumb on the scales” to push each action toward success or failure in the resolve phase. The more capable you are, the bigger the impact. Think about your spec and alignment in making these interventions."
             : "Submissions are closed. Your influence choices are locked for this round."}
         </p>
         <span className="text-[10px] text-text-muted font-mono shrink-0 ml-2">
@@ -699,7 +699,7 @@ function ObserverEndorsementView({
       <div className="flex flex-col items-center justify-center py-16 text-center">
         <Inbox className="w-10 h-10 text-border mb-3" />
         <p className="text-sm text-text-muted max-w-xs">
-          The AI Systems player&rsquo;s influence panel is private. Watch the rolls and outcomes here once the round resolves.
+          The AIs player can put their &ldquo;thumb on the scales&rdquo; to push actions toward success or failure. Their picks are private — watch how each action lands in the resolve phase.
         </p>
       </div>
     );
