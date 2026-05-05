@@ -249,6 +249,10 @@ export const cancel = mutation({
   },
 });
 
+export type RespondResult =
+  | { ok: true }
+  | { ok: false; reason: "insufficient_compute"; available: number; requested: number };
+
 // Respond to a request — can change response at any time during submit phase
 export const respond = mutation({
   args: {
@@ -256,9 +260,9 @@ export const respond = mutation({
     status: v.union(v.literal("accepted"), v.literal("declined"), v.literal("pending")),
     callerTableId: v.id("tables"),
   },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<RespondResult> => {
     const proposal = await ctx.db.get(args.proposalId);
-    if (!proposal) return;
+    if (!proposal) return { ok: true };
 
     // Authorize: caller must occupy the target role (only the recipient decides).
     const callerTable = await ctx.db.get(args.callerTableId);
@@ -283,7 +287,7 @@ export const respond = mutation({
         actionText: proposal.actionText,
         previousStatus: oldStatus,
       });
-      return;
+      return { ok: true };
     }
 
     // For compute requests: escrow from target on accept (as a pending ledger pair),
@@ -300,17 +304,18 @@ export const respond = mutation({
         });
       }
 
-      // If accepting (from pending or declined) — emit pending transferred pair
+      // If accepting (from pending or declined) — emit pending transferred pair.
+      // Insufficient stock blocks the accept and surfaces a reason to the caller;
+      // status stays pending so the user can retry or explicitly decline.
       if (args.status === "accepted" && oldStatus !== "accepted") {
         const available = await getAvailableStock(ctx, proposal.gameId, proposal.toRoleId, proposal.roundNumber);
         if (available < proposal.computeAmount) {
-          await ctx.db.patch(args.proposalId, { status: "declined" });
-          await logEvent(ctx, proposal.gameId, "request_declined_insufficient", proposal.toRoleId, {
+          await logEvent(ctx, proposal.gameId, "request_accept_blocked_insufficient", proposal.toRoleId, {
             fromRoleId: proposal.fromRoleId,
             requested: proposal.computeAmount,
             available,
           });
-          return;
+          return { ok: false, reason: "insufficient_compute", available, requested: proposal.computeAmount };
         }
         await emitPair(ctx, {
           gameId: proposal.gameId,
@@ -334,6 +339,7 @@ export const respond = mutation({
       actionText: proposal.actionText,
       previousStatus: oldStatus,
     });
+    return { ok: true };
   },
 });
 

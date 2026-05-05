@@ -80,7 +80,13 @@ interface Props {
   enabledRoles?: { id: string; name: string }[];
   /** Roles that can send/receive compute (has-compute tag, excluding self) */
   computeRoles?: { id: string; name: string; computeStock?: number }[];
+  /** Settled stock cache. Source of truth for "do you have enough to found a lab"
+   *  and as a fallback when the live stock query is still loading. */
   ownComputeStock?: number;
+  /** Available-to-spend balance: settled minus current-round pending escrows.
+   *  Used as the hard cap when picking a Send-compute amount so players can't
+   *  queue more than they actually own. */
+  ownAvailableStock?: number;
   /** Lab owned by this player — enables the Merge-lab button. */
   ownedLab?: LabRef;
   /** Candidate labs for a merger (excludes the submitter's own). */
@@ -89,7 +95,7 @@ interface Props {
   onSubmitAction?: (index: number) => void;
 }
 
-export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRoles, ownComputeStock, ownedLab, otherLabs, isSubmitted, onSubmitAction }: Props) {
+export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRoles, ownComputeStock, ownAvailableStock, ownedLab, otherLabs, isSubmitted, onSubmitAction }: Props) {
   // Filter out own role and AI Systems (AI Systems uses influence, not endorsements)
   const otherRoles = (enabledRoles ?? ROLES.filter((r) => r.id !== roleId))
     .filter((r) => typeof r === "object" && "id" in r ? r.id !== roleId && r.id !== AI_SYSTEMS_ROLE_ID : true);
@@ -159,6 +165,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRo
             otherRoles={otherRoles}
             computeRoles={computeRoles}
             ownComputeStock={ownComputeStock}
+            ownAvailableStock={ownAvailableStock}
             ownedLab={ownedLab}
             otherLabs={otherLabs}
             isSubmitted={isSubmitted}
@@ -193,6 +200,7 @@ function ActionCard({
   otherRoles,
   computeRoles,
   ownComputeStock,
+  ownAvailableStock,
   ownedLab,
   otherLabs,
   isSubmitted,
@@ -210,6 +218,7 @@ function ActionCard({
   otherRoles: { id: string; name: string }[];
   computeRoles?: { id: string; name: string; computeStock?: number }[];
   ownComputeStock?: number;
+  ownAvailableStock?: number;
   ownedLab?: LabRef;
   otherLabs?: LabRef[];
   isSubmitted: boolean;
@@ -295,6 +304,7 @@ function ActionCard({
           action={action}
           computeRoles={computeRoles}
           ownComputeStock={ownComputeStock}
+          ownAvailableStock={ownAvailableStock}
           onUpdate={onUpdate}
           onClose={() => setShowComputeRequest(false)}
         />

@@ -220,6 +220,7 @@ function SubmitContent({ common, submit, lab, labs, observerView }: { common: Co
 
       {common.activeTab === "actions" && (
         <TableSubmit
+          gameId={common.gameId}
           game={submit.game}
           role={common.role}
           submittedActions={submit.submittedActions}

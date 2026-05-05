@@ -46,6 +46,7 @@ vi.mock("@convex/_generated/api", () => ({
       getByGameAndRoundRedacted: "submissions:getByGameAndRoundRedacted",
       setActionInfluence: "submissions:setActionInfluence",
     },
+    computeLedger: { getStockForRole: "computeLedger:getStockForRole" },
   },
 }));
 

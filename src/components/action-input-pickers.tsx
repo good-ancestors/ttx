@@ -6,7 +6,7 @@
 // with the parent beyond what's plumbed through ActionDraft.
 
 import { useEffect, useRef, useState } from "react";
-import { Check, FlaskConical, GitMerge, X, Zap } from "lucide-react";
+import { AlertTriangle, Check, FlaskConical, GitMerge, Lock, X, Zap } from "lucide-react";
 import { DEFAULT_LAB_ALLOCATION } from "@/lib/game-data";
 import type { Id } from "@convex/_generated/dataModel";
 import type { ActionDraft, LabRef } from "./action-input";
@@ -74,26 +74,38 @@ export function ComputeRequestPicker({
   onUpdate,
   onClose,
   ownComputeStock,
+  ownAvailableStock,
 }: {
   action: ActionDraft;
   computeRoles: { id: string; name: string; computeStock?: number }[];
   onUpdate: (patch: Partial<ActionDraft>) => void;
   onClose: () => void;
   ownComputeStock?: number;
+  ownAvailableStock?: number;
 }) {
   const [direction, setDirection] = useState<"send" | "request">("send");
   const [selectedRole, setSelectedRole] = useState("");
   const [amount, setAmount] = useState(1);
 
-  // Cap the input at what's actually available. For send: your own stock.
-  // For request: the source role's stock (clamped to the absolute hard-cap of 100u).
+  // Sends already staked in this draft action also eat into the sendable pool —
+  // splitting across recipients is allowed but oversubscribing isn't.
+  const draftSendTotal = action.computeTargets
+    .filter((t) => t.direction === "send" && t.roleId !== selectedRole)
+    .reduce((sum, t) => sum + t.amount, 0);
+  const ownTotal = ownComputeStock ?? 0;
+  const ownAvailable = ownAvailableStock ?? ownTotal;
+  const ownEscrowed = Math.max(0, ownTotal - ownAvailable);
+  const ownSendable = Math.max(0, ownAvailable - draftSendTotal);
+
   const sourceStock = direction === "send"
-    ? ownComputeStock
+    ? ownSendable
     : computeRoles.find((r) => r.id === selectedRole)?.computeStock;
   const maxAmount = Math.max(1, Math.min(100, sourceStock ?? 100));
+  const sendBlocked = direction === "send" && ownSendable <= 0;
 
   const addTarget = () => {
     if (!selectedRole || amount <= 0) return;
+    if (direction === "send" && amount > ownSendable) return;
     const capped = Math.min(amount, maxAmount);
     const existing = action.computeTargets.filter((t) => t.roleId !== selectedRole);
     onUpdate({ computeTargets: [...existing, { roleId: selectedRole, amount: capped, direction }] });
@@ -131,6 +143,31 @@ export function ComputeRequestPicker({
           ? "Send your compute to another player. Deducted now, transferred on success, refunded on failure."
           : "Request compute from another player. They can accept or decline. Transferred on action success."}
       </p>
+
+      {direction === "send" && ownTotal > 0 && (
+        <div className="mb-2 rounded-md bg-warm-gray border border-border px-2 py-1.5 flex items-center gap-2 text-[11px] text-text-muted font-mono flex-wrap">
+          <span className="flex items-center gap-1 text-text font-bold">
+            <Zap className="w-3 h-3 text-[#D97706]" /> {ownSendable}u sendable
+          </span>
+          {(ownEscrowed > 0 || draftSendTotal > 0) && (
+            <span className="flex items-center gap-1">
+              <Lock className="w-3 h-3" />
+              {ownEscrowed > 0 && `${ownEscrowed}u escrowed`}
+              {ownEscrowed > 0 && draftSendTotal > 0 && " · "}
+              {draftSendTotal > 0 && `${draftSendTotal}u in this action`}
+            </span>
+          )}
+          <span className="ml-auto">{ownTotal}u total</span>
+        </div>
+      )}
+      {sendBlocked && (
+        <div className="mb-2 rounded-md bg-[#FEF2F2] border border-[#FECACA] px-2 py-1.5 flex items-start gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 text-[#B91C1C] mt-0.5 shrink-0" />
+          <span className="text-xs text-[#991B1B]">
+            All your compute is locked in pending requests or other Send targets in this action. Decline a request or remove a target to free some up.
+          </span>
+        </div>
+      )}
 
       {/* Existing targets */}
       {action.computeTargets.length > 0 && (
@@ -185,7 +222,7 @@ export function ComputeRequestPicker({
         />
         <button
           onClick={addTarget}
-          disabled={!selectedRole}
+          disabled={!selectedRole || sendBlocked}
           className={`min-h-[44px] px-3 rounded-lg text-xs font-bold text-white transition-colors disabled:opacity-50 disabled:cursor-default ${
             direction === "send"
               ? "bg-[#D97706] hover:bg-[#B45309]"
