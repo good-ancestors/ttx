@@ -635,16 +635,20 @@ function FacilitatorNav({
   const colors = phaseColors[phase] ?? phaseColors.discuss;
 
   return (
-    <div className="bg-navy border-b border-navy-light px-6 py-3 flex items-center justify-between">
+    <div className={`${isProjector ? "bg-transparent border-b-0" : "bg-navy border-b border-navy-light"} px-6 py-3 flex items-center justify-between`}>
       <div className="flex items-center gap-2">
-        <Image
-          src="/good-ancestors-glyph.svg"
-          alt="Good Ancestors"
-          width={28}
-          height={28}
-          className="w-7 h-7"
-        />
-        <span className="text-[15px] font-bold text-white">The Race to AGI</span>
+        {!isProjector && (
+          <>
+            <Image
+              src="/good-ancestors-glyph.svg"
+              alt="Good Ancestors"
+              width={28}
+              height={28}
+              className="w-7 h-7"
+            />
+            <span className="text-[15px] font-bold text-white">The Race to AGI</span>
+          </>
+        )}
       </div>
       <div className="flex items-center gap-3">
         {round && (
@@ -653,13 +657,15 @@ function FacilitatorNav({
           </span>
         )}
         <div className="relative" ref={dropdownRef}>
-          <button
-            onClick={snapshots?.length ? () => setShowSnapshots(!showSnapshots) : undefined}
-            className="text-[11px] py-1 px-2.5 rounded-full font-mono font-semibold cursor-default"
-            style={{ backgroundColor: colors.bg, color: colors.text, cursor: snapshots?.length ? "pointer" : "default" }}
-          >
-            {phase.toUpperCase()}
-          </button>
+          {!isProjector && (
+            <button
+              onClick={snapshots?.length ? () => setShowSnapshots(!showSnapshots) : undefined}
+              className="text-[11px] py-1 px-2.5 rounded-full font-mono font-semibold cursor-default"
+              style={{ backgroundColor: colors.bg, color: colors.text, cursor: snapshots?.length ? "pointer" : "default" }}
+            >
+              {phase.toUpperCase()}
+            </button>
+          )}
           {showSnapshots && snapshots && onRestore && (
             <div className="absolute right-0 top-full mt-1 bg-navy-dark border border-navy-light rounded-lg shadow-xl z-50 min-w-[180px] py-1">
               <div className="px-3 py-1.5 text-[10px] text-text-light uppercase tracking-wider">Restore snapshot</div>
