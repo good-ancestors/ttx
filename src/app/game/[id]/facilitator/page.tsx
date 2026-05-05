@@ -648,7 +648,7 @@ function FacilitatorNav({
       </div>
       <div className="flex items-center gap-3">
         {round && (
-          <span className="text-[13px] text-text-light">
+          <span className={`${isProjector ? "text-[22px]" : "text-[13px]"} text-text-light`}>
             Turn {round.number}/4 — {round.label}
           </span>
         )}
