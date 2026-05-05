@@ -751,7 +751,7 @@ function DriverTablePage({
       >
         {/* Header — fixed so it's always visible */}
         <div className="fixed top-0 left-0 right-0 z-10 bg-off-white/95 backdrop-blur-sm border-b border-border px-4 py-3 pt-[max(12px,env(safe-area-inset-top))]">
-          <div className="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
+          <div className="max-w-3xl mx-auto flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-0">
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: role.color }} />
               <span className="text-[15px] font-bold text-text whitespace-nowrap">{role.name}</span>
@@ -797,7 +797,7 @@ function DriverTablePage({
           </div>
         </div>
 
-        <div className="px-4 pt-24 sm:pt-16">
+        <div className="max-w-3xl mx-auto px-4 pt-24 sm:pt-16">
           {/* Draft restored toast */}
           {draftRestored && (
             <div className="bg-[#F0F9FF] border border-[#BAE6FD] rounded-lg p-2.5 mb-3 flex items-center gap-2">

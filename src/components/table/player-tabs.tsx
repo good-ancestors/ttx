@@ -32,7 +32,7 @@ export function PlayerTabBar({
         className="absolute left-0 right-0 bg-white"
         style={{ top: "100%", height: "env(safe-area-inset-bottom, 0px)" }}
       />
-      <div className="flex">
+      <div className="flex max-w-3xl mx-auto">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.id;
           return (
