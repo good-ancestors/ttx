@@ -313,7 +313,12 @@ function AppliedOpsPanel({
         </div>
       )}
 
-      {log.length > 0 && <MechanicsLogPanel entries={log} />}
+      {log.length > 0 && (
+        <MechanicsLogPanel
+          entries={log}
+          defaultOpen={applied.length === 0 && rejected.length === 0}
+        />
+      )}
     </div>
   );
 }
@@ -323,8 +328,8 @@ function AppliedOpsPanel({
  *  debuggability gap that surfaced in the DeepCent trajectory bug: when a
  *  multiplier moves unexpectedly, the facilitator can trace the exact chain
  *  of events that produced the final number before clicking Finalise. */
-function MechanicsLogPanel({ entries }: { entries: MechanicsLogEntry[] }) {
-  const [open, setOpen] = useState(false);
+function MechanicsLogPanel({ entries, defaultOpen = false }: { entries: MechanicsLogEntry[]; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
   const sorted = [...entries].sort((a, b) => a.sequence - b.sequence);
 
   const fmt = (v: number): string => {
