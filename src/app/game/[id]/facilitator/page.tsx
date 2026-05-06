@@ -329,8 +329,8 @@ export default function FacilitatorPage({
         <div className="px-6 pt-6 pb-64 max-w-[1400px] mx-auto">
           <div className="text-center mb-8">
             <Dices className="w-12 h-12 text-text-light mx-auto mb-4" />
-            <h2 className="text-2xl font-extrabold mb-2">Scenario Complete</h2>
-            <p className="text-text-light">Debrief and reflection</p>
+            <h2 className="text-4xl font-extrabold mb-2">Scenario Complete</h2>
+            <p className="text-xl text-text-light">Debrief and reflection</p>
           </div>
           <GameTimeline
             rounds={roundsFull ?? []}

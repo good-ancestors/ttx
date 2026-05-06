@@ -64,16 +64,16 @@ export function GameTimeline({ rounds, initialLabs }: Props) {
     <div className="bg-navy rounded-xl border border-navy-light p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <BarChart3 className="w-5 h-5 text-text-light" />
-        <h3 className="text-lg font-extrabold text-white">Game Timeline</h3>
+        <BarChart3 className="w-7 h-7 text-text-light" />
+        <h3 className="text-2xl font-extrabold text-white">Game Timeline</h3>
       </div>
 
       {/* One-line per round — first populated section line */}
       {completedRounds.some((r) => leadLine(r.summary)) && (
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Newspaper className="w-4 h-4 text-text-light" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-text-light">
+            <Newspaper className="w-5 h-5 text-text-light" />
+            <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
               Round leads
             </span>
           </div>
@@ -86,10 +86,10 @@ export function GameTimeline({ rounds, initialLabs }: Props) {
                   key={r.number}
                   className="flex items-start gap-3 bg-navy-dark rounded-lg p-3 border border-navy-light"
                 >
-                  <span className="text-[11px] font-mono text-text-light shrink-0 mt-0.5">
+                  <span className="text-base font-mono text-text-light shrink-0 mt-0.5">
                     R{r.number}
                   </span>
-                  <span className="text-[13px] text-white leading-snug">{lead}</span>
+                  <span className="text-lg text-white leading-snug">{lead}</span>
                 </div>
               );
             })}
@@ -101,19 +101,19 @@ export function GameTimeline({ rounds, initialLabs }: Props) {
       {(labProgressionRounds.length > 0 || initialLabs.length > 0) && (
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Server className="w-4 h-4 text-text-light" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-text-light">
+            <Server className="w-5 h-5 text-text-light" />
+            <span className="text-sm font-semibold uppercase tracking-wider text-text-light">
               Lab Progression
             </span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-[12px]">
+            <table className="w-full text-base">
               <thead>
                 <tr className="border-b border-navy-light">
                   <th className="text-left text-text-light font-semibold py-2 pr-4">Lab</th>
                   <th className="text-center text-text-light font-semibold py-2 px-3">
                     <div className="flex items-center justify-center gap-1">
-                      <Cpu className="w-3 h-3" /> Start
+                      <Cpu className="w-4 h-4" /> Start
                     </div>
                   </th>
                   {labProgressionRounds.map((r) => (
@@ -176,7 +176,7 @@ export function GameTimeline({ rounds, initialLabs }: Props) {
           <div className="flex flex-wrap gap-4">
             {completedRounds.map((r) =>
               r.aiMeta?.narrativeModel ? (
-                <span key={r.number} className="text-[10px] text-navy-muted font-mono">
+                <span key={r.number} className="text-sm text-navy-muted font-mono">
                   R{r.number}: {r.aiMeta.narrativeModel}
                   {r.aiMeta.narrativeTimeMs
                     ? ` (${(r.aiMeta.narrativeTimeMs / 1000).toFixed(1)}s)`
