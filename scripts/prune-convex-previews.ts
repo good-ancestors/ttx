@@ -7,9 +7,12 @@
 //   Loaded from process.env or the main repo's .env.local.
 //
 // Usage:
-//   npx tsx scripts/prune-convex-previews.ts            # dry run (default)
-//   npx tsx scripts/prune-convex-previews.ts --apply    # shorten expiry to 24h
-//   npx tsx scripts/prune-convex-previews.ts --apply --delete  # actually delete
+//   npx tsx scripts/prune-convex-previews.ts                       # dry run (default)
+//   npx tsx scripts/prune-convex-previews.ts --apply               # shorten expiry to 24h
+//   npx tsx scripts/prune-convex-previews.ts --apply --delete      # actually delete
+//   npx tsx scripts/prune-convex-previews.ts --branch <name> --apply
+//                                                                  # target a single branch
+//                                                                  # (used by the on-PR-close workflow)
 
 import { execFileSync, execSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
@@ -121,9 +124,20 @@ function fmtAge(ms: number): string {
   return `${Math.floor(ms / 3600000)}h`;
 }
 
+function refForBranch(branch: string): string {
+  return `preview/${branch.replace(/\//g, "-").toLowerCase()}`;
+}
+
+function getArg(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
 async function main() {
   const apply = process.argv.includes("--apply");
   const hardDelete = process.argv.includes("--delete");
+  const targetBranch = getArg("--branch");
+
   console.log(`→ fetching project id for ${TEAM}/${PROJECT}…`);
   const projectId = await getProjectId();
 
@@ -131,20 +145,29 @@ async function main() {
   const previews = await listPreviews(projectId);
   console.log(`  ${previews.length} preview deployments total`);
 
-  const branches = currentRemoteBranches();
-  console.log(`→ ${branches.size} live remote branches on origin`);
+  let orphans: Deployment[];
+  if (targetBranch) {
+    const targetRef = refForBranch(targetBranch);
+    orphans = previews.filter((d) => d.reference === targetRef);
+    console.log(
+      `→ targeting branch '${targetBranch}' (ref=${targetRef}): ${orphans.length} match`,
+    );
+  } else {
+    const branches = currentRemoteBranches();
+    console.log(`→ ${branches.size} live remote branches on origin`);
 
-  // Convex preview `reference` is `preview/<branch>` with slashes replaced
-  // by dashes and lowercased (matches the Vercel preview alias convention).
-  const liveRefs = new Set<string>();
-  for (const b of branches) {
-    liveRefs.add(`preview/${b.replace(/\//g, "-").toLowerCase()}`);
+    // Convex preview `reference` is `preview/<branch>` with slashes replaced
+    // by dashes and lowercased (matches the Vercel preview alias convention).
+    const liveRefs = new Set<string>();
+    for (const b of branches) liveRefs.add(refForBranch(b));
+
+    orphans = previews.filter(
+      (d) => d.reference && !liveRefs.has(d.reference),
+    );
   }
-
-  const orphans = previews.filter(
-    (d) => d.reference && !liveRefs.has(d.reference),
-  );
-  console.log(`\nOrphans (branch no longer on origin): ${orphans.length}`);
+  if (!targetBranch) {
+    console.log(`\nOrphans (branch no longer on origin): ${orphans.length}`);
+  }
   const now = Date.now();
   for (const o of orphans) {
     const age = o.createTime ? fmtAge(now - o.createTime) : "?";
