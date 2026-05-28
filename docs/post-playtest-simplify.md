@@ -102,7 +102,20 @@ Reference dice animation is in the conversation (CSS 3D cube, ~1.8s settle). Ada
 
 ---
 
-## 6. Clearer presenter mode
+## 6. Re-open submissions for +30s after the timer closes
+
+**Problem:** A few times we got locked out of the submission window because we weren't watching the timer and a table still needed more time. Once the phase advances, the submit UI is closed.
+
+**Change:** Add a facilitator-only "**+30s, re-open submissions**" button visible during the `rolling` phase (and ideally for a short grace window after). Pushes `phaseEndsAt` forward and flips the phase back to `submit` if it has already advanced.
+
+**Affected:**
+- `convex/games.ts` — new mutation, e.g. `extendSubmissions({ gameId, seconds })`, which sets phase back to `submit` and bumps `phaseEndsAt`.
+- `src/components/facilitator/FacilitatorNav` (or wherever the timer ±30s controls live) — add the re-open button. The existing +/-30s controls only adjust the running timer; this is the case where the timer has already expired.
+- Edge case: if grading has already started for the round, we need to cancel/clear it. Worth checking `aiGenerate.ts` to confirm grading is idempotent on re-submit.
+
+---
+
+## 7. Clearer presenter mode
 
 **Problem:** Presenter mode (the projector view used to run the game) needed clearer step-by-step guidance and full-page content per phase.
 
@@ -134,8 +147,9 @@ What to show on the main screen and when, in order of importance:
 2. Narrative cap to 5 bullets + progressive disclose — §2
 3. Dice reveal animation + per-action walkthrough — §3
 4. State-at-a-glance panel during discuss/submit — §4
-5. Full-page presenter phases — §6
-6. Slide-to-affordance conversions — §5 (iterative; the easy wins first)
+5. Re-open submissions button (+30s) — §6 (small, high-utility quality-of-life)
+6. Full-page presenter phases — §7
+7. Slide-to-affordance conversions — §5 (iterative; the easy wins first)
 
 ## Out of scope for this pass
 
