@@ -24,7 +24,7 @@ Everything below is in service of that: less text, fewer decisions per turn, mor
 - `src/components/table/ActionInputPickers` — `computeTargets`, `foundLab`, `mergeLab` still available, but attached to the single action.
 - Grading + resolve pipeline (`convex/aiGenerate.ts`, `convex/pipeline.ts`) — already loops per action; behaviour is unchanged when length is 1.
 
-**Open question:** Should we further restrict the *action space* (e.g. a menu of action archetypes) rather than free text? Worth prototyping after the one-action cap is in place — may not be needed if narrowing the slot already calms things down.
+**Open question:** ~~Should we further restrict the *action space*?~~ **No** — keep free text. Instead, give facilitators more tools to correct things after the fact (see §7, Facilitator overrides).
 
 ---
 
@@ -115,7 +115,44 @@ Reference dice animation is in the conversation (CSS 3D cube, ~1.8s settle). Ada
 
 ---
 
-## 7. Clearer presenter mode
+## 7. Facilitator overrides for game state
+
+**Problem:** When an LLM hallucinates in the round summary, or game state drifts from what should have happened, facilitators currently can't fix it in-app. Today we have overrides for action probability, structured effect, outcome, compute share, and per-holder compute — but not for the structural pieces (labs) or the narrative itself.
+
+**Principle:** Keep free-text actions (don't constrain the input space). Instead, give game masters enough levers to **correct any state the LLM gets wrong**.
+
+**New overrides needed:**
+
+**Labs**
+- Rename a lab
+- Reassign control (change the owning role)
+- Adjust compute stock (already exists via `overrideHolderCompute` — surface it on the lab card)
+- Create a new lab
+- Delete / decommission a lab
+
+**Compute**
+- Set per-holder stock (exists — `overrideHolderCompute`)
+- Set new-compute share % (exists — `setComputeShareOverrides`)
+- Manual ledger adjustment with reason string (partially exists via `computeTransactions` "facilitator" type — needs UI)
+
+**Narrative / story points**
+- Edit any of the 5 narrative bullets in-place
+- Add a bullet
+- Remove a bullet
+- Reorder bullets
+
+**UI placement:** All of these should live on the facilitator dashboard, surfaced as small edit affordances on the relevant cards (pencil icon on a lab name, +/- on compute, edit-in-place on narrative bullets). No new dedicated "admin" page — the facilitator should fix things in the same view they're presenting from.
+
+**Affected:**
+- `convex/labs.ts` — new mutations: `renameLab`, `reassignLab`, `createLab`, `deleteLab`. Snapshot helpers need to round-trip these.
+- `convex/computeMutations.ts` — already has the compute primitives; needs a generic "facilitator adjustment with reason" mutation that writes to `computeTransactions` and `events`.
+- `convex/rounds.ts` — new mutations: `editNarrativeBullet`, `addNarrativeBullet`, `removeNarrativeBullet`, `reorderNarrativeBullets`.
+- `src/components/facilitator/` — edit affordances on lab cards, compute panel, and narrative bullets.
+- All overrides should write to the `events` log so we can audit them post-game.
+
+---
+
+## 8. Clearer presenter mode
 
 **Problem:** Presenter mode (the projector view used to run the game) needed clearer step-by-step guidance and full-page content per phase.
 
@@ -148,11 +185,12 @@ What to show on the main screen and when, in order of importance:
 3. Dice reveal animation + per-action walkthrough — §3
 4. State-at-a-glance panel during discuss/submit — §4
 5. Re-open submissions button (+30s) — §6 (small, high-utility quality-of-life)
-6. Full-page presenter phases — §7
-7. Slide-to-affordance conversions — §5 (iterative; the easy wins first)
+6. Facilitator overrides (labs, narrative bullets, compute UI) — §7 (high value, scoped well)
+7. Full-page presenter phases — §8
+8. Slide-to-affordance conversions — §5 (iterative; the easy wins first)
 
 ## Out of scope for this pass
 
-- Constraining the action menu to archetypes (revisit after §1 lands).
+- Constraining the action menu to archetypes — explicitly **not doing this**; free text stays.
 - Re-architecting role handouts.
 - Anything in `TODO.md` not directly tied to the simplification themes above.
