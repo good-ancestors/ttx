@@ -24,6 +24,14 @@ Everything below is in service of that: less text, fewer decisions per turn, mor
 - `src/components/table/ActionInputPickers` — `computeTargets`, `foundLab`, `mergeLab` still available, but attached to the single action.
 - Grading + resolve pipeline (`convex/aiGenerate.ts`, `convex/pipeline.ts`) — already loops per action; behaviour is unchanged when length is 1.
 
+**Richer merge-lab picker:** while we're touching the action pickers, beef up `mergeLab` to expose the full lab-edit controls (the same ones facilitators get in §7):
+- Merge **more than two** labs into one in a single action (current UI is survivor + one absorbed).
+- Choose **who controls** the resulting lab (any of the involved roles, or unchanged).
+- Set the **name** of the resulting lab.
+- Optionally set the resulting lab's compute allocation split.
+
+This means the structured-effect shape and `derivePinnedStructuredEffect()` need to support a list of absorbed labs, an explicit `resultingController`, and a `resultingName`. Resolve pipeline (`pipeline.ts` merge handling) needs to apply the multi-lab merge atomically.
+
 **Open question:** ~~Should we further restrict the *action space*?~~ **No** — keep free text. Instead, give facilitators more tools to correct things after the fact (see §7, Facilitator overrides).
 
 ---
