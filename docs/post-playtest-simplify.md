@@ -12,6 +12,25 @@ Everything below is in service of that: less text, fewer decisions per turn, mor
 
 ---
 
+## Summary
+
+| Feedback | Solution | Notes |
+|---|---|---|
+| "Too much text — overwhelming, not enough time to process it." | Strip text from projector and table app. Lead with affordances over instructions. Show key game state visually during decisions. | The whole plan ladders up to this. The goal is empathy for the role, not info delivery. |
+| Tables spammed multiple actions per turn to game the system; made probability-setting impossible for co-facilitators. | Hard-cap at **one action per table per turn**. Remove priority slider and multi-action draft UI. | Smallest code change with the biggest behavioural impact. Free text stays — overrides handle correction. |
+| LLM hallucinations in "what happened" derailed the room; participants stopped trusting the screen. | Cap narrative at **5 bullet points**, progressive disclosure one at a time. Tell players up front that conflicting events get woven together. | Fewer actions per turn → less for the LLM to weave → fewer hallucination opportunities. |
+| Players didn't understand *why* their action did or didn't happen. | After submissions close, walk through each action on the projector with an **animated 3D die roll** showing probability + result + success/fail. | Reference dice animation already drafted in feedback thread. Roll values already stored server-side — just need pacing + UI. |
+| Players wanted to know the game state while choosing actions, but the projector was showing instructions instead. | Add a **state-at-a-glance panel** during discuss/submit: R&D race graph, compute allocation + this round's new-compute default, AI capability levels, humanity-in-control indicator. | Data already exists in `labs` / `gameRuntime` / `computeTransactions`. No schema changes. |
+| Too much groundwork-laying at the start (pie charts, R&D multipliers, capability tiers explained verbally). | **Convert instructions into affordances**: live compute bars, animated chip-flow between rounds, multiplier badges on lab cards, capability ladder with climbing tokens. | Strips the intro slide deck. Mechanics get taught by watching them happen, not by being told. |
+| Facilitators occasionally got locked out when the timer expired before a table was ready. | Facilitator-only "**+30s, re-open submissions**" button that bumps `phaseEndsAt` and flips the phase back to `submit`. | Needs a check that grading is idempotent if it has already kicked off in `rolling`. |
+| When the LLM hallucinates state (lab names, compute, narrative), facilitators can't fix it in-app. | **Facilitator overrides** surfaced inline as edit affordances: rename/reassign/create/delete labs, adjust compute with reason, edit/add/remove/reorder narrative bullets. | Keeps free-text actions intact. Some primitives already exist (`overrideHolderCompute`, `setComputeShareOverrides`) — needs UI + new lab/narrative mutations. All writes audited via `events` log. |
+| Merge-lab picker today only handles survivor + one absorbed, with no name or controller choice. | Expand the merge-lab action picker to **merge >2 labs**, choose the **resulting controller**, set the **resulting name**, and optionally set the compute allocation split. | Same controls facilitators get post-turn — gives players agency over the structural outcome. Requires `derivePinnedStructuredEffect()` and resolve pipeline changes. |
+| Presenter mode needed clearer step-by-step guidance and full-page content per phase. | One **full-screen panel per phase**. Facilitator "what to say / do next" prompts at the bottom. Large obvious advance button. | Mainly a layout restructure of `facilitator/page.tsx`. |
+
+**Explicitly out of scope:** restricting the action menu to archetypes. Free text stays — we address quality via overrides instead.
+
+---
+
 ## 1. One action per table per turn
 
 **Problem:** Tables learned they could spam multiple actions per turn to get more things to happen. This (a) created a meta-game that distracted from role empathy, (b) made probability-setting impossible for co-facilitators, and (c) flooded the narrative.
