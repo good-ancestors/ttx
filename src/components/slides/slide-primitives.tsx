@@ -78,33 +78,6 @@ export function SlideBullets({ items }: { items: ReactNode[] }) {
   );
 }
 
-/** A grid of stat / fact cards. */
-export function SlideStatGrid({
-  stats,
-}: {
-  stats: { label: string; value: ReactNode; color?: string }[];
-}) {
-  return (
-    <div className="grid w-full max-w-5xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {stats.map((s, i) => (
-        <div
-          key={i}
-          className="flex flex-col gap-2 rounded-2xl border border-navy-light bg-navy-dark/60 p-8 text-left"
-        >
-          <span
-            className="text-5xl font-bold md:text-6xl"
-            style={{ color: s.color ?? "var(--color-off-white)" }}
-          >
-            {s.value}
-          </span>
-          <span className="text-base uppercase tracking-wide text-text-light md:text-lg">
-            {s.label}
-          </span>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 /**
  * A dashed, labelled region marking where a live game element will be embedded
