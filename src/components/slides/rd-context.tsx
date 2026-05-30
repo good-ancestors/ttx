@@ -11,20 +11,29 @@ const DEFAULT_LABS: Lab[] = [
   { id: "conscentia", name: "Conscentia", color: "#7C3AED" },
 ];
 
+// The first two points pre-date the game: R&D multipliers sit near zero (0.1×)
+// from mid-2027 and stay flat until the jump at Jan 2028. Each turn's data point
+// is then plotted at the month *after* the turn ends, so the line reaches the
+// boundary of the next period (e.g. Turn 1 ends in March → its point sits at
+// Apr 2028).
 export const TURN_TIMELINE = [
+  { id: "jul-2027", label: "Jul 2027" },
+  { id: "dec-2027", label: "Dec 2027" },
   { id: "start", label: "Jan 2028" },
-  { id: "turn-1", label: "Mar 2028" },
-  { id: "turn-2", label: "Jun 2028" },
-  { id: "turn-3", label: "Sep 2028" },
-  { id: "turn-4", label: "Dec 2028" },
+  { id: "turn-1", label: "Apr 2028" },
+  { id: "turn-2", label: "Jul 2028" },
+  { id: "turn-3", label: "Oct 2028" },
+  { id: "turn-4", label: "Jan 2029" },
 ];
 
 const DEFAULT_MULTIPLIERS: Record<string, Record<string, number>> = {
-  start:    { openbrain: 3,    deepcent: 1,    conscentia: 1 },
-  "turn-1": { openbrain: 10,   deepcent: 3,    conscentia: 4 },
-  "turn-2": { openbrain: 60,   deepcent: 15,   conscentia: 20 },
-  "turn-3": { openbrain: 800,  deepcent: 50,   conscentia: 100 },
-  "turn-4": { openbrain: 5000, deepcent: 200,  conscentia: 500 },
+  "jul-2027": { openbrain: 0.1,  deepcent: 0.1,  conscentia: 0.1 },
+  "dec-2027": { openbrain: 0.1,  deepcent: 0.1,  conscentia: 0.1 },
+  start:      { openbrain: 3,    deepcent: 1,    conscentia: 1 },
+  "turn-1":   { openbrain: 10,   deepcent: 3,    conscentia: 4 },
+  "turn-2":   { openbrain: 60,   deepcent: 15,   conscentia: 20 },
+  "turn-3":   { openbrain: 800,  deepcent: 50,   conscentia: 100 },
+  "turn-4":   { openbrain: 5000, deepcent: 200,  conscentia: 500 },
 };
 
 type RdContextValue = {

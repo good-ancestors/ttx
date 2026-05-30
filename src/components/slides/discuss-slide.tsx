@@ -4,7 +4,7 @@ import { useCallback, useEffect, useReducer } from "react";
 import { Minus, Pause, Play, Plus, RotateCcw } from "lucide-react";
 import { SlideShell } from "./slide-primitives";
 
-const DEFAULT_SECONDS = 15 * 60;
+const DEFAULT_SECONDS = 30 * 60;
 
 type TimerState = { secondsLeft: number; running: boolean };
 type TimerAction =
@@ -90,7 +90,7 @@ export function makeDiscussSlide(turnLabel: string) {
             type="button"
             onClick={() => dispatch({ type: "toggle" })}
             aria-label={running ? "Pause timer" : "Start timer"}
-            className="flex h-16 w-16 items-center justify-center rounded-full bg-viz-capability text-navy-dark transition hover:opacity-90"
+            className="flex h-16 w-16 items-center justify-center rounded-full bg-viz-safety text-navy-dark transition hover:opacity-90"
           >
             {running ? (
               <Pause className="h-7 w-7" aria-hidden />

@@ -150,31 +150,31 @@ function TurnWrapUpSlide() {
     <SlideShell align="start">
       <SlideEyebrow>Turn wrap-up</SlideEyebrow>
       <SlideTitle>Turn wrap up</SlideTitle>
-      <div className="flex w-full max-w-4xl flex-col gap-8">
+      <div className="flex w-full max-w-6xl flex-col gap-10">
         <div>
-          <p className="mb-2 text-2xl font-semibold text-off-white md:text-3xl">
+          <p className="mb-3 text-3xl font-semibold text-off-white md:text-4xl lg:text-5xl">
             What key action did you take?
           </p>
-          <p className="text-xl text-text-light md:text-2xl">
+          <p className="text-2xl text-text-light md:text-3xl">
             Clearly outline what the action was.
           </p>
-          <p className="mt-2 text-xl italic text-text-muted md:text-2xl">
+          <p className="mt-3 text-2xl italic text-text-muted md:text-3xl">
             &ldquo;I use the executive power of the US presidency to compel a merger between
             Conscentia and OpenBrain.&rdquo;
           </p>
         </div>
         <div>
-          <p className="mb-2 text-2xl font-semibold text-off-white md:text-3xl">
+          <p className="mb-3 text-3xl font-semibold text-off-white md:text-4xl lg:text-5xl">
             What was the intent of that action?
           </p>
-          <p className="text-xl text-text-light md:text-2xl">
+          <p className="text-2xl text-text-light md:text-3xl">
             Explain what you hope the action achieves in terms of the scenario.
           </p>
-          <p className="mt-2 text-xl italic text-text-muted md:text-2xl">
+          <p className="mt-3 text-2xl italic text-text-muted md:text-3xl">
             &ldquo;By merging the major labs, we have much more access to computing power.&rdquo;
           </p>
         </div>
-        <p className="text-lg text-text-light">
+        <p className="text-xl text-text-light md:text-2xl">
           Be respectful of other players with the length of your brief.
         </p>
       </div>
@@ -223,18 +223,19 @@ function OtherScenariosSlide() {
     <SlideShell align="start">
       <SlideEyebrow>Wrap-up</SlideEyebrow>
       <SlideTitle>How did other scenarios turn out?</SlideTitle>
-      {/* flex-1 makes visible cards grow to fill remaining height */}
+      {/* All cards always render (each flex-1, fixed at thirds) so the layout
+          height never changes; hidden cards are transparent until revealed. */}
       <div className="flex w-full flex-1 flex-col gap-4">
         {SCENARIOS.map((s, i) => {
-          if (i >= visibleCount) return null;
-          const isNew = i === visibleCount - 1;
+          const isVisible = i < visibleCount;
+          const isNew = i === visibleCount - 1 && isVisible;
           return (
             <div
               key={i}
-              className={`flex flex-1 flex-col justify-center rounded-2xl border bg-navy-dark/60 px-8 py-6${isNew ? " animate-bullet-reveal" : ""}`}
+              className={`flex flex-1 flex-col justify-center rounded-2xl border bg-navy-dark/60 px-8 py-6${isNew ? " animate-bullet-reveal" : ""}${!isVisible ? " opacity-0" : ""}`}
               style={{ borderColor: `${s.color}55` }}
             >
-              <p className="text-lg leading-relaxed text-off-white md:text-xl lg:text-2xl">
+              <p className="text-xl leading-relaxed text-off-white md:text-2xl lg:text-3xl">
                 {s.summary}
               </p>
             </div>

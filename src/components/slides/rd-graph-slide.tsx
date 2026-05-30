@@ -42,9 +42,11 @@ function xOf(i: number, total: number) {
   return PAD.l + (total <= 1 ? CW / 2 : (i / (total - 1)) * CW);
 }
 
-function yOf(v: number, logMax: number) {
-  const logV = Math.log10(Math.max(v, 0.5));
-  return PAD.t + CH - (logV / logMax) * CH;
+// Map a value onto the chart's vertical log axis spanning [logMin, logMax]
+// (both are integer powers of ten).
+function yOf(v: number, logMin: number, logMax: number) {
+  const logV = Math.log10(Math.max(v, 10 ** logMin));
+  return PAD.t + CH - ((logV - logMin) / (logMax - logMin)) * CH;
 }
 
 function RdChart({
@@ -58,10 +60,12 @@ function RdChart({
 }) {
   const allVals = visibleTurns.flatMap((t) => labs.map((l) => multipliers[t.id]?.[l.id] ?? 1));
   const rawMax = Math.max(...allVals, 10);
+  const rawMin = Math.min(...allVals, 1);
   const logMax = Math.ceil(Math.log10(rawMax));
+  const logMin = Math.min(0, Math.floor(Math.log10(rawMin)));
 
   const gridLines: number[] = [];
-  for (let e = 0; e <= logMax; e++) gridLines.push(10 ** e);
+  for (let e = logMin; e <= logMax; e++) gridLines.push(10 ** e);
 
   return (
     <svg
@@ -72,12 +76,13 @@ function RdChart({
     >
       {/* Grid lines + Y-axis labels */}
       {gridLines.map((v) => {
-        const y = yOf(v, logMax);
+        const y = yOf(v, logMin, logMax);
+        const label = v >= 1000 ? `${v / 1000}k` : String(v);
         return (
           <Fragment key={v}>
             <line x1={PAD.l} y1={y} x2={SVG_W - PAD.r} y2={y} stroke="#334155" strokeWidth={1} />
             <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize={11} fill="#64748B">
-              {v >= 1000 ? `${v / 1000}k` : String(v)}×
+              {label}×
             </text>
           </Fragment>
         );
@@ -101,7 +106,7 @@ function RdChart({
       {labs.map((lab) => {
         const points = visibleTurns.map((t, i) => ({
           x: xOf(i, visibleTurns.length),
-          y: yOf(multipliers[t.id]?.[lab.id] ?? 1, logMax),
+          y: yOf(multipliers[t.id]?.[lab.id] ?? 1, logMin, logMax),
         }));
         const d = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
         return (
@@ -333,12 +338,15 @@ function CapabilityBullets({
   ];
 
   return (
-    <ul className="flex flex-col gap-4">
+    <ul className="flex flex-col gap-5 lg:gap-6">
       {allBullets.map((item, i) => (
-        <li key={i} className="flex items-start gap-3 text-base text-off-white md:text-lg">
+        <li
+          key={i}
+          className="flex items-start gap-4 text-2xl leading-snug text-off-white md:text-3xl lg:text-4xl"
+        >
           <span
             aria-hidden
-            className="mt-1.5 h-2 w-2 shrink-0 rounded-full"
+            className="mt-3 h-3 w-3 shrink-0 rounded-full md:mt-4 md:h-3.5 md:w-3.5"
             style={{
               backgroundColor:
                 i === 0 ? "var(--color-viz-capability)" : "var(--color-navy-muted)",
@@ -415,8 +423,8 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
         <div className="w-px self-stretch bg-navy-light" />
 
         {/* ── Right: capabilities ─────────────────────────────── */}
-        <div className="flex w-1/2 flex-col justify-center gap-4 px-8 py-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-text-light">
+        <div className="flex w-1/2 flex-col justify-center gap-8 px-10 py-10 lg:px-14">
+          <p className="text-base font-semibold uppercase tracking-[0.2em] text-text-light md:text-lg">
             {eyebrow}
           </p>
           <CapabilityBullets turnId={upToTurnId} leadingMultiplier={leadingMultiplier} />
