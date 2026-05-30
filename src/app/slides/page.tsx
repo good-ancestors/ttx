@@ -1,7 +1,8 @@
 "use client";
 
-import { DeckPicker } from "@/components/slides/deck-picker";
+import { Slideshow } from "@/components/slides/slideshow";
+import { slides } from "@/components/slides/slides-data";
 
 export default function SlidesPage() {
-  return <DeckPicker />;
+  return <Slideshow slides={slides} />;
 }
