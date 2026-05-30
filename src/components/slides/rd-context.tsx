@@ -11,14 +11,15 @@ const DEFAULT_LABS: Lab[] = [
   { id: "conscentia", name: "Conscentia", color: "#7C3AED" },
 ];
 
-// The first two points pre-date the game: R&D multipliers sit near zero (0.1×)
-// from mid-2027 and stay flat until the jump at Jan 2028. Each turn's data point
-// is then plotted at the month *after* the turn ends, so the line reaches the
-// boundary of the next period (e.g. Turn 1 ends in March → its point sits at
-// Apr 2028).
+// The four 2027 points pre-date the game — fixed history sketching how the labs
+// crept up before the Jan 2028 jump. Each in-game turn's data point is then
+// plotted at the month *after* the turn ends, so the line reaches the boundary
+// of the next period (e.g. Turn 1 ends in March → its point sits at Apr 2028).
 export const TURN_TIMELINE = [
+  { id: "jan-2027", label: "Jan 2027", pregame: true },
+  { id: "apr-2027", label: "Apr 2027", pregame: true },
   { id: "jul-2027", label: "Jul 2027", pregame: true },
-  { id: "dec-2027", label: "Dec 2027", pregame: true },
+  { id: "oct-2027", label: "Oct 2027", pregame: true },
   { id: "start", label: "Jan 2028" },
   { id: "turn-1", label: "Apr 2028" },
   { id: "turn-2", label: "Jul 2028" },
@@ -27,12 +28,14 @@ export const TURN_TIMELINE = [
 ];
 
 const DEFAULT_MULTIPLIERS: Record<string, Record<string, number>> = {
-  // Pre-game history: OpenBrain leads, Conscentia slightly behind, DeepCent furthest back.
+  // Pre-game history (2027): OpenBrain leads, Conscentia second, DeepCent third.
   // DeepCent overtakes Conscentia at the Jan 2028 start — the alleged weight theft.
-  "jul-2027": { openbrain: 1.4, deepcent: 1.2, conscentia: 1.3 },
-  "dec-2027": { openbrain: 1.4, deepcent: 1.2, conscentia: 1.3 },
-  start:      { openbrain: 3,   deepcent: 2,   conscentia: 1 },
-  "turn-1":   { openbrain: 10,  deepcent: 3,   conscentia: 4 },
+  "jan-2027": { openbrain: 1.16, deepcent: 1.1,  conscentia: 1.12 },
+  "apr-2027": { openbrain: 1.2,  deepcent: 1.11, conscentia: 1.13 },
+  "jul-2027": { openbrain: 1.3,  deepcent: 1.12, conscentia: 1.15 },
+  "oct-2027": { openbrain: 1.4,  deepcent: 1.15, conscentia: 1.25 },
+  start:      { openbrain: 3,    deepcent: 2.5,  conscentia: 2 },
+  "turn-1":   { openbrain: 10,   deepcent: 3,    conscentia: 4 },
   "turn-2":   { openbrain: 60,   deepcent: 15,   conscentia: 20 },
   "turn-3":   { openbrain: 800,  deepcent: 50,   conscentia: 100 },
   "turn-4":   { openbrain: 5000, deepcent: 200,  conscentia: 500 },
