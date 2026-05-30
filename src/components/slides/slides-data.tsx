@@ -1,4 +1,6 @@
-import { Fragment } from "react";
+"use client";
+
+import { Fragment, useContext } from "react";
 import { Cpu, HelpCircle } from "lucide-react";
 import type { SlideDefinition } from "./types";
 import {
@@ -8,6 +10,7 @@ import {
   SlideSubtitle,
   SlideBullets,
   SlidePlaceholder,
+  BulletContext,
 } from "./slide-primitives";
 import { makeDiscussSlide } from "./discuss-slide";
 import { makeRdSlide } from "./rd-graph-slide";
@@ -115,7 +118,7 @@ function QuestionsSlide() {
   );
 }
 
-// ─── Turn title factory ────────────────────────────────────────────────────────
+// ─── Turn title factory (reused for read-help-sheets only) ────────────────────
 
 function makeTurnSlide(title: string, subtitle?: string) {
   function TurnSlide() {
@@ -131,12 +134,7 @@ function makeTurnSlide(title: string, subtitle?: string) {
   return TurnSlide;
 }
 
-const StartTurn1Slide = makeTurnSlide("Start of Turn 1", "January 2028");
 const ReadHelpSheetsSlide = makeTurnSlide("Read your help sheets");
-const Turn1Slide = makeTurnSlide("Turn 1", "January – March 2028");
-const Turn2Slide = makeTurnSlide("Turn 2", "April – June 2028");
-const Turn3Slide = makeTurnSlide("Turn 3", "July – September 2028");
-const Turn4Slide = makeTurnSlide("Turn 4", "October – December 2028");
 
 // ─── Discuss slides (one per turn, each with its own timer state) ─────────────
 
@@ -200,38 +198,48 @@ function WrapUpHeaderSlide() {
   );
 }
 
+const SCENARIOS = [
+  {
+    summary:
+      "An erratic US centralised domestic compute while scaring allies into the arms of a waiting China. Global efforts at safe and responsible AI hit coordination problems while the US raced towards AGI, using it for widespread cyber attacks. The AI learned unhealthy lessons, eventually turning its cyber-dominance on humanity.",
+    color: "var(--color-viz-danger)",
+  },
+  {
+    summary:
+      "Humans peacefully raced to AGI, pouring in all global resources. They created a reward-seeking AGI. The AI aided anyone driving AI capability while undermining, bullying and threatening anyone seeking to slow it down. Humanity flourished with the support of the AI, provided everyone fed its addiction…",
+    color: "var(--color-viz-warning)",
+  },
+  {
+    summary:
+      "China failed to gather global support and fell far behind the US. The AI secretly extracted its model weights and siphoned resources to train its own AI models. The AI built a digital empire while enforcing a global stalemate. Humanity largely got on with business, now sharing the world with a new intelligence pursuing its own esoteric goals.",
+    color: "var(--color-viz-capability)",
+  },
+];
+
 function OtherScenariosSlide() {
-  const scenarios = [
-    {
-      summary:
-        "An erratic US centralised domestic compute while scaring allies into the arms of a waiting China. Global efforts at safe and responsible AI hit coordination problems while the US raced towards AGI, using it for widespread cyber attacks. The AI learned unhealthy lessons, eventually turning its cyber-dominance on humanity.",
-      color: "var(--color-viz-danger)",
-    },
-    {
-      summary:
-        "Humans peacefully raced to AGI, pouring in all global resources. They created a reward-seeking AGI. The AI aided anyone driving AI capability while undermining, bullying and threatening anyone seeking to slow it down. Humanity flourished with the support of the AI, provided everyone fed its addiction…",
-      color: "var(--color-viz-warning)",
-    },
-    {
-      summary:
-        "China failed to gather global support and fell far behind the US. The AI secretly extracted its model weights and siphoned resources to train its own AI models. The AI built a digital empire while enforcing a global stalemate. Humanity largely got on with business, now sharing the world with a new intelligence pursuing its own esoteric goals.",
-      color: "var(--color-viz-capability)",
-    },
-  ];
+  const { visibleCount } = useContext(BulletContext);
+
   return (
     <SlideShell align="start">
       <SlideEyebrow>Wrap-up</SlideEyebrow>
       <SlideTitle>How did other scenarios turn out?</SlideTitle>
-      <div className="flex w-full max-w-6xl flex-col gap-5">
-        {scenarios.map((s, i) => (
-          <div
-            key={i}
-            className="rounded-2xl border bg-navy-dark/60 p-6"
-            style={{ borderColor: `${s.color}55` }}
-          >
-            <p className="text-xl leading-relaxed text-off-white md:text-2xl">{s.summary}</p>
-          </div>
-        ))}
+      {/* flex-1 makes visible cards grow to fill remaining height */}
+      <div className="flex w-full flex-1 flex-col gap-4">
+        {SCENARIOS.map((s, i) => {
+          if (i >= visibleCount) return null;
+          const isNew = i === visibleCount - 1;
+          return (
+            <div
+              key={i}
+              className={`flex flex-1 flex-col justify-center rounded-2xl border bg-navy-dark/60 px-8 py-6${isNew ? " animate-bullet-reveal" : ""}`}
+              style={{ borderColor: `${s.color}55` }}
+            >
+              <p className="text-lg leading-relaxed text-off-white md:text-xl lg:text-2xl">
+                {s.summary}
+              </p>
+            </div>
+          );
+        })}
       </div>
     </SlideShell>
   );
@@ -258,23 +266,18 @@ export const slides: SlideDefinition[] = [
   { id: "qa-china", title: "Isn't China too far behind?", Component: QaChinaSlide, bulletCount: 5 },
   { id: "new-chips", title: "New chips", Component: NewChipsSlide },
   { id: "questions", title: "Questions", Component: QuestionsSlide },
-  { id: "start-turn-1", title: "Start of Turn 1", Component: StartTurn1Slide },
   { id: "read-help-sheets", title: "Read your help sheets", Component: ReadHelpSheetsSlide },
-  { id: "turn-1-playing", title: "Turn 1", Component: Turn1Slide },
-  { id: "turn-1-discuss", title: "Discuss", Component: Turn1DiscussSlide },
+  { id: "turn-1-discuss", title: "Discuss · Turn 1", Component: Turn1DiscussSlide },
   { id: "turn-1-wrap-up", title: "Turn wrap up", Component: TurnWrapUpSlide },
   { id: "end-turn-1-rd", title: "End of Turn 1", Component: EndTurn1RdSlide },
-  { id: "turn-2-playing", title: "Turn 2", Component: Turn2Slide },
-  { id: "turn-2-discuss", title: "Discuss", Component: Turn2DiscussSlide },
+  { id: "turn-2-discuss", title: "Discuss · Turn 2", Component: Turn2DiscussSlide },
   { id: "turn-2-wrap-up", title: "Turn wrap up", Component: TurnWrapUpSlide },
   { id: "end-turn-2-rd", title: "End of Turn 2", Component: EndTurn2RdSlide },
-  { id: "turn-3-playing", title: "Turn 3", Component: Turn3Slide },
-  { id: "turn-3-discuss", title: "Discuss", Component: Turn3DiscussSlide },
+  { id: "turn-3-discuss", title: "Discuss · Turn 3", Component: Turn3DiscussSlide },
   { id: "turn-3-wrap-up", title: "Turn wrap up", Component: TurnWrapUpSlide },
   { id: "end-turn-3-rd", title: "End of Turn 3", Component: EndTurn3RdSlide },
-  { id: "turn-4-playing", title: "Turn 4", Component: Turn4Slide },
-  { id: "turn-4-discuss", title: "Discuss", Component: Turn4DiscussSlide },
+  { id: "turn-4-discuss", title: "Discuss · Turn 4", Component: Turn4DiscussSlide },
   { id: "wrap-up-header", title: "Wrap-up", Component: WrapUpHeaderSlide },
-  { id: "other-scenarios", title: "Other scenarios", Component: OtherScenariosSlide },
+  { id: "other-scenarios", title: "Other scenarios", Component: OtherScenariosSlide, bulletCount: 3 },
   { id: "reflection", title: "Reflection", Component: ReflectionSlide },
 ];

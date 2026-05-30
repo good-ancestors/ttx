@@ -52,7 +52,9 @@ export function Slideshow({ slides }: { slides: SlideDefinition[] }) {
   }, [bulletCount, visibleCount, count]);
 
   const prev = useCallback(() => {
-    if (bulletCount > 0 && visibleCount > 1) {
+    // Only decrement if we're mid-reveal (not when visibleCount > bulletCount,
+    // which happens when arriving backward — MAX_SAFE_INTEGER would loop forever).
+    if (bulletCount > 0 && visibleCount > 1 && visibleCount <= bulletCount) {
       setVisibleCount((v) => v - 1);
     } else {
       setIndex((i) => clamp(i - 1, 0, count - 1));
@@ -129,7 +131,8 @@ export function Slideshow({ slides }: { slides: SlideDefinition[] }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [next, prev, goTo, count, toggleFullscreen]);
 
-  const atStart = index === 0 && (bulletCount === 0 || visibleCount <= 1);
+  // Mirror the prev() condition: disabled when prev() would not decrement.
+  const atStart = index === 0 && !(bulletCount > 0 && visibleCount > 1 && visibleCount <= bulletCount);
   const atEnd = index === count - 1 && (bulletCount === 0 || visibleCount >= bulletCount);
 
   return (

@@ -81,12 +81,14 @@ export function SlideBullets({ items }: { items: ReactNode[] }) {
   return (
     <ul className="flex w-full flex-col gap-6 text-left md:gap-8">
       {items.map((item, i) => {
-        if (i >= visibleCount) return null;
-        const isNew = i === visibleCount - 1;
+        // Render all items always (preserves total height, prevents title jumping).
+        // Hidden items are transparent; only the newly-revealed item animates in.
+        const isVisible = i < visibleCount;
+        const isNew = i === visibleCount - 1 && isVisible;
         return (
           <li
             key={i}
-            className={`flex items-start gap-5 text-2xl text-off-white md:text-3xl lg:text-4xl${isNew ? " animate-bullet-reveal" : ""}`}
+            className={`flex items-start gap-5 text-2xl text-off-white md:text-3xl lg:text-4xl${isNew ? " animate-bullet-reveal" : ""}${!isVisible ? " opacity-0" : ""}`}
           >
             <span
               aria-hidden
