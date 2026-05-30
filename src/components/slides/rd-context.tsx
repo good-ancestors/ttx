@@ -17,8 +17,8 @@ const DEFAULT_LABS: Lab[] = [
 // boundary of the next period (e.g. Turn 1 ends in March → its point sits at
 // Apr 2028).
 export const TURN_TIMELINE = [
-  { id: "jul-2027", label: "Jul 2027" },
-  { id: "dec-2027", label: "Dec 2027" },
+  { id: "jul-2027", label: "Jul 2027", pregame: true },
+  { id: "dec-2027", label: "Dec 2027", pregame: true },
   { id: "start", label: "Jan 2028" },
   { id: "turn-1", label: "Apr 2028" },
   { id: "turn-2", label: "Jul 2028" },

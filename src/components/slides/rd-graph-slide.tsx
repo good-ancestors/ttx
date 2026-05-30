@@ -370,6 +370,8 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
 
     const turnIdx = TURN_TIMELINE.findIndex((t) => t.id === upToTurnId);
     const visibleTurns = TURN_TIMELINE.slice(0, turnIdx + 1);
+    // Pre-game turns appear in the chart for context but are not editable.
+    const editableTurns = visibleTurns.filter((t) => !t.pregame);
 
     const leadingMultiplier = Math.max(
       ...labs.map((l) => multipliers[upToTurnId]?.[l.id] ?? 1),
@@ -433,7 +435,7 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
         {/* Edit modal */}
         {editOpen && (
           <EditModal
-            visibleTurns={visibleTurns}
+            visibleTurns={editableTurns}
             labs={labs}
             multipliers={multipliers}
             setMultiplier={setMultiplier}
