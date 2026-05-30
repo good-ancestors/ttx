@@ -11,16 +11,17 @@ const DEFAULT_LABS: Lab[] = [
   { id: "conscentia", name: "Conscentia", color: "#7C3AED" },
 ];
 
-// The four 2027 points pre-date the game — fixed history sketching how the labs
-// crept up before the Jan 2028 jump. Each in-game turn's data point is then
-// plotted at the month *after* the turn ends, so the line reaches the boundary
-// of the next period (e.g. Turn 1 ends in March → its point sits at Apr 2028).
+// Everything up to and including Jan 2028 is fixed history (pregame) — locked,
+// non-editable background sketching how the labs crept up before the game. Each
+// in-game turn's data point is then plotted at the month *after* the turn ends,
+// so the line reaches the boundary of the next period (e.g. Turn 1 ends in March
+// → its point sits at Apr 2028).
 export const TURN_TIMELINE = [
   { id: "jan-2027", label: "Jan 2027", pregame: true },
   { id: "apr-2027", label: "Apr 2027", pregame: true },
   { id: "jul-2027", label: "Jul 2027", pregame: true },
   { id: "oct-2027", label: "Oct 2027", pregame: true },
-  { id: "start", label: "Jan 2028" },
+  { id: "start", label: "Jan 2028", pregame: true },
   { id: "turn-1", label: "Apr 2028" },
   { id: "turn-2", label: "Jul 2028" },
   { id: "turn-3", label: "Oct 2028" },
