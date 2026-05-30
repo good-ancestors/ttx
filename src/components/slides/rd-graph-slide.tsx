@@ -398,27 +398,24 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
       <div className="flex h-full w-full bg-navy-dark">
         {/* ── Left: interactive chart ─────────────────────────── */}
         <div
-          className="group relative flex w-1/2 cursor-pointer flex-col p-6"
+          className="group relative flex w-1/2 cursor-pointer flex-col p-6 brightness-100 transition-[filter] duration-200 hover:brightness-125"
           onClick={openModal}
           role="button"
           tabIndex={0}
           aria-label="Click to edit R&D multipliers"
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openModal(); }}
         >
-          {/* Hover highlight ring */}
-          <div className="pointer-events-none absolute inset-2 rounded-2xl border-2 border-transparent transition-colors duration-200 group-hover:border-viz-capability/40" />
-
           {/* Legend + edit hint */}
           <div className="relative z-10 flex items-center justify-between pb-2">
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
               {labs.map((lab) => (
                 <span
                   key={lab.id}
-                  className="flex items-center gap-1.5 text-xs font-semibold"
+                  className="flex items-center gap-2.5 text-2xl font-bold md:text-3xl"
                   style={{ color: lab.color }}
                 >
                   <span
-                    className="h-2.5 w-2.5 rounded-full"
+                    className="h-4 w-4 rounded-full md:h-5 md:w-5"
                     style={{ backgroundColor: lab.color }}
                   />
                   {lab.name}
