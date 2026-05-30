@@ -9,6 +9,8 @@ import {
   SlideBullets,
   SlidePlaceholder,
 } from "./slide-primitives";
+import { makeDiscussSlide } from "./discuss-slide";
+import { makeRdSlide } from "./rd-graph-slide";
 
 // ─── Scenario setup ───────────────────────────────────────────────────────────
 
@@ -132,12 +134,16 @@ function makeTurnSlide(title: string, subtitle?: string) {
 const StartTurn1Slide = makeTurnSlide("Start of Turn 1", "January 2028");
 const ReadHelpSheetsSlide = makeTurnSlide("Read your help sheets");
 const Turn1Slide = makeTurnSlide("Turn 1", "January – March 2028");
-const EndTurn1TitleSlide = makeTurnSlide("End of Turn 1", "March 2028");
 const Turn2Slide = makeTurnSlide("Turn 2", "April – June 2028");
-const EndTurn2TitleSlide = makeTurnSlide("End of Turn 2", "June 2028");
 const Turn3Slide = makeTurnSlide("Turn 3", "July – September 2028");
-const EndTurn3TitleSlide = makeTurnSlide("End of Turn 3", "September 2028");
 const Turn4Slide = makeTurnSlide("Turn 4", "October – December 2028");
+
+// ─── Discuss slides (one per turn, each with its own timer state) ─────────────
+
+const Turn1DiscussSlide = makeDiscussSlide("Turn 1 · January – March 2028");
+const Turn2DiscussSlide = makeDiscussSlide("Turn 2 · April – June 2028");
+const Turn3DiscussSlide = makeDiscussSlide("Turn 3 · July – September 2028");
+const Turn4DiscussSlide = makeDiscussSlide("Turn 4 · October – December 2028");
 
 // ─── Turn wrap-up (identical content for all turns) ───────────────────────────
 
@@ -178,81 +184,11 @@ function TurnWrapUpSlide() {
   );
 }
 
-// ─── End-of-turn capability slides ────────────────────────────────────────────
+// ─── End-of-turn R&D + capabilities slides ────────────────────────────────────
 
-function EndTurn1CapabilitiesSlide() {
-  return (
-    <SlideShell align="start">
-      <SlideEyebrow>End of Turn 1 · March 2028</SlideEyebrow>
-      <SlideTitle>How capable is AI?</SlideTitle>
-      <SlideBullets
-        items={[
-          "Can complete tasks like the best remote worker",
-          "As persuasive as the most persuasive humans",
-          "Significant progress on robotics — skillfully control robots",
-          '"AI CEOs" perform like human CEOs',
-          <Fragment key="t1-multiplier">
-            Agent-3&apos;s R&D multiplier is{" "}
-            <span className="font-bold" style={{ color: "var(--color-viz-capability)" }}>
-              10×
-            </span>{" "}
-            — the kind of AI progress expected in 3 years now happens in 3 months
-          </Fragment>,
-          "The majority of AI progress is now driven by compute, not talent",
-        ]}
-      />
-    </SlideShell>
-  );
-}
-
-function EndTurn2CapabilitiesSlide() {
-  return (
-    <SlideShell align="start">
-      <SlideEyebrow>End of Turn 2 · June 2028</SlideEyebrow>
-      <SlideTitle>How capable is AI?</SlideTitle>
-      <SlideBullets
-        items={[
-          "Superhuman persuasion — more persuasive than any human",
-          "Significant progress on robotics — skillfully control robots",
-          '"AI CEOs" perform like human CEOs',
-          <Fragment key="t2-multiplier">
-            Agent-3&apos;s R&D multiplier is{" "}
-            <span className="font-bold" style={{ color: "var(--color-viz-warning)" }}>
-              60×
-            </span>{" "}
-            — AI progress expected in 15 years now happens in 3 months
-          </Fragment>,
-          "Almost all AI progress is now driven by compute, not talent",
-        ]}
-      />
-    </SlideShell>
-  );
-}
-
-function EndTurn3CapabilitiesSlide() {
-  return (
-    <SlideShell align="start">
-      <SlideEyebrow>End of Turn 3 · September 2028</SlideEyebrow>
-      <SlideTitle>How capable is AI?</SlideTitle>
-      <SlideBullets
-        items={[
-          "Superhuman persuasion",
-          "Advanced robotics",
-          "Superhuman strategy",
-          "Cyber dominance",
-          <Fragment key="t3-multiplier">
-            Agent-3&apos;s R&D multiplier is{" "}
-            <span className="font-bold" style={{ color: "var(--color-viz-danger)" }}>
-              800×
-            </span>{" "}
-            — AI progress expected in 200 years now happens in 3 months
-          </Fragment>,
-          "Talent is largely irrelevant — essentially all AI progress is driven by compute",
-        ]}
-      />
-    </SlideShell>
-  );
-}
+const EndTurn1RdSlide = makeRdSlide("turn-1", "End of Turn 1 · March 2028");
+const EndTurn2RdSlide = makeRdSlide("turn-2", "End of Turn 2 · June 2028");
+const EndTurn3RdSlide = makeRdSlide("turn-3", "End of Turn 3 · September 2028");
 
 // ─── Wrap-up slides ────────────────────────────────────────────────────────────
 
@@ -317,26 +253,27 @@ function ReflectionSlide() {
 
 export const slides: SlideDefinition[] = [
   { id: "scenario-header", title: "Scenario", Component: ScenarioHeaderSlide },
-  { id: "turn-1-scenario", title: "January 2028", Component: Turn1ScenarioSlide },
-  { id: "qa-capabilities", title: "How capable is AI?", Component: QaCapabilitiesSlide },
-  { id: "qa-china", title: "Isn't China too far behind?", Component: QaChinaSlide },
+  { id: "turn-1-scenario", title: "January 2028", Component: Turn1ScenarioSlide, bulletCount: 6 },
+  { id: "qa-capabilities", title: "How capable is AI?", Component: QaCapabilitiesSlide, bulletCount: 5 },
+  { id: "qa-china", title: "Isn't China too far behind?", Component: QaChinaSlide, bulletCount: 5 },
   { id: "new-chips", title: "New chips", Component: NewChipsSlide },
   { id: "questions", title: "Questions", Component: QuestionsSlide },
   { id: "start-turn-1", title: "Start of Turn 1", Component: StartTurn1Slide },
   { id: "read-help-sheets", title: "Read your help sheets", Component: ReadHelpSheetsSlide },
   { id: "turn-1-playing", title: "Turn 1", Component: Turn1Slide },
+  { id: "turn-1-discuss", title: "Discuss", Component: Turn1DiscussSlide },
   { id: "turn-1-wrap-up", title: "Turn wrap up", Component: TurnWrapUpSlide },
-  { id: "end-turn-1-title", title: "End of Turn 1", Component: EndTurn1TitleSlide },
-  { id: "end-turn-1-capabilities", title: "AI capabilities — Turn 1", Component: EndTurn1CapabilitiesSlide },
+  { id: "end-turn-1-rd", title: "End of Turn 1", Component: EndTurn1RdSlide },
   { id: "turn-2-playing", title: "Turn 2", Component: Turn2Slide },
+  { id: "turn-2-discuss", title: "Discuss", Component: Turn2DiscussSlide },
   { id: "turn-2-wrap-up", title: "Turn wrap up", Component: TurnWrapUpSlide },
-  { id: "end-turn-2-title", title: "End of Turn 2", Component: EndTurn2TitleSlide },
-  { id: "end-turn-2-capabilities", title: "AI capabilities — Turn 2", Component: EndTurn2CapabilitiesSlide },
+  { id: "end-turn-2-rd", title: "End of Turn 2", Component: EndTurn2RdSlide },
   { id: "turn-3-playing", title: "Turn 3", Component: Turn3Slide },
+  { id: "turn-3-discuss", title: "Discuss", Component: Turn3DiscussSlide },
   { id: "turn-3-wrap-up", title: "Turn wrap up", Component: TurnWrapUpSlide },
-  { id: "end-turn-3-title", title: "End of Turn 3", Component: EndTurn3TitleSlide },
-  { id: "end-turn-3-capabilities", title: "AI capabilities — Turn 3", Component: EndTurn3CapabilitiesSlide },
+  { id: "end-turn-3-rd", title: "End of Turn 3", Component: EndTurn3RdSlide },
   { id: "turn-4-playing", title: "Turn 4", Component: Turn4Slide },
+  { id: "turn-4-discuss", title: "Discuss", Component: Turn4DiscussSlide },
   { id: "wrap-up-header", title: "Wrap-up", Component: WrapUpHeaderSlide },
   { id: "other-scenarios", title: "Other scenarios", Component: OtherScenariosSlide },
   { id: "reflection", title: "Reflection", Component: ReflectionSlide },

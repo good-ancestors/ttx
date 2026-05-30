@@ -15,4 +15,10 @@ export type SlideDefinition = {
   title: string;
   /** The slide body, rendered inside the full-screen frame. */
   Component: ComponentType;
+  /**
+   * Number of bullet points to progressively disclose on this slide.
+   * If set, each "next" press reveals one more bullet before advancing.
+   * Omit (or set 0) for slides with no progressive content.
+   */
+  bulletCount?: number;
 };

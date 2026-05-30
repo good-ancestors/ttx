@@ -1,13 +1,23 @@
+"use client";
+
+import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
 
 /**
  * Reusable layout building blocks for slides.
- *
- * These keep the 10 example slides consistent and make new slides quick to
- * author. They are presentation-only (no client directive) so they can be
- * composed inside interactive, client-rendered slides later on.
  */
+
+// ─── Bullet reveal context ────────────────────────────────────────────────────
+
+type BulletContextValue = { visibleCount: number };
+
+/** Consumed by SlideBullets to know how many items to show. Provided by Slideshow. */
+export const BulletContext = createContext<BulletContextValue>({
+  visibleCount: Number.MAX_SAFE_INTEGER,
+});
+
+// ─── Layout primitives ────────────────────────────────────────────────────────
 
 type Align = "center" | "start";
 
@@ -60,31 +70,40 @@ export function SlideSubtitle({ children }: { children: ReactNode }) {
   return <p className="max-w-3xl text-balance text-xl text-text-light md:text-2xl">{children}</p>;
 }
 
-/** A vertical list of points with accent bullets. */
+/**
+ * A vertical list of bullet points with progressive disclosure.
+ * Reads visibleCount from BulletContext — Slideshow controls how many are shown.
+ * The most-recently revealed item animates in.
+ */
 export function SlideBullets({ items }: { items: ReactNode[] }) {
+  const { visibleCount } = useContext(BulletContext);
+
   return (
-    <ul className="flex max-w-3xl flex-col gap-5 text-left">
-      {items.map((item, i) => (
-        <li key={i} className="flex items-start gap-4 text-xl text-off-white md:text-3xl">
-          <span
-            aria-hidden
-            className="mt-3 h-2.5 w-2.5 shrink-0 rounded-full md:mt-4 md:h-3 md:w-3"
-            style={{ backgroundColor: "var(--color-viz-capability)" }}
-          />
-          <span>{item}</span>
-        </li>
-      ))}
+    <ul className="flex w-full flex-col gap-6 text-left md:gap-8">
+      {items.map((item, i) => {
+        if (i >= visibleCount) return null;
+        const isNew = i === visibleCount - 1;
+        return (
+          <li
+            key={i}
+            className={`flex items-start gap-5 text-2xl text-off-white md:text-3xl lg:text-4xl${isNew ? " animate-bullet-reveal" : ""}`}
+          >
+            <span
+              aria-hidden
+              className="mt-3 h-3 w-3 shrink-0 rounded-full md:mt-4 md:h-4 md:w-4"
+              style={{ backgroundColor: "var(--color-viz-capability)" }}
+            />
+            <span className="leading-snug">{item}</span>
+          </li>
+        );
+      })}
     </ul>
   );
 }
 
-
 /**
  * A dashed, labelled region marking where a live game element will be embedded
  * later (editable R&D graph, compute-distribution animation, round timer, …).
- *
- * Replace the children of this panel with the real interactive component when
- * wiring up game state.
  */
 export function SlidePlaceholder({
   icon: Icon,

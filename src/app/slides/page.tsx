@@ -2,7 +2,12 @@
 
 import { Slideshow } from "@/components/slides/slideshow";
 import { slides } from "@/components/slides/slides-data";
+import { RdProvider } from "@/components/slides/rd-context";
 
 export default function SlidesPage() {
-  return <Slideshow slides={slides} />;
+  return (
+    <RdProvider>
+      <Slideshow slides={slides} />
+    </RdProvider>
+  );
 }

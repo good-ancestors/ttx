@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize, Minimize } from "lucide-react";
 import type { SlideDefinition } from "./types";
+import { BulletContext } from "./slide-primitives";
 
 /** Clamp a number into the [min, max] range. */
 function clamp(n: number, min: number, max: number) {
@@ -23,25 +24,49 @@ function indexFromHash(count: number): number | null {
  * bar, and URL-hash deep linking so a refresh keeps your place.
  *
  * Navigation:
- *  - Next: → · Space · PageDown · l
- *  - Prev: ← · Backspace · PageUp · h
+ *  - Next: → · Space · PageDown · l  (reveals next bullet if any, then advances)
+ *  - Prev: ← · Backspace · PageUp · h  (un-reveals last bullet if any, then retreats)
  *  - First / last: Home / End
  *  - Fullscreen: f
  *
- * Keyboard handling is skipped while an input/textarea/select is focused, so
- * future interactive slides (editable graphs, forms) keep their own key events.
+ * On slides with a bulletCount, pressing "next" reveals one bullet at a time before
+ * advancing to the next slide. Pressing "prev" un-reveals, or retreats to the
+ * previous slide showing all its bullets.
  */
 export function Slideshow({ slides }: { slides: SlideDefinition[] }) {
   const count = slides.length;
   const [index, setIndex] = useState(() => indexFromHash(count) ?? 0);
+  const [visibleCount, setVisibleCount] = useState(Number.MAX_SAFE_INTEGER);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const current = slides[index];
+  const bulletCount = current.bulletCount ?? 0;
+
+  const next = useCallback(() => {
+    if (bulletCount > 0 && visibleCount < bulletCount) {
+      setVisibleCount((v) => v + 1);
+    } else {
+      setIndex((i) => clamp(i + 1, 0, count - 1));
+      setVisibleCount(1);
+    }
+  }, [bulletCount, visibleCount, count]);
+
+  const prev = useCallback(() => {
+    if (bulletCount > 0 && visibleCount > 1) {
+      setVisibleCount((v) => v - 1);
+    } else {
+      setIndex((i) => clamp(i - 1, 0, count - 1));
+      setVisibleCount(Number.MAX_SAFE_INTEGER);
+    }
+  }, [bulletCount, visibleCount, count]);
+
   const goTo = useCallback(
-    (next: number) => setIndex(clamp(next, 0, count - 1)),
+    (n: number) => {
+      setIndex(clamp(n, 0, count - 1));
+      setVisibleCount(Number.MAX_SAFE_INTEGER);
+    },
     [count],
   );
-  const next = useCallback(() => goTo(index + 1), [goTo, index]);
-  const prev = useCallback(() => goTo(index - 1), [goTo, index]);
 
   // Keep the URL hash in sync with the current slide.
   useEffect(() => {
@@ -104,84 +129,85 @@ export function Slideshow({ slides }: { slides: SlideDefinition[] }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [next, prev, goTo, count, toggleFullscreen]);
 
-  const current = slides[index];
-  const atStart = index === 0;
-  const atEnd = index === count - 1;
+  const atStart = index === 0 && (bulletCount === 0 || visibleCount <= 1);
+  const atEnd = index === count - 1 && (bulletCount === 0 || visibleCount >= bulletCount);
 
   return (
-    <div className="relative flex h-full w-full flex-col bg-navy-dark text-off-white">
-      {/* Progress bar */}
-      <div className="absolute inset-x-0 top-0 z-20 h-1.5 bg-navy-light/40">
-        <div
-          className="h-full bg-viz-capability transition-[width] duration-300 ease-out"
-          style={{ width: `${((index + 1) / count) * 100}%` }}
-        />
-      </div>
-
-      {/* Active slide */}
-      <main className="flex-1 overflow-hidden">
-        <current.Component key={current.id} />
-      </main>
-
-      {/* Control bar */}
-      <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-between gap-4 px-6 py-4 md:px-10">
-        <button
-          type="button"
-          onClick={prev}
-          disabled={atStart}
-          aria-label="Previous slide"
-          className="flex h-12 w-12 items-center justify-center rounded-full bg-navy-light/60 text-off-white transition hover:bg-navy-light disabled:cursor-not-allowed disabled:opacity-30"
-        >
-          <ChevronLeft className="h-6 w-6" aria-hidden />
-        </button>
-
-        {/* Progress dots */}
-        <div className="flex items-center gap-2.5" role="tablist" aria-label="Slides">
-          {slides.map((slide, i) => (
-            <button
-              key={slide.id}
-              type="button"
-              role="tab"
-              aria-selected={i === index}
-              aria-label={`Slide ${i + 1}: ${slide.title}`}
-              onClick={() => goTo(i)}
-              className="h-2.5 rounded-full transition-all"
-              style={{
-                width: i === index ? "1.75rem" : "0.625rem",
-                backgroundColor:
-                  i === index ? "var(--color-viz-capability)" : "var(--color-navy-light)",
-              }}
-            />
-          ))}
+    <BulletContext.Provider value={{ visibleCount }}>
+      <div className="relative flex h-full w-full flex-col bg-navy-dark text-off-white">
+        {/* Progress bar */}
+        <div className="absolute inset-x-0 top-0 z-20 h-1.5 bg-navy-light/40">
+          <div
+            className="h-full bg-viz-capability transition-[width] duration-300 ease-out"
+            style={{ width: `${((index + 1) / count) * 100}%` }}
+          />
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="hidden font-mono text-sm text-text-light tabular-nums sm:inline">
-            {index + 1} / {count}
-          </span>
+        {/* Active slide */}
+        <main className="flex-1 overflow-hidden">
+          <current.Component key={current.id} />
+        </main>
+
+        {/* Control bar */}
+        <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-between gap-4 px-6 py-4 md:px-10">
           <button
             type="button"
-            onClick={toggleFullscreen}
-            aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-            className="flex h-12 w-12 items-center justify-center rounded-full bg-navy-light/60 text-off-white transition hover:bg-navy-light"
-          >
-            {isFullscreen ? (
-              <Minimize className="h-5 w-5" aria-hidden />
-            ) : (
-              <Maximize className="h-5 w-5" aria-hidden />
-            )}
-          </button>
-          <button
-            type="button"
-            onClick={next}
-            disabled={atEnd}
-            aria-label="Next slide"
+            onClick={prev}
+            disabled={atStart}
+            aria-label="Previous slide"
             className="flex h-12 w-12 items-center justify-center rounded-full bg-navy-light/60 text-off-white transition hover:bg-navy-light disabled:cursor-not-allowed disabled:opacity-30"
           >
-            <ChevronRight className="h-6 w-6" aria-hidden />
+            <ChevronLeft className="h-6 w-6" aria-hidden />
           </button>
+
+          {/* Progress dots */}
+          <div className="flex items-center gap-2.5" role="tablist" aria-label="Slides">
+            {slides.map((slide, i) => (
+              <button
+                key={slide.id}
+                type="button"
+                role="tab"
+                aria-selected={i === index}
+                aria-label={`Slide ${i + 1}: ${slide.title}`}
+                onClick={() => goTo(i)}
+                className="h-2.5 rounded-full transition-all"
+                style={{
+                  width: i === index ? "1.75rem" : "0.625rem",
+                  backgroundColor:
+                    i === index ? "var(--color-viz-capability)" : "var(--color-navy-light)",
+                }}
+              />
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="hidden font-mono text-sm text-text-light tabular-nums sm:inline">
+              {index + 1} / {count}
+            </span>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-navy-light/60 text-off-white transition hover:bg-navy-light"
+            >
+              {isFullscreen ? (
+                <Minimize className="h-5 w-5" aria-hidden />
+              ) : (
+                <Maximize className="h-5 w-5" aria-hidden />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={next}
+              disabled={atEnd}
+              aria-label="Next slide"
+              className="flex h-12 w-12 items-center justify-center rounded-full bg-navy-light/60 text-off-white transition hover:bg-navy-light disabled:cursor-not-allowed disabled:opacity-30"
+            >
+              <ChevronRight className="h-6 w-6" aria-hidden />
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    </BulletContext.Provider>
   );
 }
