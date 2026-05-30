@@ -15,7 +15,8 @@ import {
 function ScenarioHeaderSlide() {
   return (
     <SlideShell>
-      <SlideTitle>Scenario</SlideTitle>
+      <SlideEyebrow>The Race to AGI</SlideEyebrow>
+      <SlideTitle>AI 2027 Scenario</SlideTitle>
     </SlideShell>
   );
 }
