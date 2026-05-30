@@ -27,10 +27,12 @@ export const TURN_TIMELINE = [
 ];
 
 const DEFAULT_MULTIPLIERS: Record<string, Record<string, number>> = {
-  "jul-2027": { openbrain: 0.1,  deepcent: 0.1,  conscentia: 0.1 },
-  "dec-2027": { openbrain: 0.1,  deepcent: 0.1,  conscentia: 0.1 },
-  start:      { openbrain: 3,    deepcent: 1,    conscentia: 1 },
-  "turn-1":   { openbrain: 10,   deepcent: 3,    conscentia: 4 },
+  // Pre-game history: OpenBrain leads, Conscentia slightly behind, DeepCent furthest back.
+  // DeepCent overtakes Conscentia at the Jan 2028 start — the alleged weight theft.
+  "jul-2027": { openbrain: 1.4, deepcent: 1.2, conscentia: 1.3 },
+  "dec-2027": { openbrain: 1.4, deepcent: 1.2, conscentia: 1.3 },
+  start:      { openbrain: 3,   deepcent: 2,   conscentia: 1 },
+  "turn-1":   { openbrain: 10,  deepcent: 3,   conscentia: 4 },
   "turn-2":   { openbrain: 60,   deepcent: 15,   conscentia: 20 },
   "turn-3":   { openbrain: 800,  deepcent: 50,   conscentia: 100 },
   "turn-4":   { openbrain: 5000, deepcent: 200,  conscentia: 500 },
