@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useCallback, useContext, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
 export type Lab = { id: string; name: string; color: string };
@@ -42,12 +42,45 @@ const DEFAULT_MULTIPLIERS: Record<string, Record<string, number>> = {
   "turn-4":   { openbrain: 5000, deepcent: 200,  conscentia: 500 },
 };
 
+// ─── Persistence ──────────────────────────────────────────────────────────────
+
+const STORAGE_KEY = "ttx.slides.rd.v1";
+
+type StoredState = {
+  labs: Lab[];
+  multipliers: Record<string, Record<string, number>>;
+};
+
+/** Read persisted R&D state from localStorage. Returns null if absent or invalid. */
+function readStored(): StoredState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      Array.isArray(parsed.labs) &&
+      parsed.multipliers &&
+      typeof parsed.multipliers === "object"
+    ) {
+      return parsed as StoredState;
+    }
+  } catch {
+    // Corrupt value — fall back to defaults.
+  }
+  return null;
+}
+
 type RdContextValue = {
   labs: Lab[];
   multipliers: Record<string, Record<string, number>>;
-  setMultiplier: (turnId: string, labId: string, value: number) => void;
+  /** Set a multiplier, or pass null to clear it (the point vanishes from the graph). */
+  setMultiplier: (turnId: string, labId: string, value: number | null) => void;
   addLab: (lab: Lab) => void;
   removeLab: (labId: string) => void;
+  /** Clear persisted state and restore the authored defaults. */
+  reset: () => void;
 };
 
 const RdContext = createContext<RdContextValue>({
@@ -56,17 +89,35 @@ const RdContext = createContext<RdContextValue>({
   setMultiplier: () => {},
   addLab: () => {},
   removeLab: () => {},
+  reset: () => {},
 });
 
 export function RdProvider({ children }: { children: ReactNode }) {
-  const [labs, setLabs] = useState<Lab[]>(DEFAULT_LABS);
-  const [multipliers, setMultipliers] = useState(DEFAULT_MULTIPLIERS);
+  const [labs, setLabs] = useState<Lab[]>(() => readStored()?.labs ?? DEFAULT_LABS);
+  const [multipliers, setMultipliers] = useState(
+    () => readStored()?.multipliers ?? DEFAULT_MULTIPLIERS,
+  );
 
-  const setMultiplier = useCallback((turnId: string, labId: string, value: number) => {
-    setMultipliers((prev) => ({
-      ...prev,
-      [turnId]: { ...prev[turnId], [labId]: value },
-    }));
+  // Persist any change to localStorage.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ labs, multipliers }));
+    } catch {
+      // Storage full or unavailable — ignore; in-memory state still works.
+    }
+  }, [labs, multipliers]);
+
+  const setMultiplier = useCallback((turnId: string, labId: string, value: number | null) => {
+    setMultipliers((prev) => {
+      const turn = { ...prev[turnId] };
+      if (value === null) {
+        delete turn[labId];
+      } else {
+        turn[labId] = value;
+      }
+      return { ...prev, [turnId]: turn };
+    });
   }, []);
 
   const addLab = useCallback((lab: Lab) => {
@@ -84,8 +135,22 @@ export function RdProvider({ children }: { children: ReactNode }) {
     setLabs((prev) => prev.filter((l) => l.id !== labId));
   }, []);
 
+  const reset = useCallback(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(STORAGE_KEY);
+      } catch {
+        // ignore
+      }
+    }
+    setLabs(DEFAULT_LABS);
+    setMultipliers(DEFAULT_MULTIPLIERS);
+  }, []);
+
   return (
-    <RdContext.Provider value={{ labs, multipliers, setMultiplier, addLab, removeLab }}>
+    <RdContext.Provider
+      value={{ labs, multipliers, setMultiplier, addLab, removeLab, reset }}
+    >
       {children}
     </RdContext.Provider>
   );

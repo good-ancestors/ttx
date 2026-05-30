@@ -58,7 +58,9 @@ function RdChart({
   labs: Lab[];
   multipliers: Record<string, Record<string, number>>;
 }) {
-  const allVals = visibleTurns.flatMap((t) => labs.map((l) => multipliers[t.id]?.[l.id] ?? 1));
+  const allVals = visibleTurns.flatMap((t) =>
+    labs.map((l) => multipliers[t.id]?.[l.id]).filter((v): v is number => v !== undefined),
+  );
   const rawMax = Math.max(...allVals, 10);
   const rawMin = Math.min(...allVals, 1);
   const logMax = Math.ceil(Math.log10(rawMax));
@@ -102,12 +104,17 @@ function RdChart({
         </text>
       ))}
 
-      {/* Lines + dots per lab */}
+      {/* Lines + dots per lab. Cleared (undefined) values are skipped — the line
+          connects across the gap and no dot is drawn for the missing point. */}
       {labs.map((lab) => {
-        const points = visibleTurns.map((t, i) => ({
-          x: xOf(i, visibleTurns.length),
-          y: yOf(multipliers[t.id]?.[lab.id] ?? 1, logMin, logMax),
-        }));
+        const points = visibleTurns
+          .map((t, i) => {
+            const v = multipliers[t.id]?.[lab.id];
+            if (v === undefined) return null;
+            return { x: xOf(i, visibleTurns.length), y: yOf(v, logMin, logMax) };
+          })
+          .filter((p): p is { x: number; y: number } => p !== null);
+        if (points.length === 0) return null;
         const d = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" ");
         return (
           <Fragment key={lab.id}>
@@ -141,7 +148,7 @@ function EditModal({
   visibleTurns: (typeof TURN_TIMELINE)[number][];
   labs: Lab[];
   multipliers: Record<string, Record<string, number>>;
-  setMultiplier: (turnId: string, labId: string, value: number) => void;
+  setMultiplier: (turnId: string, labId: string, value: number | null) => void;
   addLab: (lab: Lab) => void;
   removeLab: (labId: string) => void;
   onClose: () => void;
@@ -160,14 +167,21 @@ function EditModal({
 
   function startEdit(turnId: string, labId: string) {
     setEditing({ turnId, labId });
-    setDraft(String(multipliers[turnId]?.[labId] ?? 1));
+    const v = multipliers[turnId]?.[labId];
+    setDraft(v === undefined ? "" : String(v));
     setTimeout(() => inputRef.current?.select(), 0);
   }
 
   function commitEdit() {
     if (!editing) return;
-    const n = parseFloat(draft);
-    if (!Number.isNaN(n) && n > 0) setMultiplier(editing.turnId, editing.labId, n);
+    const trimmed = draft.trim();
+    if (trimmed === "") {
+      // Cleared input → remove the point entirely.
+      setMultiplier(editing.turnId, editing.labId, null);
+    } else {
+      const n = parseFloat(trimmed);
+      if (!Number.isNaN(n) && n > 0) setMultiplier(editing.turnId, editing.labId, n);
+    }
     setEditing(null);
   }
 
@@ -222,7 +236,7 @@ function EditModal({
                   </td>
                   {visibleTurns.map((t) => {
                     const isEditing = editing?.turnId === t.id && editing?.labId === lab.id;
-                    const val = multipliers[t.id]?.[lab.id] ?? 1;
+                    const val = multipliers[t.id]?.[lab.id];
                     return (
                       <td key={t.id} className="py-1 text-center">
                         {isEditing ? (
@@ -242,10 +256,10 @@ function EditModal({
                           <button
                             type="button"
                             onClick={() => startEdit(t.id, lab.id)}
-                            className="rounded px-2 py-0.5 text-off-white hover:bg-navy-light"
-                            title="Click to edit"
+                            className={`rounded px-2 py-0.5 hover:bg-navy-light ${val === undefined ? "text-text-muted" : "text-off-white"}`}
+                            title="Click to edit (clear to remove the point)"
                           >
-                            {val}×
+                            {val === undefined ? "—" : `${val}×`}
                           </button>
                         )}
                       </td>
@@ -374,7 +388,9 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
     const editableTurns = visibleTurns.filter((t) => !t.pregame);
 
     const leadingMultiplier = Math.max(
-      ...labs.map((l) => multipliers[upToTurnId]?.[l.id] ?? 1),
+      ...labs
+        .map((l) => multipliers[upToTurnId]?.[l.id])
+        .filter((v): v is number => v !== undefined),
       1,
     );
 

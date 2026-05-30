@@ -1,7 +1,7 @@
 "use client";
 
-import { Fragment, useContext } from "react";
-import { Cpu, HelpCircle } from "lucide-react";
+import { Fragment, useContext, useState } from "react";
+import { Cpu, HelpCircle, RotateCcw, Check } from "lucide-react";
 import type { SlideDefinition } from "./types";
 import {
   SlideShell,
@@ -14,6 +14,7 @@ import {
 } from "./slide-primitives";
 import { makeDiscussSlide } from "./discuss-slide";
 import { makeRdSlide } from "./rd-graph-slide";
+import { useRd } from "./rd-context";
 
 // ─── Scenario setup ───────────────────────────────────────────────────────────
 
@@ -258,6 +259,50 @@ function ReflectionSlide() {
   );
 }
 
+// ─── Reset (final slide) ──────────────────────────────────────────────────────
+
+function ResetSlide() {
+  const { reset } = useRd();
+  const [done, setDone] = useState(false);
+
+  function handleReset() {
+    reset();
+    setDone(true);
+  }
+
+  return (
+    <SlideShell>
+      <SlideEyebrow>End of session</SlideEyebrow>
+      <SlideTitle>Reset for the next group</SlideTitle>
+      <SlideSubtitle>
+        This clears every R&amp;D multiplier and lab you edited during the session, restoring the
+        authored defaults. The saved values live in this browser only.
+      </SlideSubtitle>
+      <button
+        type="button"
+        onClick={handleReset}
+        className={`mt-4 flex items-center gap-3 rounded-full px-8 py-4 text-2xl font-semibold transition ${
+          done
+            ? "bg-viz-safety text-navy-dark"
+            : "bg-viz-danger text-off-white hover:opacity-90"
+        }`}
+      >
+        {done ? (
+          <>
+            <Check className="h-7 w-7" aria-hidden />
+            Reset complete
+          </>
+        ) : (
+          <>
+            <RotateCcw className="h-7 w-7" aria-hidden />
+            Reset all values
+          </>
+        )}
+      </button>
+    </SlideShell>
+  );
+}
+
 // ─── Deck ─────────────────────────────────────────────────────────────────────
 
 export const slides: SlideDefinition[] = [
@@ -281,4 +326,5 @@ export const slides: SlideDefinition[] = [
   { id: "wrap-up-header", title: "Wrap-up", Component: WrapUpHeaderSlide },
   { id: "other-scenarios", title: "Other scenarios", Component: OtherScenariosSlide, bulletCount: 3 },
   { id: "reflection", title: "Reflection", Component: ReflectionSlide },
+  { id: "reset", title: "Reset", Component: ResetSlide },
 ];
