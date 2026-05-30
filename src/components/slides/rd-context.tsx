@@ -36,10 +36,10 @@ const DEFAULT_MULTIPLIERS: Record<string, Record<string, number>> = {
   "jul-2027": { openbrain: 1.3,  deepcent: 1.12, conscentia: 1.15 },
   "oct-2027": { openbrain: 1.4,  deepcent: 1.15, conscentia: 1.25 },
   start:      { openbrain: 3,    deepcent: 2.5,  conscentia: 2 },
-  "turn-1":   { openbrain: 10,   deepcent: 3,    conscentia: 4 },
-  "turn-2":   { openbrain: 60,   deepcent: 15,   conscentia: 20 },
-  "turn-3":   { openbrain: 800,  deepcent: 50,   conscentia: 100 },
-  "turn-4":   { openbrain: 5000, deepcent: 200,  conscentia: 500 },
+  "turn-1":   { openbrain: 10,   deepcent: 7,    conscentia: 5 },
+  "turn-2":   { openbrain: 100,  deepcent: 90,   conscentia: 60 },
+  "turn-3":   { openbrain: 1000, deepcent: 700,  conscentia: 500 },
+  "turn-4":   { openbrain: 5000, deepcent: 3500, conscentia: 2500 },
 };
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
