@@ -130,7 +130,7 @@ function PieChart({ segments }: { segments: PieSegment[] }) {
                 textAnchor="middle"
                 dominantBaseline="middle"
                 fill="white"
-                fontSize="15"
+                fontSize="22"
                 fontWeight="700"
               >
                 {seg.pct}%
@@ -147,19 +147,21 @@ function ComputePieLayout({ subtitle, segments }: { subtitle: string; segments: 
   return (
     <SlideShell>
       <SlideTitle>New chips are coming online quickly&hellip;</SlideTitle>
-      <SlideSubtitle>{subtitle}</SlideSubtitle>
-      <div className="flex w-full max-w-5xl flex-1 items-center gap-16 md:gap-20">
-        <div className="w-5/12 shrink-0">
+      <p className="text-balance text-3xl font-semibold text-text-light md:text-4xl lg:text-5xl">
+        {subtitle}
+      </p>
+      <div className="flex w-full max-w-7xl flex-1 items-center gap-12 md:gap-20">
+        <div className="w-1/2 shrink-0">
           <PieChart segments={segments} />
         </div>
-        <ul className="flex flex-col gap-5">
+        <ul className="flex flex-col gap-7">
           {segments.map((seg) => (
-            <li key={seg.label} className="flex items-center gap-4">
+            <li key={seg.label} className="flex items-center gap-5">
               <div
-                className="h-5 w-5 shrink-0 rounded-sm"
+                className="h-7 w-7 shrink-0 rounded-sm md:h-8 md:w-8"
                 style={{ backgroundColor: seg.color }}
               />
-              <span className="text-xl text-off-white md:text-2xl">
+              <span className="text-3xl text-off-white md:text-4xl lg:text-5xl">
                 <span className="font-bold">{seg.pct}%</span>&ensp;{seg.label}
               </span>
             </li>
