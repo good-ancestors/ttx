@@ -20,8 +20,12 @@ import { useRd } from "./rd-context";
 function ScenarioHeaderSlide() {
   return (
     <SlideShell>
-      <SlideEyebrow>The Race to AGI</SlideEyebrow>
-      <SlideTitle>AI 2027 Scenario</SlideTitle>
+      <p className="text-2xl font-semibold uppercase tracking-[0.25em] text-text-light md:text-4xl lg:text-5xl">
+        The Race to AGI
+      </p>
+      <h2 className="text-balance text-7xl font-bold leading-tight text-off-white md:text-9xl lg:text-[12rem]">
+        AI 2027 Scenario
+      </h2>
     </SlideShell>
   );
 }
