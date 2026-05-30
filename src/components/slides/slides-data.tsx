@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useContext, useState } from "react";
-import { Cpu, HelpCircle, RotateCcw, Check } from "lucide-react";
+import { HelpCircle, RotateCcw, Check } from "lucide-react";
 import type { SlideDefinition } from "./types";
 import {
   SlideShell,
@@ -9,7 +9,6 @@ import {
   SlideTitle,
   SlideSubtitle,
   SlideBullets,
-  SlidePlaceholder,
   BulletContext,
 } from "./slide-primitives";
 import { makeDiscussSlide } from "./discuss-slide";
@@ -92,17 +91,112 @@ function QaChinaSlide() {
   );
 }
 
-function NewChipsSlide() {
+// ─── Compute Breakdown pie chart slides ──────────────────────────────────────
+
+type PieSegment = { label: string; pct: number; color: string };
+
+function describeSlice(cx: number, cy: number, r: number, start: number, end: number): string {
+  const x1 = cx + r * Math.cos(start);
+  const y1 = cy + r * Math.sin(start);
+  const x2 = cx + r * Math.cos(end);
+  const y2 = cy + r * Math.sin(end);
+  return `M ${cx} ${cy} L ${x1.toFixed(1)} ${y1.toFixed(1)} A ${r} ${r} 0 ${end - start > Math.PI ? 1 : 0} 1 ${x2.toFixed(1)} ${y2.toFixed(1)} Z`;
+}
+
+function PieChart({ segments }: { segments: PieSegment[] }) {
+  const cx = 180, cy = 180, r = 168;
+  const slices = segments.reduce<Array<{ seg: PieSegment; start: number; end: number; mid: number }>>(
+    (acc, seg) => {
+      const start = acc.length > 0 ? acc[acc.length - 1].end : -Math.PI / 2;
+      const sweep = (seg.pct / 100) * 2 * Math.PI;
+      const end = start + sweep;
+      return [...acc, { seg, start, end, mid: start + sweep / 2 }];
+    },
+    [],
+  );
+
+  return (
+    <svg viewBox="0 0 360 360" className="w-full" aria-hidden>
+      {slices.map(({ seg, start, end, mid }) => {
+        const lx = cx + r * 0.64 * Math.cos(mid);
+        const ly = cy + r * 0.64 * Math.sin(mid);
+        return (
+          <g key={seg.label}>
+            <path d={describeSlice(cx, cy, r, start, end)} fill={seg.color} stroke="#0F172A" strokeWidth="2" />
+            {seg.pct >= 7 && (
+              <text
+                x={lx.toFixed(1)}
+                y={ly.toFixed(1)}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="white"
+                fontSize="15"
+                fontWeight="700"
+              >
+                {seg.pct}%
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+function ComputePieLayout({ subtitle, segments }: { subtitle: string; segments: PieSegment[] }) {
   return (
     <SlideShell>
       <SlideTitle>New chips are coming online quickly&hellip;</SlideTitle>
-      <SlidePlaceholder
-        icon={Cpu}
-        label="Chip production ramp"
-        description="Chart: TSMC / Nvidia / SMIC AI chip production volumes 2024–2028, showing the steep supply curve that drives the compute race."
-        color="var(--color-role-china)"
-      />
+      <SlideSubtitle>{subtitle}</SlideSubtitle>
+      <div className="flex w-full max-w-5xl flex-1 items-center gap-16 md:gap-20">
+        <div className="w-5/12 shrink-0">
+          <PieChart segments={segments} />
+        </div>
+        <ul className="flex flex-col gap-5">
+          {segments.map((seg) => (
+            <li key={seg.label} className="flex items-center gap-4">
+              <div
+                className="h-5 w-5 shrink-0 rounded-sm"
+                style={{ backgroundColor: seg.color }}
+              />
+              <span className="text-xl text-off-white md:text-2xl">
+                <span className="font-bold">{seg.pct}%</span>&ensp;{seg.label}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </SlideShell>
+  );
+}
+
+const COMPUTE_BREAKDOWN_SEGMENTS: PieSegment[] = [
+  { label: "OpenBrain",     pct: 27.8, color: "#3B82F6" },
+  { label: "DeepCent",      pct: 20.8, color: "#D97706" },
+  { label: "Conscienta",    pct: 18.1, color: "#7C3AED" },
+  { label: "Other US Labs", pct: 13.9, color: "#93C5FD" },
+  { label: "Rest of world", pct: 19.4, color: "#22C55E" },
+];
+
+const COMPUTE_WITH_PRODUCTION_SEGMENTS: PieSegment[] = [
+  { label: "Annual production", pct: 60.0, color: "#06B6D4" },
+  { label: "OpenBrain",         pct: 11.1, color: "#3B82F6" },
+  { label: "DeepCent",          pct:  8.3, color: "#D97706" },
+  { label: "Conscienta",        pct:  7.2, color: "#7C3AED" },
+  { label: "Other US Labs",     pct:  5.6, color: "#93C5FD" },
+  { label: "Rest of world",     pct:  7.8, color: "#22C55E" },
+];
+
+function ComputeBreakdownSlide() {
+  return <ComputePieLayout subtitle="Compute Breakdown" segments={COMPUTE_BREAKDOWN_SEGMENTS} />;
+}
+
+function ComputeBreakdownWithProductionSlide() {
+  return (
+    <ComputePieLayout
+      subtitle="Compute Breakdown (including annual production)"
+      segments={COMPUTE_WITH_PRODUCTION_SEGMENTS}
+    />
   );
 }
 
@@ -310,7 +404,8 @@ export const slides: SlideDefinition[] = [
   { id: "turn-1-scenario", title: "January 2028", Component: Turn1ScenarioSlide, bulletCount: 6 },
   { id: "qa-capabilities", title: "How capable is AI?", Component: QaCapabilitiesSlide, bulletCount: 5 },
   { id: "qa-china", title: "Isn't China too far behind?", Component: QaChinaSlide, bulletCount: 5 },
-  { id: "new-chips", title: "New chips", Component: NewChipsSlide },
+  { id: "new-chips-1", title: "Compute Breakdown", Component: ComputeBreakdownSlide },
+  { id: "new-chips-2", title: "Compute Breakdown (with production)", Component: ComputeBreakdownWithProductionSlide },
   { id: "questions", title: "Questions", Component: QuestionsSlide },
   { id: "read-help-sheets", title: "Read your help sheets", Component: ReadHelpSheetsSlide },
   { id: "turn-1-discuss", title: "Discuss · Turn 1", Component: Turn1DiscussSlide },

@@ -2,7 +2,6 @@
 
 import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
 
 /**
  * Reusable layout building blocks for slides.
@@ -103,36 +102,3 @@ export function SlideBullets({ items }: { items: ReactNode[] }) {
   );
 }
 
-/**
- * A dashed, labelled region marking where a live game element will be embedded
- * later (editable R&D graph, compute-distribution animation, round timer, …).
- */
-export function SlidePlaceholder({
-  icon: Icon,
-  label,
-  description,
-  color = "var(--color-viz-capability)",
-  children,
-}: {
-  icon: LucideIcon;
-  label: string;
-  description?: string;
-  color?: string;
-  children?: ReactNode;
-}) {
-  return (
-    <div
-      className="flex w-full max-w-5xl flex-1 flex-col items-center justify-center gap-4 rounded-3xl border-2 border-dashed border-navy-light bg-navy-dark/40 p-10"
-      style={{ minHeight: "40vh" }}
-    >
-      <div className="flex items-center gap-3" style={{ color }}>
-        <Icon className="h-10 w-10 md:h-12 md:w-12" aria-hidden />
-        <span className="text-2xl font-semibold md:text-3xl">{label}</span>
-      </div>
-      {description && (
-        <p className="max-w-2xl text-center text-base text-text-light md:text-xl">{description}</p>
-      )}
-      {children}
-    </div>
-  );
-}
