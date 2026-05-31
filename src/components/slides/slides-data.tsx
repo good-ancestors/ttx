@@ -110,7 +110,7 @@ function Turn1ScenarioSlide() {
   return (
     <SlideShell align="start">
       <SlideEyebrow>Start of Turn 1</SlideEyebrow>
-      <SlideTitle>Jan – March 2028</SlideTitle>
+      <SlideTitle>Jan 2028</SlideTitle>
       <ul className="flex w-full flex-col gap-5 text-left">
         <RevealGroup index={0} visibleCount={visibleCount}>
           <L1>It&apos;s January 2028.</L1>
@@ -620,7 +620,7 @@ function ResetSlide() {
 
 export const slides: SlideDefinition[] = [
   { id: "scenario-header", title: "Scenario", Component: ScenarioHeaderSlide },
-  { id: "turn-1-scenario", title: "Jan – March 2028", Component: Turn1ScenarioSlide, bulletCount: 4 },
+  { id: "turn-1-scenario", title: "Jan 2028", Component: Turn1ScenarioSlide, bulletCount: 4 },
   { id: "qa-capabilities", title: "How capable is AI?", Component: QaCapabilitiesSlide, bulletCount: 2 },
   { id: "qa-rd-multiplier", title: "R&D multiplier", Component: QaRdMultiplierSlide, bulletCount: 3 },
   { id: "qa-china", title: "Isn't China too far behind?", Component: QaChinaSlide, bulletCount: 5 },
