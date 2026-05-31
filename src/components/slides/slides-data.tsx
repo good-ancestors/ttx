@@ -395,19 +395,22 @@ function ComputePieLayout({ subtitle, segments }: { subtitle: string; segments: 
       <p className="text-balance text-3xl font-semibold text-text-light md:text-4xl lg:text-5xl">
         {subtitle}
       </p>
-      <div className="flex w-full max-w-7xl flex-1 items-center gap-12 md:gap-20">
+      <div className="flex w-full max-w-7xl flex-1 items-center gap-8 md:gap-12">
         <div className="w-1/2 shrink-0">
           <PieChart segments={segments} />
         </div>
-        <ul className="flex flex-col gap-7">
+        <ul className="flex flex-1 flex-col gap-7">
           {segments.map((seg) => (
-            <li key={seg.label} className="flex items-start gap-5">
+            <li key={seg.label} className="flex items-center gap-4">
               <div
-                className="mt-2 h-7 w-7 shrink-0 rounded-sm md:mt-3 md:h-8 md:w-8"
+                className="h-7 w-7 shrink-0 rounded-sm md:h-8 md:w-8"
                 style={{ backgroundColor: seg.color }}
               />
-              <span className="text-3xl text-off-white md:text-4xl lg:text-5xl">
-                <span className="font-bold">{seg.pct}%</span>&ensp;{seg.label}
+              <span className="w-[3.5em] shrink-0 text-right text-3xl font-bold text-off-white md:text-4xl lg:text-5xl">
+                {seg.pct}%
+              </span>
+              <span className="whitespace-nowrap text-3xl text-off-white md:text-4xl lg:text-5xl">
+                {seg.label}
               </span>
             </li>
           ))}
