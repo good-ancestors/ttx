@@ -33,7 +33,7 @@ const STATIC_BULLETS: Record<string, string[]> = {
 // ─── SVG line chart ───────────────────────────────────────────────────────────
 
 const SVG_W = 500;
-const PAD = { l: 52, r: 10, t: 16, b: 44 };
+const PAD = { l: 52, r: 10, t: 16, b: 56 };
 const CW = SVG_W - PAD.l - PAD.r; // 438
 
 function xOf(i: number, total: number) {
@@ -136,7 +136,7 @@ export function RdChart({
           stays within the viewBox at both edges. */}
       {visibleTurns.map((t, i) => {
         const x = xOf(i, visibleTurns.length);
-        const y = svgH - 22;
+        const y = svgH - 34;
         return (
           <text
             key={t.id}
