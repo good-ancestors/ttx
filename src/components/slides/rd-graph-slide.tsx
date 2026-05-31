@@ -34,7 +34,7 @@ const STATIC_BULLETS: Record<string, string[]> = {
 
 const SVG_W = 500;
 const SVG_H = 380;
-const PAD = { l: 52, r: 10, t: 16, b: 34 };
+const PAD = { l: 52, r: 10, t: 16, b: 44 };
 const CW = SVG_W - PAD.l - PAD.r; // 438
 const CH = SVG_H - PAD.t - PAD.b; // 330
 
