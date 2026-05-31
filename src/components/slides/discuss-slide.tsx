@@ -56,11 +56,20 @@ export function makeDiscussSlide(turnLabel: string) {
     const timerColor =
       secondsLeft < 60 ? "text-viz-danger" : secondsLeft < 3 * 60 ? "text-viz-warning" : "text-off-white";
 
+    // Final-minute siren: flash the whole screen red while the clock runs down.
+    const sirenActive = running && secondsLeft > 0 && secondsLeft <= 60;
+
     const btnBase =
       "flex h-12 items-center justify-center rounded-full bg-navy-light/60 text-off-white transition hover:bg-navy-light px-5 gap-2 font-semibold";
 
     return (
       <SlideShell>
+        {sirenActive && (
+          <div
+            aria-hidden
+            className="animate-siren-flash pointer-events-none fixed inset-0 z-0 bg-viz-danger/35"
+          />
+        )}
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-text-light">
           {turnLabel}
         </p>

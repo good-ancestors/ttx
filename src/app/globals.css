@@ -155,3 +155,13 @@ input[type="range"]::-webkit-slider-thumb {
 .animate-bullet-reveal {
   animation: bullet-reveal 0.25s ease-out both;
 }
+
+/* Slow red "siren" flash for the final minute of the discussion timer */
+@keyframes siren-flash {
+  0%, 100% { opacity: 0; }
+  50%      { opacity: 1; }
+}
+
+.animate-siren-flash {
+  animation: siren-flash 1.6s ease-in-out infinite;
+}
