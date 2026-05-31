@@ -66,8 +66,17 @@ export function RdChart({
   const logMax = Math.ceil(Math.log10(rawMax));
   const logMin = Math.min(0, Math.floor(Math.log10(rawMin)));
 
-  const gridLines: number[] = [];
-  for (let e = logMin; e <= logMax; e++) gridLines.push(10 ** e);
+  const majorLines: number[] = [];
+  for (let e = logMin; e <= logMax; e++) majorLines.push(10 ** e);
+
+  const minorLines: number[] = [];
+  for (let e = logMin; e < logMax; e++) {
+    const base = 10 ** e;
+    for (const m of [2, 4, 6, 8]) {
+      const v = base * m;
+      if (v > 10 ** logMin && v < 10 ** logMax) minorLines.push(v);
+    }
+  }
 
   return (
     <svg
@@ -76,8 +85,21 @@ export function RdChart({
       preserveAspectRatio="xMidYMid meet"
       aria-hidden
     >
-      {/* Grid lines + Y-axis labels */}
-      {gridLines.map((v) => {
+      {/* Minor grid lines */}
+      {minorLines.map((v) => {
+        const y = yOf(v, logMin, logMax);
+        const label = v >= 1000 ? `${v / 1000}k` : String(v);
+        return (
+          <Fragment key={v}>
+            <line x1={PAD.l} y1={y} x2={SVG_W - PAD.r} y2={y} stroke="#334155" strokeWidth={0.5} strokeDasharray="4 4" />
+            <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize={10} fill="#475569">
+              {label}×
+            </text>
+          </Fragment>
+        );
+      })}
+      {/* Major grid lines + Y-axis labels */}
+      {majorLines.map((v) => {
         const y = yOf(v, logMin, logMax);
         const label = v >= 1000 ? `${v / 1000}k` : String(v);
         return (
