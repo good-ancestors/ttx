@@ -82,7 +82,7 @@ export function RdChart({
     <svg
       viewBox={`0 0 ${SVG_W} ${SVG_H}`}
       className="h-full w-full"
-      preserveAspectRatio="xMidYMid meet"
+      preserveAspectRatio="xMidYMin meet"
       aria-hidden
     >
       {/* Minor grid lines */}
@@ -459,7 +459,7 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
           </div>
 
           {/* Chart */}
-          <div className="relative z-10 flex flex-1 items-center justify-center">
+          <div className="relative z-10 flex flex-1 items-start justify-center">
             <RdChart visibleTurns={visibleTurns} labs={labs} multipliers={multipliers} />
           </div>
         </div>
