@@ -112,19 +112,24 @@ export function RdChart({
         );
       })}
 
-      {/* X-axis labels */}
-      {visibleTurns.map((t, i) => (
-        <text
-          key={t.id}
-          x={xOf(i, visibleTurns.length)}
-          y={SVG_H - 4}
-          textAnchor="middle"
-          fontSize={11}
-          fill="#94A3B8"
-        >
-          {t.label}
-        </text>
-      ))}
+      {/* X-axis labels. The first/last sit at the chart edges, so anchor them
+          inward (start/end) to keep their text from overflowing the viewBox. */}
+      {visibleTurns.map((t, i) => {
+        const isFirst = i === 0;
+        const isLast = i === visibleTurns.length - 1;
+        return (
+          <text
+            key={t.id}
+            x={xOf(i, visibleTurns.length)}
+            y={SVG_H - 4}
+            textAnchor={isFirst ? "start" : isLast ? "end" : "middle"}
+            fontSize={11}
+            fill="#94A3B8"
+          >
+            {t.label}
+          </text>
+        );
+      })}
 
       {/* Lines + dots per lab. Cleared (undefined) values are skipped — the line
           connects across the gap and no dot is drawn for the missing point. */}
