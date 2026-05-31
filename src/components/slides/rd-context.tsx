@@ -121,14 +121,9 @@ export function RdProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addLab = useCallback((lab: Lab) => {
+    // Add the lab with no values — it only appears on the graph once you set
+    // multipliers in the edit modal, so empty months draw no dots or line.
     setLabs((prev) => [...prev, lab]);
-    setMultipliers((prev) => {
-      const next = { ...prev };
-      for (const t of TURN_TIMELINE) {
-        next[t.id] = { ...next[t.id], [lab.id]: 1 };
-      }
-      return next;
-    });
   }, []);
 
   const removeLab = useCallback((labId: string) => {
