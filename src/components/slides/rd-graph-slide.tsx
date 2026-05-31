@@ -33,20 +33,11 @@ const STATIC_BULLETS: Record<string, string[]> = {
 // ─── SVG line chart ───────────────────────────────────────────────────────────
 
 const SVG_W = 500;
-const SVG_H = 380;
 const PAD = { l: 52, r: 10, t: 16, b: 44 };
 const CW = SVG_W - PAD.l - PAD.r; // 438
-const CH = SVG_H - PAD.t - PAD.b; // 330
 
 function xOf(i: number, total: number) {
   return PAD.l + (total <= 1 ? CW / 2 : (i / (total - 1)) * CW);
-}
-
-// Map a value onto the chart's vertical log axis spanning [logMin, logMax]
-// (both are integer powers of ten).
-function yOf(v: number, logMin: number, logMax: number) {
-  const logV = Math.log10(Math.max(v, 10 ** logMin));
-  return PAD.t + CH - ((logV - logMin) / (logMax - logMin)) * CH;
 }
 
 export function RdChart({
@@ -58,6 +49,33 @@ export function RdChart({
   labs: Lab[];
   multipliers: Record<string, Record<string, number>>;
 }) {
+  // Match the viewBox height to the container's aspect ratio so the chart fills
+  // the available space exactly. Because the aspect ratios then match, drawing
+  // with preserveAspectRatio="none" scales uniformly — no distortion.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [svgH, setSvgH] = useState(380);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const update = () => {
+      const { clientWidth: w, clientHeight: h } = el;
+      if (w > 0 && h > 0) setSvgH(Math.round((SVG_W * h) / w));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const CH = svgH - PAD.t - PAD.b;
+
+  // Map a value onto the chart's vertical log axis spanning [logMin, logMax].
+  const yOf = (v: number, logMin: number, logMax: number) => {
+    const logV = Math.log10(Math.max(v, 10 ** logMin));
+    return PAD.t + CH - ((logV - logMin) / (logMax - logMin)) * CH;
+  };
+
   const allVals = visibleTurns.flatMap((t) =>
     labs.map((l) => multipliers[t.id]?.[l.id]).filter((v): v is number => v !== undefined),
   );
@@ -79,10 +97,11 @@ export function RdChart({
   }
 
   return (
+    <div ref={wrapRef} className="h-full w-full">
     <svg
-      viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+      viewBox={`0 0 ${SVG_W} ${svgH}`}
       className="h-full w-full"
-      preserveAspectRatio="xMidYMin meet"
+      preserveAspectRatio="none"
       aria-hidden
     >
       {/* Minor grid lines */}
@@ -117,7 +136,7 @@ export function RdChart({
           stays within the viewBox at both edges. */}
       {visibleTurns.map((t, i) => {
         const x = xOf(i, visibleTurns.length);
-        const y = SVG_H - 22;
+        const y = svgH - 22;
         return (
           <text
             key={t.id}
@@ -155,6 +174,7 @@ export function RdChart({
         );
       })}
     </svg>
+    </div>
   );
 }
 
