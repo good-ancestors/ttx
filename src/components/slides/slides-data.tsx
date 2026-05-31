@@ -203,7 +203,7 @@ function QaGraphLayout({ children }: { children: ReactNode }) {
             </span>
           ))}
         </div>
-        <div className="flex flex-1 items-start justify-center">
+        <div className="flex flex-1 items-start justify-center pb-8 md:pb-10">
           <RdChart visibleTurns={visibleTurns} labs={labs} multipliers={multipliers} />
         </div>
       </div>

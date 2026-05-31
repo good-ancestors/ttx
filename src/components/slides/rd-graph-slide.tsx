@@ -491,7 +491,7 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
           </div>
 
           {/* Chart */}
-          <div className="relative z-10 flex flex-1 items-start justify-center">
+          <div className="relative z-10 flex flex-1 items-start justify-center pb-8 md:pb-10">
             <RdChart visibleTurns={visibleTurns} labs={labs} multipliers={multipliers} />
           </div>
         </div>
