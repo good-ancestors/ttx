@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { Pencil, Plus, X } from "lucide-react";
+import { Info, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRd, TURN_TIMELINE } from "./rd-context";
 import type { Lab } from "./rd-context";
 
@@ -319,15 +319,25 @@ function EditModal({
                       type="button"
                       onClick={() => removeLab(lab.id)}
                       className="rounded p-1 text-text-light hover:text-viz-danger"
-                      title={`Remove ${lab.name}`}
+                      title={`Delete ${lab.name}`}
                     >
-                      <X className="h-3.5 w-3.5" aria-hidden />
+                      <Trash2 className="h-4 w-4" aria-hidden />
                     </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+        </div>
+
+        {/* Tip: prefer leaving future turns blank over deleting a lab. */}
+        <div className="mt-3 flex items-start gap-2 rounded-lg bg-navy-light/40 px-3 py-2 text-xs text-text-light">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-viz-warning" aria-hidden />
+          <span>
+            To retire a lab, consider leaving its future turns blank instead of deleting it — its
+            line will stop at the last value it reached on the graph. Deleting removes the lab and
+            all of its points entirely.
+          </span>
         </div>
 
         {/* Add lab form */}
