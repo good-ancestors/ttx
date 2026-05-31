@@ -420,7 +420,7 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
       <div className="flex h-full w-full bg-navy-dark">
         {/* ── Left: interactive chart ─────────────────────────── */}
         <div
-          className="group relative flex w-1/2 cursor-pointer flex-col rounded-2xl p-6 transition-shadow duration-200 hover:shadow-[inset_0_0_60px_rgba(255,255,255,0.06),0_0_30px_rgba(255,255,255,0.08)]"
+          className="group relative flex w-1/2 cursor-pointer flex-col rounded-2xl p-6 before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:bg-white/0 before:transition-[background-color] before:duration-200 hover:before:bg-white/[0.04]"
           onClick={openModal}
           role="button"
           tabIndex={0}
