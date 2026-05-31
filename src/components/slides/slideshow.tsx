@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Maximize, Minimize } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize, Minimize, Minus, Plus } from "lucide-react";
 import type { SlideDefinition } from "./types";
 import { BulletContext } from "./slide-primitives";
 
@@ -38,6 +38,27 @@ export function Slideshow({ slides }: { slides: SlideDefinition[] }) {
   const [index, setIndex] = useState(() => indexFromHash(count) ?? 0);
   const [visibleCount, setVisibleCount] = useState(Number.MAX_SAFE_INTEGER);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [zoom, setZoom] = useState(() => {
+    if (typeof window === "undefined") return 1;
+    const saved = localStorage.getItem("slides-zoom");
+    return saved ? parseFloat(saved) : 1;
+  });
+
+  const zoomIn = useCallback(() => {
+    setZoom((z) => {
+      const next = Math.min(z + 0.1, 2);
+      localStorage.setItem("slides-zoom", String(next));
+      return next;
+    });
+  }, []);
+
+  const zoomOut = useCallback(() => {
+    setZoom((z) => {
+      const next = Math.max(z - 0.1, 0.5);
+      localStorage.setItem("slides-zoom", String(next));
+      return next;
+    });
+  }, []);
 
   const current = slides[index];
   const bulletCount = current.bulletCount ?? 0;
@@ -137,7 +158,7 @@ export function Slideshow({ slides }: { slides: SlideDefinition[] }) {
 
   return (
     <BulletContext.Provider value={{ visibleCount }}>
-      <div className="relative flex h-full w-full flex-col bg-navy-dark text-off-white">
+      <div className="relative flex h-full w-full flex-col text-off-white">
         {/* Progress bar */}
         <div className="absolute inset-x-0 top-0 z-20 h-1.5 bg-navy-light/40">
           <div
@@ -147,7 +168,7 @@ export function Slideshow({ slides }: { slides: SlideDefinition[] }) {
         </div>
 
         {/* Active slide */}
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 overflow-hidden" style={{ zoom }}>
           <current.Component key={current.id} />
         </main>
 
@@ -184,6 +205,27 @@ export function Slideshow({ slides }: { slides: SlideDefinition[] }) {
           </div>
 
           <div className="flex items-center gap-3">
+            <div className="hidden items-center gap-1 sm:flex">
+              <button
+                type="button"
+                onClick={zoomOut}
+                aria-label="Decrease text size"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-light/60 text-off-white transition hover:bg-navy-light"
+              >
+                <Minus className="h-4 w-4" aria-hidden />
+              </button>
+              <span className="w-12 text-center font-mono text-sm text-text-light tabular-nums">
+                {Math.round(zoom * 100)}%
+              </span>
+              <button
+                type="button"
+                onClick={zoomIn}
+                aria-label="Increase text size"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-navy-light/60 text-off-white transition hover:bg-navy-light"
+              >
+                <Plus className="h-4 w-4" aria-hidden />
+              </button>
+            </div>
             <span className="hidden font-mono text-sm text-text-light tabular-nums sm:inline">
               {index + 1} / {count}
             </span>

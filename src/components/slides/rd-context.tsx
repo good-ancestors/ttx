@@ -6,9 +6,9 @@ import type { ReactNode } from "react";
 export type Lab = { id: string; name: string; color: string };
 
 const DEFAULT_LABS: Lab[] = [
-  { id: "openbrain", name: "OpenBrain", color: "#3B82F6" },
-  { id: "deepcent", name: "DeepCent", color: "#D97706" },
-  { id: "conscentia", name: "Conscentia", color: "#7C3AED" },
+  { id: "openbrain", name: "OpenBrain", color: "#14B8A6" },
+  { id: "deepcent", name: "DeepCent", color: "#EF4444" },
+  { id: "conscentia", name: "Conscentia", color: "#EAB308" },
 ];
 
 // Everything up to and including Jan 2028 is fixed history (pregame) — locked,
@@ -121,14 +121,9 @@ export function RdProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const addLab = useCallback((lab: Lab) => {
+    // Add the lab with no values — it only appears on the graph once you set
+    // multipliers in the edit modal, so empty months draw no dots or line.
     setLabs((prev) => [...prev, lab]);
-    setMultipliers((prev) => {
-      const next = { ...prev };
-      for (const t of TURN_TIMELINE) {
-        next[t.id] = { ...next[t.id], [lab.id]: 1 };
-      }
-      return next;
-    });
   }, []);
 
   const removeLab = useCallback((labId: string) => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { Pencil, Plus, X } from "lucide-react";
+import { Info, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRd, TURN_TIMELINE } from "./rd-context";
 import type { Lab } from "./rd-context";
 
@@ -33,23 +33,14 @@ const STATIC_BULLETS: Record<string, string[]> = {
 // ─── SVG line chart ───────────────────────────────────────────────────────────
 
 const SVG_W = 500;
-const SVG_H = 380;
-const PAD = { l: 52, r: 10, t: 16, b: 34 };
+const PAD = { l: 52, r: 10, t: 16, b: 56 };
 const CW = SVG_W - PAD.l - PAD.r; // 438
-const CH = SVG_H - PAD.t - PAD.b; // 330
 
 function xOf(i: number, total: number) {
   return PAD.l + (total <= 1 ? CW / 2 : (i / (total - 1)) * CW);
 }
 
-// Map a value onto the chart's vertical log axis spanning [logMin, logMax]
-// (both are integer powers of ten).
-function yOf(v: number, logMin: number, logMax: number) {
-  const logV = Math.log10(Math.max(v, 10 ** logMin));
-  return PAD.t + CH - ((logV - logMin) / (logMax - logMin)) * CH;
-}
-
-function RdChart({
+export function RdChart({
   visibleTurns,
   labs,
   multipliers,
@@ -58,6 +49,33 @@ function RdChart({
   labs: Lab[];
   multipliers: Record<string, Record<string, number>>;
 }) {
+  // Match the viewBox height to the container's aspect ratio so the chart fills
+  // the available space exactly. Because the aspect ratios then match, drawing
+  // with preserveAspectRatio="none" scales uniformly — no distortion.
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [svgH, setSvgH] = useState(380);
+
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const update = () => {
+      const { clientWidth: w, clientHeight: h } = el;
+      if (w > 0 && h > 0) setSvgH(Math.round((SVG_W * h) / w));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const CH = svgH - PAD.t - PAD.b;
+
+  // Map a value onto the chart's vertical log axis spanning [logMin, logMax].
+  const yOf = (v: number, logMin: number, logMax: number) => {
+    const logV = Math.log10(Math.max(v, 10 ** logMin));
+    return PAD.t + CH - ((logV - logMin) / (logMax - logMin)) * CH;
+  };
+
   const allVals = visibleTurns.flatMap((t) =>
     labs.map((l) => multipliers[t.id]?.[l.id]).filter((v): v is number => v !== undefined),
   );
@@ -66,18 +84,41 @@ function RdChart({
   const logMax = Math.ceil(Math.log10(rawMax));
   const logMin = Math.min(0, Math.floor(Math.log10(rawMin)));
 
-  const gridLines: number[] = [];
-  for (let e = logMin; e <= logMax; e++) gridLines.push(10 ** e);
+  const majorLines: number[] = [];
+  for (let e = logMin; e <= logMax; e++) majorLines.push(10 ** e);
+
+  const minorLines: number[] = [];
+  for (let e = logMin; e < logMax; e++) {
+    const base = 10 ** e;
+    for (const m of [2, 4, 6, 8]) {
+      const v = base * m;
+      if (v > 10 ** logMin && v < 10 ** logMax) minorLines.push(v);
+    }
+  }
 
   return (
+    <div ref={wrapRef} className="h-full w-full">
     <svg
-      viewBox={`0 0 ${SVG_W} ${SVG_H}`}
+      viewBox={`0 0 ${SVG_W} ${svgH}`}
       className="h-full w-full"
-      preserveAspectRatio="xMidYMid meet"
+      preserveAspectRatio="none"
       aria-hidden
     >
-      {/* Grid lines + Y-axis labels */}
-      {gridLines.map((v) => {
+      {/* Minor grid lines */}
+      {minorLines.map((v) => {
+        const y = yOf(v, logMin, logMax);
+        const label = v >= 1000 ? `${v / 1000}k` : String(v);
+        return (
+          <Fragment key={v}>
+            <line x1={PAD.l} y1={y} x2={SVG_W - PAD.r} y2={y} stroke="#334155" strokeWidth={0.5} strokeDasharray="4 4" />
+            <text x={PAD.l - 6} y={y + 4} textAnchor="end" fontSize={10} fill="#475569">
+              {label}×
+            </text>
+          </Fragment>
+        );
+      })}
+      {/* Major grid lines + Y-axis labels */}
+      {majorLines.map((v) => {
         const y = yOf(v, logMin, logMax);
         const label = v >= 1000 ? `${v / 1000}k` : String(v);
         return (
@@ -90,19 +131,26 @@ function RdChart({
         );
       })}
 
-      {/* X-axis labels */}
-      {visibleTurns.map((t, i) => (
-        <text
-          key={t.id}
-          x={xOf(i, visibleTurns.length)}
-          y={SVG_H - 4}
-          textAnchor="middle"
-          fontSize={11}
-          fill="#94A3B8"
-        >
-          {t.label}
-        </text>
-      ))}
+      {/* X-axis labels, slanted ~30° so they don't overlap when many turns are
+          shown. End-anchored at each tick so the text trails down-left and
+          stays within the viewBox at both edges. */}
+      {visibleTurns.map((t, i) => {
+        const x = xOf(i, visibleTurns.length);
+        const y = svgH - 34;
+        return (
+          <text
+            key={t.id}
+            x={x}
+            y={y}
+            textAnchor="end"
+            transform={`rotate(-30, ${x}, ${y})`}
+            fontSize={11}
+            fill="#94A3B8"
+          >
+            {t.label}
+          </text>
+        );
+      })}
 
       {/* Lines + dots per lab. Cleared (undefined) values are skipped — the line
           connects across the gap and no dot is drawn for the missing point. */}
@@ -126,6 +174,7 @@ function RdChart({
         );
       })}
     </svg>
+    </div>
   );
 }
 
@@ -157,6 +206,7 @@ function EditModal({
   const [draft, setDraft] = useState("");
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(PRESET_COLORS[labs.length % PRESET_COLORS.length]);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -268,11 +318,11 @@ function EditModal({
                   <td className="py-1 pl-2">
                     <button
                       type="button"
-                      onClick={() => removeLab(lab.id)}
-                      className="rounded p-1 text-text-light hover:text-viz-danger"
-                      title={`Remove ${lab.name}`}
+                      onClick={() => setConfirmingDelete(lab.id)}
+                      className={`rounded p-1 hover:text-viz-danger ${confirmingDelete === lab.id ? "text-viz-danger" : "text-text-light"}`}
+                      title={`Delete ${lab.name}`}
                     >
-                      <X className="h-3.5 w-3.5" aria-hidden />
+                      <Trash2 className="h-4 w-4" aria-hidden />
                     </button>
                   </td>
                 </tr>
@@ -280,6 +330,42 @@ function EditModal({
             </tbody>
           </table>
         </div>
+
+        {/* Delete confirmation: only shown after the trash icon is clicked. */}
+        {confirmingDelete && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-viz-danger/10 px-3 py-2.5 text-xs text-text-light ring-1 ring-viz-danger/40">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-viz-warning" aria-hidden />
+            <div className="flex-1">
+              <p>
+                Delete{" "}
+                <span className="font-semibold text-off-white">
+                  {labs.find((l) => l.id === confirmingDelete)?.name}
+                </span>
+                ? This removes the lab and all of its points. To retire a lab instead, keep it and
+                leave its future turns blank — its line will stop at the last value it reached.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeLab(confirmingDelete);
+                    setConfirmingDelete(null);
+                  }}
+                  className="rounded-md bg-viz-danger px-3 py-1 font-semibold text-off-white hover:opacity-90"
+                >
+                  Delete anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(null)}
+                  className="rounded-md bg-navy-light px-3 py-1 font-semibold text-off-white hover:bg-navy-muted"
+                >
+                  Keep lab
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Add lab form */}
         <div className="mt-4 border-t border-navy-light pt-4">
@@ -395,16 +481,19 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
     );
 
     return (
-      <div className="flex h-full w-full bg-navy-dark">
+      <div className="flex h-full w-full">
         {/* ── Left: interactive chart ─────────────────────────── */}
         <div
-          className="group relative flex w-1/2 cursor-pointer flex-col p-6 brightness-100 transition-[filter] duration-200 hover:brightness-125"
+          className="group relative flex w-1/2 cursor-pointer flex-col rounded-2xl px-16 py-20 md:px-20 md:py-24 before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:bg-white/0 before:transition-[background-color] before:duration-200 hover:before:bg-white/[0.04]"
           onClick={openModal}
           role="button"
           tabIndex={0}
           aria-label="Click to edit R&D multipliers"
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openModal(); }}
         >
+          <p className="relative z-10 pb-1 text-2xl font-bold text-off-white md:text-3xl lg:text-4xl">
+            AI Research Speed
+          </p>
           {/* Legend + edit hint */}
           <div className="relative z-10 flex items-center justify-between pb-2">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -429,13 +518,10 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
           </div>
 
           {/* Chart */}
-          <div className="relative z-10 flex flex-1 items-center justify-center">
+          <div className="relative z-10 flex flex-1 items-start justify-center pb-8 md:pb-10">
             <RdChart visibleTurns={visibleTurns} labs={labs} multipliers={multipliers} />
           </div>
         </div>
-
-        {/* Divider */}
-        <div className="w-px self-stretch bg-navy-light" />
 
         {/* ── Right: capabilities ─────────────────────────────── */}
         <div className="flex w-1/2 flex-col justify-center gap-8 px-10 py-10 lg:px-14">

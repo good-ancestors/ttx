@@ -56,17 +56,26 @@ export function makeDiscussSlide(turnLabel: string) {
     const timerColor =
       secondsLeft < 60 ? "text-viz-danger" : secondsLeft < 3 * 60 ? "text-viz-warning" : "text-off-white";
 
+    // Final-minute siren: flash the whole screen red while the clock runs down.
+    const sirenActive = running && secondsLeft > 0 && secondsLeft <= 60;
+
     const btnBase =
       "flex h-12 items-center justify-center rounded-full bg-navy-light/60 text-off-white transition hover:bg-navy-light px-5 gap-2 font-semibold";
 
     return (
       <SlideShell>
+        {sirenActive && (
+          <div
+            aria-hidden
+            className="animate-siren-flash pointer-events-none fixed inset-0 z-0 bg-viz-danger/35"
+          />
+        )}
         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-text-light">
           {turnLabel}
         </p>
         <h2 className="text-5xl font-bold text-off-white md:text-7xl">Discuss</h2>
         <p className="max-w-2xl text-center text-xl text-text-light md:text-2xl">
-          Make deals, have discussions, and interact with other characters to further your aims.
+          Make deals, hold discussions, and negotiate with other stakeholders to advance your objectives.
         </p>
 
         <div

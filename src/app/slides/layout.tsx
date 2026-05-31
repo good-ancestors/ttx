@@ -12,5 +12,10 @@ export const metadata: Metadata = {
  * displays edge to edge.
  */
 export default function SlidesLayout({ children }: { children: ReactNode }) {
-  return <div className="fixed inset-0 overflow-hidden bg-navy-dark">{children}</div>;
+  return (
+    <div className="fixed inset-0 overflow-hidden bg-navy-dark">
+      <div className="slides-bg" aria-hidden />
+      <div className="relative z-10 h-full w-full">{children}</div>
+    </div>
+  );
 }
