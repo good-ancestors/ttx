@@ -6,9 +6,9 @@ import type { ReactNode } from "react";
 export type Lab = { id: string; name: string; color: string };
 
 const DEFAULT_LABS: Lab[] = [
-  { id: "openbrain", name: "OpenBrain", color: "#3B82F6" },
-  { id: "deepcent", name: "DeepCent", color: "#D97706" },
-  { id: "conscentia", name: "Conscentia", color: "#7C3AED" },
+  { id: "openbrain", name: "OpenBrain", color: "#22C55E" },
+  { id: "deepcent", name: "DeepCent", color: "#3B82F6" },
+  { id: "conscentia", name: "Conscentia", color: "#F59E0B" },
 ];
 
 // Everything up to and including Jan 2028 is fixed history (pregame) — locked,
