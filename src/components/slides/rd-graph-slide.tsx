@@ -405,6 +405,9 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
           aria-label="Click to edit R&D multipliers"
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openModal(); }}
         >
+          <p className="relative z-10 pb-1 text-lg font-semibold text-off-white md:text-xl">
+            AI Research Speed
+          </p>
           {/* Legend + edit hint */}
           <div className="relative z-10 flex items-center justify-between pb-2">
             <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
