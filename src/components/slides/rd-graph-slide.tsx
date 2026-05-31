@@ -437,9 +437,6 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
           </div>
         </div>
 
-        {/* Divider */}
-        <div className="w-px self-stretch bg-navy-light" />
-
         {/* ── Right: capabilities ─────────────────────────────── */}
         <div className="flex w-1/2 flex-col justify-center gap-8 px-10 py-10 lg:px-14">
           <p className="text-base font-semibold uppercase tracking-[0.2em] text-text-light md:text-lg">

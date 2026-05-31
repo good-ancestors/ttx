@@ -209,9 +209,6 @@ function QaGraphLayout({ children }: { children: ReactNode }) {
         </div>
       </div>
 
-      {/* Divider */}
-      <div className="w-px self-stretch bg-navy-light" />
-
       {/* Right: content */}
       <div className="flex w-1/2 flex-col justify-center gap-6 px-10 py-10 lg:px-14">
         {children}
