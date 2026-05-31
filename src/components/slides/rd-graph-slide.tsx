@@ -432,7 +432,7 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
           aria-label="Click to edit R&D multipliers"
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openModal(); }}
         >
-          <p className="relative z-10 pb-1 text-lg font-semibold text-off-white md:text-xl">
+          <p className="relative z-10 pb-1 text-2xl font-bold text-off-white md:text-3xl lg:text-4xl">
             AI Research Speed
           </p>
           {/* Legend + edit hint */}
