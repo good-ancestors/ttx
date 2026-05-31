@@ -158,7 +158,7 @@ export function Slideshow({ slides }: { slides: SlideDefinition[] }) {
 
   return (
     <BulletContext.Provider value={{ visibleCount }}>
-      <div className="relative flex h-full w-full flex-col bg-navy-dark text-off-white">
+      <div className="relative flex h-full w-full flex-col text-off-white">
         {/* Progress bar */}
         <div className="absolute inset-x-0 top-0 z-20 h-1.5 bg-navy-light/40">
           <div

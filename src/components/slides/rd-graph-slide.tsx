@@ -422,7 +422,7 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
     );
 
     return (
-      <div className="flex h-full w-full bg-navy-dark">
+      <div className="flex h-full w-full">
         {/* ── Left: interactive chart ─────────────────────────── */}
         <div
           className="group relative flex w-1/2 cursor-pointer flex-col rounded-2xl p-6 before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:bg-white/0 before:transition-[background-color] before:duration-200 hover:before:bg-white/[0.04]"

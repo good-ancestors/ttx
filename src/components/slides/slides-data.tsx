@@ -182,7 +182,7 @@ function QaGraphLayout({ children }: { children: ReactNode }) {
   const visibleTurns = TURN_TIMELINE.slice(0, startIdx + 1);
 
   return (
-    <div className="flex h-full w-full bg-navy-dark">
+    <div className="flex h-full w-full">
       {/* Left: R&D chart */}
       <div className="flex w-1/2 flex-col p-6">
         <p className="pb-1 text-lg font-semibold text-off-white md:text-xl">
