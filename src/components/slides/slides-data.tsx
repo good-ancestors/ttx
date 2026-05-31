@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useContext, useState } from "react";
+import { useContext, useState } from "react";
+import type { ReactNode } from "react";
 import { HelpCircle, RotateCcw, Check } from "lucide-react";
 import type { SlideDefinition } from "./types";
 import {
@@ -14,6 +15,57 @@ import {
 import { makeDiscussSlide } from "./discuss-slide";
 import { makeRdSlide } from "./rd-graph-slide";
 import { useRd } from "./rd-context";
+
+// ─── Nested-bullet helpers ───────────────────────────────────────────────────
+
+function L1({ children }: { children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-5 text-2xl text-off-white md:text-3xl lg:text-4xl">
+      <span
+        aria-hidden
+        className="mt-3 h-3 w-3 shrink-0 rounded-full md:mt-4 md:h-4 md:w-4"
+        style={{ backgroundColor: "var(--color-viz-capability)" }}
+      />
+      <span className="leading-snug">{children}</span>
+    </li>
+  );
+}
+
+function L2({ children }: { children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-4 text-xl text-text-light md:text-2xl lg:text-3xl">
+      <span aria-hidden className="mt-2.5 h-2.5 w-2.5 shrink-0 rounded-full border-2 border-text-light md:mt-3" />
+      <span className="leading-snug">{children}</span>
+    </li>
+  );
+}
+
+function L3({ children }: { children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-3 text-lg text-text-light md:text-xl lg:text-2xl">
+      <span aria-hidden className="mt-2 h-2 w-2 shrink-0 bg-text-light md:mt-2.5" />
+      <span className="leading-snug">{children}</span>
+    </li>
+  );
+}
+
+function RevealGroup({
+  children,
+  index,
+  visibleCount,
+}: {
+  children: ReactNode;
+  index: number;
+  visibleCount: number;
+}) {
+  const isVisible = index < visibleCount;
+  const isNew = index === visibleCount - 1 && isVisible;
+  return (
+    <div className={`${isNew ? "animate-bullet-reveal" : ""}${!isVisible ? " opacity-0" : ""}`}>
+      {children}
+    </div>
+  );
+}
 
 // ─── Scenario setup ───────────────────────────────────────────────────────────
 
@@ -31,48 +83,135 @@ function ScenarioHeaderSlide() {
 }
 
 function Turn1ScenarioSlide() {
+  const { visibleCount } = useContext(BulletContext);
+
   return (
     <SlideShell align="start">
       <SlideEyebrow>Start of Turn 1</SlideEyebrow>
-      <SlideTitle>January 2028</SlideTitle>
-      <SlideBullets
-        items={[
-          "AI hasn't yet had massive effects on jobs or the economy — many people use AI agents for everyday tasks",
-          <Fragment key="agent2">
+      <SlideTitle>Jan – March 2028</SlideTitle>
+      <ul className="flex w-full flex-col gap-5 text-left">
+        <RevealGroup index={0} visibleCount={visibleCount}>
+          <L1>It&apos;s January 2028.</L1>
+          <ul className="ml-8 mt-2 flex flex-col gap-2 md:ml-10">
+            <L2>
+              AI has not had massive effects on jobs, the economy, etc.
+              <ul className="ml-6 mt-2 flex flex-col gap-2 md:ml-8">
+                <L3>Many people use AI agents to help with tasks.</L3>
+              </ul>
+            </L2>
+          </ul>
+        </RevealGroup>
+
+        <RevealGroup index={1} visibleCount={visibleCount}>
+          <L1>
             OpenBrain has just invented{" "}
-            <span className="font-semibold text-off-white">Agent-2</span> — a form of weak AGI best
-            suited for AI research. It speeds up R&D by 3×.
-          </Fragment>,
-          "OpenBrain's CEO says ASI is achievable by December with continued investment",
-          "Other AI labs are 3–6 months behind OpenBrain",
-          "China has centralised all AI talent and compute into DeepCent",
-          "Media reports: China may have hacked OpenBrain and stolen Agent-2's weights. Misinformation — or not?",
-        ]}
-      />
+            <span className="font-semibold">&ldquo;Agent-2&rdquo;</span>
+          </L1>
+          <ul className="ml-8 mt-2 flex flex-col gap-2 md:ml-10">
+            <L2>
+              Agent-2 is best suited for AI research, but is a form of weak AGI and can be used for
+              other purposes.
+              <ul className="ml-6 mt-2 flex flex-col gap-2 md:ml-8">
+                <L3>
+                  <span className="font-semibold text-off-white underline">
+                    Agent-2 speeds up AI R&amp;D by 3x
+                  </span>
+                </L3>
+              </ul>
+            </L2>
+            <L2>
+              OpenBrain&apos;s CEO says ASI is achievable by December with continued investment.
+            </L2>
+            <L2>Other AI labs are 3-6 months behind.</L2>
+          </ul>
+        </RevealGroup>
+
+        <RevealGroup index={2} visibleCount={visibleCount}>
+          <L1>OpenBrain has demonstrated Agent-2 to the US government.</L1>
+          <ul className="ml-8 mt-2 flex flex-col gap-2 md:ml-10">
+            <L2>
+              Government was impressed by its{" "}
+              <span className="font-semibold text-off-white underline">
+                cyber offence / defence capability
+              </span>
+              .
+            </L2>
+          </ul>
+        </RevealGroup>
+
+        <RevealGroup index={3} visibleCount={visibleCount}>
+          <L1>
+            China has centralised all of its AI talent and compute resources into DeepCent.
+          </L1>
+          <ul className="ml-8 mt-2 flex flex-col gap-2 md:ml-10">
+            <L2>
+              Media reports rumours that China has hacked OpenBrain and stolen Agent-2&apos;s
+              weights. Is this true, or misinformation to drive a wedge between the powers?
+            </L2>
+          </ul>
+        </RevealGroup>
+      </ul>
     </SlideShell>
   );
 }
 
 function QaCapabilitiesSlide() {
+  const { visibleCount } = useContext(BulletContext);
+
   return (
     <SlideShell align="start">
       <SlideEyebrow>Scenario Q&amp;A</SlideEyebrow>
-      <SlideTitle>How capable is AI as of Jan 2028?</SlideTitle>
-      <SlideBullets
-        items={[
-          "Public agents are helpful but not yet transforming jobs or the economy",
-          <Fragment key="agent2-caps">
-            Agent-2 is: a{" "}
-            <span className="font-semibold text-off-white">
-              chemical, biological and nuclear weapon expert
-            </span>
-            ; an autonomous cyber agent; an autonomous coding agent; and a capable AI scientist
-          </Fragment>,
-          "Labs are running millions of Agent-2 instances to build a better Agent-3",
-          "The kind of AI progress expected to happen in 9 months now happens in 3 months",
-          "AI research is increasingly driven by access to compute, not just talent",
-        ]}
-      />
+      <SlideTitle>Scenario implications, Q&amp;A</SlideTitle>
+
+      <div className="flex w-full flex-col gap-6">
+        {/* Section 1 */}
+        <RevealGroup index={0} visibleCount={visibleCount}>
+          <p className="mb-3 text-2xl font-bold text-off-white md:text-3xl lg:text-4xl">
+            How capable is AI as of Jan 2028?
+          </p>
+          <ul className="flex flex-col gap-3">
+            <L1>
+              Public AI agents are helpful, but not having dramatic effects on jobs or the economy
+            </L1>
+            <L1>
+              Agent 2 is:
+              <ul className="ml-6 mt-2 flex flex-col gap-2 md:ml-8">
+                <L2>A chemical, biological and nuclear weapon expert</L2>
+                <L2>An autonomous cyber agent</L2>
+                <L2>An autonomous coding agent</L2>
+                <L2>A capable AI scientist</L2>
+              </ul>
+            </L1>
+          </ul>
+        </RevealGroup>
+
+        {/* Section 2 */}
+        <RevealGroup index={1} visibleCount={visibleCount}>
+          <p className="mb-3 text-2xl font-bold text-off-white md:text-3xl lg:text-4xl">
+            Agent-2&apos;s R&amp;D multiplier is{" "}
+            <span className="underline">3x</span>, that means:
+          </p>
+          <ul className="flex flex-col gap-3">
+            <L1>
+              Labs are running <em>millions</em> of these agents attempting to make better agents.
+              <ul className="ml-6 mt-2 flex flex-col gap-2 md:ml-8">
+                <L2>
+                  Labs hope that a future &ldquo;agent 3&rdquo; will accelerate AI research even
+                  more.
+                </L2>
+                <L2>
+                  <span className="font-bold text-off-white">
+                    The kind of AI progress we currently expect to happen in 9 months now happens in
+                    3 months.
+                  </span>
+                </L2>
+              </ul>
+            </L1>
+            <L1>As agents get better, talent becomes less relevant.</L1>
+            <L1>AI research is increasingly driven by access to compute, not just talent.</L1>
+          </ul>
+        </RevealGroup>
+      </div>
     </SlideShell>
   );
 }
@@ -407,8 +546,8 @@ function ResetSlide() {
 
 export const slides: SlideDefinition[] = [
   { id: "scenario-header", title: "Scenario", Component: ScenarioHeaderSlide },
-  { id: "turn-1-scenario", title: "January 2028", Component: Turn1ScenarioSlide, bulletCount: 6 },
-  { id: "qa-capabilities", title: "How capable is AI?", Component: QaCapabilitiesSlide, bulletCount: 5 },
+  { id: "turn-1-scenario", title: "Jan – March 2028", Component: Turn1ScenarioSlide, bulletCount: 4 },
+  { id: "qa-capabilities", title: "Scenario implications, Q&A", Component: QaCapabilitiesSlide, bulletCount: 2 },
   { id: "qa-china", title: "Isn't China too far behind?", Component: QaChinaSlide, bulletCount: 5 },
   { id: "new-chips-1", title: "Compute Breakdown", Component: ComputeBreakdownSlide },
   { id: "new-chips-2", title: "Compute Breakdown (with production)", Component: ComputeBreakdownWithProductionSlide },
