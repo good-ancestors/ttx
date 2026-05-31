@@ -49,7 +49,7 @@ function yOf(v: number, logMin: number, logMax: number) {
   return PAD.t + CH - ((logV - logMin) / (logMax - logMin)) * CH;
 }
 
-function RdChart({
+export function RdChart({
   visibleTurns,
   labs,
   multipliers,

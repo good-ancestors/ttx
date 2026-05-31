@@ -13,8 +13,8 @@ import {
   BulletContext,
 } from "./slide-primitives";
 import { makeDiscussSlide } from "./discuss-slide";
-import { makeRdSlide } from "./rd-graph-slide";
-import { useRd } from "./rd-context";
+import { makeRdSlide, RdChart } from "./rd-graph-slide";
+import { useRd, TURN_TIMELINE } from "./rd-context";
 
 // ─── Nested-bullet helpers ───────────────────────────────────────────────────
 
@@ -44,6 +44,28 @@ function L3({ children }: { children: ReactNode }) {
   return (
     <li className="flex items-start gap-3 text-lg text-text-light md:text-xl lg:text-2xl">
       <span aria-hidden className="mt-2 h-2 w-2 shrink-0 bg-text-light md:mt-2.5" />
+      <span className="leading-snug">{children}</span>
+    </li>
+  );
+}
+
+function S1({ children }: { children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-4 text-xl text-off-white md:text-2xl lg:text-3xl">
+      <span
+        aria-hidden
+        className="mt-2.5 h-3 w-3 shrink-0 rounded-full md:mt-3 md:h-3.5 md:w-3.5"
+        style={{ backgroundColor: "var(--color-viz-capability)" }}
+      />
+      <span className="leading-snug">{children}</span>
+    </li>
+  );
+}
+
+function S2({ children }: { children: ReactNode }) {
+  return (
+    <li className="flex items-start gap-3 text-lg text-text-light md:text-xl lg:text-2xl">
+      <span aria-hidden className="mt-2 h-2.5 w-2.5 shrink-0 rounded-full border-2 border-text-light md:mt-2.5" />
       <span className="leading-snug">{children}</span>
     </li>
   );
@@ -155,64 +177,116 @@ function Turn1ScenarioSlide() {
   );
 }
 
+function QaGraphLayout({ children }: { children: ReactNode }) {
+  const { labs, multipliers } = useRd();
+  const startIdx = TURN_TIMELINE.findIndex((t) => t.id === "start");
+  const visibleTurns = TURN_TIMELINE.slice(0, startIdx + 1);
+
+  return (
+    <div className="flex h-full w-full bg-navy-dark">
+      {/* Left: R&D chart */}
+      <div className="flex w-1/2 flex-col p-6">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 pb-2">
+          {labs.map((lab) => (
+            <span
+              key={lab.id}
+              className="flex items-center gap-2.5 text-2xl font-bold md:text-3xl"
+              style={{ color: lab.color }}
+            >
+              <span
+                className="h-4 w-4 rounded-full md:h-5 md:w-5"
+                style={{ backgroundColor: lab.color }}
+              />
+              {lab.name}
+            </span>
+          ))}
+        </div>
+        <div className="flex flex-1 items-center justify-center">
+          <RdChart visibleTurns={visibleTurns} labs={labs} multipliers={multipliers} />
+        </div>
+      </div>
+
+      {/* Divider */}
+      <div className="w-px self-stretch bg-navy-light" />
+
+      {/* Right: content */}
+      <div className="flex w-1/2 flex-col justify-center gap-6 px-10 py-10 lg:px-14">
+        {children}
+      </div>
+    </div>
+  );
+}
+
 function QaCapabilitiesSlide() {
   const { visibleCount } = useContext(BulletContext);
 
   return (
-    <SlideShell align="start">
-      <SlideEyebrow>Scenario Q&amp;A</SlideEyebrow>
-      <SlideTitle>Scenario implications, Q&amp;A</SlideTitle>
-
-      <div className="flex w-full flex-col gap-6">
-        {/* Section 1 */}
+    <QaGraphLayout>
+      <p className="text-base font-semibold uppercase tracking-[0.2em] text-text-light md:text-lg">
+        Scenario implications, Q&amp;A
+      </p>
+      <p className="text-xl font-bold text-off-white md:text-2xl lg:text-3xl">
+        How capable is AI as of Jan 2028?
+      </p>
+      <ul className="flex flex-col gap-3">
         <RevealGroup index={0} visibleCount={visibleCount}>
-          <p className="mb-3 text-2xl font-bold text-off-white md:text-3xl lg:text-4xl">
-            How capable is AI as of Jan 2028?
-          </p>
-          <ul className="flex flex-col gap-3">
-            <L1>
-              Public AI agents are helpful, but not having dramatic effects on jobs or the economy
-            </L1>
-            <L1>
-              Agent 2 is:
-              <ul className="ml-6 mt-2 flex flex-col gap-2 md:ml-8">
-                <L2>A chemical, biological and nuclear weapon expert</L2>
-                <L2>An autonomous cyber agent</L2>
-                <L2>An autonomous coding agent</L2>
-                <L2>A capable AI scientist</L2>
-              </ul>
-            </L1>
-          </ul>
+          <S1>
+            Public AI agents are helpful, but not having dramatic effects on jobs or the economy
+          </S1>
         </RevealGroup>
-
-        {/* Section 2 */}
         <RevealGroup index={1} visibleCount={visibleCount}>
-          <p className="mb-3 text-2xl font-bold text-off-white md:text-3xl lg:text-4xl">
-            Agent-2&apos;s R&amp;D multiplier is{" "}
-            <span className="underline">3x</span>, that means:
-          </p>
-          <ul className="flex flex-col gap-3">
-            <L1>
-              Labs are running <em>millions</em> of these agents attempting to make better agents.
-              <ul className="ml-6 mt-2 flex flex-col gap-2 md:ml-8">
-                <L2>
-                  Labs hope that a future &ldquo;agent 3&rdquo; will accelerate AI research even
-                  more.
-                </L2>
-                <L2>
-                  <span className="font-bold text-off-white">
-                    The kind of AI progress we currently expect to happen in 9 months now happens in
-                    3 months.
-                  </span>
-                </L2>
-              </ul>
-            </L1>
-            <L1>As agents get better, talent becomes less relevant.</L1>
-            <L1>AI research is increasingly driven by access to compute, not just talent.</L1>
-          </ul>
+          <S1>
+            Agent 2 is:
+            <ul className="ml-6 mt-2 flex flex-col gap-2 md:ml-8">
+              <S2>A chemical, biological and nuclear weapon expert</S2>
+              <S2>An autonomous cyber agent</S2>
+              <S2>An autonomous coding agent</S2>
+              <S2>A capable AI scientist</S2>
+            </ul>
+          </S1>
         </RevealGroup>
-      </div>
-    </SlideShell>
+      </ul>
+    </QaGraphLayout>
+  );
+}
+
+function QaRdMultiplierSlide() {
+  const { visibleCount } = useContext(BulletContext);
+
+  return (
+    <QaGraphLayout>
+      <p className="text-base font-semibold uppercase tracking-[0.2em] text-text-light md:text-lg">
+        Scenario implications, Q&amp;A
+      </p>
+      <p className="text-xl font-bold text-off-white md:text-2xl lg:text-3xl">
+        Agent-2&apos;s R&amp;D multiplier is <span className="underline">3x</span>, that means:
+      </p>
+      <ul className="flex flex-col gap-3">
+        <RevealGroup index={0} visibleCount={visibleCount}>
+          <S1>
+            Labs are running <em>millions</em> of these agents attempting to make better agents.
+            <ul className="ml-6 mt-2 flex flex-col gap-2 md:ml-8">
+              <S2>
+                Labs hope that a future &ldquo;agent 3&rdquo; will accelerate AI research even
+                more.
+              </S2>
+              <S2>
+                <span className="font-bold text-off-white">
+                  The kind of AI progress we currently expect to happen in 9 months now happens in
+                  3 months.
+                </span>
+              </S2>
+            </ul>
+          </S1>
+        </RevealGroup>
+        <RevealGroup index={1} visibleCount={visibleCount}>
+          <S1>As agents get better, talent becomes less relevant.</S1>
+        </RevealGroup>
+        <RevealGroup index={2} visibleCount={visibleCount}>
+          <S1>AI research is increasingly driven by access to compute, not just talent.</S1>
+        </RevealGroup>
+      </ul>
+    </QaGraphLayout>
   );
 }
 
@@ -547,7 +621,8 @@ function ResetSlide() {
 export const slides: SlideDefinition[] = [
   { id: "scenario-header", title: "Scenario", Component: ScenarioHeaderSlide },
   { id: "turn-1-scenario", title: "Jan – March 2028", Component: Turn1ScenarioSlide, bulletCount: 4 },
-  { id: "qa-capabilities", title: "Scenario implications, Q&A", Component: QaCapabilitiesSlide, bulletCount: 2 },
+  { id: "qa-capabilities", title: "How capable is AI?", Component: QaCapabilitiesSlide, bulletCount: 2 },
+  { id: "qa-rd-multiplier", title: "R&D multiplier", Component: QaRdMultiplierSlide, bulletCount: 3 },
   { id: "qa-china", title: "Isn't China too far behind?", Component: QaChinaSlide, bulletCount: 5 },
   { id: "new-chips-1", title: "Compute Breakdown", Component: ComputeBreakdownSlide },
   { id: "new-chips-2", title: "Compute Breakdown (with production)", Component: ComputeBreakdownWithProductionSlide },
