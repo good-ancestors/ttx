@@ -112,17 +112,19 @@ export function RdChart({
         );
       })}
 
-      {/* X-axis labels. The first/last sit at the chart edges, so anchor them
-          inward (start/end) to keep their text from overflowing the viewBox. */}
+      {/* X-axis labels, slanted ~30° so they don't overlap when many turns are
+          shown. End-anchored at each tick so the text trails down-left and
+          stays within the viewBox at both edges. */}
       {visibleTurns.map((t, i) => {
-        const isFirst = i === 0;
-        const isLast = i === visibleTurns.length - 1;
+        const x = xOf(i, visibleTurns.length);
+        const y = SVG_H - 22;
         return (
           <text
             key={t.id}
-            x={xOf(i, visibleTurns.length)}
-            y={SVG_H - 4}
-            textAnchor={isFirst ? "start" : isLast ? "end" : "middle"}
+            x={x}
+            y={y}
+            textAnchor="end"
+            transform={`rotate(-30, ${x}, ${y})`}
             fontSize={11}
             fill="#94A3B8"
           >
