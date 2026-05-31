@@ -373,9 +373,9 @@ function ComputePieLayout({ subtitle, segments }: { subtitle: string; segments: 
         </div>
         <ul className="flex flex-col gap-7">
           {segments.map((seg) => (
-            <li key={seg.label} className="flex items-center gap-5">
+            <li key={seg.label} className="flex items-start gap-5">
               <div
-                className="h-7 w-7 shrink-0 rounded-sm md:h-8 md:w-8"
+                className="mt-2 h-7 w-7 shrink-0 rounded-sm md:mt-3 md:h-8 md:w-8"
                 style={{ backgroundColor: seg.color }}
               />
               <span className="text-3xl text-off-white md:text-4xl lg:text-5xl">
