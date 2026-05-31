@@ -420,23 +420,23 @@ function ComputePieLayout({ subtitle, segments }: { subtitle: string; segments: 
   );
 }
 
-// Cohesive cool spectrum (teal → sky → indigo → violet → magenta) echoing the
-// neon rays in the slide background, rather than clashing primary colors.
+// Lab colors mirror the R&D graph (OpenBrain teal, DeepCent red, Conscienta
+// yellow); non-lab slices use in-tone neon and a neutral slate for production.
 const COMPUTE_BREAKDOWN_SEGMENTS: PieSegment[] = [
-  { label: "OpenBrain",     pct: 27.8, color: "#2DD4BF" },
-  { label: "DeepCent",      pct: 20.8, color: "#38BDF8" },
-  { label: "Conscienta",    pct: 18.1, color: "#6366F1" },
-  { label: "Other US Labs", pct: 13.9, color: "#A855F7" },
-  { label: "Rest of world", pct: 19.4, color: "#EC4899" },
+  { label: "OpenBrain",     pct: 27.8, color: "#14B8A6" },
+  { label: "DeepCent",      pct: 20.8, color: "#EF4444" },
+  { label: "Conscienta",    pct: 18.1, color: "#EAB308" },
+  { label: "Other US Labs", pct: 13.9, color: "#38BDF8" },
+  { label: "Rest of world", pct: 19.4, color: "#A855F7" },
 ];
 
 const COMPUTE_WITH_PRODUCTION_SEGMENTS: PieSegment[] = [
   { label: "Annual production", pct: 60.0, color: "#64748B" },
-  { label: "OpenBrain",         pct: 11.1, color: "#2DD4BF" },
-  { label: "DeepCent",          pct:  8.3, color: "#38BDF8" },
-  { label: "Conscienta",        pct:  7.2, color: "#6366F1" },
-  { label: "Other US Labs",     pct:  5.6, color: "#A855F7" },
-  { label: "Rest of world",     pct:  7.8, color: "#EC4899" },
+  { label: "OpenBrain",         pct: 11.1, color: "#14B8A6" },
+  { label: "DeepCent",          pct:  8.3, color: "#EF4444" },
+  { label: "Conscienta",        pct:  7.2, color: "#EAB308" },
+  { label: "Other US Labs",     pct:  5.6, color: "#38BDF8" },
+  { label: "Rest of world",     pct:  7.8, color: "#A855F7" },
 ];
 
 function ComputeBreakdownSlide() {

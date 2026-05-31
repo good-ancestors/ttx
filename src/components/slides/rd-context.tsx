@@ -8,7 +8,7 @@ export type Lab = { id: string; name: string; color: string };
 const DEFAULT_LABS: Lab[] = [
   { id: "openbrain", name: "OpenBrain", color: "#14B8A6" },
   { id: "deepcent", name: "DeepCent", color: "#EF4444" },
-  { id: "conscentia", name: "Conscentia", color: "#F97316" },
+  { id: "conscentia", name: "Conscentia", color: "#EAB308" },
 ];
 
 // Everything up to and including Jan 2028 is fixed history (pregame) — locked,
