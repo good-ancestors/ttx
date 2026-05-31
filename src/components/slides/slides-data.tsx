@@ -184,7 +184,7 @@ function QaGraphLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full w-full">
       {/* Left: R&D chart */}
-      <div className="flex w-1/2 flex-col px-12 py-14 md:px-16 md:py-16">
+      <div className="flex w-1/2 flex-col px-16 py-20 md:px-20 md:py-24">
         <p className="pb-1 text-2xl font-bold text-off-white md:text-3xl lg:text-4xl">
           AI Research Speed
         </p>

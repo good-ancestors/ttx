@@ -457,7 +457,7 @@ export function makeRdSlide(upToTurnId: string, eyebrow: string) {
       <div className="flex h-full w-full">
         {/* ── Left: interactive chart ─────────────────────────── */}
         <div
-          className="group relative flex w-1/2 cursor-pointer flex-col rounded-2xl px-12 py-14 md:px-16 md:py-16 before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:bg-white/0 before:transition-[background-color] before:duration-200 hover:before:bg-white/[0.04]"
+          className="group relative flex w-1/2 cursor-pointer flex-col rounded-2xl px-16 py-20 md:px-20 md:py-24 before:pointer-events-none before:absolute before:inset-0 before:rounded-2xl before:bg-white/0 before:transition-[background-color] before:duration-200 hover:before:bg-white/[0.04]"
           onClick={openModal}
           role="button"
           tabIndex={0}
