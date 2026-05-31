@@ -206,6 +206,7 @@ function EditModal({
   const [draft, setDraft] = useState("");
   const [newName, setNewName] = useState("");
   const [newColor, setNewColor] = useState(PRESET_COLORS[labs.length % PRESET_COLORS.length]);
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -317,8 +318,8 @@ function EditModal({
                   <td className="py-1 pl-2">
                     <button
                       type="button"
-                      onClick={() => removeLab(lab.id)}
-                      className="rounded p-1 text-text-light hover:text-viz-danger"
+                      onClick={() => setConfirmingDelete(lab.id)}
+                      className={`rounded p-1 hover:text-viz-danger ${confirmingDelete === lab.id ? "text-viz-danger" : "text-text-light"}`}
                       title={`Delete ${lab.name}`}
                     >
                       <Trash2 className="h-4 w-4" aria-hidden />
@@ -330,15 +331,41 @@ function EditModal({
           </table>
         </div>
 
-        {/* Tip: prefer leaving future turns blank over deleting a lab. */}
-        <div className="mt-3 flex items-start gap-2 rounded-lg bg-navy-light/40 px-3 py-2 text-xs text-text-light">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-viz-warning" aria-hidden />
-          <span>
-            To retire a lab, consider leaving its future turns blank instead of deleting it — its
-            line will stop at the last value it reached on the graph. Deleting removes the lab and
-            all of its points entirely.
-          </span>
-        </div>
+        {/* Delete confirmation: only shown after the trash icon is clicked. */}
+        {confirmingDelete && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-viz-danger/10 px-3 py-2.5 text-xs text-text-light ring-1 ring-viz-danger/40">
+            <Info className="mt-0.5 h-4 w-4 shrink-0 text-viz-warning" aria-hidden />
+            <div className="flex-1">
+              <p>
+                Delete{" "}
+                <span className="font-semibold text-off-white">
+                  {labs.find((l) => l.id === confirmingDelete)?.name}
+                </span>
+                ? This removes the lab and all of its points. To retire a lab instead, keep it and
+                leave its future turns blank — its line will stop at the last value it reached.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    removeLab(confirmingDelete);
+                    setConfirmingDelete(null);
+                  }}
+                  className="rounded-md bg-viz-danger px-3 py-1 font-semibold text-off-white hover:opacity-90"
+                >
+                  Delete anyway
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(null)}
+                  className="rounded-md bg-navy-light px-3 py-1 font-semibold text-off-white hover:bg-navy-muted"
+                >
+                  Keep lab
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Add lab form */}
         <div className="mt-4 border-t border-navy-light pt-4">
