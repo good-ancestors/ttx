@@ -9,7 +9,6 @@ import {
   SlideEyebrow,
   SlideTitle,
   SlideSubtitle,
-  SlideBullets,
   BulletContext,
 } from "./slide-primitives";
 import { makeDiscussSlide } from "./discuss-slide";
@@ -291,19 +290,48 @@ function QaRdMultiplierSlide() {
 }
 
 function QaChinaSlide() {
+  const { visibleCount } = useContext(BulletContext);
+
   return (
     <SlideShell align="start">
       <SlideEyebrow>Scenario Q&amp;A</SlideEyebrow>
-      <SlideTitle>Isn&apos;t China too far behind to matter?</SlideTitle>
-      <SlideBullets
-        items={[
-          "China is behind on compute, but has centralised while the US is divided",
-          "Can China get more compute?",
-          "Can China prevent the West from coordinating?",
-          "How much US compute is wasted running consumer models vs. racing to better agents?",
-          "How safe or aligned is AI? — The AI player is simulating a plausible outcome. You can ask, test, and influence them.",
-        ]}
-      />
+      <SlideTitle>Scenario implications, Q&amp;A</SlideTitle>
+
+      <div className="flex w-full flex-col gap-6">
+        <RevealGroup index={0} visibleCount={visibleCount}>
+          <p className="mb-3 text-2xl font-bold text-off-white md:text-3xl lg:text-4xl">
+            Isn&apos;t China too far behind to matter?
+          </p>
+          <ul className="flex flex-col gap-3">
+            <L1>China is behind on compute, but has centralised while the US is divided.</L1>
+            <L1>Can China get more compute?</L1>
+            <L1>Can China prevent the West coordinating?</L1>
+            <L1>
+              How much compute is &ldquo;wasted&rdquo; running consumer models vs. racing to better
+              agents?
+            </L1>
+          </ul>
+        </RevealGroup>
+
+        <RevealGroup index={1} visibleCount={visibleCount}>
+          <p className="mb-3 text-2xl font-bold text-off-white md:text-3xl lg:text-4xl">
+            How can policy makers help win the race?
+          </p>
+          <ul className="flex flex-col gap-3">
+            <L1>Secure new chips and more compute for a decisive advantage.</L1>
+          </ul>
+        </RevealGroup>
+
+        <RevealGroup index={2} visibleCount={visibleCount}>
+          <p className="mb-3 text-2xl font-bold text-off-white md:text-3xl lg:text-4xl">
+            How safe or &ldquo;aligned&rdquo; is AI?
+          </p>
+          <ul className="flex flex-col gap-3">
+            <L1>The AI player is simulating a plausible outcome.</L1>
+            <L1>You can ask them. You can test them. You can influence them.</L1>
+          </ul>
+        </RevealGroup>
+      </div>
     </SlideShell>
   );
 }
@@ -623,7 +651,7 @@ export const slides: SlideDefinition[] = [
   { id: "turn-1-scenario", title: "Jan 2028", Component: Turn1ScenarioSlide, bulletCount: 4 },
   { id: "qa-capabilities", title: "How capable is AI?", Component: QaCapabilitiesSlide, bulletCount: 2 },
   { id: "qa-rd-multiplier", title: "R&D multiplier", Component: QaRdMultiplierSlide, bulletCount: 3 },
-  { id: "qa-china", title: "Isn't China too far behind?", Component: QaChinaSlide, bulletCount: 5 },
+  { id: "qa-china", title: "Isn't China too far behind?", Component: QaChinaSlide, bulletCount: 3 },
   { id: "new-chips-1", title: "Compute Breakdown", Component: ComputeBreakdownSlide },
   { id: "new-chips-2", title: "Compute Breakdown (with production)", Component: ComputeBreakdownWithProductionSlide },
   { id: "questions", title: "Questions", Component: QuestionsSlide },
