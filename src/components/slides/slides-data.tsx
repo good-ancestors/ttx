@@ -367,7 +367,7 @@ function PieChart({ segments }: { segments: PieSegment[] }) {
         const ly = cy + r * 0.64 * Math.sin(mid);
         return (
           <g key={seg.label}>
-            <path d={describeSlice(cx, cy, r, start, end)} fill={seg.color} stroke="#0F172A" strokeWidth="2" />
+            <path d={describeSlice(cx, cy, r, start, end)} fill={seg.color} stroke="#0F172A" strokeWidth="2" strokeLinejoin="round" />
             {seg.pct >= 7 && (
               <text
                 x={lx.toFixed(1)}
