@@ -75,7 +75,7 @@ export function makeDiscussSlide(turnLabel: string) {
         </p>
         <h2 className="text-5xl font-bold text-off-white md:text-7xl">Discuss</h2>
         <p className="max-w-2xl text-center text-xl text-text-light md:text-2xl">
-          Make deals, have discussions, and interact with other characters to further your aims.
+          Make deals, hold discussions, and negotiate with other stakeholders to advance your objectives.
         </p>
 
         <div
