@@ -269,19 +269,19 @@ function EditModal({
           <table className="w-full text-sm">
             <thead>
               <tr>
-                <th className="pb-2 text-left font-semibold text-text-light">Lab</th>
+                <th className="pb-3 text-left text-base font-semibold text-text-light">Lab</th>
                 {visibleTurns.map((t) => (
-                  <th key={t.id} className="pb-2 text-center font-semibold text-text-light">
+                  <th key={t.id} className="pb-3 text-center text-base font-semibold text-text-light">
                     {t.label}
                   </th>
                 ))}
-                <th className="pb-2" />
+                <th className="pb-3" />
               </tr>
             </thead>
             <tbody>
               {labs.map((lab) => (
                 <tr key={lab.id}>
-                  <td className="py-1 pr-4 font-semibold" style={{ color: lab.color }}>
+                  <td className="py-2 pr-4 text-lg font-bold" style={{ color: lab.color }}>
                     {lab.name}
                   </td>
                   {visibleTurns.map((t) => {
@@ -299,14 +299,14 @@ function EditModal({
                               if (e.key === "Enter") commitEdit();
                               if (e.key === "Escape") setEditing(null);
                             }}
-                            className="w-16 rounded bg-navy-light px-1 text-center text-off-white outline-none ring-1 ring-viz-capability"
+                            className="w-20 rounded-xl bg-navy-light py-2 text-center text-2xl font-extrabold tabular-nums text-off-white outline-none ring-2 ring-viz-capability"
                             inputMode="numeric"
                           />
                         ) : (
                           <button
                             type="button"
                             onClick={() => startEdit(t.id, lab.id)}
-                            className={`rounded px-2 py-0.5 hover:bg-navy-light ${val === undefined ? "text-text-muted" : "text-off-white"}`}
+                            className={`min-w-[3.5rem] rounded-xl px-3 py-2 text-2xl font-extrabold tabular-nums transition-colors hover:bg-navy-light ${val === undefined ? "text-text-muted" : "text-off-white"}`}
                             title="Click to edit (clear to remove the point)"
                           >
                             {val === undefined ? "—" : `${val}×`}
@@ -405,6 +405,17 @@ function EditModal({
               Add
             </button>
           </div>
+        </div>
+
+        {/* Footer: explicit OK button to accept changes and close. */}
+        <div className="mt-6 border-t border-navy-light pt-4">
+          <button
+            type="button"
+            onClick={() => { commitEdit(); onClose(); }}
+            className="w-full rounded-xl bg-viz-capability px-4 py-3 text-lg font-extrabold uppercase tracking-wide text-navy-dark shadow-lg transition-transform hover:scale-[1.01] active:scale-[0.99]"
+          >
+            OK
+          </button>
         </div>
       </div>
     </div>
