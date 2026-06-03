@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext } from "react";
 import type { ReactNode } from "react";
 
 /**
@@ -11,7 +11,7 @@ import type { ReactNode } from "react";
 
 type BulletContextValue = { visibleCount: number };
 
-/** Consumed by SlideBullets to know how many items to show. Provided by Slideshow. */
+/** Consumed by slide bullet lists to know how many items to show. Provided by Slideshow. */
 export const BulletContext = createContext<BulletContextValue>({
   visibleCount: Number.MAX_SAFE_INTEGER,
 });
@@ -67,38 +67,5 @@ export function SlideTitle({ children }: { children: ReactNode }) {
 /** Supporting line beneath a title. */
 export function SlideSubtitle({ children }: { children: ReactNode }) {
   return <p className="max-w-3xl text-balance text-xl text-text-light md:text-2xl">{children}</p>;
-}
-
-/**
- * A vertical list of bullet points with progressive disclosure.
- * Reads visibleCount from BulletContext — Slideshow controls how many are shown.
- * The most-recently revealed item animates in.
- */
-export function SlideBullets({ items }: { items: ReactNode[] }) {
-  const { visibleCount } = useContext(BulletContext);
-
-  return (
-    <ul className="flex w-full flex-col gap-6 text-left md:gap-8">
-      {items.map((item, i) => {
-        // Render all items always (preserves total height, prevents title jumping).
-        // Hidden items are transparent; only the newly-revealed item animates in.
-        const isVisible = i < visibleCount;
-        const isNew = i === visibleCount - 1 && isVisible;
-        return (
-          <li
-            key={i}
-            className={`flex items-start gap-5 text-2xl text-off-white md:text-3xl lg:text-4xl${isNew ? " animate-bullet-reveal" : ""}${!isVisible ? " opacity-0" : ""}`}
-          >
-            <span
-              aria-hidden
-              className="mt-3 h-3 w-3 shrink-0 rounded-full md:mt-4 md:h-4 md:w-4"
-              style={{ backgroundColor: "var(--color-viz-capability)" }}
-            />
-            <span className="leading-snug">{item}</span>
-          </li>
-        );
-      })}
-    </ul>
-  );
 }
 
