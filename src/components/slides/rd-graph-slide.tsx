@@ -185,6 +185,29 @@ const PRESET_COLORS = [
   "#059669", "#DB2777", "#0EA5E9", "#F97316",
 ];
 
+// ─── Shared editor controls ───────────────────────────────────────────────────
+// One consistent, oversized "Duolingo-style" language for every button and input
+// in the editor: rounded-xl corners, bold high-contrast text, generous padding,
+// and ≥48px touch targets. Tweak here to restyle the whole modal at once.
+
+/** Solid call-to-action button. Combine the base with a color variant below. */
+const BTN =
+  "flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-lg font-extrabold transition-transform hover:scale-[1.02] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100";
+const BTN_PRIMARY = "bg-viz-capability text-navy-dark";
+const BTN_DANGER = "bg-viz-danger text-off-white";
+const BTN_NEUTRAL = "bg-navy-light text-off-white";
+
+/** Ghost icon-only button (close, delete). Add a hover tint per role. */
+const ICON_BTN =
+  "flex items-center justify-center rounded-xl p-2 text-text-light transition-colors hover:bg-navy-light hover:text-off-white";
+
+/** Text input shared base. */
+const TEXT_INPUT =
+  "rounded-xl bg-navy-light px-4 py-3 text-xl font-bold text-off-white placeholder-text-muted outline-none ring-2 ring-transparent focus:ring-viz-capability";
+
+/** Standard icon size for every control in the editor. */
+const ICON = "h-5 w-5";
+
 function EditModal({
   visibleTurns,
   labs,
@@ -258,9 +281,10 @@ function EditModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-1 text-text-light hover:text-off-white"
+            aria-label="Close"
+            className={ICON_BTN}
           >
-            <X className="h-5 w-5" aria-hidden />
+            <X className={ICON} aria-hidden />
           </button>
         </div>
 
@@ -299,7 +323,7 @@ function EditModal({
                               if (e.key === "Enter") commitEdit();
                               if (e.key === "Escape") setEditing(null);
                             }}
-                            className="w-20 rounded-xl bg-navy-light py-2 text-center text-2xl font-extrabold tabular-nums text-off-white outline-none ring-2 ring-viz-capability"
+                            className={`${TEXT_INPUT} w-20 px-2 text-center text-2xl font-extrabold tabular-nums ring-viz-capability`}
                             inputMode="numeric"
                           />
                         ) : (
@@ -319,10 +343,11 @@ function EditModal({
                     <button
                       type="button"
                       onClick={() => setConfirmingDelete(lab.id)}
-                      className={`rounded p-1 hover:text-viz-danger ${confirmingDelete === lab.id ? "text-viz-danger" : "text-text-light"}`}
+                      className={`${ICON_BTN} hover:text-viz-danger ${confirmingDelete === lab.id ? "text-viz-danger" : ""}`}
                       title={`Delete ${lab.name}`}
+                      aria-label={`Delete ${lab.name}`}
                     >
-                      <Trash2 className="h-4 w-4" aria-hidden />
+                      <Trash2 className={ICON} aria-hidden />
                     </button>
                   </td>
                 </tr>
@@ -333,8 +358,8 @@ function EditModal({
 
         {/* Delete confirmation: only shown after the trash icon is clicked. */}
         {confirmingDelete && (
-          <div className="mt-3 flex items-start gap-2 rounded-lg bg-viz-danger/10 px-3 py-2.5 text-xs text-text-light ring-1 ring-viz-danger/40">
-            <Info className="mt-0.5 h-4 w-4 shrink-0 text-viz-warning" aria-hidden />
+          <div className="mt-3 flex items-start gap-2 rounded-xl bg-viz-danger/10 px-3 py-2.5 text-xs text-text-light ring-1 ring-viz-danger/40">
+            <Info className={`mt-0.5 shrink-0 text-viz-warning ${ICON}`} aria-hidden />
             <div className="flex-1">
               <p>
                 Delete{" "}
@@ -351,14 +376,14 @@ function EditModal({
                     removeLab(confirmingDelete);
                     setConfirmingDelete(null);
                   }}
-                  className="rounded-md bg-viz-danger px-3 py-1 font-semibold text-off-white hover:opacity-90"
+                  className={`${BTN} ${BTN_DANGER}`}
                 >
                   Delete anyway
                 </button>
                 <button
                   type="button"
                   onClick={() => setConfirmingDelete(null)}
-                  className="rounded-md bg-navy-light px-3 py-1 font-semibold text-off-white hover:bg-navy-muted"
+                  className={`${BTN} ${BTN_NEUTRAL}`}
                 >
                   Keep lab
                 </button>
@@ -378,15 +403,16 @@ function EditModal({
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleAddLab(); }}
               placeholder="Lab name"
-              className="flex-1 rounded-lg bg-navy-light px-3 py-1.5 text-sm text-off-white placeholder-text-muted outline-none ring-1 ring-transparent focus:ring-viz-capability"
+              className={`${TEXT_INPUT} flex-1`}
             />
-            <div className="flex gap-1.5">
+            <div className="flex gap-2">
               {PRESET_COLORS.map((c) => (
                 <button
                   key={c}
                   type="button"
                   onClick={() => setNewColor(c)}
-                  className="h-5 w-5 rounded-full transition-transform hover:scale-110"
+                  aria-label={`Use color ${c}`}
+                  className="h-7 w-7 rounded-full transition-transform hover:scale-110"
                   style={{
                     backgroundColor: c,
                     outline: newColor === c ? `2px solid ${c}` : "none",
@@ -399,9 +425,9 @@ function EditModal({
               type="button"
               onClick={handleAddLab}
               disabled={!newName.trim()}
-              className="flex items-center gap-1.5 rounded-lg bg-viz-capability px-3 py-1.5 text-sm font-semibold text-navy-dark disabled:cursor-not-allowed disabled:opacity-40"
+              className={`${BTN} ${BTN_PRIMARY}`}
             >
-              <Plus className="h-4 w-4" aria-hidden />
+              <Plus className={ICON} aria-hidden />
               Add
             </button>
           </div>
@@ -412,7 +438,7 @@ function EditModal({
           <button
             type="button"
             onClick={() => { commitEdit(); onClose(); }}
-            className="w-full rounded-xl bg-viz-capability px-4 py-3 text-lg font-extrabold uppercase tracking-wide text-navy-dark shadow-lg transition-transform hover:scale-[1.01] active:scale-[0.99]"
+            className={`${BTN} ${BTN_PRIMARY} w-full`}
           >
             OK
           </button>
