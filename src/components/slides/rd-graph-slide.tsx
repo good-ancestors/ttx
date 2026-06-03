@@ -205,6 +205,13 @@ const ICON_BTN =
 const TEXT_INPUT =
   "rounded-xl bg-navy-light px-4 py-3 text-xl font-bold text-off-white placeholder-text-muted outline-none ring-2 ring-transparent focus:ring-viz-capability";
 
+/**
+ * Fixed-size box for an editable multiplier cell. The display button and the
+ * editing input share these exact dimensions so swapping one for the other
+ * never shifts the table layout.
+ */
+const NUM_CELL = "h-12 w-20 rounded-xl text-center text-2xl font-extrabold tabular-nums";
+
 /** Standard icon size for every control in the editor. */
 const ICON = "h-5 w-5";
 
@@ -323,14 +330,14 @@ function EditModal({
                               if (e.key === "Enter") commitEdit();
                               if (e.key === "Escape") setEditing(null);
                             }}
-                            className={`${TEXT_INPUT} w-20 px-2 text-center text-2xl font-extrabold tabular-nums ring-viz-capability`}
+                            className={`${NUM_CELL} bg-navy-light px-2 text-off-white outline-none ring-2 ring-viz-capability`}
                             inputMode="numeric"
                           />
                         ) : (
                           <button
                             type="button"
                             onClick={() => startEdit(t.id, lab.id)}
-                            className={`min-w-[3.5rem] rounded-xl px-3 py-2 text-2xl font-extrabold tabular-nums transition-colors hover:bg-navy-light ${val === undefined ? "text-text-muted" : "text-off-white"}`}
+                            className={`${NUM_CELL} inline-flex items-center justify-center transition-colors hover:bg-navy-light ${val === undefined ? "text-text-muted" : "text-off-white"}`}
                             title="Click to edit (clear to remove the point)"
                           >
                             {val === undefined ? "—" : `${val}×`}
@@ -397,39 +404,41 @@ function EditModal({
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-light">
             Add lab
           </p>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3">
             <input
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") handleAddLab(); }}
               placeholder="Lab name"
-              className={`${TEXT_INPUT} flex-1`}
+              className={`${TEXT_INPUT} w-full`}
             />
-            <div className="flex gap-2">
-              {PRESET_COLORS.map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setNewColor(c)}
-                  aria-label={`Use color ${c}`}
-                  className="h-7 w-7 rounded-full transition-transform hover:scale-110"
-                  style={{
-                    backgroundColor: c,
-                    outline: newColor === c ? `2px solid ${c}` : "none",
-                    outlineOffset: 2,
-                  }}
-                />
-              ))}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                {PRESET_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setNewColor(c)}
+                    aria-label={`Use color ${c}`}
+                    className="h-7 w-7 rounded-full transition-transform hover:scale-110"
+                    style={{
+                      backgroundColor: c,
+                      outline: newColor === c ? `2px solid ${c}` : "none",
+                      outlineOffset: 2,
+                    }}
+                  />
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={handleAddLab}
+                disabled={!newName.trim()}
+                className={`${BTN} ${BTN_PRIMARY}`}
+              >
+                <Plus className={ICON} aria-hidden />
+                Add
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={handleAddLab}
-              disabled={!newName.trim()}
-              className={`${BTN} ${BTN_PRIMARY}`}
-            >
-              <Plus className={ICON} aria-hidden />
-              Add
-            </button>
           </div>
         </div>
 
