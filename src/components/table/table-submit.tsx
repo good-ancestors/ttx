@@ -5,7 +5,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { type Role, hasCompute } from "@/lib/game-data";
 import { type ActionDraft, type LabRef } from "@/components/action-input";
-import { ActionInput } from "@/components/action-input";
+import { ActionInput, MAX_ACTIONS } from "@/components/action-input";
 import { SubmittedActionCard, type SentRequest } from "@/components/table/submitted-action-card";
 import type { SampleAction } from "@/lib/sample-actions";
 import {
@@ -143,7 +143,7 @@ export function TableSubmit({
       )}
 
       {/* ─── Draft actions (local, not yet submitted) ─── */}
-      {canEdit && totalActions < 5 && (
+      {canEdit && totalActions < MAX_ACTIONS && (
         <div className="mb-4">
           <ActionInput
             actions={actionDrafts}

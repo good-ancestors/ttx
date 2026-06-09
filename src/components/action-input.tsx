@@ -12,6 +12,18 @@ import {
 } from "./action-input-pickers";
 
 
+/**
+ * Max action cards a table can draft per turn.
+ *
+ * Post-playtest (2026-05) we hard-cap the *UI* at one action per turn: tables
+ * were spamming multiple actions to game the system, which flooded the
+ * narrative and made probability-setting impossible for co-facilitators. The
+ * backend (`submit` / `saveAndSubmit`) still accepts multiple actions and the
+ * `priority` machinery is untouched, so this is a one-number revert if the
+ * call turns out to be wrong. Bump back to 5 to restore the old behaviour.
+ */
+export const MAX_ACTIONS = 1;
+
 export type PriorityLevel = "low" | "medium" | "high";
 
 /**
@@ -115,14 +127,14 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRo
   };
 
   const addAction = () => {
-    if (actions.length < 5) {
+    if (actions.length < MAX_ACTIONS) {
       onChange([...actions, emptyAction()]);
     }
   };
 
   // Auto-add placeholder when last card is filled
   const lastAction = actions[actions.length - 1];
-  const needsPlaceholder = lastAction?.text.trim() && actions.length < 5;
+  const needsPlaceholder = lastAction?.text.trim() && actions.length < MAX_ACTIONS;
 
   const filledCount = actions.filter((a) => a.text.trim()).length;
 
@@ -130,7 +142,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRo
     <div>
       <div className="flex items-center justify-between mb-1">
         <h3 className="text-sm font-bold text-text">
-          Your Actions ({filledCount})
+          {MAX_ACTIONS > 1 ? `Your Actions (${filledCount})` : "Your Action"}
         </h3>
         {filledCount > 1 && (
           <span className="text-[11px] font-semibold text-text-muted">
@@ -138,10 +150,16 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRo
           </span>
         )}
       </div>
-      <p className="text-[11px] text-text-muted mb-3">
-        List in priority order. Top action gets the biggest push — lower ones decay from there.
-        {filledCount > 1 ? " Use ↑ / ↓ to reorder." : ""}
-      </p>
+      {MAX_ACTIONS > 1 ? (
+        <p className="text-[11px] text-text-muted mb-3">
+          List in priority order. Top action gets the biggest push — lower ones decay from there.
+          {filledCount > 1 ? " Use ↑ / ↓ to reorder." : ""}
+        </p>
+      ) : (
+        <p className="text-[11px] text-text-muted mb-3">
+          Pick the one move your table wants to make this turn.
+        </p>
+      )}
 
       <div className="space-y-3">
         {actions.map((action, i) => (
@@ -170,7 +188,7 @@ export function ActionInput({ actions, onChange, roleId, enabledRoles, computeRo
             otherLabs={otherLabs}
             isSubmitted={isSubmitted}
             canRemove={actions.length > 1 || action.text.trim() !== ""}
-            onAddNext={actions.length < 5 && !isSubmitted ? addAction : undefined}
+            onAddNext={actions.length < MAX_ACTIONS && !isSubmitted ? addAction : undefined}
             onSubmit={onSubmitAction && action.text.trim() ? () => onSubmitAction(i) : undefined}
           />
         ))}
