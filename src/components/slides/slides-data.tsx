@@ -10,7 +10,7 @@ import {
   SlideTitle,
   SlideSubtitle,
   BulletContext,
-} from "./slide-primitives";
+} from "@/components/presentation/primitives";
 import { makeDiscussSlide } from "./discuss-slide";
 import { makeRdSlide, RdChart } from "./rd-graph-slide";
 import { useRd, TURN_TIMELINE } from "./rd-context";

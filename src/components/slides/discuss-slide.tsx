@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useReducer } from "react";
 import { Minus, Pause, Play, Plus, RotateCcw } from "lucide-react";
-import { SlideShell } from "./slide-primitives";
+import { SlideShell } from "@/components/presentation/primitives";
 
 const DEFAULT_SECONDS = 30 * 60;
 

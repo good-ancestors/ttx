@@ -25,6 +25,7 @@ import { LobbyPhase } from "@/components/facilitator/lobby-phase";
 import { RoundPhase } from "@/components/facilitator/round-phase";
 import { TimerDisplay } from "@/components/facilitator/timer-display";
 import { AddLabForm } from "@/components/facilitator/add-lab-form";
+import { PresenterFrame, PhaseRail } from "@/components/facilitator/presenter-frame";
 
 export default function FacilitatorPage({
   params,
@@ -343,8 +344,9 @@ export default function FacilitatorPage({
 
   // ─── PLAYING ────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-navy-dark text-white">
+    <PresenterFrame phase={phase}>
       <FacilitatorNav round={currentRound} phase={phase} timerDisplay={timerDisplay} isExpired={isExpired} isUrgent={isUrgent} onShowQR={() => setShowQROverlay(true)} isProjector={isProjector} onToggleProjector={onToggleProjector} snapshots={snapshotOptions} onRestore={async (rn, useBefore) => { await restoreSnapshot({ gameId, roundNumber: rn, useBefore }); }} gameId={gameId} skipTimer={skipTimer} adjustTimer={adjustTimer} />
+      <PhaseRail phase={phase} />
 
       {/* QR codes overlay — accessible during any phase */}
       {/* Fullscreen single QR code (per-table or game-level).
@@ -576,7 +578,7 @@ export default function FacilitatorPage({
           />
         )}
       </div>
-    </div>
+    </PresenterFrame>
   );
 }
 
