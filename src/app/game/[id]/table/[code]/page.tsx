@@ -9,7 +9,7 @@ import { ROLE_MAP, isLabCeo, hasCompute, isSubmittedAction, isResolvingPhase, DE
 import { useCountdown, useKeyboardScroll, usePageVisibility, useSessionExpiry, useSessionId } from "@/lib/hooks";
 import { ObserverView } from "@/components/table/observer-view";
 import { TableLoader } from "@/components/table/table-loader";
-import { normaliseActions, emptyAction, type ActionDraft, type ComputeTarget } from "@/components/action-input";
+import { normaliseActions, emptyAction, MAX_ACTIONS, type ActionDraft, type ComputeTarget } from "@/components/action-input";
 import { loadSampleActions, getSampleActions, pickRandom, type SampleAction, type SampleActionsData } from "@/lib/sample-actions";
 import { loadRoleHandouts, type HandoutData } from "@/lib/role-handouts";
 import { ConnectionIndicator } from "@/components/connection-indicator";
@@ -652,7 +652,9 @@ function DriverTablePage({
       setActionDrafts((prev) => [
         ...prev.filter((a) => a.text.trim()),
         { text: action.text, priority: "medium" as const, secret: !!action.secret, endorseTargets, computeTargets },
-      ]);
+      // Respect the per-turn action cap — when capped at one, a tapped
+      // suggestion replaces the current draft rather than stacking past the cap.
+      ].slice(-MAX_ACTIONS));
     } catch (err) {
       setSubmitError(`Failed to edit: ${err instanceof Error ? err.message : "Unknown error"}`);
     }
