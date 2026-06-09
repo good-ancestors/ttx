@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize, Minimize, Minus, Plus } from "lucide-react";
 import type { SlideDefinition } from "./types";
-import { BulletContext } from "./slide-primitives";
+import { BulletContext } from "@/components/presentation/primitives";
 
 /** Clamp a number into the [min, max] range. */
 function clamp(n: number, min: number, max: number) {
